@@ -229,6 +229,8 @@ def export_rom(net, slug: str, out: Path, console, log=print) -> dict:
     for seg in segments:
         kind = seg.get("type")
         name = re.sub(r"\W", "_", str(seg.get("name") or f"{seg['start']:X}"))
+        if name[0].isdigit():
+            name = "seg_" + name
         if kind == "header" or (kind == "hasm" and "vram" not in seg):
             layout.append({"name": name, "kind": "raw", "start": seg["start"], "objects": [f"build/asm/{seg.get('name', 'header')}.o"]})
         elif kind == "bin":
@@ -281,6 +283,25 @@ def export_rom(net, slug: str, out: Path, console, log=print) -> dict:
         "assembly": objects, "segments": layout, "functions": fn_json,
         "symbols": {k: v for k, v in sorted(absolute.items(), key=lambda kv: kv[1])},
     }
+    # An expanded analysis image is not the cartridge. Rebuild RNC literals from linked code before reporting
+    # an original-ROM match; both the expanded image and the final cartridge must pass their comparisons.
+    original_name = cfg["rom"].get("program")
+    if console.id == "n64" and original_name and original_name != image_name:
+        from ..consoles.n64.code import unpack_code
+
+        original = (work / original_name).read_bytes()
+        blocks, cursor = [], len(original)
+        for offset, payload in unpack_code(original):
+            cursor += -cursor % 0x10 + 0x2000
+            if original[offset:offset + 4] != b"RNC\x01" or image[cursor:cursor + len(payload)] != payload:
+                raise ExportError("compressed analysis export needs a verified reconstruction for every block")
+            blocks.append({"rom": offset, "analysis": cursor, "size": len(payload)})
+            cursor += len(payload)
+        if not blocks:
+            raise ExportError("expanded analysis image has no verified compressed-block reconstruction")
+        cartridge = f"baserom.cartridge{ext}"
+        (out / cartridge).write_bytes(original)
+        build["cartridge"] = {"image": cartridge, "sha1": hashlib.sha1(original).hexdigest(), "blocks": blocks}
     (out / "build.json").write_text(json.dumps(build, indent=1), encoding="utf-8")
     shutil.copyfile(Path(__file__).with_name("export_build.py"), out / "build.py")
     units_json = []
@@ -294,6 +315,18 @@ def export_rom(net, slug: str, out: Path, console, log=print) -> dict:
                                       encoding="utf-8")
     matched = sum(1 for f in functions if f["kind"] == "c")
     _write_docs(out, proj["name"], console.name, base, matched, len(functions), as_fallback)
+    if cartridge := build.get("cartridge"):
+        readme = out / "README.md"
+        text = readme.read_text(encoding="utf-8")
+        text = text.replace(f"1. Put your own copy of the game here as `{base}` (it is in `.gitignore`; never commit it).",
+                            f"1. Keep both generated private inputs: `{base}` (expanded analysis image) and "
+                            f"`{cartridge['image']}` (original normalized cartridge). Reimport and export your ROM "
+                            "to regenerate them; the original cartridge alone is not the expanded analysis input.")
+        text += ("\nThe build first compares the expanded linked image, then reconstructs RNC method-1 blocks "
+                 "from that linked output using the original compression template. It checks the final cartridge "
+                 "against its fixed original checksum. Incompatible edits require a general compressor.\n")
+        readme.write_text(text, encoding="utf-8")
+
     # everything made from the game itself stays local: build.py regenerates it from your copy
     (out / ".gitignore").write_text("build/\nbaserom*\nasm/\nassets/\n*.ld\n*_auto.txt\n.splat/\n*.d\n",
                                     encoding="utf-8")

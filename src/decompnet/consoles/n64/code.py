@@ -214,6 +214,21 @@ def unpack_code(rom: bytes) -> list[tuple[int, bytes]]:
             if len(out) == size and _looks_like_code(out):
                 found.append((at, out))
         at = rom.find(b"Yaz0", at + 4)
+    from . import rnc
+
+    at = rom.find(b"RNC\x01")
+    while at >= 0:
+        size = int.from_bytes(rom[at + 4:at + 8], "big")
+        packed = int.from_bytes(rom[at + 8:at + 12], "big")
+        if 0x1000 <= size <= rnc.MAX_OUTPUT and at + rnc.HEADER_BYTES + packed <= len(rom):
+            try:
+                out = rnc.unpack(rom[at:at + rnc.HEADER_BYTES + packed])
+            except rnc.RncError:
+                pass
+            else:
+                if _looks_like_code(out):
+                    found.append((at, out))
+        at = rom.find(b"RNC\x01", at + 4)
     return sorted(found)
 
 
@@ -221,7 +236,7 @@ def unpack_code(rom: bytes) -> list[tuple[int, bytes]]:
 
 def add_segments(config: Path, workdir: Path, image: str, log=print) -> str:
     """An N64 game's code outside the main segment (n64code.py), added to splat's config as code segments of their
-    own. Compressed code (Rare's, Yaz0) is unpacked first and appended to a working copy of the ROM, which splat then
+    own. Compressed code (Rare's, Yaz0, RNC method 1) is unpacked first and appended to a working copy of the ROM, which splat then
     reads instead (and an export rebuilds). Returns the image splat reads."""
     import hashlib
 

@@ -292,7 +292,19 @@ def build() -> bool:
     out, base = (ROOT / B["output"]).read_bytes(), (ROOT / B["image"]).read_bytes()
     c_count = sum(1 for fn in B["functions"] if c_source(fn))
     if out == base:
-        print(f"identical: {B['output']} matches {B['image']} byte for byte "
+        if cartridge := B.get("cartridge"):
+            from decompnet.consoles.n64.rnc import rebuild_cartridge
+
+            original = (ROOT / cartridge["image"]).read_bytes()
+            if hashlib.sha1(original).hexdigest() != cartridge["sha1"]:
+                raise ValueError("original cartridge checksum differs from the fixed export target")
+            out = rebuild_cartridge(out, original, cartridge["blocks"])
+            (ROOT / B["output"]).write_bytes(out)
+            if out != original:
+                print("differs: reconstructed cartridge does not match the original")
+                return False
+            print(f"cartridge verified: {cartridge['sha1']}")
+        print(f"identical: {B['output']} matches {B.get('cartridge', {}).get('image', B['image'])} byte for byte "
               f"({c_count} of {len(B['functions'])} functions in C)")
         return True
     at = next((i for i in range(min(len(out), len(base))) if out[i] != base[i]), min(len(out), len(base)))

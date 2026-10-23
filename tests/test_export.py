@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 from elftools.elf.elffile import ELFFile
 
 from decompnet import toolchains
@@ -76,6 +77,13 @@ def test_export_rebuilds_the_game(tmp_path, platform):
     if not _ready(platform):
         pytest.skip(f"needs the {platform} toolchain and binutils-mips")
     net, slug = _decompile(tmp_path, platform)
+    if platform == "n64":
+        # Unnamed cartridge data segments receive hexadecimal names that can start with a digit. The generated
+        # linker symbols must still parse; exercise the same case on the homemade demo's raw header segment.
+        config = next(Path(net._project(slug)["root"]).glob("*.yaml"))
+        contents = yaml.safe_load(config.read_text())
+        contents["segments"][0]["name"] = "123"
+        config.write_text(yaml.safe_dump(contents, sort_keys=False))
     out = net.export_rom(slug, log=lambda *_: None)
     assert out["identical"], out["log"]
     assert out["matched"] == len(FUNCTIONS) and not out["fallback"]
