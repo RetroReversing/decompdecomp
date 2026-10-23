@@ -129,3 +129,51 @@ def test_an_agents_own_include_of_context_h_names_the_exports_header():
     text = exported_source("", "common_ovl.h", '#include "context.h"\n\nint f(void) { return 1; }')
     assert text == '#include "common_ovl.h"\n\n#include "common_ovl.h"\n\nint f(void) { return 1; }\n'
     assert "context.h" not in exported_source("", "common.h", '  # include "context.h"\nint g;')
+
+
+def test_generated_address_references_link_across_objects(tmp_path):
+    """Raw-data references and split local branch targets keep their encoded addresses; unknown names still fail."""
+    import json
+    import runpy
+
+    if toolchains.installed("binutils-mips") is None:
+        pytest.skip("needs pinned MIPS binutils")
+    # Importing export_build normally reads a build.json next to its own source, so execute a private copy instead.
+    from decompnet.rom import export
+
+    shutil.copyfile(Path(export.__file__).with_name("export_build.py"), tmp_path / "build.py")
+    config = {"image": "baserom.z64", "symbols": {}, "functions": [
+        {"name": "first", "rom": 0, "vram": 0x80000000},
+        {"name": "second", "rom": 16, "vram": 0x80000010}], "segments": [
+        {"name": "code", "kind": "code", "start": 0, "end": 24, "vram": 0x80000000,
+         "pieces": [], "bss": []}]}
+    (tmp_path / "build.json").write_text(json.dumps(config))
+    (tmp_path / "baserom.z64").write_bytes(bytes(24))
+    sources = {
+        "first": ".text\n.set noreorder\n.globl first\nfirst:\n"
+                 "lui $8, %hi(D_80001000)\nlw $8, %lo(D_80001000)($8)\nb .L80000010\nnop\n",
+        "second": ".text\n.set noreorder\n.globl second\nsecond:\n.L80000010:\njr $31\nnop\n"}
+    assembler = str(toolchains.binary("binutils-mips").parent / "mips-ps2-decompals-as")
+    linker = str(toolchains.binary("binutils-mips").parent / "mips-ps2-decompals-ld")
+    for name, source in sources.items():
+        (tmp_path / f"{name}.s").write_text(source)
+        subprocess.run([assembler, "-EB", "-mips2", "-no-pad-sections", "-o", f"{name}.o", f"{name}.s"],
+                       cwd=tmp_path, check=True, capture_output=True)
+    script = runpy.run_path(str(tmp_path / "build.py"))
+    text = script["linker_script"]({"first": "first.o", "second": "second.o"}, [])
+    (tmp_path / "game.ld").write_text(text)
+    linked = subprocess.run([linker, "-EB", "-T", "game.ld", "-o", "game.elf", "first.o", "second.o"],
+                            cwd=tmp_path, capture_output=True, text=True)
+    assert linked.returncode == 0, linked.stderr
+    symbols = {s.name: s["st_value"] for s in ELFFile(open(tmp_path / "game.elf", "rb"))
+               .get_section_by_name(".symtab").iter_symbols()}
+    assert symbols["D_80001000"] == 0x80001000
+    assert symbols[".L80000010"] == 0x80000010
+    (tmp_path / "first.s").write_text(sources["first"].replace("D_80001000", "unknown_data"))
+    subprocess.run([assembler, "-EB", "-mips2", "-no-pad-sections", "-o", "first.o", "first.s"],
+                   cwd=tmp_path, check=True, capture_output=True)
+    text = script["linker_script"]({"first": "first.o", "second": "second.o"}, [])
+    (tmp_path / "game.ld").write_text(text)
+    linked = subprocess.run([linker, "-EB", "-T", "game.ld", "-o", "game.elf", "first.o", "second.o"],
+                            cwd=tmp_path, capture_output=True, text=True)
+    assert linked.returncode != 0 and "unknown_data" in linked.stderr
