@@ -90,7 +90,14 @@ def _segments(config: dict) -> list[dict]:
             if len(seg) == 1:
                 continue  # the end marker
             seg = {"start": seg[0], "type": seg[1], "name": seg[2] if len(seg) > 2 else f"{seg[0]:X}"}
-        out.append(dict(seg) | {"start": start, "end": end})
+        seg = dict(seg) | {"start": start, "end": end}
+        # splat's parent size spans the address gap left by newly discovered code segments. Export only the
+        # actual BSS extent, whose start may be well beyond this parent's shortened ROM-backed data.
+        bss_vram = next((sub["vram"] for sub in seg.get("subsegments", [])
+                         if isinstance(sub, dict) and sub.get("type") == "bss" and "vram" in sub), None)
+        if bss_vram is not None and end is not None and "vram" in seg:
+            seg["bss_size"] = seg["vram"] + end - start + int(seg.get("bss_size") or 0) - bss_vram
+        out.append(seg)
     return out
 
 
