@@ -58,8 +58,10 @@ class _Bits:
         return self.data[pos] | self.data[pos + 1] << 8
 
     def take(self, count: int) -> int:
-        if not 0 <= count <= 16:
+        if not 0 <= count <= 30:
             raise RncError("invalid RNC bit count")
+        if count > 16:
+            return self.take(16) | self.take(count - 16) << 16
         if not count:
             return 0
         value = self.buffer & ((1 << count) - 1)

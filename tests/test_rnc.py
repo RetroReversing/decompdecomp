@@ -48,7 +48,7 @@ def literal_block(output):
     return w.container(output)
 
 
-@pytest.mark.parametrize('size', [1, 2, 3, 17, 256, 4096])
+@pytest.mark.parametrize('size', [1, 2, 3, 17, 256, 4096, 131072])
 def test_literals(size):
     output = bytes(i % 251 for i in range(size))
     locations = []
