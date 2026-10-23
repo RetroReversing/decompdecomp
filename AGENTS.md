@@ -6,7 +6,7 @@ How to work in this repository. Read README.md for what decompdecomp does from a
 
 decompdecomp: AI agents decompile games the user owns into C that compiles, with the game's original compiler, to
 the exact same bytes. Python 3.12+, managed with uv. A continuation of decomp.wtf (Sam Wolfs, i12bp8/decomp.wtf,
-archived at 0.10.6): `origin` is n-delic/decompdecomp, `upstream` the archived original.
+archived at 0.10.6). This fork is RetroReversing/decompdecomp; its parent is n-delic/decompdecomp.
 
 Naming: the project is **decompdecomp** in everything users read. Internal names stay as decomp.wtf left them, so
 existing installs and projects keep working: the `decomp` command, the `decompnet` package and data folder,
@@ -106,7 +106,7 @@ from the vtables constructors store, MIPS: the `get_class` tool and the class li
 `compilermap.py` (which compiler built each part of a MIPS game; the judge's survey is `engine.survey_compilers`;
 `app/rangecheck.py` tests a suggested range on its neighbours before it applies), `app/tools.py` (the MCP
 tools helpers get and their prompt; MCP is only the app's private wiring to the CLI helpers it starts), `app/window.py`
-+ `app/gtkwindow.py` + `app/tray.py` (the window: GTK and WebKitGTK from the system, run by the system's python3; the
++ `app/gtkwindow.py` + `app/macwindow.py` + `app/tray.py` (the window: GTK and WebKitGTK from the system, run by the system's python3; the
 page answers only it, by the secret in its user agent; and the tray icon; tests set `DECOMP_WINDOW=0` and
 `DECOMP_TRAY=0`), `app/edition.py` (release or development copy), `app/saves.py` (a ROM project's work as plain files, and a
 project restored from them), `app/readable.py` (polishing matched code), `app/knowledge.py` (what agents learn,
