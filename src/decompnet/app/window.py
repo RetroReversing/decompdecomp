@@ -31,6 +31,8 @@ TOKEN_AGENT = "decompdecomp-window/"  # gtkwindow.py puts this, then the secret,
 CHECK_SECONDS = 20
 CLOSE_SECONDS = 5  # a window told to close that's still there after this long is ended
 IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
+MAC_WINDOW_PROGRAM = Path(__file__).with_name("macwindow.py")
 NVIDIA_MODULE = Path("/sys/module/nvidia")  # there while NVIDIA's own driver is loaded
 
 # what the window needs from the system, per family of distributions (/etc/os-release ID and ID_LIKE)
@@ -82,6 +84,10 @@ def missing() -> str | None:
                     "Install WebView2 from https://developer.microsoft.com/microsoft-edge/webview2/ "
                     "and any Windows updates, then start decompdecomp again.")
         return None
+    if IS_MACOS:
+        if any(importlib.util.find_spec(name) is None for name in ("AppKit", "WebKit")):
+            return "decompdecomp's macOS window needs PyObjC Cocoa and WebKit. Reinstall the app's dependencies."
+        return None
     if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):  # over ssh, or a text console
         return ("decompdecomp opens its own window, and there's no desktop here to show it on. "
                 "Start decompdecomp from a terminal in your desktop session (or from the apps menu).")
@@ -105,6 +111,14 @@ def tell_desktop(title: str, text: str) -> None:
         import ctypes
 
         ctypes.windll.user32.MessageBoxW(None, text, title, 0x10)  # MB_ICONERROR: shortcuts have no console
+        return
+    if IS_MACOS:
+        from AppKit import NSAlert
+
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_(title)
+        alert.setInformativeText_(text)
+        alert.runModal()
         return
     gdbus = shutil.which("gdbus")
     if not gdbus:
@@ -146,11 +160,12 @@ class Window:
             icon = self.internal / "window-icon.svg"
             icon.write_text(edition.icon_svg(), encoding="utf-8")
             win_icon = Path(__file__).with_name("static") / ("favicon-dev.ico" if edition.DEV else "favicon.ico")
-            if IS_WINDOWS:
+            if IS_WINDOWS or IS_MACOS:
                 url = self.url
                 if os.environ.get("DECOMP_THEME") in ("light", "dark"):
                     url += ("&" if "?" in url else "?") + "system-theme=" + os.environ["DECOMP_THEME"]
-                argv = [sys.executable, "-I", str(WIN_WINDOW_PROGRAM), "--url", url, "--title", edition.NAME,
+                program = WIN_WINDOW_PROGRAM if IS_WINDOWS else MAC_WINDOW_PROGRAM
+                argv = [sys.executable, "-I", str(program), "--url", url, "--title", edition.NAME,
                         "--window-class", edition.WINDOW_CLASS, "--icon", str(win_icon)] + (["--dev"] if edition.DEV else [])
             else:
                 url = self.url

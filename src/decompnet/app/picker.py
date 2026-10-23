@@ -21,7 +21,7 @@ def choose(kind: str, title: str) -> str:
 
     if kind not in KINDS:
         raise ValueError("pick a folder or a file")
-    python = sys.executable if window.IS_WINDOWS else window.SYSTEM_PYTHON
+    python = sys.executable if window.IS_WINDOWS or window.IS_MACOS else window.SYSTEM_PYTHON
     try:
         res = subprocess.run([python, "-I", str(Path(__file__)), kind, title[:200]],
                              capture_output=True, text=True, timeout=PICK_SECONDS,
@@ -46,6 +46,21 @@ def main(kind: str, title: str) -> None:
                 print(path)
         finally:
             root.destroy()
+        return
+
+    if sys.platform == "darwin":
+        from AppKit import NSApplication, NSModalResponseOK, NSOpenPanel
+
+        app = NSApplication.sharedApplication()
+        app.setActivationPolicy_(0)
+        app.activateIgnoringOtherApps_(True)
+        panel = NSOpenPanel.openPanel()
+        panel.setTitle_(title)
+        panel.setCanChooseDirectories_(kind == "folder")
+        panel.setCanChooseFiles_(kind == "file")
+        panel.setAllowsMultipleSelection_(False)
+        if panel.runModal() == NSModalResponseOK:
+            print(panel.URL().path())
         return
 
     import gi

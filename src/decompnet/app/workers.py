@@ -9,6 +9,7 @@ the agents come first.
 from __future__ import annotations
 
 import os
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -33,6 +34,14 @@ def _lower_priority() -> None:
         kernel.GetCurrentThread.restype = ctypes.c_void_p
         kernel.SetThreadPriority.argtypes = (ctypes.c_void_p, ctypes.c_int)
         kernel.SetThreadPriority(kernel.GetCurrentThread(), -1)  # THREAD_PRIORITY_BELOW_NORMAL
+    elif sys.platform == "darwin":
+        import ctypes
+
+        # Darwin's nice value belongs to the process, so os.nice would slow the GUI too.
+        # Set this worker's QoS instead. Utility threads still let the interactive window run first.
+        system = ctypes.CDLL(None)
+        system.pthread_set_qos_class_self_np.argtypes = (ctypes.c_uint, ctypes.c_int)
+        system.pthread_set_qos_class_self_np(0x11, 0)  # QOS_CLASS_UTILITY
     else:
         os.nice(NICE)
 
