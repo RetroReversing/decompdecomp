@@ -38,6 +38,7 @@ def test_only_local_exports_can_download():
 @pytest.mark.parametrize("cpu", ["x86_64", "arm64"])
 def test_mac_hosts_use_pinned_tools(cpu, monkeypatch):
     monkeypatch.setattr(toolchains, "current_platform", lambda: "macos-" + cpu)
+    monkeypatch.setattr(toolchains.wsl, "wanted", lambda: False)
     assert toolchains.unsupported_cpu() is None
     assert toolchains.get("gcc-2.7.2-kmc").supported
     assert not toolchains.get("ee-gcc-2.96").supported
@@ -190,8 +191,8 @@ def test_native_picker_selects_files_or_folders_and_honors_cancel(monkeypatch, c
 def test_finder_can_find_homebrew_uv_without_a_shell_profile(monkeypatch):
     monkeypatch.setattr(hostenv.sys, "platform", "darwin")
     monkeypatch.setattr(hostenv.shutil, "which", lambda _: None)
-    monkeypatch.setattr(hostenv.Path, "is_file", lambda path: str(path) == "/opt/homebrew/bin/uv")
-    assert hostenv.find_uv() == "/opt/homebrew/bin/uv"
+    monkeypatch.setattr(hostenv.Path, "is_file", lambda path: path.as_posix() == "/opt/homebrew/bin/uv")
+    assert Path(hostenv.find_uv()).as_posix() == "/opt/homebrew/bin/uv"
 
 
 def test_demo_prerequisites_distinguish_path_tools_from_unavailable_compilers(monkeypatch, tmp_path):
