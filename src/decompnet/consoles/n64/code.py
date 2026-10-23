@@ -268,6 +268,15 @@ def add_segments(config: Path, workdir: Path, image: str, log=print) -> str:
     def start_of(seg):
         return seg[0] if isinstance(seg, list) else seg.get("start")
 
+    # splat measures a parent's VRAM end as ROM length + bss_size. New code segments can split its data
+    # tail: remember that end so the explicit BSS still describes the same addresses after the split.
+    bss_ends = {}
+    for seg in split.segments_from_config(config):
+        raw = next(s for s in cfg["segments"] if isinstance(s, dict) and s.get("start") == seg.rom_start)
+        if raw.get("bss_size") and any(isinstance(sub, dict) and sub.get("type") == "bss" and "vram" in sub
+                                       for sub in raw.get("subsegments", [])):
+            bss_ends[seg.rom_start] = seg.vram + seg.rom_end - seg.rom_start + raw["bss_size"]
+
     starts = {st for st, _, _ in found}
     segs = [s for s in cfg["segments"] if not (isinstance(s, dict) and s.get("type") == "bin" and start_of(s) in starts)
             and not isinstance(s, list)]  # the end marker comes back at the image's end
@@ -278,6 +287,11 @@ def add_segments(config: Path, workdir: Path, image: str, log=print) -> str:
             segs.append({"type": "bin", "start": en})
     segs.sort(key=lambda s: start_of(s) if start_of(s) is not None else -1)
     segs.append([len(rom)])
+    for i, seg in enumerate(segs[:-1]):
+        start = start_of(seg)
+        if start in bss_ends:
+            end = next(start_of(s) for s in segs[i + 1:] if start_of(s) is not None)
+            seg["bss_size"] = bss_ends[start] - seg["vram"] - (end - start)
     cfg["segments"] = segs
     config.write_text(yaml.safe_dump(cfg, sort_keys=False, default_flow_style=None), encoding="utf-8")
     kib = sum(en - st for st, en, _ in found) // 1024

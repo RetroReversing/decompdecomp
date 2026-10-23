@@ -84,10 +84,18 @@ def test_export_rebuilds_the_game(tmp_path, platform):
         contents = yaml.safe_load(config.read_text())
         contents["segments"][0]["name"] = "123"
         config.write_text(yaml.safe_dump(contents, sort_keys=False))
+        # Startup code may refer to an import-time alias that is absent from the current symbol table.
+        # The alias still has a fixed address in the original splat symbol file.
+        with (Path(net._project(slug)["root"]) / "symbol_addrs.txt").open("a") as stream:
+            stream.write("\nstartup_alias = 0x80000400; // type:func\n")
     out = net.export_rom(slug, log=lambda *_: None)
     assert out["identical"], out["log"]
     assert out["matched"] == len(FUNCTIONS) and not out["fallback"]
     tree = Path(out["path"])
+    if platform == "n64":
+        import json
+
+        assert json.loads((tree / "build.json").read_text())["symbols"]["startup_alias"] == 0x80000400
     assert len(list((tree / "src").glob("*/*.c"))) == len(FUNCTIONS)
 
     # a fresh clone: no assembly, assets or build output, only the sources and your copy of the game

@@ -25,7 +25,7 @@ from .. import toolchains
 from ..hostenv import NO_WINDOW, console_python
 from ..limits import capped
 from ..project import compiler_for
-from . import match
+from . import match, split
 from .symbols import AUTO_NAME
 
 _ADDR_COMMENT = re.compile(r"/\*\s*([0-9A-F]+)\s+([0-9A-F]{8})\b")
@@ -90,7 +90,14 @@ def _segments(config: dict) -> list[dict]:
             if len(seg) == 1:
                 continue  # the end marker
             seg = {"start": seg[0], "type": seg[1], "name": seg[2] if len(seg) > 2 else f"{seg[0]:X}"}
-        out.append(dict(seg) | {"start": start, "end": end})
+        seg = dict(seg) | {"start": start, "end": end}
+        # splat's parent size spans the address gap left by newly discovered code segments. Export only the
+        # actual BSS extent, whose start may be well beyond this parent's shortened ROM-backed data.
+        bss_vram = next((sub["vram"] for sub in seg.get("subsegments", [])
+                         if isinstance(sub, dict) and sub.get("type") == "bss" and "vram" in sub), None)
+        if bss_vram is not None and end is not None and "vram" in seg:
+            seg["bss_size"] = seg["vram"] + end - start + int(seg.get("bss_size") or 0) - bss_vram
+        out.append(seg)
     return out
 
 
@@ -252,6 +259,11 @@ def export_rom(net, slug: str, out: Path, console, log=print) -> dict:
                            "pieces": sorted(data, key=lambda d: d["vram"]), "bss": sorted(bss, key=lambda d: d["vram"])})
     syms = net.symbols(proj["id"])
     absolute = {s.name: s.address for s in syms.by_name.values() if s.name not in defined}
+    # Startup assembly can retain an import-time alias after a discovered function receives an address-based
+    # name. Keep those known addresses too; otherwise its named jump target is undefined in the standalone link.
+    for name, address in split.named_symbols(work).items():
+        if name not in defined:
+            absolute.setdefault(name, address)
     for auto in ("undefined_syms_auto.txt", "undefined_funcs_auto.txt"):
         p = out / auto
         if p.exists():
