@@ -319,3 +319,19 @@ The code that came from decomp.wtf was released under the MIT license by Sam Wol
 [LICENSE-decomp.wtf](LICENSE-decomp.wtf).
 
 <p align="center"><sub>Not related to Nintendo, Sony or Microsoft. Platform names are trademarks of their owners.</sub></p>
+
+### RNC-packed N64 programs
+
+The N64 importer recognizes RNC method-1 blocks, verifies both CRC16 checksums, and checks the decoded bytes for
+code before adding them to the analysis image. Method 2 and encrypted/locked streams are not supported. A small
+initial function count can still mean that the game uses another packing format or an undiscovered loader.
+
+For RNC-expanded exports, `baserom.z64` is the expanded analysis image and `baserom.cartridge.z64` is the original
+normalized cartridge. Keep both private. The build first checks the linked analysis image, then reconstructs the
+packed blocks using literals from the newly linked output and the original stream's coding decisions. It rejects
+changes incompatible with those references and checks the complete cartridge against the original. This template
+operation supports matching builds; it is not a general compressor for mods. Other expanded packing formats fail
+export with an explanation until they have a verified cartridge reconstruction.
+
+An identical rebuild can still contain assembly and binary fallbacks. Check the reported number of functions
+selected as C separately; an identical cartridge does not mean that every function has been decompiled.

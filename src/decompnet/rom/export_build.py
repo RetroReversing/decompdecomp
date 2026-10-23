@@ -258,6 +258,24 @@ def linker_script(provides: dict[str, str], gaps: list[tuple[int, str]]) -> str:
     if B.get("gp"):
         lines.append(f"_gp = 0x{B['gp']:08X};")
     lines += [f"{name} = 0x{addr:08X};" for name, addr in B["symbols"].items()]
+    # The splitter can leave references into raw data or across local labels in separate function objects.
+    # Only generated address-bearing names can supply their own absolute address. PROVIDE keeps real definitions
+    # authoritative; arbitrary unresolved names still fail at link time and the whole-image comparison stays fixed.
+    from elftools.elf.elffile import ELFFile
+
+    auto_addresses = {}
+    for obj in set(provides.values()):
+        with open(ROOT / obj, "rb") as stream:
+            symtab = ELFFile(stream).get_section_by_name(".symtab")
+            for symbol in symtab.iter_symbols() if symtab else ():
+                if symbol["st_shndx"] != "SHN_UNDEF":
+                    continue
+                name = symbol.name
+                address = AUTO_NAME.match(name) or re.fullmatch(r"\.L([0-9A-Fa-f]{8})", name)
+                if address:
+                    auto_addresses[name] = int(address.group(1), 16)
+    lines += [f'PROVIDE("{name}" = 0x{address:08X});' for name, address in sorted(auto_addresses.items())]
+
     # jump tables in the data point at labels inside functions (.L001006F8); with one object per function those
     # labels are local to another object, so give them their addresses (which their names spell out)
     labels = set()
@@ -292,7 +310,19 @@ def build() -> bool:
     out, base = (ROOT / B["output"]).read_bytes(), (ROOT / B["image"]).read_bytes()
     c_count = sum(1 for fn in B["functions"] if c_source(fn))
     if out == base:
-        print(f"identical: {B['output']} matches {B['image']} byte for byte "
+        if cartridge := B.get("cartridge"):
+            from decompnet.consoles.n64.rnc import rebuild_cartridge
+
+            original = (ROOT / cartridge["image"]).read_bytes()
+            if hashlib.sha1(original).hexdigest() != cartridge["sha1"]:
+                raise ValueError("original cartridge checksum differs from the fixed export target")
+            out = rebuild_cartridge(out, original, cartridge["blocks"])
+            (ROOT / B["output"]).write_bytes(out)
+            if out != original:
+                print("differs: reconstructed cartridge does not match the original")
+                return False
+            print(f"cartridge verified: {cartridge['sha1']}")
+        print(f"identical: {B['output']} matches {B.get('cartridge', {}).get('image', B['image'])} byte for byte "
               f"({c_count} of {len(B['functions'])} functions in C)")
         return True
     at = next((i for i in range(min(len(out), len(base))) if out[i] != base[i]), min(len(out), len(base)))
