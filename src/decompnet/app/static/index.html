@@ -272,6 +272,9 @@
         <div class="ap-text"><b id="apTitle"></b><span class="muted small" id="apSub"></span><div class="upbar" id="apBar" hidden><i></i></div></div>
         <button class="ghost small-btn" id="apBtn" type="button"></button>
       </div>
+      <details class="more" id="crossGamePanel"><summary>Matches from other games</summary>
+        <div class="more-body"><p class="muted small" id="crossGameSummary"></p><ol class="mini-list" id="crossGameRecent"></ol></div>
+      </details>
     </div>
 
     <div class="cols">
@@ -415,6 +418,15 @@
             <pre class="joblog" id="saveLog" hidden></pre>
           </div>
         </section>
+        <section class="panel" id="sdkPanel">
+          <header class="panel-head"><h2>Local SDK signatures</h2></header>
+          <div class="pad"><p class="muted small">Choose a local SDK .a or .o file. The app indexes function signatures and names on this computer; it never uploads or bundles the file. A signature suggests a name, while C still needs a byte match.</p>
+            <label class="field"><span>SDK name and version</span><input id="sdkCorpus" placeholder="libultra 2.0L"></label>
+            <label class="field"><span>Object archive</span><span class="pick-row"><input id="sdkPath" class="mono" placeholder="/path/to/libultra.a"><button class="ghost small-btn" type="button" data-pick="file" data-for="sdkPath" data-title="Choose a local SDK object archive">Choose…</button></span></label>
+            <div class="row"><button class="ghost small-btn" id="sdkImport" type="button">Index signatures</button></div>
+            <pre class="joblog" id="sdkLog" hidden></pre>
+          </div>
+        </section>
       </div>
     </div>
     <section class="panel danger-zone">
@@ -507,6 +519,7 @@
       </div>
       <div class="fn-chart" id="fnChartWrap"><svg id="fnChart" aria-label="Match per compile"></svg><div class="fn-chart-note" id="fnChartNote"></div></div>
       <div class="xref" id="fnXref"></div>
+      <div id="fnCrossHints"></div>
       <div id="fnNotes"></div>
       <div class="note-box">
         <label class="field"><span>A note for agents on this function (they read it when they take it)</span>

@@ -432,6 +432,11 @@ class BriefMixin:
             lines += section(fn, proj)
         twin = self._twin_lines(proj, fn) if fn["status"] != "matched" else []
         lines += twin
+        cross = self.twins.suggestions(proj["slug"], fn["name"], limit=3) if fn["status"] != "matched" else []
+        if cross:
+            lines += ["", "### Other games and local SDK signatures (name suggestions, not verified for this game)"]
+            lines += [f"- {h['name']} in {h['game']} ({h['kind']}, {h['score'] * 100:.0f}% instruction similarity)"
+                      for h in cross]
         alike = [] if twin else [(r, sim) for r, sim in self.similar(proj, fn, top=3) if r["status"] == "matched"]
         if alike:
             lines += ["", "### Looks like (already matched; read with get_function)",
@@ -498,12 +503,17 @@ class BriefMixin:
         proj = self._project(project)
         fn = self._function(function, proj["slug"])
         hits = self.similar(proj, fn, top=max(1, min(int(limit), 15)))
-        if not hits:
+        cross = self.twins.suggestions(proj["slug"], fn["name"], limit=max(1, min(int(limit), 15)))
+        if not hits and not cross:
             return f"No look-alikes found for {fn['name']}."
         lines = [f"Functions that look like {fn['name']}:"]
         for r, sim in hits:
             state = "matched" if r["status"] == "matched" else f"best {r['best_score']}" if r["best_score"] is not None else "not started"
             lines.append(f"- {r['name']}  {sim * 100:.0f}% similar  {state}  ({r['n_insns']} insns, 0x{r['vram']:08X})")
+        if cross:
+            lines += ["", "Other games and local SDK signatures (unverified suggestions):"]
+            lines += [f"- {h['name']} in {h['game']}: {h['kind']}, {h['score'] * 100:.0f}% similarity"
+                      for h in cross]
         best = next((r for r, _ in hits if r["status"] == "matched"), None)
         if best is not None:
             src = self.store.one("SELECT matched_source FROM functions WHERE project_id=? AND name=?", proj["id"], best["name"])
