@@ -803,7 +803,7 @@ async function renderForkSetup() {
           <span class="muted small">or</span><input id="fsPath" class="mono grow" placeholder="paste its path on this computer"><button class="ghost" id="fsPathGo" type="button">Use path</button></div>
         <div class="workbar" role="progressbar" aria-label="Building project" hidden><i></i></div>
         <pre class="joblog tall" id="fsLog" hidden></pre>
-        <p class="muted small">Then decompdecomp runs the project's setup and build, which can download the project's own tools and take a few minutes. Put the game in place yourself? <button class="link-btn" id="fsBuild" type="button">Just build</button></p>
+        <p class="muted small">Then decompdecomp runs the project's setup and build, which can download its tools and take a few minutes. Supported splat projects also get verified reference objects for measuring progress automatically. Put the game in place yourself? <button class="link-btn" id="fsBuild" type="button">Just build</button></p>
       </div><aside class="fs-side">${facts}</aside>`;
     $("fsOwn").onchange = () => { $("fsGo").disabled = !$("fsOwn").checked; };
     const usePath = () => {

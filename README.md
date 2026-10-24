@@ -150,6 +150,17 @@ Type `decomp`, or open decompdecomp from your apps menu. It opens in a window of
 
 You can also continue a community decomp: paste the address of its repository and pick your own copy of its game.
 
+Some community projects do not provide `objdiff.json`. After you supply the matching game and the project's build
+succeeds, decompdecomp can generate it for simple N64, PS1 and PS2 splat projects. It requires a SHA-1 in the splat
+config, built C objects and one unstripped ELF beside a rebuilt image with the same SHA-1. The build tools still
+need to work on your computer; this does not port a project's build system.
+
+References come from a separate all-assembly split of your verified game. Each reference's linked code and data
+must reproduce the game's original bytes. Candidate C objects are never copied into the reference set. Generated
+files stay under the private `.decomp-wtf/objdiff-references/` folder. Existing `objdiff.json` and `expected/` stay
+untouched. Custom layouts, overlays and compressed code need manual setup; the app reports the missing requirement.
+
+
 Already have repositories on disk? Open **Continue a community decomp**, then **Import checked-out projects**.
 Choose their parent folder and click **Scan folder**. It looks through platform subfolders and lets you select
 projects to import. Review their contribution rules first. By default, clone separate copies containing only

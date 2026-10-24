@@ -20,6 +20,7 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Status | recommended | beta | beta | beta | beta | beta | the project's own |
 | Start from your own copy | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | fork by address |
 | Import a collection of local checkouts | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | detected builds; manual setup for others |
+| Generate missing objdiff references after setup | simple splat | simple splat | simple splat | — native objdiff build | — native objdiff build | — native objdiff build | other layouts need manual configuration |
 | Judge | link · compare | link · compare | link · compare | objdiff | objdiff | objdiff | objdiff |
 | Machine drafts (m2c, Ghidra for x86) | ✓ | ✓ | ✓ | ✓ | ✓ Ghidra | — | by architecture |
 | Autopilot: free matches from drafts | ✓ | ✓ | ✓ | ✓ | — | — | — |
