@@ -231,7 +231,7 @@ class ForkProject:
             y = self._splat_yaml().read_text(errors="replace", encoding="utf-8")
             target = re.search(r"^\s*target_path:\s*['\"]?([^'\"\n#]+)", y, re.M)
             base = re.search(r"^\s*base_path:\s*['\"]?([^'\"\n#]+)", y, re.M)
-            sha1 = re.search(r"^sha1:\s*['\"]?([0-9a-fA-F]{40})", y, re.M)
+            sha1 = re.search(r"^[ \t]*sha1:[ \t]*['\"]?([0-9a-fA-F]{40})(?=['\"\s#]|$)", y, re.M)
             path = target.group(1).strip() if target else ""
             yaml_dir = os.path.relpath(self._splat_yaml().parent, self.root)
             if path and base:
@@ -241,8 +241,10 @@ class ForkProject:
                 return manual
             return {"what": f"your copy of the game ({Path(path).name})", "path": path,
                     "sha1": sha1.group(1).lower() if sha1 else None, "auto": True,
-                    "help": "Checked against the sha1 in the project's splat config. A PlayStation disc image works "
-                            "too: the file is taken from it."}
+                    "help": ("Checked against the SHA-1 in the project's splat config. " if sha1 else
+                             "This splat config does not specify a SHA-1, so decompdecomp cannot check the game "
+                             "file by hash before setup. Check the project's README for the required version. ") +
+                            "For PlayStation projects, a disc image can supply the expected file."}
         return manual
 
     # ------------------------------------------------------------------ setup

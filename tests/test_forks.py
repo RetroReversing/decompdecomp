@@ -15,6 +15,7 @@ import pytest
 from decompnet import toolchains
 from decompnet.app.engine import RomNetwork
 from decompnet.forks import csource
+from decompnet.forks.project import ForkProject
 from decompnet.network import NetworkError
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,6 +32,20 @@ def _git(cwd: Path, *args: str) -> str:
     return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True,
                           env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
                                "GIT_COMMITTER_EMAIL": "t@t", "PATH": "/usr/bin:/bin", "HOME": str(cwd)}).stdout
+
+
+def test_splat_setup_reports_the_expected_hash_or_its_absence(tmp_path):
+    (tmp_path / "Makefile").write_text("all:\n\t@true\n")
+    config = tmp_path / "game.yaml"
+    expected = "A" * 40
+    config.write_text(f"options:\n  target_path: baserom.z64\n  sha1: '{expected}'\nsegments: []\n")
+    need = ForkProject(tmp_path).needs()
+    assert need["sha1"] == expected.lower()
+    assert need["path"] == "baserom.z64"
+    config.write_text("options:\n  target_path: baserom.z64\nsegments: []\n")
+    need = ForkProject(tmp_path).needs()
+    assert need["sha1"] is None
+    assert "does not specify a SHA-1" in need["help"]
 
 
 @pytest.fixture(scope="module")
