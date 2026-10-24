@@ -401,7 +401,9 @@ class ForkProject:
         self.unpack_disc(version, log=log)
         for cmd in self.setup_commands(version):
             ok, tail = self.run(cmd, log=log)
-            if not ok and cmd[0] != "make":  # a Makefile build often fails on purpose until things match
+            # Incomplete sources may fail make once objdiff can measure individual units. Without that
+            # configuration, a failed build is a setup failure, not a successful build missing its report.
+            if not ok and (cmd[0] != "make" or not (self.root / "objdiff.json").exists()):
                 raise ForkError(f"setup step failed: {' '.join(cmd)}\n{tail}")
         if (self.root / "objdiff.json").exists() and self._all_source():
             log("compiling every source file, so objdiff can measure each one (some work in progress may not compile)")
