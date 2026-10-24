@@ -64,6 +64,10 @@ Where to start on a gap:
   mode a project's matched C is its git repository; what's missing there is matching identical code across your
   games (their objects, not a ROM, hold it) and opening a save's best attempts in a new copy of the project.
 
+ROM projects now keep an indexed library of verified functions from the user's other local games, report every
+cross-game transfer, suggest nearby code and names, and can index names and fingerprints from user-selected local
+SDK object archives. The archive's source is never bundled; a signature is a hint until compiled C passes the judge.
+
 ## Recently done
 
 - **The compiler of each object file, from a PS2 game's symbols.** Games linked by CodeWarrior's linker are often

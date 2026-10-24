@@ -208,6 +208,25 @@ def register(app: App) -> None:
             net.start_autopilot(slug)
         return net.overview(slug)
 
+    def p_sdk(slug, request, data):
+        path = hostenv.local_path(str(data.get("path") or ""))
+        corpus = str(data.get("corpus") or path.stem).strip()[:80]
+        if not corpus:
+            raise ValueError("give the SDK corpus a name and version")
+        return {"signatures": net.twins.import_sdk_objects(path, corpus), "corpus": corpus}
+
+    def p_cross_name(slug, request, data):
+        old, new = str(data.get("function") or ""), str(data.get("name") or "")
+        hints = net.twins.suggestions(slug, old)
+        if not any(h["name"] == new and h["score"] == 1 and h["kind"] != "similar code; unverified"
+                   for h in hints):
+            raise ValueError("that exact SDK or cross-game name is no longer suggested for this function")
+        agent, _ = net.local_agent("you")
+        message = net.rename_symbol(agent, slug, old, new, "name suggested by local cross-game signature")
+        if message.startswith("❌"):
+            raise NetworkError(message)
+        return {"message": message}
+
     def p_save(slug, request, data):
         """Save the project's work as plain files (app/saves.py): to its progress/ folder, or one the user picks."""
         return saves.save(net, slug, hostenv.local_path(data["folder"]) if data.get("folder") else None)
@@ -237,6 +256,11 @@ def register(app: App) -> None:
         "/api/try": (p_try, ["POST"]), "/api/release": (p_release, ["POST"]), "/api/reopen": (p_reopen, ["POST"]), "/api/setaside": (p_set_aside, ["POST"]),
         "/api/recheck": (p_recheck, ["POST"]),
         "/api/autopilot": (p_autopilot, ["POST"]), "/api/instructions": (p_instructions, ["POST"]), "/api/title": (p_title, ["POST"]),
+        "/api/cross-game": (lambda s, r, d: {"results": net.twins.cross_game_results(s),
+                            "suggestions": net.twins.suggestions(s, r.query_params.get("function", ""))
+                            if r.query_params.get("function") else []}, ["GET"]),
+        "/api/sdk-signatures": (p_sdk, ["POST"]),
+        "/api/cross-game/name": (p_cross_name, ["POST"]),
         "/api/priority": (p_priority, ["POST"]), "/api/note": (p_note, ["POST"]), "/api/scope": (p_scope, ["POST"]),
         "/api/unanalysed": (p_unanalysed, ["POST"]),
         "/api/suggestion": (p_suggestion, ["POST"]), "/api/boundary": (p_boundary, ["POST"]),
