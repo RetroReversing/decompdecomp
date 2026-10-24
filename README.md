@@ -82,7 +82,16 @@ brings back a window closed while helpers work. Free tools use Windows builds wh
 
 ### macOS (Intel and Apple Silicon)
 
-Use the installer above, or clone this fork and install the checkout:
+For an app you can put in `/Applications`, download the archive for your processor from the
+[RetroReversing releases](https://github.com/RetroReversing/decompdecomp/releases):
+`macos_arm64` for Apple Silicon or `macos_x86_64` for Intel. Unzip it, move
+`decompdecomp.app` into Applications, and open it from Finder. The app includes its own Python and
+dependencies, so moving it does not depend on a uv installation. It is not signed or notarized yet;
+macOS may require you to approve its first launch in Privacy & Security. Install free compilers
+and tools from the app's Setup screen. Replace the app from a later release to update it.
+
+The source installer is another option. It creates a launcher in `~/Applications` backed by
+an external uv installation. To install from a checkout:
 
 ```sh
 git clone --branch macos-support https://github.com/RetroReversing/decompdecomp.git
@@ -96,7 +105,7 @@ toolchains live in `~/Library/Application Support/decompnet/toolchains`. Intel M
 Tools (`xcode-select --install`) to build the pinned modern MIPS binutils on their first N64 export; upstream only
 publishes those tools for Apple Silicon. Finder launches preserve the PATH
 from installation so your installed Node and helper CLIs remain available; rerun `decomp shortcut` after
-changing their locations. This is a source install; there is no signed DMG or macOS release bundle yet.
+changing their locations. This source install has no signed DMG.
 Installs from `macos-support` track that branch in this fork when checking for updates.
 
 **Apple Silicon:** the app, WebKit window and modern tools run natively. The pinned N64 KMC-compatible
