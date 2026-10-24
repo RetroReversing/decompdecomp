@@ -267,6 +267,10 @@ class ForkProject:
             dest = dest / (Path(filename).name or "game.iso")
         else:
             dest.parent.mkdir(parents=True, exist_ok=True)
+        # A user may select the game already placed by setup, including through a symlink or hard link.
+        # Validate its hash above, then leave it in place instead of copying or moving it onto itself.
+        if dest.exists() and src.samefile(dest):
+            return dest
         if move:
             shutil.move(str(src), dest)
         else:
