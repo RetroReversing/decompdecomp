@@ -195,6 +195,34 @@ class ForkProject:
                 return p
         return None
 
+    def splat_baseroms(self) -> dict[str, str]:
+        """Original ROM hashes for splat builds whose YAML targets a generated decompressed ROM.
+
+        The Makefile names the input and generated file; the README supplies the original ROM hashes. Do not
+        treat the generated file's splat SHA-1 as the hash of a copy the user should provide.
+        """
+        makefile = self.root / "Makefile"
+        if not makefile.is_file():
+            return {}
+        make = makefile.read_text(errors="replace", encoding="utf-8")
+        if not (re.search(r"^BASEROM\s*[:?+]?=\s*baserom\.\$\(VERSION\)\.z64\s*$", make, re.M) and
+                re.search(r"^DECOMPRESSED_BASEROM\s*[:?+]?=\s*decompressed\.\$\(VERSION\)\.z64\s*$", make, re.M)):
+            return {}
+        readme = self.root / "README.md"
+        if not readme.is_file():
+            return {}
+        text = readme.read_text(errors="replace", encoding="utf-8")
+        return {version: digest.lower() for version, digest in re.findall(
+            r"`?baserom\.([A-Za-z0-9._-]+)\.z64`?\s*:\s*`?([0-9a-fA-F]{40})\b", text)}
+
+    def splat_default_version(self) -> str | None:
+        versions = self.splat_baseroms()
+        if not versions:
+            return None
+        make = (self.root / "Makefile").read_text(errors="replace", encoding="utf-8")
+        match = re.search(r"^VERSION\s*\?=\s*([A-Za-z0-9._-]+)", make, re.M)
+        return match.group(1) if match and match.group(1) in versions else next(iter(versions))
+
     def _inside(self, rel: str) -> str | None:
         """`rel` as a clean path inside the project, or None if it points outside or is a template."""
         if not rel or "__" in rel or "$" in rel or "{" in rel:
@@ -228,6 +256,14 @@ class ForkProject:
                         "sha1": None, "auto": True, "help": "The build checks the game against the project's hashes."}
             return manual
         if kind == "splat":
+            originals = self.splat_baseroms()
+            if originals:
+                selected = version if version in originals else self.splat_default_version()
+                return {"what": f"your original game ROM (baserom.{selected}.z64)",
+                        "path": f"baserom.{selected}.z64", "sha1": originals[selected], "auto": True,
+                        "rom_versions": [{"version": v, "sha1": digest} for v, digest in originals.items()],
+                        "help": "Supply an original cartridge ROM. Its SHA-1 selects the build version; the "
+                                "splat YAML's SHA-1 is for a decompressed file the build generates later."}
             y = self._splat_yaml().read_text(errors="replace", encoding="utf-8")
             target = re.search(r"^\s*target_path:\s*['\"]?([^'\"\n#]+)", y, re.M)
             base = re.search(r"^\s*base_path:\s*['\"]?([^'\"\n#]+)", y, re.M)
@@ -319,8 +355,9 @@ class ForkProject:
             return [[sys.executable, "configure.py"], [_tool("ninja") or "ninja"]]
         if kind == "splat":
             make = (self.root / "Makefile").read_text(errors="replace", encoding="utf-8")
-            steps = [["make", t] for t in ("setup", "extract") if re.search(rf"^{t}\s*:", make, re.M)][:1]
-            return steps + [["make", f"-j{os.cpu_count() or 4}"]]
+            chosen = [f"VERSION={version}"] if version and self.splat_baseroms() else []
+            steps = [["make", *chosen, t] for t in ("setup", "extract") if re.search(rf"^{t}\s*:", make, re.M)][:1]
+            return steps + [["make", *chosen, f"-j{os.cpu_count() or 4}"]]
         if kind == "objdiff":
             cfg = self.objdiff_config()
             return [[cfg.get("custom_make") or "make", *cfg.get("custom_args", [])]]
@@ -412,16 +449,18 @@ class ForkProject:
             log("compiling every source file, so objdiff can measure each one (some work in progress may not compile)")
             self.build_all(log=log)
         if not (self.root / "objdiff.json").exists():
-            self.generate_objdiff(log=log)
+            self.generate_objdiff(version=version, log=log)
         if not (self.root / "objdiff.json").exists():
             raise ForkError("the project built, but has no objdiff.json, so decompdecomp can't measure matches. "
                             "Some projects generate it with an extra step; check the README.")
 
-    def generate_objdiff(self, log=print) -> bool:
+    def generate_objdiff(self, version: str | None = None, log=print) -> bool:
         """Try the console's supported reference generator without changing an existing configuration."""
         if (self.root / "objdiff.json").exists():
             return False
         path = self._splat_yaml()
+        if version and self.splat_baseroms():
+            path = next((p for p in self.root.glob("*.yaml") if p.name.endswith(f".{version}.yaml")), path)
         if path is None:
             return False
         import yaml
