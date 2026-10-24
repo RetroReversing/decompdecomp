@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from decompnet import hostenv, toolchains
-from decompnet.app import launcher, macwindow, picker, window
+from decompnet.app import launcher, macwindow, picker, updates, window
 
 
 @pytest.mark.parametrize("url,kind", [
@@ -75,6 +75,16 @@ def test_finder_launcher_preserves_interpreter_and_helper_path(monkeypatch, tmp_
     lines = script.read_text().splitlines()
     assert shlex.split(lines[1]) == ["export", "PATH=" + os.environ["PATH"]]
     assert shlex.split(lines[2]) == ["exec", sys.executable, "-m", "decompnet.app.cli", "$@"]
+
+
+def test_packaged_mac_app_keeps_its_own_bundle(monkeypatch, tmp_path):
+    monkeypatch.setattr(launcher.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(launcher.sys, "platform", "darwin")
+    monkeypatch.setattr(launcher.edition, "DEV", False)
+    monkeypatch.setenv("DECOMP_PACKAGE", "macos")
+    assert "already available" in launcher.install_launcher()
+    assert not (tmp_path / "Applications").exists()
+    assert updates.can_apply() == (False, "this decompdecomp was installed as a macOS app: download the new one from https://github.com/RetroReversing/decompdecomp/releases")
 
 
 def test_mac_chooser_uses_the_apps_python_and_cancellation_is_empty(monkeypatch):
