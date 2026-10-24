@@ -118,3 +118,8 @@ def test_the_import_offers_every_compiler_of_the_games_console(gui):
     """The import's compiler test can only try what's installed: a game linked by CodeWarrior was guessed right only
     because its GCC was there. The import offers the console's missing compilers, both PlayStations' for a disc."""
     assert gui["checks"]["missing"] == [["ee-gcc-2.96", "mwcps2-3.0.1"], 3, 0]
+
+
+def test_helper_cards_show_polished_counts_separately_from_matches(gui):
+    assert gui["checks"]["helperResults"] == ['<b class="ok">2 polished</b>', '<b class="ok">0 polished</b>',
+                                               '<b class="ok">9 matched</b>']

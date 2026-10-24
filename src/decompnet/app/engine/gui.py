@@ -281,6 +281,14 @@ class GuiMixin:
         board = [{"agent": r["agent"], "compiles": r["compiles"], "matched": matched.pop(r["agent"], 0), "last": r["last"]}
                  for r in rows]
         board += [{"agent": a, "compiles": 0, "matched": n, "last": None} for a, n in matched.items()]
+        # Only accepted rewrites emit readable events, in ROM and project mode alike.
+        polished = {r["agent"]: r["n"] for r in self.store.all(
+            "SELECT a.name AS agent, COUNT(DISTINCT e.detail) AS n FROM events e "
+            "JOIN agents a ON a.id=e.agent_id WHERE e.project_id=? AND e.kind='readable' GROUP BY a.id", pid)}
+        for row in board:
+            row["polished"] = polished.pop(row["agent"], 0)
+        board += [{"agent": a, "compiles": 0, "matched": 0, "polished": n, "last": None}
+                  for a, n in polished.items()]
         board.sort(key=lambda r: (-r["matched"], -r["compiles"]))
         per_hour = [0] * 24
         for r in self.store.all("SELECT matched_at FROM functions WHERE project_id=? AND status='matched' AND matched_at > ?",

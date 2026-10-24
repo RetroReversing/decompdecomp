@@ -170,6 +170,8 @@ const settle = async () => { for (let i = 0; i < SETTLE_TICKS; i++) await tick()
       const opencode = { takes_effort: true, efforts: ["low", "medium", "high", "max"] };
       return [withEffort(claude, "opus"), withEffort(opencode, "deepseek/v4"), withEffort({ takes_effort: false }, "m")];
     })(),
+    helperResults: [helperResults({polished: 2, matched: 9}, "readable"), helperResults(undefined, "readable"),
+                    helperResults({polished: 2, matched: 9}, "")],
     systemThemes: ["", "?system-theme=light", "?system-theme=dark", "?system-theme=invalid"].map((search) => {
       location.search = search;
       return systemTheme();
