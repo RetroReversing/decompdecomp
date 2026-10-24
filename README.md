@@ -150,6 +150,18 @@ Type `decomp`, or open decompdecomp from your apps menu. It opens in a window of
 
 You can also continue a community decomp: paste the address of its repository and pick your own copy of its game.
 
+Already have repositories on disk? Open **Continue a community decomp**, then **Import checked-out projects**.
+Choose their parent folder and click **Scan folder**. It looks through platform subfolders and lets you select
+projects to import. Review their contribution rules first. By default, clone separate copies containing only
+committed files. You can instead use existing checkouts to keep game files, tools and uncommitted work. Those stay on their
+current branch; later, agents commit accepted changes there. Nothing is pushed automatically.
+
+Importing only adds projects to the app. Open each one to review setup and measure progress before starting agents.
+Unsupported build systems still need manual setup from the project's README. A ROM project's saved `progress/`
+folder uses **Open a saved project** instead. The scan stops at each checkout, ignores hidden/build/tool folders,
+and reports when a size or depth limit means you should scan a smaller folder.
+
+
 When you close the window while agents work, decompdecomp asks you: stop them and quit, or keep them working.
 **Quit** ends the app and everything it started.
 

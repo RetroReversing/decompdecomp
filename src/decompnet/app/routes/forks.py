@@ -10,6 +10,8 @@ from pathlib import Path
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from ... import hostenv
+from ...forks.local import MAX_REPOSITORIES
 from ...network import NetworkError
 from ..support import MAX_DISC
 from . import App
@@ -43,6 +45,35 @@ def register(app: App) -> None:
             settings.save()
             return {"slug": slug}
         return JSONResponse({"job": jobs.start("fork", work)})
+
+    @mcp.custom_route("/api/fork/local/scan", methods=["POST"])
+    async def api_local_scan(request: Request) -> Response:
+        if (bad := guard(request, write=True)):
+            return bad
+        data = await body(request)
+        folder = str(data.get("folder") or "").strip()
+        if not folder:
+            return fail(ValueError("Choose a folder to scan."))
+        def work(log):
+            log("Looking for checked-out repositories…")
+            result = net.forks.scan_local(hostenv.local_path(folder))
+            log(f"Found {len(result['projects'])} repositories.")
+            return result
+        return JSONResponse({"job": jobs.start("local-scan", work)})
+
+    @mcp.custom_route("/api/fork/local/import", methods=["POST"])
+    async def api_local_import(request: Request) -> Response:
+        if (bad := guard(request, write=True)):
+            return bad
+        data = await body(request)
+        paths = data.get("paths")
+        folder = str(data.get("folder") or "").strip()
+        if not folder or not isinstance(paths, list) or not paths or len(paths) > MAX_REPOSITORIES or any(
+                not isinstance(path, str) or not path.strip() for path in paths):
+            return fail(ValueError("Choose the folder and at least one repository from its scan."))
+        def work(log):
+            return net.forks.import_local(hostenv.local_path(folder), paths, copies=data.get("copies") is not False, log=log)
+        return JSONResponse({"job": jobs.start("local-import", work)})
 
     def fork_of(slug: str):
         if not net.fork_slug(slug):
