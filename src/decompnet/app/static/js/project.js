@@ -706,12 +706,12 @@ $("repoFork").onclick = () => {
 };
 
 /* What the project's own files say about AI, word for word, before anything is cloned. */
-function policyHtml(pol) {
+function policyHtml(pol, acknowledge = true) {
   if (pol.missing) return `<div class="notice bad"><span>${esc(pol.error)}</span></div>`;
   if (pol.error) return `<div class="notice"><span>Couldn't read what the project says about AI: ${esc(pol.error)} Look at its README and contribution rules yourself before you fork it.</span></div>`;
   const quotes = pol.lines.map((l) => `<blockquote class="policy-line">“${esc(l.text)}” <span class="muted small">${esc(l.file)}</span></blockquote>`).join("");
   if (pol.lean === "no") return `<div class="notice bad"><span><b>This project says it doesn't want AI-made code.</b> Respect that: keep this fork for yourself, to study the game, and send it nothing your agents wrote.</span></div>${quotes}
-    <label class="check"><input type="checkbox" id="forkOk"><span>I'll keep this fork to myself and won't send AI-made code to this project.</span></label>`;
+    ${acknowledge ? `<label class="check"><input type="checkbox" id="forkOk"><span>I'll keep this fork to myself and won't send AI-made code to this project.</span></label>` : ""}`;
   if (pol.lean === "silent") return `<p class="muted small">Its README and contribution files (${esc(pol.files.join(", ") || "none")}) say nothing about AI. Ask the project's team before you send it anything your agents wrote.</p>`;
   if (pol.lean === "rules") return `<p class="small"><b>This project allows AI, with rules of its own.</b> Follow them in anything you send it:</p>${quotes}`;
   return `<p class="small"><b>What the project says about AI:</b></p>${quotes}`;
@@ -839,4 +839,61 @@ async function renderForkSetup() {
     $("fsCheck").onclick = () => run(() => api("/api/fork/check", { method: "POST", body: { slug: S.slug } }));
   }
   $("fsFolder").onclick = () => openFolder();
+}
+
+
+/* Local collections: preview first, then import only the checkouts the reader chooses. */
+$("localScan").onclick = async () => {
+  const folder = $("localFolder").value.trim(), log = $("localScanLog"), button = $("localScan");
+  const results = $("localResults");
+  results.innerHTML = "";
+  const finish = beginWork(log, "Scanning repositories", [button], "Repository scan finished.");
+  showJobError(log, "");
+  try {
+    const { job } = await api("/api/fork/local/scan", { method: "POST", body: { folder } });
+    const scan = await followJob(job, log);
+    renderLocalProjects(results, scan);
+  } catch (error) { showJobError(log, error.message); }
+  finally { finish(); }
+};
+
+function renderLocalProjects(box, scan) {
+  const warnings = [...(scan.errors || []).map((e) => `${e.path}: ${e.error}`),
+    ...(scan.limited ? ["The scan reached its size or depth limit. Scan a smaller folder to see the rest."] : [])];
+  box.innerHTML = `${warnings.map((warning) => `<p class="muted small">${esc(warning)}</p>`).join("")}
+    ${scan.projects.length ? `<p>${plural(scan.projects.length, "repository")} found. Select the projects to add.</p>
+    <div class="row"><button class="ghost" type="button" data-select> Select all new projects</button><button class="ghost" type="button" data-clear>Clear selection</button></div>
+    <ul class="mini-list">${scan.projects.map((p, i) => `<li><label class="check"><input type="checkbox" data-local="${i}" ${p.existing ? "disabled" : ""}><span><b>${esc(p.name)}</b> · ${esc(p.kind)}${p.existing ? " · already imported" : p.kind === "custom" ? " · manual setup needed" : ""}<br><span class="mono small">${esc(p.path)}</span></span></label>
+      <details><summary>AI and contribution rules</summary>${policyHtml(p.policy, false)}</details></li>`).join("")}</ul>
+    <label class="field"><span>Where to work</span><select data-copy><option value="copy">Clone separate copies</option><option value="existing">Use the existing checkouts</option></select></label>
+    <p class="muted small">Existing checkouts keep their files, tools, uncommitted work and current branch. When you later run agents, accepted changes are committed in that checkout on its current branch. Separate clones contain committed files; ignored game files and tools must be supplied again. Nothing is pushed.</p>
+    <p class="muted small">After importing, open each project to review setup and measure its progress. Repositories with unsupported builds need manual setup. ROM progress saves still use Open a saved project.</p>
+    <label class="check"><input type="checkbox" data-rules><span>I have reviewed the selected projects' contribution rules and will follow them.</span></label>
+    <button class="primary" type="button" data-import disabled>Import selected projects</button>
+    <pre class="joblog" data-local-log hidden></pre><div data-local-outcome></div>` : '<p>No checked-out repositories found in this folder.</p>'}`;
+  if (!scan.projects.length) return;
+  const selected = () => [...box.querySelectorAll("[data-local]:checked")].map((input) => scan.projects[Number(input.dataset.local)]);
+  const go = box.querySelector("[data-import]"), rules = box.querySelector("[data-rules]");
+  const update = () => { go.disabled = !rules.checked || !selected().length; };
+  box.querySelectorAll("[data-local]").forEach((input) => { input.onchange = update; });
+  rules.onchange = update;
+  box.querySelector("[data-select]").onclick = () => { box.querySelectorAll("[data-local]:not(:disabled)").forEach((input) => { input.checked = true; }); update(); };
+  box.querySelector("[data-clear]").onclick = () => { box.querySelectorAll("[data-local]").forEach((input) => { input.checked = false; }); update(); };
+  go.onclick = async () => {
+    const paths = selected().map((p) => p.path), copies = box.querySelector("[data-copy]").value === "copy";
+    const log = box.querySelector("[data-local-log]"), outcome = box.querySelector("[data-local-outcome]");
+    const controls = [$("localScan"), ...box.querySelectorAll("input, button, select")];
+    const finish = beginWork(log, "Importing repositories", controls, "Repository import finished.");
+    showJobError(log, "");
+    try {
+      const { job } = await api("/api/fork/local/import", { method: "POST", body: { folder: scan.folder, paths, copies } });
+      const result = await followJob(job, log);
+      outcome.innerHTML = `<p>${result.imported.length} imported or already present; ${result.errors.length} failed.</p>
+        <ul>${result.imported.map((p) => `<li><a href="#/p/${encodeURIComponent(p.slug)}">${esc(p.slug)}</a></li>`).join("")}</ul>
+        ${result.errors.map((e) => `<p class="err">${esc(e.path)}: ${esc(e.error)}</p>`).join("")}`;
+      await loadState();
+      loadNav();
+    } catch (error) { showJobError(log, error.message); }
+    finally { finish(); update(); }
+  };
 }

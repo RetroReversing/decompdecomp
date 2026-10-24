@@ -118,9 +118,10 @@ def _tool(name: str) -> str | None:
 
 
 class ForkProject:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, *, create_state: bool = True):
         self.root = Path(root)
-        (self.root / STATE).mkdir(parents=True, exist_ok=True)
+        if create_state:
+            (self.root / STATE).mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------ what is it
 

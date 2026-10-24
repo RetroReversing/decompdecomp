@@ -33,13 +33,16 @@ const cases = [
   ["steering", '$("setTcSave").onclick = async () => {', '\n};', "setTcLog", "setTcSave"],
   ["agents", 'if (inst) inst.onclick = async () => {', '\n  };', "log", "inst"],
   ["pages", 'b.onclick = async () => {', '\n    };', "log", "b"],
+  ["project", '$("localScan").onclick = async () => {', '\n};', "localScanLog", "localScan"],
+  ["project", 'go.onclick = async () => {', '\n  };', "localImportLog", "localImport"],
 ];
 function setup(file, marker, end, logId, buttonId, ranges = "") {
   const elements = new Map();
   const get = (id) => { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); };
   const log = get(logId), button = get(buttonId || "unused");
+  get("localFolder").value = "/synthetic/collection";
   get("agList").querySelector = () => log; const input = element();
-  const box = { querySelector: (selector) => selector === "[data-log]" ? log : get(selector.replace(/^#/, "")), querySelectorAll: () => [input] };
+  const box = { querySelector: (selector) => ["[data-log]", "[data-local-log]"].includes(selector) ? log : get(selector.replace(/^#/, "")), querySelectorAll: (selector) => selector === "input, button, select" ? [input, button] : [input] };
   get("srcState").querySelectorAll = () => [button];
   get("setRanges").value = ranges;
   get("rLink").value = "https://room.test"; get("jPath").value = "game";
@@ -49,6 +52,8 @@ function setup(file, marker, end, logId, buttonId, ranges = "") {
     $: get, document: { createElement: element },
     S: { slug: "test", ov: { kind: "fork" } }, info: {}, box, body: box, n: get("compilerNotice"), log, inst: button,
     b: Object.assign(button, { dataset: { inst: "test" } }), a: { id: "test", name: "Test" }, ROOM_PORT: 6481,
+    results: get("localResults"), scan: { folder: "/synthetic/collection" },
+    selected: () => [{ path: "/synthetic/collection/project" }], renderLocalProjects() {}, update() {},
     dialog: () => box, id: "test", proprietary: false, confirm: () => true, Blob, location: {},
     esc: String, plural: () => "files", toast() {}, loadNav() {}, closeDialog() {}, rerender() {}, check() {},
     fields: () => ({}), joinProblem: () => "", exportOpen: () => true, cmdBox: () => "", wireCopies() {},
@@ -94,7 +99,7 @@ async function main() {
         assert.equal(log.bar.removed, undefined, marker);
         poll.resolve({ state: outcome === "done" ? "done" : outcome === "cancelled" ? "cancelled" : "error",
           log: ["Building"], error: outcome === "cancelled" ? "Cancelled." : "Build failed",
-          result: { slug: "test", identical: true, switched: 1, stayed: [], functions: 1 } });
+          result: { slug: "test", identical: true, switched: 1, stayed: [], functions: 1, imported: [], errors: [] } });
       }
       await running;
       assert.equal(log.bar.removed, true, marker);

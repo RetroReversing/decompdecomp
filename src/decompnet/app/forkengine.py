@@ -585,6 +585,69 @@ class ForkEngine:
         log(f"cloned into {dest} ({kind} project)")
         return slug
 
+    def _local_roots(self) -> dict:
+        """A project's analysis tree may live inside its checkout; recognise that checkout too."""
+        roots = {}
+        for project in self.net.store.all("SELECT slug, root, config FROM projects"):
+            repo = json.loads(project["config"]).get("repo_url")
+            if repo and Path(repo).is_absolute():
+                roots[str(Path(repo).resolve())] = project["slug"]
+            root = Path(project["root"]).resolve()
+            roots[str(root)] = project["slug"]
+            for parent in (root, *root.parents):
+                if (parent / ".git").exists():
+                    roots[str(parent)] = project["slug"]
+                    break
+        return roots
+
+    def scan_local(self, folder: Path) -> dict:
+        """Preview a collection of checkouts, including projects registered under another name or symlink."""
+        from ..forks import local
+
+        result = local.scan(folder)
+        roots = self._local_roots()
+        for project in result["projects"]:
+            project["existing"] = roots.get(project["path"])
+        return result
+
+    def import_local(self, folder: Path, paths: list[str], *, copies: bool = True, log=print) -> dict:
+        """Import selected checkouts individually; a failed one never discards the rest of a collection.
+
+        Registration alone runs no setup scripts, builds or agents, and does not change an existing branch.
+        Existing checkouts keep ignored game files and toolchains; copies use the established cloning flow.
+        """
+        from ..forks import local
+
+        folder = folder.expanduser().resolve()
+        imported, errors = [], []
+        for value in dict.fromkeys(paths):
+            try:
+                root = Path(value).expanduser().resolve()
+                if root != folder and folder not in root.parents:
+                    raise ValueError("The project is outside the folder you selected.")
+                info = local.describe(root)
+                old = self._local_roots().get(str(root))
+                if old:
+                    imported.append({"path": str(root), "slug": old, "existing": True})
+                    log(f"Already imported: {root.name}")
+                    continue
+                if copies:
+                    slug = self.clone(str(root), log=log)
+                else:
+                    slug = self._free_slug(_slug(root.name))
+                    project = ForkProject(root, create_state=False)
+                    cfg = {"kind": "fork", "origin": "local", "repo_url": str(root), "platform": "",
+                           "version": next(iter(info["versions"]), None), "fork_kind": info["kind"], "ready": False,
+                           "legal": {"basis": "personal-copy", "license": "the project's own license"}}
+                    cfg["platform"] = (project.manifest or {}).get("platform") or ""
+                    self._register(slug, root.name, f"local checkout at {root}", root, cfg, "imported local checkout")
+                    log(f"Imported {root.name}; open it to check its setup and measure progress.")
+                imported.append({"path": str(root), "slug": slug, "existing": False})
+            except (OSError, ValueError, NetworkError, subprocess.TimeoutExpired) as error:
+                errors.append({"path": value, "error": str(error)})
+                log(f"Could not import {value}: {error}")
+        return {"imported": imported, "errors": errors}
+
     def _free_slug(self, base: str) -> str:
         slug, n = base, 2
         while self.net.store.one("SELECT 1 FROM projects WHERE slug=?", slug) or (self.net.workspace / slug).exists():
