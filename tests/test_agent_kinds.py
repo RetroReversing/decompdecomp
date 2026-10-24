@@ -171,6 +171,7 @@ def test_nvm_agents_are_found_and_run_without_shell_initialization(tmp_path, mon
     assert result.stdout.strip() == "--version"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX nvm layout and executable permissions")
 def test_custom_nvm_directory_is_searched_but_nonexecutables_are_ignored(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "empty-home")
     monkeypatch.setenv("PATH", "")
