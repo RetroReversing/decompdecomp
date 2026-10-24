@@ -144,3 +144,41 @@ def test_nothing_outside_agents_asks_an_agents_name():
             if _NAME_CHECK.search(line):
                 found.append(f"{path.relative_to(SRC)}:{number}: {line.strip()}")
     assert not found, "\n".join(found)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX npm launchers")
+def test_nvm_agents_are_found_and_run_without_shell_initialization(tmp_path, monkeypatch):
+    import os
+    import subprocess
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("NVM_DIR", raising=False)
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    for version in ("v9.0.0", "v24.0.0"):
+        folder = tmp_path / ".nvm/versions/node" / version / "bin"
+        folder.mkdir(parents=True)
+        cli = folder / "example-agent"
+        cli.write_text("#!/usr/bin/env node\nnot actual javascript\n")
+        cli.chmod(0o755)
+        node = folder / "node"
+        node.write_text('#!/bin/sh\nprintf "%s\\n" "$2"\n')
+        node.chmod(0o755)
+    found = helpers._which("example-agent")
+    assert found == str(cli)
+    argv = agents.cli_argv([found, "--version"])
+    assert argv == [str(node), found, "--version"]
+    result = subprocess.run(argv, capture_output=True, text=True, env=dict(os.environ), check=True)
+    assert result.stdout.strip() == "--version"
+
+
+def test_custom_nvm_directory_is_searched_but_nonexecutables_are_ignored(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "empty-home")
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setenv("NVM_DIR", str(tmp_path / "custom-nvm"))
+    folder = tmp_path / "custom-nvm/versions/node/v24.0.0/bin"
+    folder.mkdir(parents=True)
+    cli = folder / "example-agent"
+    cli.write_text("not executable")
+    assert helpers._which("example-agent") is None
+    cli.chmod(0o755)
+    assert helpers._which("example-agent") == str(cli)

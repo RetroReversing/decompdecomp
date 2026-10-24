@@ -250,6 +250,11 @@ def _which(cmd: str) -> str | None:
     home = Path.home()
     directories = [home / ".local" / "bin", home / ".claude" / "local", home / ".opencode" / "bin",
                    home / ".npm-global" / "bin"]
+    # Desktop launchers do not inherit nvm's shell initialization. Prefer newer installed runtimes.
+    nvm = Path(os.environ.get("NVM_DIR", home / ".nvm")) / "versions" / "node"
+    def version_key(folder):
+        return tuple(int(part) for part in re.findall(r"\d+", folder.name))
+    directories.extend(folder / "bin" for folder in sorted(nvm.glob("v*"), key=version_key, reverse=True))
     if os.name == "nt":
         directories.append(Path(os.environ.get("APPDATA", home / "AppData" / "Roaming")) / "npm")
         directories.append(Path(os.environ.get("LOCALAPPDATA", home / "AppData" / "Local")) / "agy" / "bin")
@@ -258,7 +263,7 @@ def _which(cmd: str) -> str | None:
             found = shutil.which(cmd, path=str(d))
             if found:
                 return found
-        if (d / cmd).exists():
+        if (d / cmd).is_file() and os.access(d / cmd, os.X_OK):
             return str(d / cmd)
     return None
 
