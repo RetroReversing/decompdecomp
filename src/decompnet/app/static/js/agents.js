@@ -68,6 +68,11 @@ async function renderCosts(force = false) {
       <span class="small">${r.matches.toLocaleString()} ${r.matches === 1 ? "match" : "matches"} · ${per(r)}${r.usd ? ` · ${money(r.usd)} in all` : ""}</span></li>`).join("")}</ul>`);
 }
 
+function helperResults(stats, task) {
+  if (task === "readable") return `<b class="ok">${stats?.polished || 0} polished</b>`;
+  return stats?.matched ? `<b class="ok">${stats.matched} matched</b>` : "";
+}
+
 function renderSessions(sessions) {
   renderCosts();
   const box = $("sessions");
@@ -85,7 +90,7 @@ function renderSessions(sessions) {
     const claim = S.claims.find((c) => c.agent === s.agent);
     const dot = s.state === "paused" ? "err" : s.state === "working" ? "on" : s.state === "stopped" ? "" : "work";
     const live = LIVE.includes(s.state), id = esc(s.id), b = board.get(s.agent);
-    const facts = [s.task === "readable" ? `<b>polishing</b>` : "", esc(s.kind_name), s.model ? esc(s.model) : "its default model", b && b.matched ? `<b class="ok">${b.matched} matched</b>` : "", b ? plural(b.compiles, "compile") : "",
+    const facts = [s.task === "readable" ? `<b>polishing</b>` : "", esc(s.kind_name), s.model ? esc(s.model) : "its default model", helperResults(b, s.task), b ? plural(b.compiles, "compile") : "",
       s.usd ? money(s.usd) : s.tokens ? `${(s.tokens / 1000).toFixed(0)}k tokens` : "", s.runs ? plural(s.runs, "session") : "",
       s.restarts ? `started again ${plural(s.restarts, "time")}` : "", live && s.started_at ? `since ${hhmm(s.started_at)}` : ""].filter(Boolean);
     const todo = s.todo ? `${sentence(s.todo.replace(/\.$/, ""))}.${s.state === "paused" ? " Then press Start again." : ""}` : "";
