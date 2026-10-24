@@ -62,9 +62,22 @@ def _node() -> str | None:
 
 
 def cli_argv(argv: list[str]) -> list[str]:
-    """Run npm's Windows shim through Node directly: cmd.exe would reinterpret quoted MCP config and shell symbols."""
+    """Use npm launchers' own Node runtime; bypass Windows cmd.exe quoting and POSIX desktop PATH gaps."""
     shim = Path(argv[0])
-    if sys.platform != "win32" or shim.suffix.lower() != ".cmd":
+    if sys.platform != "win32":
+        # nvm's npm scripts use env node, but a desktop app has no nvm directory on PATH.
+        # Use the runtime beside the discovered CLI for version checks, model lists and sessions alike.
+        node = shim.parent / "node"
+        if node.is_file() and os.access(node, os.X_OK):
+            try:
+                with shim.open("rb") as script:
+                    shebang = script.readline(256).strip()
+                if shebang == b"#!/usr/bin/env node":
+                    return [str(node), *argv]
+            except OSError:
+                pass
+        return argv
+    if shim.suffix.lower() != ".cmd":
         return argv
     try:
         text = shim.read_text(encoding="utf-8")
