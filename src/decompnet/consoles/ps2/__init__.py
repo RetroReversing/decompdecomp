@@ -57,6 +57,7 @@ class PlayStation2(Console):
     demo_tools = ("ee-gcc-2.96", "binutils-mips")
     own_features = frozenset({EXPORT})
     as_flags = ("-EL", "-march=r5900", "-mabi=eabi")
+    reference_tools = ("binutils-mips", "mips-ps2-decompals-as", "mips-ps2-decompals-ld")
 
     def sniff(self, head: bytes, file) -> bool:
         from . import chd, disc, elf

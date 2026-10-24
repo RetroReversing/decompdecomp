@@ -77,6 +77,7 @@ class Console:
     # ROM mode's export: the assembler's flags for its processor, the rebuilt image's extension, and what every
     # assembly file of the export starts with
     as_flags: tuple[str, ...] = ()
+    reference_tools: tuple[str, str, str] = ()  # pinned toolchain, assembler and linker for verified splat references
     image_ext = ".bin"
     asm_preamble = '.include "macro.inc"\n.set noat\n.set noreorder\n.section .text, "ax"\n'
 
@@ -88,6 +89,14 @@ class Console:
 
     def __repr__(self) -> str:
         return f"<console {self.id}>"
+
+    def generate_objdiff(self, project, config_path, config, log=print) -> bool:
+        """A supported splat build can acquire ROM-derived reference objects after its first verified build."""
+        if not self.reference_tools:
+            return False
+        from ..forks.splatrefs import generate
+
+        return generate(project, config_path, config, self, log=log)
 
     @property
     def features(self) -> frozenset[str]:

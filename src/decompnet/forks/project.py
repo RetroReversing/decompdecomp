@@ -30,6 +30,7 @@ from pathlib import Path
 
 from decompnet.hostenv import NO_WINDOW, console_python
 
+from .. import toolchains
 from ..limits import capped, killed_for_memory
 from ..network import NetworkError
 from . import objdiff
@@ -409,8 +410,31 @@ class ForkProject:
             log("compiling every source file, so objdiff can measure each one (some work in progress may not compile)")
             self.build_all(log=log)
         if not (self.root / "objdiff.json").exists():
+            self.generate_objdiff(log=log)
+        if not (self.root / "objdiff.json").exists():
             raise ForkError("the project built, but has no objdiff.json, so decompdecomp can't measure matches. "
                             "Some projects generate it with an extra step; check the README.")
+
+    def generate_objdiff(self, log=print) -> bool:
+        """Try the console's supported reference generator without changing an existing configuration."""
+        if (self.root / "objdiff.json").exists():
+            return False
+        path = self._splat_yaml()
+        if path is None:
+            return False
+        import yaml
+        from elftools.common.exceptions import ELFError
+
+        from .. import consoles
+
+        try:
+            config = yaml.safe_load(path.read_text(encoding="utf-8"))
+            if not isinstance(config, dict) or not isinstance(config.get("options"), dict):
+                raise ForkError("automatic objdiff setup needs a supported splat configuration")
+            console = consoles.get(config["options"].get("platform"))
+            return console.generate_objdiff(self, path, config, log=log)
+        except (OSError, ValueError, ELFError, yaml.YAMLError, subprocess.TimeoutExpired, toolchains.ToolchainError) as error:
+            raise ForkError(f"automatic objdiff setup could not finish: {error}. Check the project's setup manually.") from None
 
     def build_problem(self) -> str | None:
         """Why the project's build can't run on this computer as it is, or None: no objdiff.json, or a program the
