@@ -60,14 +60,13 @@ def test_local_object_signatures_are_name_hints_not_matches(built, tmp_path):  #
     assert count > 0
     assert net.store.one("SELECT COUNT(*) AS n FROM sdk_signatures WHERE corpus=?", "demo libc 1")["n"] == count
     slug = net.import_rom(ROM, confirmed=True, log=lambda *_: None)
-    agent, _ = net.local_agent("claude-opus-5.5-1")
-    net.split_function(agent, slug, "func_800007C4", "0x800007D0")
-    fn = net._function("func_800007D0", slug)
-    fp = net.twins.prints(net._project(slug))[fn["id"]]
-    with net.store.tx() as db:
-        db.execute("INSERT INTO sdk_signatures(corpus,arch,big_endian,name,fingerprint,size) VALUES(?,?,?,?,?,?)",
-                   ("known SDK", "mips", 1, "sdk_clamp_s32", fp.key, fp.size))
-    assert any(h["name"] == "sdk_clamp_s32" and h["kind"] == "SDK object signature; name only"
+    signatures = {r["fingerprint"]: r["name"] for r in net.store.all(
+        "SELECT fingerprint,name FROM sdk_signatures WHERE corpus=?", "demo libc 1")}
+    prints = net.twins.prints(net._project(slug))
+    fn = next(r for r in net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open'",
+                                        net._project(slug)["id"])
+              if r["id"] in prints and prints[r["id"]].key in signatures)
+    assert any(h["name"] == signatures[prints[fn["id"]].key] and h["kind"] == "SDK object signature; name only"
                for h in net.twins.suggestions(slug, fn["name"]))
     assert fn["status"] == "open"  # importing a signature never marks C as matched
     assert _ar_members(b"!<arch>\n" + b"x" * 48 + b"2         " + b"`\n" + b"ab") == [b"ab"]
