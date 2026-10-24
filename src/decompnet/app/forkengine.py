@@ -734,6 +734,8 @@ class ForkEngine:
         if originals:
             import hashlib
 
+            if game.stat().st_size == 0:
+                raise NetworkError("that ROM file is empty (0 bytes). Select a complete copy of the game.")
             digest = hashlib.sha1()
             with game.open("rb") as stream:
                 for chunk in iter(lambda: stream.read(1024 * 1024), b""):
