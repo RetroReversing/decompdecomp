@@ -74,7 +74,7 @@ def test_splat_generated_target_uses_original_rom_versions(tmp_path, monkeypatch
     assert cfg["version"] == "pal"
     assert fp.place_game(game, game.name, cfg["version"]) == tmp_path / "baserom.pal.z64"
     game.write_bytes(b"")
-    with pytest.raises(NetworkError, match="empty \(0 bytes\)"):
+    with pytest.raises(NetworkError, match=r"empty \(0 bytes\)"):
         engine._match_version(SimpleNamespace(), fp, cfg, game, log=lambda *_: None)
     game.write_bytes(b"wrong edition")
     with pytest.raises(NetworkError, match="supported by this project"):
