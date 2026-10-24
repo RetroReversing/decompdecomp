@@ -110,6 +110,7 @@ class AutopilotMixin:
         those twins itself.)"""
         if proj is None:
             return
+        self.twins.index_function(proj, function_id)
         if agent is not None and agent.name == "autopilot" and self.twins._full_running(proj["slug"]):
             return
         self.twins.after_match(proj, function_id)

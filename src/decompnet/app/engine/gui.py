@@ -58,7 +58,9 @@ class GuiMixin:
         return base | {"last_activity": last, "autopilot": self.autopilot_status(slug),
                        "permuter": self.permuter.status(proj["slug"]),
                        "twins": None if twins is None else {
-                           k: getattr(twins, k) for k in ("state", "pairs", "tried", "matched", "asm")},
+                           k: getattr(twins, k) for k in ("state", "pairs", "tried", "matched", "asm",
+                                                        "cross_candidates", "cross_tried", "cross_matched")},
+                       "cross_game": self.twins.cross_game_results(slug),
                        "helper_matches": helpers,
                        "readable": self.readability.counts(proj)["readable"],
                        "spend": cfg.get("spend"), "instructions": cfg.get("instructions") or "",
@@ -266,6 +268,7 @@ class GuiMixin:
             "notes": [dict(n) for n in notes],
             "calls": [syms.label(a) for a in sorted(x["calls"].get(fn["vram"], ()))],
             "called_by": [syms.label(a) for a in sorted(x["called_by"].get(fn["vram"], ()))],
+            "cross_game_hints": self.twins.suggestions(slug, fn["name"]) if fn["status"] == "open" else [],
         }
 
     def stats(self, slug: str) -> dict:

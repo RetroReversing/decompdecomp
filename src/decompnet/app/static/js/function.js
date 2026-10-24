@@ -113,6 +113,19 @@ async function refreshFn(first) {
     if (d.calls.length) xr.push(`<div><b>calls</b>${d.calls.map(fnLink).join("")}</div>`);
     if (d.called_by.length) xr.push(`<div><b>called by</b>${d.called_by.map(fnLink).join("")}</div>`);
     $("fnXref").innerHTML = xr.join("");
+    $("fnCrossHints").innerHTML = d.cross_game_hints?.length
+      ? `<p class="col-title">Other games and local SDKs</p><p class="muted small">Possible names and starting points. Only a compiled byte match verifies C for this game.</p>${d.cross_game_hints.map((h) =>
+        `<div class="note"><b class="mono">${esc(h.name)}</b> · ${esc(h.game)} · ${esc(h.kind)}${h.score < 1 ? ` · ${Math.round(h.score * 100)}% similar` : ""}${h.score === 1 && h.kind !== "similar code; unverified" && h.name !== d.name ? ` <button class="link-btn" type="button" data-name="${esc(h.name)}">Use name</button>` : ""}</div>`).join("")}` : "";
+    $("fnCrossHints").querySelectorAll("[data-name]").forEach((b) => { b.onclick = async () => {
+      try {
+        const result = await api("/api/cross-game/name", { method: "POST", body: {
+          slug: S.slug, function: d.name, name: b.dataset.name } });
+        toast(esc(result.message));
+        S.fn = b.dataset.name;
+        await refreshMap(true);
+        await refreshFn(false);
+      } catch (e) { toast(esc(e.message), "err"); }
+    }; });
     $("fnXref").querySelectorAll(".fn").forEach((x) => { x.onclick = () => openFn(x.dataset.fn.split("+")[0]); });
     // your own notes (written here, as "you") apart from the agents': they aren't notes from an agent
     const noteRow = (n) => `<div class="note"><small>${esc(n.agent)} · ${clock(n.created_at)}</small>${esc(n.text)}</div>`;

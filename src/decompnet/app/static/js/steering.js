@@ -220,6 +220,12 @@ async function togglePrio(name, on) {
 /* Autopilot: free matches before any agent spends a token: identical code (twins) of what's matched, then every
    function's machine draft through the judge; the permuter works on near misses meanwhile. */
 function renderAutopilot(ov) {
+  const cross = ov.cross_game || { counts: {}, recent: [] };
+  const count = cross.counts.match || 0, tried = Object.values(cross.counts).reduce((a, b) => a + b, 0);
+  $("crossGamePanel").hidden = ov.kind === "fork";
+  $("crossGameSummary").textContent = `${count} verified matches from other games · ${tried} transfer attempts. Exact matches are compiled and checked against this game's bytes. Names and similar code are suggestions until verified.`;
+  $("crossGameRecent").innerHTML = cross.recent.slice(0, 12).map((r) =>
+    `<li><b>${esc(r.target)}</b> from ${esc(r.source)} in ${esc(r.game)} · ${esc(r.outcome)}${r.reason ? ` · ${esc(r.reason)}` : ""}</li>`).join("") || `<li class="muted small">No cross-game transfers yet. Run autopilot after another game has matched functions.</li>`;
   const box = $("autopilot"), ap = ov.autopilot, tw = ov.twins, pm = ov.permuter;
   const canRun = (ov.kind !== "fork" || ov.ready) && cFunctions(ov) - ov.matched > 0;
   box.hidden = !ap && !canRun && !tw && !pm;
@@ -265,6 +271,18 @@ function renderAutopilot(ov) {
     } catch (e) { toast(esc(e.message), "err"); } finally { $("apBtn").disabled = false; }
   };
 }
+
+$("sdkImport").onclick = async () => {
+  const button = $("sdkImport"), log = $("sdkLog");
+  showJobError(log, "");
+  const finish = beginWork(log, "Indexing local SDK signatures", [button], "SDK signatures indexed.");
+  try {
+    const result = await api("/api/sdk-signatures", { method: "POST", body: {
+      slug: S.slug, path: $("sdkPath").value, corpus: $("sdkCorpus").value } });
+    log.hidden = false;
+    log.textContent = `${result.signatures} signatures indexed from ${result.corpus}.`;
+  } catch (e) { showJobError(log, e.message); } finally { finish(); }
+};
 
 const cwName = (c) => (c.startsWith("DS/") ? `CodeWarrior for DS ${c.slice(3)}` : `CodeWarrior ${c}`);
 

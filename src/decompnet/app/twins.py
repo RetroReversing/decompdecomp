@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 
-from .. import arch
+from .. import arch, similarity
 from ..elfobj import MASKS_BY_ARCH, Reloc, mask_relocs
 from ..network import NetworkError
 from ..project import compiler_for
@@ -227,9 +227,32 @@ class Job:
     tried: int = 0
     matched: int = 0
     asm: int = 0  # hand-written assembly (twins of asm functions, code no compiler makes), out of agents' way
+    cross_candidates: int = 0
+    cross_tried: int = 0
+    cross_matched: int = 0
     started_at: float = field(default_factory=time.time)
     stop: threading.Event = field(default_factory=threading.Event)
     ordered: threading.Event = field(default_factory=threading.Event)  # assembly set aside, claim order stored
+
+
+def _ar_members(data: bytes) -> list[bytes]:
+    if not data.startswith(b"!<arch>\n"):
+        raise NetworkError("This is not an ar object archive")
+    out, at = [], 8
+    while at + 60 <= len(data):
+        header = data[at:at + 60]
+        if header[58:60] != b"`\n":
+            raise NetworkError("The object archive has an invalid member header")
+        try:
+            size = int(header[48:58].strip())
+        except ValueError:
+            raise NetworkError("The object archive has an invalid member size") from None
+        start, end = at + 60, at + 60 + size
+        if end > len(data):
+            raise NetworkError("The object archive ends inside a member")
+        out.append(data[start:end])
+        at = end + (size % 2)
+    return out
 
 
 class Twins:
@@ -238,6 +261,8 @@ class Twins:
     def __init__(self, net):
         self.net = net
         self._prints: dict[int, tuple[float, tuple | None, dict[int, Print]]] = {}  # (when, ROM layout, prints)
+        self._index_stamps: dict[int, tuple] = {}
+        self._index_lock = threading.Lock()  # full refresh and new matches cannot erase each other's rows
         self._lock = threading.Lock()
         self._queue: dict[int, set[int]] = defaultdict(set)  # project id -> newly matched functions to propagate
         self._busy: set[int] = set()
@@ -559,37 +584,206 @@ class Twins:
                 wanted[p.key].append(r["id"])
         if not wanted:
             return 0
+        others = [p for p in self.net.store.all(
+            "SELECT * FROM projects WHERE id != ? AND arch=? AND big_endian=?",
+            proj["id"], proj["arch"], proj["big_endian"]) if self.net.is_rom(p)]
+        for other in others:
+            self.index_project(other)
         agent, _ = self.net.local_agent("autopilot")
         matched = 0
-        for other in self.net.store.all("SELECT * FROM projects WHERE id != ? AND arch=? AND big_endian=?",
-                                        proj["id"], proj["arch"], proj["big_endian"]):
-            if (job is not None and job.stop.is_set()) or not self.net.is_rom(other):
+        by_id = {p["id"]: p for p in others}
+        sources = []
+        keys = list(wanted)
+        for at in range(0, len(keys), SQL_CHUNK):
+            part = keys[at:at + SQL_CHUNK]
+            sources += self.net.store.all(
+                "SELECT i.*, f.name, f.vram, f.matched_source FROM cross_game_index i "
+                "JOIN functions f ON f.id=i.function_id AND f.status='matched' "
+                "WHERE i.project_id != ? AND i.fingerprint IN (" + ",".join("?" for _ in part) + ")",
+                proj["id"], *part)
+        source_prints = {p["id"]: self.prints(p) for p in others}
+        source_symbols = {p["id"]: self.net.symbols(p["id"]) for p in others}
+        target_symbols = self.net.symbols(proj["id"])
+        headers = {p["id"]: self.net._context(p["id"])["header"] for p in others}
+        for a in sources:
+            if job is not None and job.stop.is_set():
+                break
+            other = by_id.get(a["project_id"])
+            if other is None:
                 continue
-            theirs, other_cfg = self.prints(other), self.net.cfg(other)
-            syms_a, syms_b = self.net.symbols(other["id"]), self.net.symbols(proj["id"])
-            header_a = self.net._context(other["id"])["header"]
-            for a in self.net.store.all("SELECT * FROM functions WHERE project_id=? AND status='matched'", other["id"]):
-                pa = theirs.get(a["id"])
-                for b_id in (wanted.get(pa.key, []) if pa is not None else []):
-                    b = self.net.store.one("SELECT * FROM functions WHERE id=? AND status='open'", b_id)
-                    if b is None or compiler_for(other_cfg, a["vram"]) != compiler_for(cfg, b["vram"]):
-                        continue
-                    names = rom_renames(syms_a, a["matched_source"] or "", pa, mine[b_id], a["name"], b["name"], syms_b)
-                    if names is None or not a["matched_source"]:
-                        continue
-                    header_b = self.net._context(proj["id"], b["unit"])["header"]
-                    source = _declared(header_a, header_b, names, a["name"]) + apply(a["matched_source"], names)
-                    if self._missed(b_id, source):
-                        continue
-                    outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}")
-                    if outcome == "match":
-                        matched += 1
-                        log.info("twins: %s matched from %s in %s", b["name"], a["name"], other["slug"])
-                    elif outcome == "miss":
-                        with self.net.store.tx() as db:
-                            db.execute("INSERT OR REPLACE INTO twin_misses(function_id, source_hash, project_id, at, why) "
-                                       "VALUES(?,?,?,?,?)", (b_id, self._miss_key(source), proj["id"], time.time(), why))
+            pa = source_prints[other["id"]].get(a["function_id"])
+            if pa is None:
+                continue
+            for b_id in wanted.get(a["fingerprint"], []):
+                b = self.net.store.one("SELECT * FROM functions WHERE id=? AND status='open'", b_id)
+                if b is None or self._compiler_key(compiler_for(cfg, b["vram"])) != a["compiler"]:
+                    continue
+                if job is not None:
+                    job.cross_candidates += 1
+                names = rom_renames(source_symbols[other["id"]], a["matched_source"] or "", pa, mine[b_id],
+                                    a["name"], b["name"], target_symbols)
+                if names is None or not a["matched_source"]:
+                    continue
+                header_b = self.net._context(proj["id"], b["unit"])["header"]
+                source = _declared(headers[other["id"]], header_b, names, a["name"]) + apply(a["matched_source"], names)
+                if self._missed(b_id, source):
+                    continue
+                if job is not None:
+                    job.cross_tried += 1
+                outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}")
+                with self.net.store.tx() as db:
+                    db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,"
+                               "source_function_id,outcome,reason,created_at) VALUES(?,?,?,?,?,?,?)",
+                               (proj["id"], b_id, other["id"], a["function_id"], outcome, why[:WHY_CHARS], time.time()))
+                    if outcome == "miss":
+                        db.execute("INSERT OR REPLACE INTO twin_misses(function_id, source_hash, project_id, at, why) "
+                                   "VALUES(?,?,?,?,?)", (b_id, self._miss_key(source), proj["id"], time.time(), why))
+                if outcome == "match":
+                    matched += 1
+                    if job is not None:
+                        job.cross_matched += 1
+                    log.info("twins: %s matched from %s in %s", b["name"], a["name"], other["slug"])
         return matched
+
+    @staticmethod
+    def _compiler_key(compiler: dict) -> str:
+        return json.dumps(compiler, sort_keys=True, separators=(",", ":"))
+
+    def index_project(self, proj) -> int:
+        """Refresh the persistent library from verified ROM C; reopened or resplit functions leave the index."""
+        if not self.net.is_rom(proj):
+            return 0
+        with self._index_lock:
+            return self._index_project(proj)
+
+    def _index_project(self, proj) -> int:
+        cfg = self.net.cfg(proj)
+        counts = self.net.store.one("SELECT COUNT(*) AS n,MAX(matched_at) AS latest FROM functions "
+                                    "WHERE project_id=? AND status='matched' AND matched_source IS NOT NULL", proj["id"])
+        stamp = (self.net._layout_key(proj), self._compiler_key(cfg["compiler"]),
+                 self._compiler_key({"ranges": cfg.get("compiler_ranges") or []}), counts["n"], counts["latest"])
+        if self._index_stamps.get(proj["id"]) == stamp:
+            return counts["n"]
+        prints = self.prints(proj)
+        rows = self.net.store.all("SELECT id,vram,matched_at FROM functions WHERE project_id=? AND status='matched' "
+                                  "AND matched_source IS NOT NULL", proj["id"])
+        entries = [(r["id"], proj["id"], prints[r["id"]].key,
+                    self._compiler_key(compiler_for(cfg, r["vram"])), prints[r["id"]].size,
+                    r["matched_at"] or 0) for r in rows if r["id"] in prints and not prints[r["id"]].asm]
+        with self.net.store.tx() as db:
+            db.execute("DELETE FROM cross_game_index WHERE project_id=?", (proj["id"],))
+            db.executemany("INSERT INTO cross_game_index VALUES(?,?,?,?,?,?)", entries)
+        self._index_stamps[proj["id"]] = stamp
+        return len(entries)
+
+    def index_function(self, proj, fid: int) -> None:
+        if not self.net.is_rom(proj):
+            return
+        with self._index_lock:
+            self._index_function(proj, fid)
+
+    def clear_index(self, project_id: int) -> None:
+        """An import replaced the function layout; discard signatures before they can be suggested."""
+        with self._index_lock, self.net.store.tx() as db:
+            db.execute("DELETE FROM cross_game_index WHERE project_id=?", (project_id,))
+            self._index_stamps.pop(project_id, None)
+
+    def _index_function(self, proj, fid: int) -> None:
+        row = self.net.store.one("SELECT id,vram,matched_at,status,matched_source FROM functions WHERE id=?", fid)
+        p = self.prints(proj).get(fid)
+        with self.net.store.tx() as db:
+            if row is None or row["status"] != "matched" or not row["matched_source"] or p is None or p.asm:
+                db.execute("DELETE FROM cross_game_index WHERE function_id=?", (fid,))
+            else:
+                db.execute("INSERT OR REPLACE INTO cross_game_index VALUES(?,?,?,?,?,?)",
+                           (fid, proj["id"], p.key,
+                            self._compiler_key(compiler_for(self.net.cfg(proj), row["vram"])), p.size,
+                            row["matched_at"] or 0))
+
+    def cross_game_results(self, slug: str) -> dict:
+        """What exact transfers tried, including failures and where accepted C came from."""
+        proj = self.net.project_row(slug)
+        rows = self.net.store.all(
+            "SELECT a.outcome,a.reason,a.created_at,f.name AS target,s.name AS source,p.name AS game "
+            "FROM cross_game_attempts a JOIN functions f ON f.id=a.function_id "
+            "JOIN functions s ON s.id=a.source_function_id JOIN projects p ON p.id=a.source_project_id "
+            "WHERE a.project_id=? ORDER BY a.id DESC LIMIT 30", proj["id"])
+        counts = self.net.store.all("SELECT outcome,COUNT(*) AS n FROM cross_game_attempts WHERE project_id=? "
+                                    "GROUP BY outcome", proj["id"])
+        return {"counts": {r["outcome"]: r["n"] for r in counts}, "recent": [dict(r) for r in rows]}
+
+    def suggestions(self, slug: str, function: str, limit: int = 5) -> list[dict]:
+        """Read-only cross-game and local SDK name hints. Similar code is a lead, never a verified match."""
+        proj = self.net.project_row(slug)
+        if not self.net.is_rom(proj):
+            return []
+        fn = self.net._function(function, slug)
+        target = self.prints(proj).get(fn["id"])
+        if target is None or target.size < ACROSS_MIN_BYTES:
+            return []
+        compiler = self._compiler_key(compiler_for(self.net.cfg(proj), fn["vram"]))
+        exact = self.net.store.all(
+            "SELECT i.*, f.name, p.name AS game FROM cross_game_index i "
+            "JOIN functions f ON f.id=i.function_id AND f.status='matched' "
+            "JOIN projects p ON p.id=i.project_id WHERE i.project_id!=? AND p.arch=? AND p.big_endian=? "
+            "AND i.fingerprint=? AND i.compiler=? LIMIT ?", proj["id"], proj["arch"], proj["big_endian"],
+            target.key, compiler, limit)
+        hints = [{"name": r["name"], "game": r["game"], "score": 1.0, "kind": "verified C in another game",
+                  "function_id": r["function_id"]} for r in exact]
+        for r in self.net.store.all("SELECT corpus,name FROM sdk_signatures WHERE arch=? AND big_endian=? "
+                                    "AND fingerprint=? LIMIT ?", proj["arch"], proj["big_endian"], target.key, limit):
+            hints.append({"name": r["name"], "game": r["corpus"], "score": 1.0,
+                          "kind": "SDK object signature; name only"})
+        if proj["arch"] != "mips" or len(hints) >= limit:
+            return hints[:limit]
+        rows = self.net.store.all(
+            "SELECT i.*, f.name, f.target, f.vram, p.name AS game,p.arch,p.big_endian "
+            "FROM cross_game_index i JOIN functions f ON f.id=i.function_id AND f.status='matched' "
+            "JOIN projects p ON p.id=i.project_id WHERE i.project_id!=? AND p.arch=? AND p.big_endian=? "
+            "AND i.fingerprint!=? AND i.compiler=? AND i.size BETWEEN ? AND ? "
+            "ORDER BY ABS(i.size - ?) LIMIT 400",
+            proj["id"], proj["arch"], proj["big_endian"], target.key, compiler,
+            max(ACROSS_MIN_BYTES, int(target.size * .75)), int(target.size / .75), target.size)
+        if rows:
+            ops = similarity.mips_mnemonics(fn["target"], bool(proj["big_endian"]), fn["vram"] or 0)
+            candidates = {str(r["function_id"]): similarity.mips_mnemonics(
+                r["target"], bool(proj["big_endian"]), r["vram"] or 0) for r in rows
+                if r["target"]}
+            by_id = {str(r["function_id"]): r for r in rows}
+            for fid, score in similarity.rank(ops, candidates, top=limit, floor=.8):
+                r = by_id[fid]
+                hints.append({"name": r["name"], "game": r["game"], "score": round(score, 3),
+                              "kind": "similar code; unverified", "function_id": r["function_id"]})
+        return hints[:limit]
+
+    def import_sdk_objects(self, path: Path, corpus: str) -> int:
+        """Index only signatures and names from a user-selected local ELF object or ar archive."""
+        if not path.is_file() or path.suffix not in (".o", ".a"):
+            raise NetworkError("Choose a local .o or .a SDK object file")
+        if path.stat().st_size > 100 * 1024 * 1024:
+            raise NetworkError("SDK object archive is larger than 100 MB")
+        data = path.read_bytes()
+        members = [data] if path.suffix == ".o" else _ar_members(data)
+        signatures = []
+        for member in members:
+            try:
+                from elftools.common.exceptions import ELFError
+                from elftools.elf.elffile import ELFFile
+                elf = ELFFile(BytesIO(member))
+                machine = _MACHINE.get(elf["e_machine"])
+                if machine is None:
+                    continue
+                arch_id, order = machine
+                big = int((order or ("little" if elf.little_endian else "big")) == "big")
+                signatures += [(corpus, arch_id, big, name, p.key, p.size)
+                               for name, p in object_prints(member).items() if p.size >= ACROSS_MIN_BYTES]
+            except (ELFError, ValueError, KeyError, OSError):
+                continue  # an archive can contain a non-object symbol table
+        with self.net.store.tx() as db:
+            db.executemany("INSERT OR IGNORE INTO sdk_signatures(corpus,arch,big_endian,name,fingerprint,size) "
+                           "VALUES(?,?,?,?,?,?)", signatures)
+        return len(signatures)
+
 
     def _try_pair(self, agent, proj, a, b) -> str:
         try:
