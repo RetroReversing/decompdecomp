@@ -9,7 +9,7 @@ import logging
 import threading
 import time
 
-from ... import scoring, seeds
+from ... import m2cfix, scoring, seeds
 from ...network import Agent, NetworkError
 from ...project import compiler_for
 
@@ -171,22 +171,32 @@ class AutopilotMixin:
             if not draft:
                 return "fail"
             # (its compiler named in it: the same draft is worth judging again with another compiler)
-            source = (f"/* machine draft (m2c) for {toolchain} {' '.join(own.get('flags', []))}, tried by autopilot */\n"
-                      f"{seeds.M2C_MACROS}\n{draft}\n")
-            if self.store.one("SELECT 1 FROM attempts WHERE function_id=? AND agent_id=? AND context_version=? "
-                              "AND source=?", fid, agent.id, ctx["version"], source):
-                return "skip"
-            result = self._compile(proj, ctx["header"], source, fn)
-            if not result.ok:
-                return "fail"
-            cand, verdict, _ = self._evaluate(fn, proj, result.obj)
-            if cand is None:
-                return "fail"
-            d = scoring.diff(self._target_obj(fn, proj), cand)
-            if verdict is not None:
-                d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
-            self._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match)
-            return "match" if d.bytes_match else "near" if d.percent >= 90 else "far"
+            note = f"/* machine draft (m2c) for {toolchain} {' '.join(own.get('flags', []))}, tried by autopilot */\n"
+            candidates = [f"{note}{seeds.M2C_MACROS}\n{draft}\n"]
+            if (seeds.m2c_target(toolchain) or "").startswith("mips"):
+                # next to m2c's own draft, the same with its usual mistakes undone (m2cfix.py): few lines change
+                refined = m2cfix.refine_draft(draft, fn["name"], fn["asm"] or "")
+                if refined:
+                    candidates.append(f"{note}{seeds.M2C_MACROS}\n{refined}\n")
+            outcomes = []
+            for source in candidates:
+                if self.store.one("SELECT 1 FROM attempts WHERE function_id=? AND agent_id=? AND context_version=? "
+                                  "AND source=?", fid, agent.id, ctx["version"], source):
+                    outcomes.append("skip")
+                    continue
+                result = self._compile(proj, ctx["header"], source, fn)
+                cand, verdict, _ = self._evaluate(fn, proj, result.obj) if result.ok else (None, None, None)
+                if cand is None:
+                    outcomes.append("fail")
+                    continue
+                d = scoring.diff(self._target_obj(fn, proj), cand)
+                if verdict is not None:
+                    d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
+                self._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match)
+                outcomes.append("match" if d.bytes_match else "near" if d.percent >= 90 else "far")
+                if d.bytes_match:
+                    break
+            return min(outcomes, key=("match", "near", "far", "skip", "fail").index)
         finally:
             with self.store.tx() as db:
                 db.execute("DELETE FROM claims WHERE function_id=? AND agent_id=?", (fid, agent.id))

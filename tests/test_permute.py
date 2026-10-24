@@ -318,3 +318,18 @@ def test_a_source_the_project_refuses_is_one_line_in_the_log(tmp_path, caplog, m
     assert caplog.records[-1].exc_info is None
     # the same best attempt is refused every time: its other turns go too
     assert net.store.one("SELECT permuted FROM functions WHERE id=1")["permuted"] == permute.MAX_TURNS
+
+
+def test_a_draft_in_m2cs_macros_is_permuted_as_plain_c_and_a_helper_stays_local(monkeypatch):
+    """decomp-permuter's parser knows no macros: the turn starts from the draft written out. A helper it adds is
+    `static`, so the project still links."""
+    net = FakeNet()
+    macros = "typedef s32 M2C_UNK;\n#define M2C_FIELD(e, t, o) (*(t)((char *)(e) + (o)))\n"
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET best_source=? WHERE id=1",
+                   (macros.join(["#ifndef M2C_DEFINES\n", "#endif\n"]) + "s32 f(void *p) { return M2C_FIELD(p, s32 *, 4); }\n",))
+    jobs = batches(monkeypatch, ["inline s32 inline_fn(void) { return 1; }\ns32 f(void *p) { return inline_fn(); }\n"])
+    p = ScriptedPermuter(net, {})
+    p._permute(AGENT, net.project_row("game"), net.function(), State())
+    assert "M2C_" not in jobs[0]["source"] and "(*(s32 *)((char *)(p) + 4))" in jobs[0]["source"]
+    assert p.judged[0].startswith("static inline s32 inline_fn")
