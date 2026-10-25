@@ -457,3 +457,7 @@ An identical rebuild can still contain assembly and binary fallbacks. Check the 
 selected as C separately; an identical cartridge does not mean that every function has been decompiled.
 
 For imported overlays missing their original strings or tables, see [supplemental original overlay data](docs/OVERLAY_DATA.md).
+
+Verified full-image imports include linked assembly routines as target-only units: assembly bytes never count
+as recovered C. Assembly wrappers containing whole binary programs are not treated as single functions; an
+explicit coverage notice identifies their exclusion from function progress.

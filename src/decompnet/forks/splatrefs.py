@@ -57,10 +57,11 @@ def run(command: list[str], root: Path, log) -> None:
 
 
 def verified_rebuild(project, config_path: Path, config: dict, image_path: Path, sha1: str, log) -> bool:
-    """Freeze linked C objects only when objcopy of the ELF reproduces the complete original image.
+    """Freeze linked code objects only when objcopy of the ELF reproduces the complete original image.
 
     This covers overlay layouts that cannot be split into independent ROM-derived objects. The linker map
     must locate each included object's nonempty text; unused or data-only objects are left out.
+    Assembly stays target-only, and binary program blobs get a coverage warning.
     """
     root = project.root.resolve()
     if digest(image_path) != sha1:
@@ -94,21 +95,30 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
     mapped = maps[0].read_text(errors='replace', encoding='utf-8')
     mapped_text = set(re.findall(r'^\s*\.text\s+0x[0-9A-Fa-f]+\s+0x[1-9A-Fa-f][0-9A-Fa-f]*\s+(\S+\.o)\s*$',
                                  mapped, re.M))
-    units = []
-    for source in sorted(source_dir.rglob('*.c')):
+    units, binary_assembly = [], []
+    assembly_dir = inside(root, options.get('asm_path', 'asm'))
+    sources = sorted(source_dir.rglob('*.c')) + sorted(set(source_dir.rglob('*.s')) | set(assembly_dir.rglob('*.s')))
+    claimed = set()
+    for source in sources:
         relative = source.relative_to(root)
         candidates = [build_dir / (str(relative) + '.o'), build_dir / relative.with_suffix('.o')]
         linked = [p for p in candidates if p.is_file() and p.relative_to(root).as_posix() in mapped_text]
         if len(linked) > 1:
             raise ForkError(f'ambiguous linked objects for {relative}; configure objdiff manually')
         if linked:
+            if source.suffix == '.s' and re.search(r'^\s*\.incbin\b', source.read_text(encoding='utf-8'), re.M):
+                binary_assembly.append(str(relative))
+                continue  # A program blob is not one known function; retain an explicit coverage warning.
             base = linked[0]
+            if base in claimed:
+                continue  # Some projects keep both C and assembly sources for the same linked object.
+            claimed.add(base)
             object_name = base.relative_to(root).as_posix()
             if base.stat().st_mtime_ns > elf.stat().st_mtime_ns:
                 raise ForkError(f'{object_name} changed after the verified ELF was linked; rebuild the project')
             units.append((source, base))
     if not units or len(units) > MAX_UNITS:
-        raise ForkError(f"the verified overlay rebuild has {len(units)} linked C objects; supported range is "
+        raise ForkError(f"the verified overlay rebuild has {len(units)} linked code objects; supported range is "
                         f"1–{MAX_UNITS}")
     destination = inside(root, STATE + '/objdiff-references')
     if destination.exists():
@@ -126,13 +136,20 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
             target = work / 'targets' / base.relative_to(build_dir)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(base, target)
-            entries.append({'name': str(source.relative_to(root).with_suffix('')),
-                            'target_path': str((destination / target.relative_to(work)).relative_to(root)),
-                            'base_path': str(base.relative_to(root)),
-                            'metadata': {'source_path': str(source.relative_to(root))}})
+            entry = {'name': str(source.relative_to(root).with_suffix('')),
+                     'target_path': str((destination / target.relative_to(work)).relative_to(root))}
+            if source.suffix == '.c':
+                entry.update(base_path=str(base.relative_to(root)),
+                             metadata={'source_path': str(source.relative_to(root))})
+            else:
+                entry['metadata'] = {'assembly_source': str(source.relative_to(root))}
+            entries.append(entry)
         pending = work / 'objdiff.json'
         pending.write_text(json.dumps({'custom_make': 'make', 'custom_args': make_args,
-                                       'build_target': False, 'build_base': True, 'units': entries}, indent=2) + '\n',
+                                       'build_target': False, 'build_base': True, 'units': entries,
+                                       'coverage_notes': ([f'{len(binary_assembly)} linked binary assembly images '
+                                           'are not split into functions and are excluded from function progress.']
+                                           if binary_assembly else [])}, indent=2) + '\n',
                            encoding='utf-8')
         if (root / 'objdiff.json').exists():
             raise ForkError("objdiff.json appeared during setup; the existing configuration was retained")
@@ -143,7 +160,8 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
             shutil.rmtree(destination, ignore_errors=True)
             raise
     log(f'Generated objdiff.json with {len(entries)} objects from a byte-exact rebuilt image; '
-        f'{sum(1 for _ in source_dir.rglob("*.c")) - len(entries)} unlinked or data-only sources were excluded.')
+        f'{sum(1 for source, _ in units if source.suffix == ".s")} assembly units have no C candidate. '
+        f'{len(binary_assembly)} binary assembly images are excluded from function progress.')
     return True
 
 

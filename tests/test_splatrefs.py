@@ -249,6 +249,16 @@ def test_verified_rebuild_retains_nested_config_version(tmp_path, monkeypatch):
     elf = tmp_path/'build/demo.elf'
     elf.write_bytes(b'linked ELF read by mocked objcopy')
     (tmp_path/'build/demo.map').write_text(' .text 0x80000400 0x10 build/src/demo.o\n')
+    (tmp_path/'asm').mkdir()
+    (tmp_path/'build/asm').mkdir()
+    (tmp_path/'asm/start.s').write_text('glabel boot\n  jr $ra\n  nop\n')
+    (tmp_path/'build/asm/start.o').write_bytes(b'linked original assembly object')
+    (tmp_path/'asm/microcode.s').write_text('.incbin "program.bin"\n')
+    (tmp_path/'build/asm/microcode.o').write_bytes(b'whole program blob')
+    with (tmp_path/'build/demo.map').open('a') as f:
+        f.write(' .text 0x80000410 0x8 build/asm/start.o\n .text 0x80000418 0x80 build/asm/microcode.o\n')
+    elf.touch()
+
     bindir = tmp_path/'tools'
     bindir.mkdir()
     (bindir/'mips-ps2-decompals-objcopy').touch()
@@ -258,7 +268,13 @@ def test_verified_rebuild_retains_nested_config_version(tmp_path, monkeypatch):
     selected = tmp_path/'config/jp/demo.jp.yaml'
     monkeypatch.setattr(project, '_splat_version_configs', lambda: {'jp':selected})
     assert splatrefs.verified_rebuild(project, selected, cfg, image, hashlib.sha1(data).hexdigest(), lambda *_: None)
-    assert json.loads((tmp_path/'objdiff.json').read_text())['custom_args'] == ['VERSION=jp']
+    result = json.loads((tmp_path/'objdiff.json').read_text())
+    assert result['custom_args'] == ['VERSION=jp']
+    asm = next(u for u in result['units'] if u['name'] == 'asm/start')
+    assert 'base_path' not in asm and 'source_path' not in asm['metadata']
+    assert asm['metadata']['assembly_source'] == 'asm/start.s'
+    assert len(result['units']) == 2
+    assert '1 linked binary assembly' in result['coverage_notes'][0]
 
 
 def test_padding_fallback_still_requires_a_byte_exact_full_rebuild(tmp_path, monkeypatch):

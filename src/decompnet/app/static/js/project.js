@@ -298,6 +298,9 @@ function renderStats(ov) {
   $("pct").textContent = pctNum(pct);
   $("pctSub").textContent = (ov.bytes ? `${bytes(ov.matched_bytes)} of ${bytes(codeBytes(ov))}` : "") + linkedText(ov) + (S.today ? ` · ${S.today} matched today` : "");
   $("fnCount").textContent = `${ov.matched.toLocaleString()} / ${cFunctions(ov).toLocaleString()}`;
+  const coverageNotes = ov.coverage_notes || [];
+  $("coverageNotice").hidden = !coverageNotes.length;
+  $("coverageNotice").textContent = coverageNotes.join(" ");
   renderAutopilot(ov);
   renderSteering(ov);
   if (exportOpen()) renderSource(ov);
