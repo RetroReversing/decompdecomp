@@ -47,3 +47,10 @@ def test_automatic_address_names_also_rewrite_local_declarations():
                   ('i','lw $v0, %lo(D_80002000)($v0)','lw $v0, %lo(D_80001000)($v0)')]}
     source = 'extern int D_80001000; int f(void) { return D_80001000; }'
     assert variants(source,r,{},True,set()) == [source.replace('D_80001000','D_80002000')]
+
+
+def test_numeric_address_casts_keep_type_suffix_and_comments():
+    r = {'rows': [('i','lui $v0, %hi(D_80002000)','lui $v0, %hi(D_80001000)'),
+                  ('i','lw $v0, %lo(D_80002000)($v0)','lw $v0, %lo(D_80001000)($v0)')]}
+    source = 'return *(int *)0x80001000U; /* 0x80001000U */'
+    assert variants(source,r,{},True,set()) == ['return *(int *)0x80002000U; /* 0x80001000U */']
