@@ -122,6 +122,21 @@ def test_installed_compiler_comparison_is_local_and_report_only(tmp_path, monkey
     assert len(matches) == len(judged)  # no early exit, including when current settings match
     assert set(judged) <= {"gcc-2.7.2-psx", "gcc-2.8.0-psx"}
     assert json.loads(net._project("demo")["config"]) == cfg
+    if not function:
+        profiles = []
+
+        def flags_judge(proj, fn, tc, flags, candidate):
+            profiles.append((tc, tuple(flags)))
+            return "-O3" in flags and "-g3" in flags, None, ""
+
+        monkeypatch.setattr(net, "_judge_with", flags_judge)
+        expanded = net.survey_compilers("demo", all_installed=True, log=lambda *_: None)
+        project_profiles = set(profiles)
+        assert expanded["improvements"][0]["best"] == 100
+        assert all("-O3" in m[1] and "-g3" in m[1] for m in expanded["matches"][str(0x80010000)])
+        profiles.clear()
+        net.survey_compilers("demo", all_installed=True, function="f", log=lambda *_: None)
+        assert set(profiles) == project_profiles
     if function:
         assert result["comparison"]["improved"] is True
         assert result["comparison"]["best"] == 100
