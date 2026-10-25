@@ -108,14 +108,15 @@ def test_the_code_is_found_where_its_returns_and_frames_are(tmp_path):
     assert yaml.safe_load(config.read_text())["segments"][1]["subsegments"] == subs
 
 
-def test_bios_calls_and_the_gte_are_set_aside_as_assembly():
+def test_bios_calls_and_unknown_gte_are_set_aside_as_assembly():
     def code(*words):
         return struct.pack(f"<{len(words)}I", *words)
 
     puts = code(0x240A00B0, 0x01400008, 0x2409003F, 0)  # li t2, 0xB0; jr t2; li t1, 0x3F (puts)
     assert "BIOS" in PS1.asm_reason(puts)
     gte = code(0x4A180001, 0x03E00008, 0)  # RTPS; jr ra; nop
-    assert "GTE" in PS1.asm_reason(gte)
+    assert PS1.asm_reason(gte) is None  # a fixed C intrinsic implements RTPS
+    assert "GTE" in PS1.asm_reason(code(0x4A000000, 0x03E00008, 0))
     plain = code(0x00851021, 0x03E00008, 0)  # addu v0, a0, a1; jr ra; nop
     assert PS1.asm_reason(plain) is None
 

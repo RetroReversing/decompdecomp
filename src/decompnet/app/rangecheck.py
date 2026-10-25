@@ -298,11 +298,23 @@ class RangeChecks:
 
     # ------------------------------------------------------------------ verdicts and tasks
 
+    @staticmethod
+    def waiting_reason(c: dict, rows) -> str:
+        """Explain why valid small matches cannot identify a compiler, without calling them mismatches."""
+        short = [r for r in rows if r["status"] == "matched" and (r["n_insns"] or 0) < MIN_INSNS
+                 and any(a <= r["vram"] < b for a, b in c["spans"])]
+        if short:
+            sizes = ", ".join(str(r["n_insns"] or 0) for r in short)
+            return (f"Matched, but too short to identify the compiler ({sizes} instructions; minimum {MIN_INSNS}). "
+                    "Small functions can match several compilers, so adjoining short matches do not confirm each other. "
+                    "Waiting for a longer neighbouring function to distinguish the compiler and flags. Your matches remain valid.")
+        return "Waiting for neighbouring functions to confirm or rule out these compiler settings."
+
     def _task(self, proj, c: dict, nxt: Step | None, rows, at) -> None:
         """Give the nearest unknown neighbour to the next agent (first in line, with a note), or wait."""
         if c.get("audit"):  # an applied range, looked at again: free evidence only, agents keep their work
             c["status"] = "waiting"
-            self._save(proj, c, "unsettled: no neighbour confirms or refutes it yet")
+            self._save(proj, c, self.waiting_reason(c, rows))
             return
         given = set(c["tasks"])
         if nxt is not None and nxt.vram in given:
@@ -316,7 +328,7 @@ class RangeChecks:
             self._save(proj, c, f"checking: {fn['name']} is next (first in line for an agent)")
             return
         c["status"] = "waiting"
-        self._save(proj, c, "waiting: no neighbour settled it yet; the user decides, or agents' next matches do")
+        self._save(proj, c, self.waiting_reason(c, rows))
 
     def task_text(self, c: dict, name: str) -> str:
         short = self.net._short((c["toolchain"], tuple(c["flags"])))

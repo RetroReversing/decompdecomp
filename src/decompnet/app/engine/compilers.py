@@ -169,7 +169,8 @@ class CompilerMixin:
         threading.Thread(target=run, daemon=True, name=f"survey-{slug}").start()
         return state
 
-    def survey_compilers(self, slug: str, log=lambda line: None, limit: int = 400, state: dict | None = None) -> dict:
+    def survey_compilers(self, slug: str, log=lambda line: None, limit: int = 400, state: dict | None = None,
+                         all_installed: bool = False) -> dict:
         """The judge's part of the compiler map. Agents' C for functions that don't match yet, built with each other
         compiler the project uses: C that matches the game with another compiler (and not with today's) confirms that
         compiler for its function. Contradicted functions first, then the closest attempts; C already tried is
@@ -182,11 +183,20 @@ class CompilerMixin:
         cfg = self.cfg(proj)
         candidates = sorted({(cfg["compiler"]["toolchain"], tuple(cfg["compiler"]["flags"]))}
                             | {(r["toolchain"], tuple(r["flags"])) for r in cfg.get("compiler_ranges", [])})
+        if all_installed:
+            # Only this console's installed, usable compilers: never download tools or call an AI provider.
+            candidates = sorted({(c.id, tuple(consoles.default_flags(cfg, c.id)))
+                                 for c in consoles.of(cfg).compilers
+                                 if toolchains.installed(c.id) and toolchains.get(c.id).supported
+                                 and not toolchains.runtime_error(c.id)} | set(candidates))
+            candidates = [(tc, flags) for tc, flags in candidates if toolchains.installed(tc)
+                          and toolchains.get(tc).supported and not toolchains.runtime_error(tc)]
+            log(f"Testing {len(candidates)} compiler/flag profiles on up to {limit} existing unmatched C attempts.")
         # Debug line labels can change old GCC assemblers' delay-slot scheduling even at the same -O level.
         candidates = sorted({(tc, tuple(variant)) for tc, flags in candidates
                              for variant in self.debug_flag_variants(tc, list(flags))})
         old = cfg.get("compiler_survey") or {}
-        tried, confirmed = dict(old.get("tried", {})), dict(old.get("confirmed", {}))
+        tried, confirmed = ({}, {}) if all_installed else (dict(old.get("tried", {})), dict(old.get("confirmed", {})))
         rows = self.store.all("SELECT * FROM functions WHERE project_id=? AND status NOT IN ('matched', 'asm') AND n_insns>=?",
                               proj["id"], self.SURVEY_MIN_INSNS)
         rows.sort(key=lambda f: (f["vram"] not in cmap.contradicted, f["best_score"] if f["best_score"] is not None else 1 << 30))
@@ -217,6 +227,12 @@ class CompilerMixin:
             state.update(tried=n, confirmed=found)
             if n % 25 == 0:
                 log(f"{n} functions tried, {found} confirmed")
+        if all_installed:
+            # An explicit comparison is a report, even when automatic compiler changes are enabled.
+            log(f"Finished: {n} functions tested; {found} match another compiler/flag profile. Project settings unchanged.")
+            if not n:
+                log("No eligible unmatched C attempts yet. Run the free matching pass or agents first.")
+            return {"tried": n, "confirmed": found, "matches": confirmed}
         self._update_cfg(slug, lambda c: c.__setitem__("compiler_survey", {"tried": tried, "confirmed": confirmed,
                                                                            "t": time.time()}))
         suggested = self._suggest_from_map(proj, confirmed)
@@ -381,7 +397,12 @@ class CompilerMixin:
             if ranges and (check_now or any((((r["start"], r["end"]),), r["toolchain"]) not in audited for r in ranges)):
                 self.rangechecks.audit(proj)
                 cfg = self.cfg(self._project(slug))
-        checks = cfg.get("range_checks", [])
+        checks = [dict(c) for c in cfg.get("range_checks", [])]
+        if any(c["status"] == "waiting" for c in checks):
+            rows = self.rangechecks._rows(proj)
+            for c in checks:
+                if c["status"] == "waiting":
+                    c["said"] = self.rangechecks.waiting_reason(c, rows)
         audits = {tuple(map(tuple, c["spans"])): c for c in checks if c.get("audit")}
         parts = []
         for r in ranges:

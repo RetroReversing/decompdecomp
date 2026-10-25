@@ -660,3 +660,7 @@ The answer goes here: build it, build part of it, or not, and why.
 - **Polish in the drafts.** Methods of known classes are drafted as `Class::method` in the brief; the polishing pass
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
+
+- **Selected PS1 GTE C intrinsics**: fixed vector transfers and transformation/clipping/averaging/square
+  commands on the original three PS1 GCC toolchains. Known operations no longer imply handwritten assembly.
+  Submitted assembly stays rejected; other GTE operations and additional compiler registrations remain work.

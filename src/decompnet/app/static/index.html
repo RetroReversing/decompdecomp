@@ -369,6 +369,11 @@
           <div id="compilerParts"></div>
           <div id="compilerWaiting"></div>
           <label class="check" id="autoAdjustRow"><input type="checkbox" id="autoAdjust"><span><b>Apply proven changes by themselves.</b> When agents prove a part of the game was built with another compiler (its code matches with it, and its neighbours agree), the app uses it without asking you.</span></label>
+          <div id="installedCompilerTest">
+            <button class="ghost" type="button" id="testInstalledCompilers">Test installed compilers</button>
+            <p class="small muted">Compare up to 400 existing unmatched C attempts locally. No AI tokens, downloads or changes to your compiler settings. Tests default and current flags, with debug variants; not every possible flag combination.</p>
+            <pre class="joblog" id="installedCompilerLog" aria-label="Compiler comparison results" aria-live="off" hidden></pre>
+          </div>
           <details class="more" id="compilerHow">
             <summary>How the app checks</summary>
             <div class="more-body" id="compilerEvidence"></div>
