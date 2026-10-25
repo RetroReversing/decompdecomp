@@ -294,7 +294,7 @@ def test_ps1_assembler_uses_app_python_on_mac_only(host, expected, tmp_path, mon
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="native macOS PS1 compilers")
-@pytest.mark.parametrize("tid", ["gcc-2.6.3-psx", "gcc-2.7.2-psx", "gcc-2.8.1-psx"])
+@pytest.mark.parametrize("tid", ["gcc-2.6.0-psx", "gcc-2.6.3-psx", "gcc-2.7.2-psx", "gcc-2.7.2-cdk", "gcc-2.8.0-psx", "gcc-2.8.1-psx"])
 def test_native_ps1_compiler_produces_little_endian_mips(tid, tmp_path):
     from io import BytesIO
 
@@ -311,3 +311,15 @@ def test_native_ps1_compiler_produces_little_endian_mips(tid, tmp_path):
     elf = ELFFile(BytesIO(result.obj))
     assert elf["e_machine"] == "EM_MIPS" and elf.little_endian
     assert elf.get_section_by_name(".text").data()
+
+
+@pytest.mark.parametrize("version", ["2.6.0", "2.8.0"])
+def test_more_ps1_source_builds_are_pinned_for_mac(version):
+    tc = toolchains.get("gcc-" + version + "-psx")
+    for cpu in ("arm64", "x86_64"):
+        part, = tc.parts_for("macos-" + cpu)
+        assert part["build"] == "psx-gcc" and part["version"] == version
+        assert all(len(part[key]) == 64 for key in ("sha256", "patches_sha256", "config_guess_sha256", "config_sub_sha256"))
+    assert not toolchains.get("gcc-2.5.7-psx").parts_for("macos-arm64")
+    assert not toolchains.get("gcc-2.91.66-psx").parts_for("macos-arm64")
+    assert not toolchains.get("gcc-2.95.2-psx").parts_for("macos-arm64")

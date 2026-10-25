@@ -182,7 +182,7 @@ the game.
 | Platform | Status | From scratch | Compilers | Rebuildable project | Public decomps |
 | :-- | :-- | :-- | :-- | :-- | :-- |
 | **Nintendo 64** | ★ **Recommended** | ✓ ROM | KMC GCC 2.7.2 · IDO 5.3 / 7.1 | ✓ export | ✓ |
-| **PlayStation** | Beta | ✓ disc (BIN, ISO, CHD) or PS-X EXE | GCC 2.6.3 · 2.7.2 · 2.8.1 (PSY-Q), with maspsx | ✓ export | ✓ |
+| **PlayStation** | Beta | ✓ disc (BIN, ISO, CHD) or PS-X EXE | GCC 2.5.7 · 2.6.0 · 2.6.3 · 2.7.2 PSX/CDK · 2.8.0 · 2.8.1 · EGCS 2.91.66 · 2.95.2, with maspsx | ✓ export | ✓ |
 | **PlayStation 2** | Beta | ✓ disc or ELF | EE-GCC 2.9 · 2.95.2/2.95.3 (SN) · 2.96 · 3.2 · CodeWarrior 2.3.3 / 3.0.1 | ✓ export | ✓ |
 | **PSP** | Beta | ✓ UMD image (ISO, CSO, CHD) with its other modules, or ELF/PRX, unencrypted or decrypted | CodeWarrior for PSP 3.0.1 · PSP SDK GCC 3.3.3 · SN pspsnc | ✓ export | ✓ |
 | **GameCube · Wii** | Beta | ✓ disc (ISO, RVZ, WBFS…) or DOL | CodeWarrior GC 1.0 – Wii 1.7 | ✓ dtk-template | ✓ |
@@ -203,7 +203,9 @@ different build, which is planned.
 **Beta:**
 
 - **PlayStation** passes every step on the homemade demo game, built the way PSY-Q games were (GCC, then maspsx
-  for Sony's assembler ASPSX). No real game is tested from start to end yet.
+  for Sony's assembler ASPSX). Each compiler uses its corresponding assembler profile. GCC 2.5.7, EGCS
+  2.91.66 and GCC 2.95.2 currently need Linux or WSL; the other listed PS1 compilers have Apple Silicon builds.
+  No real game is tested from start to end yet.
 - **PlayStation 2** is tested on real games (GTA San Andreas, Ridge Racer V), with several compilers per game. No
   real game is rebuilt whole yet.
 - **GameCube and Wii** projects are dtk-template projects, as most community decomps are. Each build makes the game

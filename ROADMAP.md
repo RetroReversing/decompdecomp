@@ -454,8 +454,11 @@ SDK object archives. The archive's source is never bundled; a signature is a hin
   installer creates a Finder app in `~/Applications`. Intel and Apple Silicon CI exercise portable regressions
   and the hidden native window. KMC GCC/binutils require Rosetta on Apple Silicon; unavailable Linux-only
   compilers remain unavailable. Mac workers use per-thread QoS so they don't lower the whole app's priority.
-  PS1 GCC 2.6.3 also builds from pinned source on Intel and Apple Silicon Macs; GCC 2.7.2 and 2.8.1 use
-  pinned native Apple Silicon builds with maspsx. The assembler helper uses the app Python.
+  PS1 GCC 2.6.0, 2.6.3 and 2.8.0 build from pinned source on Intel and Apple Silicon Macs; GCC 2.7.2
+  PSX/CDK and 2.8.1 use pinned native Apple Silicon builds with maspsx. The assembler helper uses the app Python.
+- **More PS1 GCC variants**: GCC 2.5.7, 2.6.0, 2.7.2 CDK, 2.8.0, EGCS 2.91.66 and GCC 2.95.2 are listed for
+  import surveys, compiler changes and export, each with a pinned toolchain and its own ASPSX profile. The demo
+  can be built with each compiler and its game functions checked through the byte judge.
 - **Linux packages**: a `.deb`, an `.rpm` and an AppImage with their own Python, built for each release.
 - **Windows native app**: a WebView2 window, Start menu and desktop shortcuts, and a native tray icon.
   A custom native caption follows the app's theme, with Windows resizing, snapping and drag-to-restore. Scrollbars
@@ -643,4 +646,3 @@ The answer goes here: build it, build part of it, or not, and why.
 - **Polish in the drafts.** Methods of known classes are drafted as `Class::method` in the brief; the polishing pass
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
-- macOS signed/notarized distribution and a menu bar tray icon.
