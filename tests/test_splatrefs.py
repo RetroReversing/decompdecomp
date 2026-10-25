@@ -251,6 +251,7 @@ def test_verified_rebuild_retains_nested_config_version(tmp_path, monkeypatch):
     (tmp_path/'build/demo.map').write_text(' .text 0x80000400 0x10 build/src/demo.o\n')
     (tmp_path/'asm').mkdir()
     (tmp_path/'build/asm').mkdir()
+    (tmp_path/'src/demo.s').write_text('assembly alternative for the same linked C object')
     (tmp_path/'asm/start.s').write_text('glabel boot\n  jr $ra\n  nop\n')
     (tmp_path/'build/asm/start.o').write_bytes(b'linked original assembly object')
     (tmp_path/'asm/microcode.s').write_text('.incbin "program.bin"\n')
