@@ -81,6 +81,14 @@ def literal_variants(source: str, a, b, big: bool) -> list[str]:
     return [result]
 
 
+def _mnemonics(net, proj, fn) -> list[str]:
+    # App bundles built before processor variants use the three-argument reader. Keep testing those installs
+    # possible without replacing their other local fixes with an entire newer runtime.
+    cpu = getattr(net.console(proj), 'cpu_variant', None)
+    args = (fn['target'], bool(proj['big_endian']), fn['vram'] or 0)
+    return similarity.mips_mnemonics(*args) if cpu is None else similarity.mips_mnemonics(*args, cpu)
+
+
 def run(twins, slug: str, job) -> int:
     """Try a few close candidates per function after exact transfers, with a pass-wide time/compile budget."""
     from .twins import _declared, apply, rom_renames
@@ -126,13 +134,10 @@ def run(twins, slug: str, job) -> int:
                 and [(o, t) for o, t, _ in relocations(a)] == layout]
         if not rows:
             continue
-        cpu = net.console(proj).cpu_variant
-        ops = similarity.mips_mnemonics(b['target'], bool(proj['big_endian']), b['vram'] or 0, cpu)
+        ops = _mnemonics(net, proj, b)
         for a in rows:
             if a['id'] not in ops_cache:
-                other_cpu = net.console(others[a['project_id']]).cpu_variant
-                ops_cache[a['id']] = similarity.mips_mnemonics(a['target'], bool(proj['big_endian']),
-                                                            a['vram'] or 0, other_cpu)
+                ops_cache[a['id']] = _mnemonics(net, others[a['project_id']], a)
         by_id = {str(a['id']): a for a in rows}
         ranked = similarity.rank(ops, {key: ops_cache[a['id']] for key, a in by_id.items()},
                                  top=MAX_CANDIDATES, floor=MIN_SIMILARITY)
