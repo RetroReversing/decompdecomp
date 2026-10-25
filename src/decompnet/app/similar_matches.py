@@ -39,17 +39,55 @@ def relocations(fn) -> list[tuple[int, int, int]]:
     return sorted(tuple(int(v) for v in r[:3]) for r in json.loads(fn['relocs'] or '[]') if len(r) >= 3)
 
 
+def _table_macro_edits(source, changes):
+    """Recognise one-use IDs in explicitly declared 32-bit tables, never general scaled arithmetic."""
+    from ..forks.csource import _blank
+
+    if not changes:
+        return {}
+    clean = _blank(source)
+    tables = set(re.findall(
+        r"\bextern\s+(?:char\s*\*\s*\*\s*|(?:int|unsigned\s+int|u32|s32|uint32_t|int32_t)\s+\*\s*)(\w+)\s*;",
+        clean))
+    tables.update(re.findall(
+        r"\bextern\s+(?:int|unsigned\s+int|u32|s32|uint32_t|int32_t)\s+(\w+)\s*\[\s*\]\s*;",
+        clean))
+    definitions = list(re.finditer(
+        r"^[ \t]*#define[ \t]+([A-Za-z_]\w*)[ \t]+(0[xX][0-9a-fA-F]+|[0-9]+)([uUlL]*)[ \t]*$",
+        clean, re.M))
+    result = {}
+    for old, new in changes.items():
+        if old % 4 or new % 4:
+            continue
+        candidates = [m for m in definitions if int(m[2], 0 if m[2].lower().startswith('0x') else 10) == old // 4]
+        if len(candidates) != 1:
+            continue
+        definition = candidates[0]
+        name = definition[1]
+        # Redefinitions and uses in control flow or other expressions make the scale ambiguous.
+        uses = [m for m in re.finditer(r'\b' + re.escape(name) + r'\b', clean)
+                if not definition.start() <= m.start() < definition.end()]
+        if len(uses) != 1:
+            continue
+        indexed = any(re.search(r'\b' + re.escape(table) + r'\s*\[\s*' + re.escape(name) + r'\s*\]', clean)
+                      for table in tables)
+        if indexed:
+            result[definition.start(2)] = (definition.end(2), str(new // 4))
+    return result
+
+
 def literal_variants(source: str, a, b, big: bool) -> list[str]:
     """Try at most two unambiguous literal substitutions supported by aligned immediate instructions.
 
-    Only singleton, nonnegative C literals are changed. Repeated numbers, signed expressions, split address
-    constants and changed instruction layouts need more context than this small search can establish.
+    Only singleton, nonnegative C literals or one-use IDs in explicit 32-bit tables are changed.
+    Repeated numbers, signed expressions, split address constants and changed instruction layouts need
+    more context than this small search can establish.
     """
     left, right = a['target'] or b'', b['target'] or b''
     if len(left) != len(right) or len(left) % 4:
         return []
     relocated = {off for off, _, _ in relocations(a)} | {off for off, _, _ in relocations(b)}
-    changes = {}
+    changes, offset_ops = {}, {}
     order = 'big' if big else 'little'
     for off in range(0, len(left), 4):
         x, y = int.from_bytes(left[off:off + 4], order), int.from_bytes(right[off:off + 4], order)
@@ -64,6 +102,7 @@ def literal_variants(source: str, a, b, big: bool) -> list[str]:
         if old in changes and changes[old] != new:
             return []
         changes[old] = new
+        offset_ops.setdefault(old, set()).add(op)
     if not changes or len(changes) > 2:
         return []
     occurrences = {}
@@ -80,6 +119,9 @@ def literal_variants(source: str, a, b, big: bool) -> list[str]:
         if source[:token.start()].rstrip().endswith('-'):
             continue
         replacements[token.start()] = (token.end(), str(new) + suffix)
+    scaled = {old: new for old, new in changes.items()
+              if offset_ops[old] <= {35, 43} and not occurrences.get(old)}
+    replacements.update(_table_macro_edits(source, scaled))
     if not replacements:
         return []
     result = source

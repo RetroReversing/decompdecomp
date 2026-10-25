@@ -74,6 +74,8 @@ Every accepted candidate must compile and link to the destination's exact bytes.
   before a used field, based on aligned memory operands. These proposals support simple scalar/pointer fields
   and common fixed-width aliases; packed types, bitfields, unions and ambiguous offsets are skipped. Shared
   headers are never rewritten. Ambiguous mappings, dynamic indices and unproven strides are skipped.
+  Numeric ID macros used once to index an explicit 32-bit table can be corrected from aligned word offsets;
+  ambiguous declarations, macro uses and relocations are skipped.
   Saved best attempts get the same address checks before wider donor searches; probe feedback and failed edits
   are cached and share the ordinary search budget. These edits affect only candidate C; shared symbols and types stay unchanged. An already-installed decomp-permuter
   supplies a small additional batch when time remains.

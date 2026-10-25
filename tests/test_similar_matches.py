@@ -407,6 +407,40 @@ def test_address_and_literal_repairs_reach_judge_as_one_candidate(pair, monkeypa
     assert pair.store.one("SELECT 1 FROM cross_game_attempts WHERE outcome='match' AND reason LIKE '%; repair;%'")
 
 
+@pytest.mark.parametrize('big', [True, False])
+@pytest.mark.parametrize('declaration', ['extern char **text;', 'extern int text[];', 'extern uint32_t *text;'])
+def test_table_id_macro_uses_word_offset_evidence(big, declaration):
+    source = '#define MESSAGE 245U\n' + declaration + '\nvoid *f(void) { return text[MESSAGE]; }\n'
+    order = 'big' if big else 'little'
+    a = {'target': (0x8c820000 | 980).to_bytes(4, order), 'relocs': '[]'}
+    b = {'target': (0x8c820000 | 960).to_bytes(4, order), 'relocs': '[]'}
+    assert sm.literal_variants(source, a, b, big) == [source.replace('245U', '240U')]
+    a['relocs'] = '[[0,6,0]]'
+    assert sm.literal_variants(source, a, b, big) == []
+
+
+@pytest.mark.parametrize('source', [
+    '#define ID 245\nextern char *text;\nint f(void){return text[ID];}',
+    '#define ID 245\nextern short text[];\nint f(void){return text[ID];}',
+    '#define ID 245\n#define OTHER 245\nextern int text[];\nint f(void){return text[ID];}',
+    '#define ID 245\nextern int text[];\nint f(void){return text[ID]+ID;}',
+    '#define ID 245\n#define ID 246\nextern int text[];\nint f(void){return text[ID];}',
+    '#define ID(x) 245\nextern int text[];\nint f(void){return text[ID(0)];}',
+    '#define ID 245\nextern int text[];\nchar *s="text[ID]";\nint f(void){return ID;}',
+])
+def test_table_id_macro_skips_ambiguous_types_definitions_and_uses(source):
+    a = {'target': (0x8c820000 | 980).to_bytes(4, 'big'), 'relocs': '[]'}
+    b = {'target': (0x8c820000 | 960).to_bytes(4, 'big'), 'relocs': '[]'}
+    assert sm.literal_variants(source, a, b, True) == []
+
+
+def test_table_id_macro_does_not_scale_arithmetic_immediates():
+    source = '#define ID 245\nextern int text[];\nint f(void){return text[ID];}'
+    a = {'target': (0x24820000 | 980).to_bytes(4, 'big'), 'relocs': '[]'}
+    b = {'target': (0x24820000 | 960).to_bytes(4, 'big'), 'relocs': '[]'}
+    assert sm.literal_variants(source, a, b, True) == []
+
+
 def test_successful_transfers_remain_available_after_many_recent_misses(pair):
     with pair.store.tx() as db:
         for index in range(36):
