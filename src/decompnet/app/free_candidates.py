@@ -52,6 +52,25 @@ def import_sources(net, proj, corpus, path: Path, header: Path | None = None):
     return len(found.keys() - ambiguous)
 
 
+def sdk_symbol_map(signatures, by_fingerprint):
+    """Use only unambiguous library identities for declarations in transferred C.
+
+    Tiny getters and aliases can have identical masked bytes but incompatible prototypes.
+    Mapping those to one destination name corrupts otherwise useful source headers.
+    The destination's ordinary compiler/link judge still decides every candidate.
+    """
+    identities = {}
+    for hint in signatures:
+        identities.setdefault(hint['fingerprint'], set()).add(hint['name'])
+    names, ambiguous = {}, set()
+    for hint in signatures:
+        if hint['size'] < 32 or len(identities[hint['fingerprint']]) != 1:
+            ambiguous.add(hint['name'])
+            continue
+        names.setdefault(hint['name'], set()).update(by_fingerprint.get(hint['fingerprint'], set()))
+    return {name: next(iter(values)) for name, values in names.items() if len(values) == 1 and name not in ambiguous}
+
+
 def budget(job, seconds=120, attempts=128):
     if not hasattr(job, 'reuse_deadline'):
         job.reuse_deadline = time.monotonic() + seconds
@@ -68,6 +87,7 @@ def exhausted(job):
 def run(twins, slug, job):
     """Try recognisable leaf patterns and exact SDK fingerprints before spending CPU on wider similarity."""
     from .address_repairs import variants as address_variants
+    from .sdk_source_repairs import variant as sdk_variant
     from .similar_matches import REPAIR_PERCENT, trial_key
     from .twins import apply
 
@@ -108,12 +128,9 @@ def run(twins, slug, job):
         for row in sdk:
             corpus = row['corpus']
             if corpus not in sdk_maps:
-                names = {}
-                for hint in net.store.all('SELECT name,fingerprint FROM sdk_signatures WHERE corpus=? AND arch=? AND big_endian=?',
-                                          corpus, proj['arch'], proj['big_endian']):
-                    targets = by_fingerprint.get(hint['fingerprint'], set())
-                    names.setdefault(hint['name'], set()).update(targets)
-                sdk_maps[corpus] = {name: next(iter(values)) for name, values in names.items() if len(values) == 1}
+                signatures = net.store.all('SELECT name,fingerprint,size FROM sdk_signatures WHERE corpus=? AND arch=? AND big_endian=?',
+                                           corpus, proj['arch'], proj['big_endian'])
+                sdk_maps[corpus] = sdk_symbol_map(signatures, by_fingerprint)
             names = {**sdk_maps[corpus], row['name']: fn['name']}
             candidates.append(('library', corpus + '/' + row['name'], apply(row['header'] + '\n' + row['source'], names)))
         for kind, origin, source in candidates:
@@ -123,6 +140,10 @@ def run(twins, slug, job):
             key = trial_key(source, context, settings, fn, [kind, symbols])
             previous = net.store.one("SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=? AND outcome='miss'", fn['id'], key)
             if previous:
+                if kind == 'library':
+                    repaired = sdk_variant(net, proj, fn, source, fingerprint, job)
+                    if repaired:
+                        candidates.append(('library-repair', origin, repaired))
                 if kind == 'address-probe':
                     candidates.extend(('address-repair', origin, v) for v in
                                       address_variants(source, json.loads(previous['feedback']), fn,
@@ -140,6 +161,10 @@ def run(twins, slug, job):
                            (fn['id'], key, outcome, reason, json.dumps(result)))
                 db.execute('INSERT INTO free_match_attempts(project_id,function_id,strategy,outcome,reason,created_at) VALUES(?,?,?,?,?,?)',
                            (proj['id'], fn['id'], kind, outcome, reason, time.time()))
+            if kind == 'library' and not result['matched']:
+                repaired = sdk_variant(net, proj, fn, source, fingerprint, job)
+                if repaired:
+                    candidates.append(('library-repair', origin, repaired))
             if kind == 'address-probe' and not result['matched']:
                 candidates.extend(('address-repair', origin, v) for v in
                                   address_variants(source, result, fn, bool(proj['big_endian']),

@@ -234,3 +234,30 @@ def test_saved_near_miss_address_repairs_use_cached_probe_and_byte_judge(pair, m
     count = len(seen)
     assert free.run(pair.twins,'destination',Job()) == 0
     assert len(seen) == count
+
+
+def test_sdk_symbol_map_rejects_small_aliases_and_multiple_destinations():
+    signatures = [
+        {'name': 'getter', 'fingerprint': 'tiny', 'size': 8},
+        {'name': 'first', 'fingerprint': 'alias', 'size': 64},
+        {'name': 'second', 'fingerprint': 'alias', 'size': 64},
+        {'name': 'shared', 'fingerprint': 'duplicate', 'size': 64},
+        {'name': 'unique', 'fingerprint': 'exact', 'size': 32},
+    ]
+    targets = {'tiny': {'a'}, 'alias': {'b'}, 'duplicate': {'c', 'd'}, 'exact': {'e'}}
+    assert free.sdk_symbol_map(signatures, targets) == {'unique': 'e'}
+
+
+def test_sdk_symbol_map_rejects_one_name_with_conflicting_variants():
+    signatures = [{'name': 'helper', 'fingerprint': key, 'size': 32} for key in ('one', 'two')]
+    assert free.sdk_symbol_map(signatures, {'one': {'a'}, 'two': {'b'}}) == {}
+    assert free.sdk_symbol_map(signatures, {'one': {'a'}, 'two': {'a'}}) == {'helper': 'a'}
+
+
+def test_sdk_symbol_map_rejects_alias_even_with_another_unique_variant():
+    signatures = [
+        {'name': 'helper', 'fingerprint': 'one', 'size': 32},
+        {'name': 'helper', 'fingerprint': 'two', 'size': 32},
+        {'name': 'alias', 'fingerprint': 'two', 'size': 32},
+    ]
+    assert free.sdk_symbol_map(signatures, {'one': {'a'}, 'two': {'a'}}) == {}

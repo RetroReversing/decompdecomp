@@ -753,6 +753,13 @@ class ForkEngine:
                     pass
             dest = fp.place_game(Path(game), filename or Path(game).name, cfg.get("version"), move=move, log=log)
             log(f"your copy of the game is at {dest.relative_to(fp.root)}")
+        if game is None and fp.kind() == "splat" and cfg.get("version") is None:
+            # Older imports may already have accepted a non-default edition without saving its version.
+            # Recover only an unambiguous existing ROM; _match_version rechecks its actual hash.
+            existing = [fp.root / f"baserom.{v}.z64" for v in fp.splat_baseroms()
+                        if (fp.root / f"baserom.{v}.z64").is_file()]
+            if len(existing) == 1:
+                self._match_version(proj, fp, cfg, existing[0], log)
         if not fp.needs(cfg.get("version"))["auto"]:
             raise NetworkError("this project has its own setup: follow its README, then click Check again")
         fp.setup(cfg.get("version"), log=log)
@@ -3713,6 +3720,8 @@ class ForkEngine:
     # ------------------------------------------------------------------ for the GUI
 
     def overview(self, slug: str) -> dict:
+        from .libultra import report as libultra_report
+
         proj, fp, cfg = self.get(slug)
         if cfg.get("ready"):
             self._preflight_once(slug)
@@ -3726,6 +3735,7 @@ class ForkEngine:
             "repo_url": cfg.get("repo_url"), "fork_kind": cfg.get("fork_kind"), "version": cfg.get("version"),
             "origin": cfg.get("origin"), "compiler_name": cfg.get("compiler"),
             "project_compiler": compiler_info.describe(fp, cfg.get("version")),
+            "libultra": libultra_report(self.net, proj),
             "versions": fp.versions(), "ready": bool(cfg.get("ready")), "needs": need,
             "rom": {"game_code": cfg.get("version") or "", "region": consoles.name(cfg.get("platform")),
                     "title": proj["name"]},
