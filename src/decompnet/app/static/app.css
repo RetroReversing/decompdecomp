@@ -1040,3 +1040,23 @@ details.more[open] > summary::before { content: "− "; }
 .image-coverage-table th, .image-coverage-table td { text-align: left; padding: 8px 16px; }
 .image-coverage-table th { color: var(--muted); font-weight: 500; }
 .image-coverage-table td { border-top: 1px solid var(--line-soft); white-space: nowrap; }
+
+/* Local repository importer: one stable selection across searchable project-type groups. */
+.local-import-summary { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 18px 0; }
+.local-import-summary strong { font-size: 20px; }
+.local-import-tools { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.local-import-tools .field { flex: 1 1 260px; margin: 0 0 12px; }
+.local-project-group { margin: 24px 0; }
+.local-project-group > header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.local-project-group h3 { margin: 0; font-size: 15px; }
+.local-project-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; }
+.local-repo-card { min-width: 0; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 14px; background: var(--panel); }
+.local-repo-card.imported { opacity: .65; }
+.local-repo-choice { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.local-repo-choice input { width: 16px; height: 16px; margin: 3px 0 0; flex: 0 0 16px; }
+.local-repo-choice > span { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.local-repo-path { color: var(--muted); overflow-wrap: anywhere; margin: 12px 0; }
+.local-repo-policy { font-size: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.local-import-footer { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 20px; }
+.local-import-footer > details { margin: 12px 0; }
+.local-scan-notes { margin: 12px 0; }
