@@ -100,7 +100,9 @@ They learn unambiguous symbol correspondences, try local-permuter repairs and pr
 trial results and a resume cursor. Compiler-flag hits are saved as evidence for review, not silently applied.
 Near-miss repairs now use percentage eligibility and assembly-guided mutations, plus an installed full permuter.
 Aligned high/low address evidence can correct known symbols and combine that with literal/explicit field-offset
-edits. Address addends, ambiguous mappings and named-field reconstruction still need deeper analysis.
+edits. Literal address addends and typed array indices now use compiled stride evidence, including adjacent
+symbolic-high/numeric-low address pairs. Dynamic addends, ambiguous mappings and named-field reconstruction
+still need deeper analysis.
 Tiny MIPS templates and explicitly imported SDK C go through the same judge. Verified regional pairs can teach
 explicit pointer-offset edits; reconstructing named struct layouts and shared types remains planned. New verified
 matches trigger a bounded, configurable automatic cascade. Project-mode support for these additions is planned:
@@ -666,4 +668,3 @@ The answer goes here: build it, build part of it, or not, and why.
 - **Selected PS1 GTE C intrinsics**: fixed vector transfers and transformation/clipping/averaging/square
   commands on the original three PS1 GCC toolchains. Known operations no longer imply handwritten assembly.
   Submitted assembly stays rejected; other GTE operations and additional compiler registrations remain work.
-
