@@ -369,3 +369,5 @@ export with an explanation until they have a verified cartridge reconstruction.
 
 An identical rebuild can still contain assembly and binary fallbacks. Check the reported number of functions
 selected as C separately; an identical cartridge does not mean that every function has been decompiled.
+
+For imported overlays missing their original strings or tables, see [supplemental original overlay data](docs/OVERLAY_DATA.md).

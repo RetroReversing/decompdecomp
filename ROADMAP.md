@@ -380,3 +380,8 @@ The answer goes here: build it, build part of it, or not, and why.
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
 - macOS signed/notarized distribution and a menu bar tray icon.
+
+### Overlay data recovery
+
+- Done: the ROM judge and machine-draft jump-table reader select a function's owning segment before other overlays at the same RAM address. A checksummed local `memory_regions.json` can supply original overlay data omitted at import, without relaxing byte comparison.
+- Planned: automatically retain complete embedded overlay members and their data during import; preserve and regenerate supplemental memory inputs through save/restore and rebuildable export. Until then, supplemental region files are local analysis inputs that must accompany the private project.

@@ -157,11 +157,20 @@ class Core(Network):
             self._roms[proj["id"]] = (rom, segs)
         return self._roms[proj["id"]]
 
-    def reader(self, proj):
+    def reader(self, proj, function=None):
         rom, segs = self._rom(proj)
+        owner = next((s for s in segs if function is not None and
+                      s.rom_start <= function["rom_offset"] < s.rom_end), None)
+        extra = None
+        if owner is not None:
+            from ...rom.memory import overlay_reader
+            extra = overlay_reader(Path(proj["root"]), self.cfg(proj)["rom"]["sha1"], owner.name)
+        ordered = ([owner] + [s for s in segs if s is not owner]) if owner else segs
 
         def read(addr: int, n: int) -> bytes | None:
-            for seg in segs:
+            if extra is not None and (data := extra(addr, n)) is not None:
+                return data
+            for seg in ordered:
                 if seg.contains(addr, n):
                     at = seg.rom_start + addr - seg.vram
                     return rom[at:at + n]
