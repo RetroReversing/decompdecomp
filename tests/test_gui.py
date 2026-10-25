@@ -129,3 +129,12 @@ def test_the_import_offers_every_compiler_of_the_games_console(gui):
 def test_helper_cards_show_polished_counts_separately_from_matches(gui):
     assert gui["checks"]["helperResults"] == ['<b class="ok">2 polished</b>', '<b class="ok">0 polished</b>',
                                                '<b class="ok">9 matched</b>']
+
+
+def test_public_project_settings_show_compiler_and_per_file_flags(gui):
+    facts, rom, missing = gui["checks"]["projectCompiler"]
+    assert ["Compiler (declared)", "IDO 5.3"] in facts
+    assert ["OPT_FLAGS (declared)", "-O2"] in facts
+    assert ["Per-file flags (declared)", "src/audio/%.o: OPT_FLAGS = -O3"] in facts
+    assert ["Compiler settings read from", "Makefile. Declared settings"] in facts
+    assert rom == missing == []

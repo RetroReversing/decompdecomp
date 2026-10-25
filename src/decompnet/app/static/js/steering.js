@@ -369,6 +369,16 @@ async function exportNow() {
 }
 
 /* ------------------------------------------------------------------ project settings */
+function projectCompilerFacts(ov) {
+  const c = ov.project_compiler;
+  if (ov.kind !== "fork" || !c) return [];
+  return [c.name ? ["Compiler (declared)", c.name] : null,
+    c.command ? ["Compiler command (declared)", c.command] : null,
+    ...(c.flags || []).map(f => [f.variable + " (declared)", f.value]),
+    c.overrides?.length ? ["Per-file flags (declared)", c.overrides.map(f => `${f.pattern}: ${f.variable} ${f.operator} ${f.value}`).join("; ")] : null,
+    c.sources?.length ? ["Compiler settings read from", c.sources.join(", ") + ". " + c.note] : null].filter(Boolean);
+}
+
 async function renderProjectSettings() {
   const ov = S.ov;
   if (!ov) return;
@@ -392,6 +402,7 @@ async function renderProjectSettings() {
   }
   const facts = [["Platform", ov.platform_name], ["Game", ov.rom?.title || ov.title], [fork ? "Version" : "Game code", ov.rom?.game_code || ov.version],
     !fork && ov.rom?.region ? ["Region", ov.rom.region] : null, fork ? ["Layout", ov.origin === "scratch" ? (ov.layout || "decomp") + " (from scratch)" : ov.fork_kind] : ["Compiler", `${ov.compiler.name} ${ov.compiler.flags.join(" ")}`],
+    ...projectCompilerFacts(ov),
     fork && ov.repo_url ? ["Repository", ov.repo_url.replace(/^https?:\/\//, "")] : null,
     ["Functions", `${ov.functions.toLocaleString()} (${bytes(ov.bytes || 0)} of code)`], ["Folder", ov.folder]].filter(Boolean);
   $("projFacts").innerHTML = facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v || "—")}</dd></div>`).join("");
