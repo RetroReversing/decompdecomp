@@ -99,6 +99,8 @@ Similar-code autopilot attempts are bounded and use the unchanged compiler/link 
 They learn unambiguous symbol correspondences, try local-permuter repairs and proven donor flags, and persist
 trial results and a resume cursor. Compiler-flag hits are saved as evidence for review, not silently applied.
 Near-miss repairs now use percentage eligibility and assembly-guided mutations, plus an installed full permuter.
+Aligned high/low address evidence can correct known symbols and combine that with literal/explicit field-offset
+edits. Address addends, ambiguous mappings and named-field reconstruction still need deeper analysis.
 Tiny MIPS templates and explicitly imported SDK C go through the same judge. Verified regional pairs can teach
 explicit pointer-offset edits; reconstructing named struct layouts and shared types remains planned. New verified
 matches trigger a bounded, configurable automatic cascade. Project-mode support for these additions is planned:
@@ -664,3 +666,12 @@ The answer goes here: build it, build part of it, or not, and why.
 - **Selected PS1 GTE C intrinsics**: fixed vector transfers and transformation/clipping/averaging/square
   commands on the original three PS1 GCC toolchains. Known operations no longer imply handwritten assembly.
   Submitted assembly stays rejected; other GTE operations and additional compiler registrations remain work.
+
+### Additional PS1 source recovery support
+
+Fixed GTE intrinsics now cover selected lighting, colour interpolation, RGB FIFO, primitive screen stores and
+fixed-register C operands. Arbitrary submitted assembly remains rejected. Operator ROM splits use the normal
+boundary engine, reject active claims and matched functions, and clear stale drafts when bounds change.
+Project-mode source splitting continues through its existing console connector; this route is ROM-only.
+Validation for this increment: focused intrinsic and split tests, plus full compiler/linker regression on a
+private PS1 project. Other console features were not revalidated in this increment.

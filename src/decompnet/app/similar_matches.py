@@ -235,7 +235,7 @@ def run(twins, slug: str, job) -> int:
     symbol_state = [(r['name'], r['address']) for r in net.store.all(
         'SELECT name,address FROM symbols WHERE project_id=? ORDER BY name', proj['id'])]
     source_cache, ops_cache = {}, {}
-    from . import regional_layouts
+    from . import address_repairs, regional_layouts
     layouts = {pid: regional_layouts.learn(net, proj, other) for pid, other in others.items()}
     maps = {pid: regional_names(twins, proj, other) for pid, other in others.items()}
     saved = net.store.one('SELECT function_id FROM reuse_cursors WHERE project_id=?', proj['id'])
@@ -290,6 +290,15 @@ def run(twins, slug: str, job) -> int:
             maps[other['id']] = regional_names(twins, proj, other)
         return outcome, why
 
+    # Keep a quarter of the remaining budget for close misses. Previously a large transfer queue could
+    # consume every pass, leaving hundreds of eligible cached misses with no repair attempts at all.
+    transfer_deadline = time.monotonic() + max(0, deadline - time.monotonic()) * .75
+    transfer_limit = job.reuse_attempts + max(1, int((job.reuse_limit - job.reuse_attempts) * .75))
+    incomplete = False
+
+    def transfers_exhausted():
+        return bool(repairs) and (job.reuse_attempts >= transfer_limit or time.monotonic() >= transfer_deadline)
+
     targets = net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open' ORDER BY id", proj['id'])
     # Preserve the cheap aligned-transfer search before widening to learned mappings or different flags.
     # A signed cursor encodes which phase to resume without storing any game source in the queue.
@@ -299,6 +308,9 @@ def run(twins, slug: str, job) -> int:
     for phase, b in work:
         if job.stop.is_set() or job.reuse_attempts >= job.reuse_limit or time.monotonic() >= deadline:
             return matched
+        if transfers_exhausted():
+            incomplete = True
+            break
         resume(-b['id'] if phase else b['id'])
         pb = mine.get(b['id'])
         if pb is None or pb.asm or not MIN_BYTES <= pb.size <= MAX_BYTES:
@@ -363,6 +375,9 @@ def run(twins, slug: str, job) -> int:
             for variant, settings, kind in variants:
                 if exhausted():
                     return matched
+                if transfers_exhausted():
+                    incomplete = True
+                    break
                 candidate = prelude + variant
                 outcome, why = attempt(a, b, other, score, candidate, settings, kind, names, header_b)
                 # Easy transfers get the first pass through the budget. Then repair the closest compiled misses.
@@ -374,28 +389,41 @@ def run(twins, slug: str, job) -> int:
                         repairs[pair] = (int(close[1]), a, b, other, score, prelude, variant, settings, names, header_b, dict(feedback))
                 if outcome == 'match':
                     break
+            if incomplete:
+                break
             if net.store.one('SELECT status FROM functions WHERE id=?', b['id'])['status'] == 'matched':
                 break
+        if incomplete:
+            break
     # Cached trials regenerate this deterministic queue, so a later pass resumes even after an app restart.
-    for _, a, b, other, score, prelude, source, settings, names, header, report in sorted(repairs.values(), key=lambda r: r[0]):
+    # Concrete address evidence goes before speculative cast/order mutations within the repair allowance.
+    known = {name for name, _ in symbol_state}
+    prepared = [(address_repairs.variants(r[5] + r[6], r[10], r[2], bool(proj['big_endian']), known), r)
+                for r in repairs.values()]
+    prepared.sort(key=lambda item: (not item[0], item[1][0]))
+    for address_variants, (_, a, b, other, score, prelude, source, settings, names, header, report) in prepared:
         if exhausted():
-            resume(0)
+            if not incomplete:
+                resume(0)
             return matched
         if net.store.one('SELECT status FROM functions WHERE id=?', b['id'])['status'] != 'open':
             continue
-        guided = []
+        guided = list(address_variants)
         if report.get('candidate_target'):
             compiled = {'target': bytes.fromhex(report['candidate_target']), 'relocs': report.get('candidate_relocs', '[]')}
-            guided = literal_variants(source, compiled, b, bool(proj['big_endian']))
+            guided.extend(literal_variants(prelude + source, compiled, b, bool(proj['big_endian'])))
         simple = repair_variants(source, report)
         deep = deeper_variants(source, header + '\n' + prelude, settings, b['name'], deadline)
-        variants = [*guided, *(simple[:MAX_REPAIRS // 2] if deep else simple), *deep]
+        variants = [*guided, *(prelude + v for v in (simple[:MAX_REPAIRS // 2] if deep else simple)),
+                    *(prelude + v for v in deep)]
         for variant in list(dict.fromkeys(variants))[:MAX_REPAIRS]:
             if exhausted():
-                resume(0)
+                if not incomplete:
+                    resume(0)
                 return matched
-            outcome, _ = attempt(a, b, other, score, prelude + variant, settings, 'repair', names, header)
+            outcome, _ = attempt(a, b, other, score, variant, settings, 'repair', names, header)
             if outcome == 'match':
                 break
-    resume(0)
+    if not incomplete:
+        resume(0)
     return matched

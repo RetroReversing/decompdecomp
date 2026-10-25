@@ -256,6 +256,10 @@ def register(app: App) -> None:
                 net.knowledge.decide(slug, int(data.get("id") or 0), bool(data.get("accept")))
         return net.knowledge.listing(slug)
 
+    def p_split_rom(slug, request, data):
+        return {"message": net.split_rom_by_you(slug, str(data.get("name", "")), str(data.get("at", "")),
+                                                str(data.get("new_name", "")))}
+
     def p_join_rom(slug, request, data):
         names = data.get("functions") or []
         if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
@@ -264,6 +268,7 @@ def register(app: App) -> None:
 
     routes = {
         "/api/project": (p_overview, ["GET"]),
+        "/api/split-rom": (p_split_rom, ["POST"]),
         "/api/join-rom": (p_join_rom, ["POST"]),
         "/api/knowledge": (p_knowledge, ["GET", "POST"]),
         "/api/modelcosts": (lambda s, r, d: manager.costs(s), ["GET"]),
