@@ -732,18 +732,25 @@ class ForkEngine:
         which ones the project has, instead of failing deep in the build."""
         originals = fp.splat_baseroms() if fp.kind() == "splat" else {}
         if originals:
-            import hashlib
+            from ..consoles.n64.rom import z64_file_sha1
 
             if game.stat().st_size == 0:
                 raise NetworkError("that ROM file is empty (0 bytes). Select a complete copy of the game.")
-            digest = hashlib.sha1()
-            with game.open("rb") as stream:
-                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                    digest.update(chunk)
-            version = next((v for v, sha1 in originals.items() if sha1 == digest.hexdigest()), None)
+            normalized = z64_file_sha1(game)
+            if normalized:
+                digest, byte_order = normalized
+            else:
+                raw = hashlib.sha1()
+                with game.open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        raw.update(chunk)
+                digest, byte_order = raw.hexdigest(), None
+            version = next((v for v, sha1 in originals.items() if sha1 == digest), None)
             if version is None:
                 raise NetworkError("that ROM's SHA-1 doesn't match an original ROM supported by this project: "
                                    + ", ".join(f"{v}: {sha1}" for v, sha1 in originals.items()))
+            if byte_order in ("n64", "v64"):
+                log(f"your {byte_order} ROM matches after conversion to z64 byte order")
             if version != cfg.get("version"):
                 log(f"your ROM matches the project's {version} version")
                 cfg["version"] = version

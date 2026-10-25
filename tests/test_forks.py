@@ -81,6 +81,30 @@ def test_splat_generated_target_uses_original_rom_versions(tmp_path, monkeypatch
         engine._match_version(SimpleNamespace(), fp, cfg, game, log=lambda *_: None)
 
 
+@pytest.mark.parametrize("fmt", ["v64", "n64"])
+def test_splat_accepts_other_n64_byte_orders(tmp_path, monkeypatch, fmt):
+    from decompnet.app.forkengine import ForkEngine
+
+    original = b"\x80\x37\x12\x40" + bytes(range(64))
+    digest = hashlib.sha1(original).hexdigest()
+    (tmp_path / "Makefile").write_text("VERSION ?= pal\nBASEROM := baserom.$(VERSION).z64\n"
+                                       "DECOMPRESSED_BASEROM := decompressed.$(VERSION).z64\n")
+    (tmp_path / "README.md").write_text(f"`baserom.pal.z64`: `{digest}`\n")
+    (tmp_path / "decompressed.pal.yaml").write_text("options:\n  target_path: decompressed.pal.z64\n"
+                                                      f"  sha1: {'e' * 40}\nsegments: []\n")
+    width = 2 if fmt == "v64" else 4
+    game = tmp_path / f"my-copy.{fmt}"
+    game.write_bytes(b"".join(original[i:i + width][::-1] for i in range(0, len(original), width)))
+    fp = ForkProject(tmp_path)
+    cfg = {}
+    engine = object.__new__(ForkEngine)
+    monkeypatch.setattr(ForkEngine, "_save_cfg", lambda _self, _proj, _cfg: None)
+    engine._match_version(SimpleNamespace(), fp, cfg, game, log=lambda *_: None)
+    assert cfg["version"] == "pal"
+    assert fp.place_game(game, game.name, cfg["version"]).read_bytes() == original
+    assert game.read_bytes() != original
+
+
 @pytest.fixture(scope="module")
 def fork(tmp_path_factory):
     base = tmp_path_factory.mktemp("fork")
