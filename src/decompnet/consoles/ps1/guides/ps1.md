@@ -24,8 +24,9 @@ with the game. Their functions are worth naming (rename_symbol) from what they d
 game's own code calls them a lot.
 
 GTE (coprocessor 2, the geometry engine): `mtc2`/`mfc2`/`ctc2`/`cfc2`, `lwc2`/`swc2` and commands like `RTPS` or
-`NCLIP` come from PSY-Q's GTE macros (`gte_ldv0`, `gte_rtps`...), inline assembly: a function made of them is set
-aside as assembly. So is a BIOS call stub (`li t2, 0xB0; jr t2; li t1, n`).
+`NCLIP` often come from PSY-Q's GTE macros (`gte_ldv0`, `gte_rtps`...). Their presence alone is not a reason
+to set aside a function: use the supported fixed intrinsics below. A BIOS call stub
+(`li t2, 0xB0; jr t2; li t1, n`) is a different case: it may genuinely be handwritten assembly.
 
 Typical patterns: `jtbl_` jump tables in .rodata for dense switches; overlays loaded at the same address (each a
 segment of its own); `D_800xxxxx` data and `func_800xxxxx` names for what nobody named yet.
@@ -45,3 +46,51 @@ Old SDK reference objects may contain DMPSX command placeholders instead of fina
 only recognised named operations when preparing local reference objects; never count a masked object shape
 as a C match. Whole-source-file context is useful for declarations and identity, but extracted C must pass
 the same judge with the actual function's compiler settings and original overlay data.
+
+## Recovering matches from local source without model calls
+
+If the user supplies reference source, compile candidates in batches before spending time on individual
+functions. Start with the largest unmatched functions whose identity is supported by verified neighbours
+or call references. Use an isolated project copy; only import candidates that pass the ordinary linked-byte
+judge, and regression-check existing matches after shared changes.
+
+### Keep the PS1 build context
+
+Use each source revision with its own headers and PS1 build defines. A later port can retain familiar function
+names while changing types, helpers and control flow. Dreamcast renderer or audio declarations are not missing
+PS1 declarations: exclude the wrong platform branch rather than inventing replacement types.
+
+When an old compiler prints a garbled undeclared name, a modern compiler's syntax-only diagnostics can identify
+it. Use that compiler for diagnostics only; the period compiler still decides the match. Restore declarations
+from the appropriate source headers and confirm load/store widths against the game. Check preprocessor output:
+SDK register macros can accidentally expand struct fields named `v0` or `v1`. Repair the preprocessing context
+instead of adding fictitious fields to make the error disappear.
+
+### Sweep helper differences across source files
+
+A helper mismatch can affect many otherwise correct functions:
+
+- A texture lookup may have been a string-to-CRC call followed by a CRC lookup in the PS1 build. Verify both
+  call destinations before applying that expansion to related candidates.
+- A debug allocator may take size, source filename and line number, while a later wrapper takes only size.
+  Recover each call's arguments from the target and check the filename bytes in the correct segment. A filename
+  pointer may be kept in a saved register across calls; a short scan immediately before the call can miss it.
+- A port may compile out a disc-availability check. Restoring the evidenced call can also restore register
+  allocation and stack size; compiler-flag searches cannot compensate for missing control flow.
+
+Preserve compiler-recognised names such as `strcpy` when assigning address aliases. Period GCC can inline a
+constant-string copy; renaming it to an arbitrary address symbol can turn it into a call. Likewise, replacing
+its string literal with an external pointer can hide the length and change generated instructions. Keep the
+literal visible and let the judge verify its linked data references. Do not count matching relocation-masked
+instructions as a verified match.
+
+### Repair only what the evidence supports
+
+Text enums can differ between source revisions. Propose candidate-local corrections using the target's
+immediates and check every linked byte; do not shift all text IDs or rewrite shared enums on one observation.
+For function boundaries, combine a return and delay slot, the next prologue, and callers or callback-table
+references. A compiler size mismatch alone does not justify splitting a function. Overlay references must be
+read from the function's own segment, even when multiple overlays share a RAM address.
+
+Record unsuccessful candidates separately from verified matches. Report matched bytes as well as function
+counts, and retain the original project snapshot so a bulk import remains reviewable.
