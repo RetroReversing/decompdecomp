@@ -1,0 +1,152 @@
+"""Bounded search can chain edits and resume without accepting a heuristic score as a match."""
+import json
+
+from decompnet.app import iterative_repairs as search
+from decompnet.app.twins import Job
+
+from .test_similar_matches import pair as pair_fixture
+
+pair = pair_fixture
+
+
+def seed():
+    return dict(pending=[dict(source='seed', depth=0, ceiling=20)], next=[], seen=['seed'])
+
+
+def test_chains_improving_edits_and_resumes_serialized_frontier():
+    state, calls = seed(), []
+    def evaluate(source):
+        calls.append(source)
+        return dict(score={'seed':20, 'step':10, 'done':0}[source], matched=source == 'done')
+    variants = lambda source, report: {'seed':['step'], 'step':['done']}[source]
+    assert not search.advance(state, evaluate, variants, lambda: len(calls) >= 2)
+    state = json.loads(json.dumps(state))
+    assert search.advance(state, evaluate, variants, lambda: False)
+    assert calls == ['seed', 'step', 'done']
+
+
+def test_plateau_alternatives_but_not_worse_or_failed_builds():
+    state, expanded = seed(), []
+    def variants(source, report):
+        expanded.append(source)
+        return ['worse', 'bad', 'equal', 'zero'] if source == 'seed' else []
+    reports = {'seed':20, 'worse':30, 'bad':None, 'equal':20, 'zero':0}
+    assert not search.advance(state, lambda s: dict(score=reports[s], matched=False), variants, lambda: False)
+    assert expanded == ['seed', 'equal']
+
+
+def test_depth_and_width_bound_cycles_and_branching():
+    state, calls = seed(), []
+    def evaluate(source):
+        calls.append(source)
+        return dict(score=20, matched=False)
+    assert not search.advance(state, evaluate, lambda s, r: [s+str(i) for i in range(8)] + ['seed'], lambda: False)
+    assert len(calls) == 1 + 8 + 24 + 24
+    assert len(calls) == len(set(calls))
+
+
+def test_busy_and_stopped_preserve_pending_work():
+    state = seed()
+    assert not search.advance(state, lambda s: None, lambda *a: [], lambda: False)
+    assert state == seed()
+    assert not search.advance(state, lambda s: 1/0, lambda *a: [], lambda: True)
+    assert state == seed()
+
+
+def test_cached_frontier_and_context_invalidation(pair, monkeypatch):
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET best_source='seed',best_score=20,n_insns=8 WHERE id=2")
+    calls = []
+    monkeypatch.setattr(pair, 'try_quietly', lambda a,p,f,s: calls.append(s) or dict(matched=False,score=20))
+    from decompnet.app import address_repairs, similar_matches
+    monkeypatch.setattr(address_repairs, 'variants', lambda *a: [])
+    monkeypatch.setattr(similar_matches, 'repair_variants', lambda *a: [])
+    assert search.run(pair.twins, 'destination', Job()) == 0
+    assert search.run(pair.twins, 'destination', Job()) == 0
+    assert calls == ['seed']
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET target=? WHERE id=2", (b'new target',))
+    search.run(pair.twins, 'destination', Job())
+    assert calls == ['seed', 'seed']
+    assert pair._function('new', 'destination')['status'] == 'open'
+
+
+def test_run_chains_repairs_and_counts_only_verified_match(pair, monkeypatch):
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET best_source='seed',best_score=20,n_insns=8 WHERE id=2")
+    from decompnet.app import address_repairs, similar_matches
+    monkeypatch.setattr(address_repairs, 'variants', lambda s,*a: {'seed':['step'], 'step':['done']}.get(s, []))
+    monkeypatch.setattr(similar_matches, 'repair_variants', lambda *a: [])
+    seen = []
+    def judge(a,p,f,s):
+        seen.append(s)
+        return dict(matched=s == 'done', score={'seed':20, 'step':10, 'done':0}[s])
+    monkeypatch.setattr(pair, 'try_quietly', judge)
+    job = Job()
+    assert search.run(pair.twins, 'destination', job) == 1
+    assert seen == ['seed', 'step', 'done']
+    assert job.reuse_matched == 1 and job.reuse_bytes == 32 and job.reuse_attempts == 3
+
+
+def test_wave_quota_resumes_and_claims_are_skipped(pair, monkeypatch):
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET best_source='seed',best_score=20,n_insns=8 WHERE id=2")
+    from decompnet.app import address_repairs, free_candidates, similar_matches
+    monkeypatch.setattr(address_repairs, 'variants', lambda s,*a: [s+'x'])
+    monkeypatch.setattr(similar_matches, 'repair_variants', lambda *a: [])
+    calls = []
+    monkeypatch.setattr(pair, 'try_quietly', lambda a,p,f,s: calls.append(s) or dict(matched=False,score=20))
+    job = Job()
+    free_candidates.budget(job, attempts=1)
+    search.run(pair.twins, 'destination', job)
+    assert calls == ['seed'] and job.reuse_attempts == 1
+    job = Job()
+    free_candidates.budget(job, attempts=1)
+    search.run(pair.twins, 'destination', job)
+    assert calls == ['seed', 'seedx']
+    with pair.store.tx() as db:
+        db.execute('INSERT INTO claims VALUES(2,1,0,99999999999)')
+    search.run(pair.twins, 'destination', Job())
+    assert calls == ['seed', 'seedx']
+
+
+def test_rotation_survives_new_jobs(pair, monkeypatch):
+    from decompnet.app import address_repairs, free_candidates, similar_matches
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET best_source='seed',best_score=20,n_insns=8 WHERE id=2")
+        db.execute("INSERT INTO functions(id,project_id,name,target,relocs,status,vram,size,n_insns,best_source,best_score) "
+                   "SELECT 3,project_id,'later',target,relocs,status,vram+32,size,n_insns,best_source,best_score FROM functions WHERE id=2")
+    monkeypatch.setattr(address_repairs, 'variants', lambda s,*a: [s+'x'])
+    monkeypatch.setattr(similar_matches, 'repair_variants', lambda *a: [])
+    visited = []
+    monkeypatch.setattr(pair, 'try_quietly', lambda a,p,f,s: visited.append(f['id']) or dict(matched=False,score=20))
+    for _ in range(3):
+        job = Job()
+        free_candidates.budget(job, attempts=1)
+        search.run(pair.twins, 'destination', job)
+    assert visited == [2, 3, 2]
+
+
+def test_optional_phase_disabled_and_independent_of_exhausted_normal_budget(pair, monkeypatch):
+    from decompnet.app import free_candidates
+    parent = Job()
+    free_candidates.budget(parent, attempts=1)
+    parent.reuse_attempts = 1
+    called = []
+    def run(twins, slug, job):
+        assert job.stop is parent.stop
+        assert job.reuse_attempts == 0 and job.reuse_limit == 7
+        assert job.reuse_deadline > __import__('time').monotonic()
+        job.reuse_attempts = 2
+        called.append(job)
+        return 0
+    monkeypatch.setattr(search, 'run', run)
+    assert search.optional_phase(pair.twins, 'destination', parent) == 0
+    assert not called
+    pair.cascades.configure(False, iterative_enabled=True, iterative_attempts=7)
+    search.optional_phase(pair.twins, 'destination', parent)
+    assert len(called) == 1 and parent.reuse_attempts == 1
+    assert pair.store.one('SELECT attempts FROM iterative_runs')['attempts'] == 2
+    parent.stop.set()
+    search.optional_phase(pair.twins, 'destination', parent)
+    assert len(called) == 1

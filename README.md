@@ -37,6 +37,19 @@ This fork of [NDelic's decompdecomp](https://github.com/n-delic/decompdecomp) ad
 The original decomp.wtf and decompdecomp credits and licenses are preserved. Report fork issues to
 [RetroReversing/decompdecomp](https://github.com/RetroReversing/decompdecomp/issues).
 
+## Independently linked code images
+
+Projects with compressed game code or overlays can export their verified linked functions through
+`decompnet.forks.linkedimages.export`. These are normal objdiff units: original-image bytes form immutable
+references, and only source-backed, relocated bodies that pass the project's image gates become candidates.
+Assembly passthrough functions remain in the denominator without counting as recovered C. Source checksums
+invalidate stale candidates. Population identifiers distinguish overlays even when their RAM addresses overlap.
+
+The overview shows code-byte-weighted totals and a breakdown by image. This covers known function extents;
+data and unidentified regions are excluded. These special image snapshots are read-only in the app: change their
+sources through the project's promotion/build workflow and use **Check again**. Ordinary object units keep their
+existing agent workflow. See [the export contract](docs/linked-image-progress.md).
+
 ## Autopilot on imported projects
 
 Autopilot can try machine drafts in imported projects with writable C files and a supported draft decompiler.
@@ -61,6 +74,8 @@ Every accepted candidate must compile and link to the destination's exact bytes.
   before a used field, based on aligned memory operands. These proposals support simple scalar/pointer fields
   and common fixed-width aliases; packed types, bitfields, unions and ambiguous offsets are skipped. Shared
   headers are never rewritten. Ambiguous mappings, dynamic indices and unproven strides are skipped.
+  Numeric ID macros used once to index an explicit 32-bit table can be corrected from aligned word offsets;
+  ambiguous declarations, macro uses and relocations are skipped.
   Saved best attempts get the same address checks before wider donor searches; probe feedback and failed edits
   are cached and share the ordinary search budget. These edits affect only candidate C; shared symbols and types stay unchanged. An already-installed decomp-permuter
   supplies a small additional batch when time remains.
@@ -81,6 +96,15 @@ Settings lets you disable automatic reuse and adjust its time and compile limits
 128 attempts). A whole automatic wave shares one budget, including exact transfers. Manual autopilot keeps its
 existing exact-transfer phase, then shares the additional budget between templates, libraries and similarity repairs.
 The last search reports verified bytes, attempts and bytes per minute of elapsed time, not CPU time.
+
+In Settings, optionally enable **deeper iterative repairs** after normal autopilot. This experimental phase is
+**off by default**, with its own additional 120-second / 128-attempt budget (both adjustable). Normal matching
+finishes first and keeps its full allowance; automatic background reuse does not start this extra phase.
+Iterative repairs try up to three edit rounds and keep the best three improving/equal-score alternatives.
+Each function gets at most eight new compilations per pass. A persistent round-robin cursor continues with the
+next function on the next pass, instead of repeatedly prioritising the closest candidates. Unfinished frontiers
+survive restarts. The phase records its own results and adds a summary note; only exact judge matches count.
+
 
 Global-address repairs also track symbolic MIPS upper halves through straight-line instructions to later
 load/store offsets. Register clobbers, branches, calls and unknown instructions stop tracking; conflicting
