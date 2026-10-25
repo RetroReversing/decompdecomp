@@ -782,12 +782,12 @@ class Twins:
         """What exact transfers tried, including failures and where accepted C came from."""
         proj = self.net.project_row(slug)
         rows = self.net.store.all(
-            "SELECT a.outcome,a.reason,a.created_at,f.name AS target,s.name AS source,p.name AS game "
+            "SELECT a.outcome,a.reason,a.created_at,f.name AS target,s.name AS source,p.name AS game,p.slug AS source_slug "
             "FROM cross_game_attempts a JOIN functions f ON f.id=a.function_id "
             "JOIN functions s ON s.id=a.source_function_id JOIN projects p ON p.id=a.source_project_id "
             "WHERE a.project_id=? ORDER BY a.id DESC LIMIT 30", proj["id"])
         matches = self.net.store.all(
-            "SELECT a.outcome,a.reason,a.created_at,f.name AS target,s.name AS source,p.name AS game "
+            "SELECT a.outcome,a.reason,a.created_at,f.name AS target,s.name AS source,p.name AS game,p.slug AS source_slug "
             "FROM cross_game_attempts a JOIN functions f ON f.id=a.function_id "
             "JOIN functions s ON s.id=a.source_function_id JOIN projects p ON p.id=a.source_project_id "
             "WHERE a.project_id=? AND a.outcome='match' ORDER BY a.id DESC LIMIT 30", proj["id"])

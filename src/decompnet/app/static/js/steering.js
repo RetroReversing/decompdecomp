@@ -237,10 +237,16 @@ function renderAutopilot(ov) {
       const similarity = (r.reason || "").match(/similar code \((\d+)%\)/);
       const score = (r.reason || "").match(/score\s+(\d+)/);
       const detail = [similarity ? `Assembly similarity: ${similarity[1]}%` : "", !matched && score ? `Mismatch score: ${score[1]} (0 = exact)` : ""].filter(Boolean).join(" · ");
-      return `<li><div class="row"><b>${esc(r.target)}</b><span class="badge ${matched ? "matched" : ""}">${esc(status)}</span></div>
-        <div class="muted small">Candidate source: ${esc(r.game)} → ${esc(r.source)}</div>
+      const targetLink = `<button class="fn" type="button" data-transfer-function="${esc(r.target)}" data-slug="${esc(ov.slug)}" title="Open target function"><b>${esc(r.target)}</b></button>`;
+      const sourceLink = r.source_slug ? `<button class="fn" type="button" data-transfer-function="${esc(r.source)}" data-slug="${esc(r.source_slug)}" title="Open original function in ${esc(r.game)}">${esc(r.source)}</button>` : esc(r.source);
+      return `<li><div class="row">${targetLink}<span class="badge ${matched ? "matched" : ""}">${esc(status)}</span></div>
+        <div class="muted small">Candidate source: ${esc(r.game)} → ${sourceLink}</div>
         ${detail ? `<div class="muted small">${esc(detail)}</div>` : ""}</li>`;
     }).join("") || `<li class="muted small">${successes ? "No verified transfers to show." : "No recent transfer attempts."}</li>`;
+  };
+  $("crossGameRecent").onclick = e => {
+    const button = e.target.closest("button[data-transfer-function]");
+    if (button) openNoted(button.dataset.slug, button.dataset.transferFunction);
   };
   $("crossGameFilter").onchange = renderTransfers;
   renderTransfers();

@@ -415,3 +415,5 @@ def test_successful_transfers_remain_available_after_many_recent_misses(pair):
     result = pair.twins.cross_game_results('destination')
     assert all(r['outcome'] == 'miss' for r in result['recent'])
     assert len(result['matches']) == 1 and result['matches'][0]['outcome'] == 'match'
+    assert result['matches'][0]['source_slug'] == 'source'
+    assert result['recent'][0]['source_slug'] == 'source'
