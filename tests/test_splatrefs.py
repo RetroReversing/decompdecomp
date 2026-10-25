@@ -137,6 +137,7 @@ def synthetic_project(root, platform):
 def test_generated_targets_are_rom_derived_and_failed_generation_is_atomic(tmp_path, monkeypatch, platform):
     cfg = synthetic_project(tmp_path, platform)
     source_before = (tmp_path / 'src/demo.c').read_bytes()
+    includes_before = {p.relative_to(tmp_path): p.read_bytes() for p in (tmp_path / 'include').rglob('*') if p.is_file()}
     real_verify = splatrefs.verify
     monkeypatch.setattr(splatrefs, 'verify', lambda *a: (_ for _ in ()).throw(ForkError('injected verification failure')))
     with pytest.raises(ForkError, match='injected verification failure'):
@@ -155,6 +156,7 @@ def test_generated_targets_are_rom_derived_and_failed_generation_is_atomic(tmp_p
     assert expected != candidate
     assert expected == (tmp_path / 'baserom.z64').read_bytes()
     assert (tmp_path / 'src/demo.c').read_bytes() == source_before
+    assert {p.relative_to(tmp_path): p.read_bytes() for p in (tmp_path / 'include').rglob('*') if p.is_file()} == includes_before
     assert cfg['segments'][0]['subsegments'][0][1] == 'c'
     assert not splatrefs.generate(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, consoles.get(platform))
 

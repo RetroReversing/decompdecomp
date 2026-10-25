@@ -252,7 +252,8 @@ def assemble(root: Path, work: Path, unit: dict, definitions: dict, image: bytes
     source.write_text('\n'.join(path.read_text(encoding='utf-8') for path in parts), encoding='utf-8')
     target = work / 'objects' / (name + '.o')
     target.parent.mkdir(parents=True, exist_ok=True)
-    run([assembler, *flags, '-I', str(root / 'include'), '-o', str(target), str(source)], root, log)
+    run([assembler, *flags, '-I', str(work / 'include'), '-I', str(root / 'include'),
+         '-o', str(target), str(source)], root, log)
     definitions = dict(definitions)
     with target.open('rb') as stream:
         elf = ELFFile(stream)
@@ -326,6 +327,7 @@ def generate(project, config_path: Path, config: dict, console, log=print) -> bo
                 opts[key] = [str(inside(original_base, value)) for value in values] if isinstance(values, list) else str(
                     inside(original_base, values))
         opts.update(base_path=str(root), target_path=str(image_path), asm_path=str(work / 'asm'),
+                    generated_asm_macros_directory=str(work / 'include'),
                     src_path=str(work / 'src'), asset_path=str(work / 'assets'), build_path=str(work / 'objects'),
                     ld_script_path=str(work / 'reference.ld'), elf_path=str(work / 'reference.elf'),
                     undefined_funcs_auto_path=str(work / 'undefined_funcs.txt'),
