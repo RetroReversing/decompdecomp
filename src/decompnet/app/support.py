@@ -241,6 +241,8 @@ class Settings:
         eps = [masked(e) for e in self.endpoints()]
         return {"endpoints": eps, "api": eps[0] if eps else {},
                 "per_session": self.data.get("per_session", PER_SESSION), "last_project": self.data.get("last_project"),
+                "reuse_auto": self.data.get("reuse_auto", True), "reuse_seconds": self.data.get("reuse_seconds", 120),
+                "reuse_attempts": self.data.get("reuse_attempts", 128),
                 "autopilot": self.data.get("autopilot", True), "budget_usd": self.data.get("budget_usd") or 0,
                 "auto_update": bool(self.data.get("auto_update")), "check_updates": self.data.get("check_updates", True) is not False,
                 "auto_compiler": bool(self.data.get("auto_compiler")),

@@ -240,6 +240,11 @@ def test_two_renames_at_once_both_reach_every_file(tmp_path, monkeypatch):
     assert source.read_text() == "int Identity(int x) { return x; }\nint Pass(int x) { return Identity(x); }\n"
     names = json.loads((root / "config" / "v" / "functions.json").read_text())["names"]
     assert names == {"func_00401000": "Identity", "func_00401010": "Pass"}
+    for fn in net.store.all("SELECT name,meta FROM functions WHERE project_id=?", net.project_row("p")["id"]):
+        assert json.loads(fn["meta"])["naming"]["name"] == json.loads(fn["meta"])["real"]
+    net.forks.sync("p", log=lambda *_: None)
+    assert all(json.loads(fn["meta"]).get("naming") for fn in net.store.all(
+        "SELECT meta FROM functions WHERE project_id=?", net.project_row("p")["id"]))
 
 
 def test_an_agents_constructor_and_destructor_name_the_functions_they_are(tmp_path, monkeypatch):

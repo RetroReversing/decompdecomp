@@ -30,6 +30,7 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:
 exec "$HERE/../Runtime/bin/python3.12" -m decompnet.app.cli "$@"
 LAUNCH
 chmod 755 "$CONTENTS/MacOS/decompdecomp"
+cp "$ROOT/src/decompnet/app/static/icon.icns" "$CONTENTS/Resources/decompdecomp.icns"
 cat > "$CONTENTS/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -41,6 +42,7 @@ cat > "$CONTENTS/Info.plist" <<EOF
 <key>CFBundleShortVersionString</key><string>$VERSION</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleExecutable</key><string>decompdecomp</string>
+<key>CFBundleIconFile</key><string>decompdecomp.icns</string>
 <key>LSMinimumSystemVersion</key><string>12.0</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>

@@ -528,9 +528,17 @@ class Twins:
             self.run(slug, job)
             job.state = "running"  # run() finishes its local pass; cross-project work is still cancellable
             job.matched += self.across_games(slug, job)
-            from . import similar_matches
+            from . import free_candidates, similar_matches
 
+            free_candidates.budget(job, self.net.cascades.seconds, self.net.cascades.attempts)
+            started = time.monotonic()
+            job.matched += free_candidates.run(self, slug, job)
             job.matched += similar_matches.run(self, slug, job)
+            with self.net.store.tx() as db:
+                db.execute('INSERT INTO reuse_runs(project_id,attempts,matched,bytes,seconds,created_at) VALUES(?,?,?,?,?,?)',
+                           (proj['id'], job.reuse_attempts, job.reuse_matched,
+                            job.reuse_bytes, time.monotonic() - started, time.time()))
+            self.reuse_names(slug, job)
             self.update_boosts(self.net.project_row(slug))
         finally:
             job.ordered.set()
@@ -613,6 +621,8 @@ class Twins:
         fork = bool(self.net.fork_slug(slug))
         if not (fork or self.net.is_rom(proj)) or slug in self.net.links:
             return 0
+        from .free_candidates import exhausted
+        bounded = job is not None and hasattr(job, 'reuse_limit')
         cfg = self.net.cfg(proj)
         mine = self.prints(proj)
         wanted: dict[str, list[int]] = defaultdict(list)
@@ -626,6 +636,8 @@ class Twins:
             "SELECT * FROM projects WHERE id != ? AND arch=? AND big_endian=?",
             proj["id"], proj["arch"], proj["big_endian"]) if self.net.is_rom(p)] if not fork else []
         for other in others:
+            if bounded and exhausted(job):
+                return 0
             self.index_project(other)
         agent, _ = self.net.local_agent("autopilot")
         matched = 0
@@ -640,6 +652,14 @@ class Twins:
                     except Exception:  # another project that can't be read now (moved, half set up): never in the way
                         log.exception("twins: %s from %s", slug, other["slug"])
                 continue
+        if not fork:
+            # Imported projects do not necessarily fill the database's architecture columns.
+            for other in self.net.store.all("SELECT * FROM projects WHERE id != ?", proj["id"]):
+                if self.net.fork_slug(other["slug"]) and other["slug"] not in self.net.links:
+                    try:
+                        matched += self._fork_to_rom(agent, proj, other, wanted, mine, job)
+                    except Exception:
+                        log.exception("twins: ROM %s from imported %s", slug, other["slug"])
         by_id = {p["id"]: p for p in others}
         sources = []
         keys = list(wanted)
@@ -664,6 +684,8 @@ class Twins:
             if pa is None:
                 continue
             for b_id in wanted.get(a["fingerprint"], []):
+                if bounded and exhausted(job):
+                    return matched
                 b = self.net.store.one("SELECT * FROM functions WHERE id=? AND status='open'", b_id)
                 if b is None or self._compiler_key(compiler_for(cfg, b["vram"])) != a["compiler"]:
                     continue
@@ -679,6 +701,8 @@ class Twins:
                     continue
                 if job is not None:
                     job.cross_tried += 1
+                if bounded:
+                    job.reuse_attempts += 1
                 outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}")
                 with self.net.store.tx() as db:
                     db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,"
@@ -688,6 +712,9 @@ class Twins:
                         db.execute("INSERT OR REPLACE INTO twin_misses(function_id, source_hash, project_id, at, why) "
                                    "VALUES(?,?,?,?,?)", (b_id, self._miss_key(source), proj["id"], time.time(), why))
                 if outcome == "match":
+                    if bounded:
+                        job.reuse_matched += 1
+                        job.reuse_bytes += b["size"]
                     matched += 1
                     if job is not None:
                         job.cross_matched += 1
@@ -833,6 +860,155 @@ class Twins:
                            "VALUES(?,?,?,?,?,?)", signatures)
         return len(signatures)
 
+    def reuse_names(self, slug: str, job: Job | None = None, *, donor_slug: str | None = None) -> int:
+        """Infer names from exact verified donors, preserving existing names and rejecting ambiguity.
+
+        These are inferred names, not proof of the original source's spelling. Tiny generic functions
+        are excluded. The normal rename operation checks all existing matches before saving changes.
+        """
+        from .. import consoles
+        from .function_names import generated, record
+        from .function_names import state as name_state
+
+        proj = self.net.project_row(slug)
+        if slug in self.net.links:
+            return 0
+        cfg = self.net.cfg(proj)
+        console = consoles.of(cfg)
+        mine = self.prints(proj)
+        wanted = {p.key for p in mine.values() if p.size >= ACROSS_MIN_BYTES and not p.asm}
+        donors = defaultdict(dict)
+        for other in self.net.store.all("SELECT * FROM projects WHERE id != ?", proj["id"]):
+            if job is not None and job.stop.is_set():
+                return 0
+            if donor_slug is not None and other["slug"] != donor_slug:
+                continue
+            if other["slug"] in self.net.links:
+                continue
+            try:
+                con = consoles.of(self.net.cfg(other))
+                if (con.arch, con.big_endian) != (console.arch, console.big_endian):
+                    continue
+                rows = self.net.store.all("SELECT id,name,meta FROM functions WHERE project_id=? AND status='matched'",
+                                          other["id"])
+                if not rows:
+                    continue
+                prints = self.prints(other)
+                for row in rows:
+                    p = prints.get(row["id"])
+                    name = (json.loads(row["meta"] or "{}").get("real") or p.name or row["name"].split("@")[0]) if p else ""
+                    if p and p.key in wanted and not p.asm and IDENT.fullmatch(name) and not generated(name):
+                        donors[p.key].setdefault(name, {"source_project": other["slug"],
+                                                       "source_function_id": row["id"], "source_name": name})
+            except (NetworkError, OSError, ValueError):
+                continue  # moved or incompletely prepared donor
+        rows = self.net.store.all("SELECT * FROM functions WHERE project_id=?", proj["id"])
+        taken = {r["name"] for r in rows}
+        candidates = []
+        for row in rows:
+            p = mine.get(row["id"])
+            choices = donors.get(p.key, {}) if p else {}
+            naming = name_state(row)
+            if naming["named"] or naming["renamed"] or len(choices) != 1:
+                continue
+            name, provenance = next(iter(choices.items()))
+            if name in taken or self.net.store.one("SELECT 1 FROM claims WHERE function_id=?", row["id"]):
+                continue
+            candidates.append((row, name, provenance))
+        # A shared fingerprint can occur several times in the target. Do not pick an arbitrary owner.
+        counts = defaultdict(int)
+        for _, name, _ in candidates:
+            counts[name] += 1
+        candidates = [(r, n, p) for r, n, p in candidates if counts[n] == 1][:32]
+        if not candidates or (job is not None and job.stop.is_set()):
+            return 0
+        agent, _ = self.net.local_agent("autopilot")
+        if not self.net.fork_slug(slug):
+            try:
+                result = self.net.rename_symbols(agent, slug, [(r["name"], n) for r, n, _ in candidates],
+                                                 "Names inferred from exact verified functions in other projects")
+            except (NetworkError, OSError, ValueError):
+                return 0
+            if not result.startswith("✅"):
+                return 0
+            with self.net.store.tx() as db:
+                for row, name, provenance in candidates:
+                    record(db, row["id"], row["name"], name, method="exact_cross_game", **provenance)
+            return len(candidates)
+        renamed = 0
+        for row, name, provenance in candidates[:4]:
+            if job is not None and job.stop.is_set():
+                break
+            try:
+                result = self.net.rename_symbol(agent, slug, row["name"], name,
+                                                "Name inferred from an exact verified function in "
+                                                + provenance["source_project"])
+            except (NetworkError, OSError, ValueError):
+                continue
+            if not result.startswith("✅"):
+                continue
+            with self.net.store.tx() as db:
+                record(db, row["id"], row["name"], name, method="exact_cross_game", **provenance)
+            renamed += 1
+        return renamed
+
+    def _fork_to_rom(self, agent, proj, other, wanted, mine, job) -> int:
+        """Try imported, verified C against identical ROM fingerprints; only the ROM judge accepts it.
+
+        Donor headers are deliberately not installed in the ROM project. Self-contained functions and
+        declarations already available in its context work; missing dependencies remain ordinary misses.
+        """
+        from .. import consoles
+
+        _, fp, cfg = self.net.forks.get(other["slug"])
+        console = consoles.of(cfg)
+        if console.arch != proj["arch"] or console.big_endian != bool(proj["big_endian"]):
+            return 0
+        bounded = job is not None and hasattr(job, "reuse_limit")
+        theirs = self.prints(other)
+        matched = 0
+        for a in self.net.store.all("SELECT * FROM functions WHERE project_id=? AND status='matched'", other["id"]):
+            pa = theirs.get(a["id"])
+            if pa is None or pa.asm:
+                continue
+            for b_id in wanted.get(pa.key, []):
+                if job is not None and (job.stop.is_set() or (bounded and (
+                        job.reuse_attempts >= job.reuse_limit or time.monotonic() >= job.reuse_deadline))):
+                    return matched
+                b = self.net.store.one("SELECT * FROM functions WHERE id=? AND status='open'", b_id)
+                if b is None or self.net.store.one("SELECT 1 FROM claims WHERE function_id=?", b_id):
+                    continue
+                names = renames(pa, mine[b_id], pa.name or a["name"].split("@")[0], b["name"])
+                if names is None or self.net.forks.is_asm(other, a):
+                    continue
+                original = self.net.forks._current_source(fp, a)
+                if not original:
+                    continue
+                source = apply(original, names)
+                if self._missed(b_id, source):
+                    continue
+                if job is not None:
+                    job.cross_candidates += 1
+                    job.cross_tried += 1
+                if bounded:
+                    job.reuse_attempts += 1
+                outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}")
+                with self.net.store.tx() as db:
+                    db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,"
+                               "source_function_id,outcome,reason,created_at) VALUES(?,?,?,?,?,?,?)",
+                               (proj["id"], b_id, other["id"], a["id"], outcome, why[:WHY_CHARS], time.time()))
+                    if outcome == "miss":
+                        db.execute("INSERT OR REPLACE INTO twin_misses(function_id,source_hash,project_id,at,why) "
+                                   "VALUES(?,?,?,?,?)", (b_id, self._miss_key(source), proj["id"], time.time(), why))
+                if outcome == "match":
+                    if bounded:
+                        job.reuse_matched += 1
+                        job.reuse_bytes += b["size"]
+                    matched += 1
+                    if job is not None:
+                        job.cross_matched += 1
+        return matched
+
     def _across_projects(self, agent, proj, other, wanted: dict[str, list[int]], mine: dict[int, Print],
                          job: Job | None) -> int:
         """across_games between two projects in project mode (PC: two games sharing the C runtime): their target
@@ -908,7 +1084,7 @@ class Twins:
         return (res.get("text") or "").splitlines()[0][:WHY_CHARS] if res.get("text") else f"score {res.get('score')}"
 
     def _attempt_twin(self, agent, proj, a, b, source: str, origin: str = "", theirs: bool = False,
-                      similar: bool = False) -> tuple[str, str]:
+                      similar: bool = False, feedback: dict | None = None) -> tuple[str, str]:
         """match | miss | skip for a's code made into b's (`source`). `theirs`: a is another project's, so the tries
         that take more from a's file (its types, includes, declarations) don't apply: twin_source took its
         declarations already."""
@@ -949,6 +1125,8 @@ class Twins:
         except NetworkError as e:
             log.info("twins: %s from %s: %s", b["name"], a["name"], str(e)[:WHY_CHARS])
             return "skip", ""
+        if feedback is not None:
+            feedback.update(res)
         return ("match", "") if res.get("matched") else ("miss", self._why(res))
 
     def run(self, slug: str, job: Job | None = None, only: set[int] | None = None, workers: int = 3) -> Job:

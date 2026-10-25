@@ -109,7 +109,7 @@ def register(app: App) -> None:
             if net.fork_slug(slug):
                 raise NetworkError("This comparison currently needs a ROM-mode project.")
             return {"job": jobs.start("installed compilers", lambda log: net.survey_compilers(
-                slug, log=log, all_installed=True))}
+                slug, log=log, all_installed=True, function=data.get("function", "")))}
         return net.compiler_answer(slug, check_now=request.method == "POST")
 
     def p_open(slug, request, data):
@@ -221,7 +221,14 @@ def register(app: App) -> None:
         corpus = str(data.get("corpus") or path.stem).strip()[:80]
         if not corpus:
             raise ValueError("give the SDK corpus a name and version")
-        return {"signatures": net.twins.import_sdk_objects(path, corpus), "corpus": corpus}
+        signatures = net.twins.import_sdk_objects(path, corpus)
+        sources = 0
+        if data.get('source_path'):
+            from ..free_candidates import import_sources
+            source_path = hostenv.local_path(str(data['source_path']))
+            header = hostenv.local_path(str(data['header_path'])) if data.get('header_path') else None
+            sources = import_sources(net, net.project_row(slug), corpus, source_path, header)
+        return {"signatures": signatures, "sources": sources, "corpus": corpus}
 
     def p_cross_name(slug, request, data):
         old, new = str(data.get("function") or ""), str(data.get("name") or "")

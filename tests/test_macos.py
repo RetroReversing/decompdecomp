@@ -99,6 +99,9 @@ def test_finder_launcher_preserves_interpreter_and_helper_path(monkeypatch, tmp_
     bundle = home / "Applications/decompdecomp.app/Contents"
     info = plistlib.loads((bundle / "Info.plist").read_bytes())
     assert info["CFBundleIdentifier"] == "com.ndelic.decompdecomp"
+    icon = bundle / "Resources" / info["CFBundleIconFile"]
+    assert icon.read_bytes() == (Path(launcher.__file__).with_name("static") / "icon.icns").read_bytes()
+    assert icon.read_bytes()[:4] == b"icns"
     script = bundle / "MacOS" / info["CFBundleExecutable"]
     if os.name != "nt":
         assert script.stat().st_mode & 0o111

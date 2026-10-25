@@ -91,6 +91,9 @@ async function showSettingsPage() {
   $("setAgents").innerHTML = `
     <label class="field"><span>Functions per agent session (a fresh session keeps the agent's context small)</span><input id="perSession" type="number" min="1" max="20" value="${st.settings.per_session}"></label>
     <label class="field"><span>Budget: stop helper agents when a project's agents have spent this much (US dollars, as the agents report it; 0 = no limit)</span><input id="budgetSet" type="number" min="0" step="0.5" value="${st.settings.budget_usd || 0}"></label>
+    <label class="check"><input type="checkbox" id="reuseAuto" ${st.settings.reuse_auto !== false ? "checked" : ""}><span>Automatically try new matches in other compatible projects (no AI calls).</span></label>
+    <label class="field"><span>Free matching: seconds per search wave</span><input id="reuseSeconds" type="number" min="1" max="600" value="${st.settings.reuse_seconds || 120}"></label>
+    <label class="field"><span>Free matching: compile attempts per search wave</span><input id="reuseAttempts" type="number" min="1" max="1024" value="${st.settings.reuse_attempts || 128}"></label>
     <label class="check"><input type="checkbox" id="autopilotSet" ${st.settings.autopilot !== false ? "checked" : ""}><span><b>Autopilot after each import</b>: try every function's machine draft first, so free matches cost no agent time.</span></label>`;
   const theme = savedTheme();
   $("setComputer").innerHTML = `
@@ -139,6 +142,9 @@ async function showSettingsPage() {
   };
   $("perSession").onchange = () => save({ per_session: Number($("perSession").value) }, "Saved.");
   $("autopilotSet").onchange = () => save({ autopilot: $("autopilotSet").checked }, "Saved.");
+  $("reuseAuto").onchange = () => save({ reuse_auto: $("reuseAuto").checked }, "Saved.");
+  $("reuseSeconds").onchange = () => save({ reuse_seconds: Number($("reuseSeconds").value) || 120 }, "Saved.");
+  $("reuseAttempts").onchange = () => save({ reuse_attempts: Number($("reuseAttempts").value) || 128 }, "Saved.");
   $("budgetSet").onchange = () => save({ budget_usd: Number($("budgetSet").value) || 0 }, "Budget saved.");
 }
 

@@ -294,6 +294,11 @@ class EditMixin:
                     db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
                                (proj["id"], new, s.address, s.size, s.kind))
                 db.execute("UPDATE functions SET name=? WHERE project_id=? AND (name=? OR vram=?)", (new, proj["id"], old, addr))
+                from ..function_names import record
+                for renamed in db.execute("SELECT id FROM functions WHERE project_id=? AND vram=?",
+                                          (proj["id"], addr)).fetchall():
+                    record(db, renamed["id"], old, new)
+
             for u, header in changed.items():
                 version = self._next_version(db, proj["id"])
                 db.execute("INSERT INTO context_versions(project_id,version,header,agent_id,message,created_at,unit) "

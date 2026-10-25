@@ -221,7 +221,8 @@ a.ghost, a.primary { text-decoration: none; }
 .spinner { width: 30px; height: 30px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--match); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .joblog { width: 100%; max-height: 160px; overflow: auto; text-align: left; font-size: 12px; color: var(--muted); background: var(--code-bg); border: 1px solid var(--line-soft); border-radius: var(--r); padding: 10px 12px; margin: 0; white-space: pre-wrap; }
-.joblog.tall { max-height: 280px; }
+.joblog.tall { max-height: 360px; }
+.joblog-toolbar { justify-content: space-between; margin: 8px 0; font-size: 12px; }
 .privacy { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--muted); }
 .privacy svg { width: 16px; height: 16px; fill: var(--match); flex: none; }
 .starts { margin-top: 26px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
@@ -1016,3 +1017,10 @@ details.more[open] > summary::before { content: "− "; }
 #installedCompilerTest > .small { line-height: 1.55; }
 #installedCompilerLog { min-width: 0; max-width: 100%; max-height: 280px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
 #compilerPanel .workbar { min-width: 0; max-width: 100%; }
+
+#fnCompilerTest { padding: 16px; margin-bottom: 18px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raise); display: grid; gap: 10px; min-width: 0; }
+#fnTestCompilers { justify-self: start; }
+#fnCompilerTest > .small { max-width: 78ch; line-height: 1.55; }
+#fnCompilerLog { max-height: 240px; overflow-wrap: anywhere; }
+.compiler-result { padding: 12px 14px; border-left: 3px solid var(--line); background: var(--code-bg); line-height: 1.6; }
+.compiler-result[data-improved="true"] { border-left-color: var(--match); }

@@ -46,29 +46,45 @@ the same compiler and objdiff judge as agent submissions. A matching candidate i
 
 ## Free attempts from similar code
 
-After exact transfers, autopilot tries closely similar verified C from your other imported MIPS ROM projects.
-It learns symbol correspondences from accepted transfers and can reuse them when relocation layouts differ.
-Conflicting correspondences are discarded. Small integer and explicit memory-offset edits come from aligned
-instructions. Close misses get up to eight deterministic local-permuter variants, such as casts, signedness and
-statement order. Every accepted candidate must compile and link to the destination's exact bytes. No AI tokens
-are used.
+Autopilot tries verified C from compatible games, tiny-function templates, and locally supplied library C.
+Every accepted candidate must compile and link to the destination's exact bytes. No AI tokens are used.
 
-Compatible transfers run first, then broader mappings and flag trials, then repairs of the closest failures.
-Each stage tries up to three donors per function. All stages share a 128-compile budget and stop starting work
-after two minutes.
+- **Better near-miss repairs:** eligibility uses percentage similarity, so a single changed operand no longer
+  excludes an otherwise close function. Assembly differences guide casts, signedness, literal and ordering edits.
+  Agreeing high/low address references can also propose a known destination symbol or an automatic address name, alone or combined with a
+  constant or explicit field-offset edit. Literal pointer addresses can be corrected too. Ambiguous mappings and address addend expressions are skipped. These
+  Saved best attempts get the same address checks before wider donor searches; probe feedback and failed edits
+  are cached and share the ordinary search budget. These edits affect only candidate C; shared symbols and types stay unchanged. An already-installed decomp-permuter
+  supplies a small additional batch when time remains.
+- **Regional differences:** verified transfers teach symbol mappings and explicit pointer offsets. Offset
+  mappings need two independent matching pairs and no conflicting evidence. Named struct definitions are not rewritten.
+- **Tiny functions:** constants, arithmetic, getters, setters and simple forwarding wrappers can be proposed
+  without another project containing matched C.
+- **Local libraries:** in the SDK panel, supply an object archive and optionally its C source file/folder and a
+  self-contained declarations header. Matching fingerprints select C to try with the project's compiler.
+  Sources stay local; nothing is downloaded or built by an SDK's scripts. Import with the compiler settings you
+  intend to use; reimport after changing them. Ambiguous definitions are excluded.
+- **Automatic follow-up:** a new verified match queues compatible projects on one low-priority worker, so useful
+  code can spread without repeatedly clicking Run again. Stop pauses that project's automatic reuse until Run again.
+
+Settings lets you disable automatic reuse and adjust its time and compile limits (defaults: two minutes and
+128 attempts). A whole automatic wave shares one budget, including exact transfers. Manual autopilot keeps its
+existing exact-transfer phase, then shares the additional budget between templates, libraries and similarity repairs.
+The last search reports verified bytes, attempts and bytes per minute of elapsed time, not CPU time.
+
+When eligible near misses exist, similarity transfers use at most three quarters of the remaining search budget;
+the rest is reserved for repairs. The transfer cursor is retained so the next pass continues through the queue.
+
 Use **Run again** to resume, including after restarting the app. Completed trials are remembered; changes to
 candidate C, headers, symbol addresses, relevant mappings, targets or compiler settings make them eligible again.
-Newly accepted transfers can help later candidates in the same pass.
+A running compile or analysis step can finish after the time limit; no new candidate starts once it is reached.
 
-It also tests a donor's proven flags when they differ, using the same already-installed toolchain. A byte match
-under those flags appears as a **compiler** result with the candidate C saved in the function's notes. Review the
-compiler settings before accepting it: these trials do not change settings or count as matched progress.
+A donor's proven flags are also tested with an already-installed toolchain. A byte match under those flags appears
+as a **compiler** result with C saved in the function's notes. Review the settings before accepting it: these
+trials do not change settings or count as matched progress. Similarity scores are never verified progress.
 
-See **Matches from other games** for results labelled transfer, repair or compiler. Similarity percentages
-rank candidates; they are not verified progress. A running compile can finish after the two-minute limit.
-
-This pass supports N64, PS1, PS2 and PSP ROM projects. Imported repository projects still use exact transfers;
-adapting similar functions across their source files and object relocations is planned.
+These additions support MIPS ROM projects (N64, PS1, PS2 and PSP). Imported repository projects still use exact
+transfers; adapting similar functions across source files and object relocations is planned.
 
 ## ROM library
 

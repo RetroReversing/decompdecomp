@@ -61,6 +61,7 @@ class GuiMixin:
                            k: getattr(twins, k) for k in ("state", "pairs", "tried", "matched", "asm",
                                                         "cross_candidates", "cross_tried", "cross_matched")},
                        "cross_game": self.twins.cross_game_results(slug),
+                       "free_search": dict(self.store.one('SELECT * FROM reuse_runs WHERE project_id=? ORDER BY id DESC LIMIT 1', proj['id']) or {}),
                        "helper_matches": helpers,
                        "readable": self.readability.counts(proj)["readable"],
                        "spend": cfg.get("spend"), "instructions": cfg.get("instructions") or "",
@@ -150,7 +151,8 @@ class GuiMixin:
         # who works on what in the room: by address, or by name in a git project (its functions have no addresses)
         key = (lambda r: r["name"]) if link is not None and link.fork else (lambda r: r["vram"])
         remote = {key(c): "@" + c["agent"] for c in (link.claims if link is not None else [])}
-        return [{"name": r["name"], "vram": r["vram"], "size": r["size"], "insns": r["n_insns"], "unit": r["unit"],
+        from ..function_names import state as name_state
+        return [{**name_state(r), "name": r["name"], "vram": r["vram"], "size": r["size"], "insns": r["n_insns"], "unit": r["unit"],
                  "status": r["status"] if r["status"] in ("matched", "asm") else "working" if (r["agent"] or key(r) in remote) else "open",
                  "best": r["best_score"], "attempts": r["attempts"], "agent": r["agent"] or remote.get(key(r)),
                  "matched_at": r["matched_at"], "matched_by": r["matched_by"],
@@ -241,8 +243,9 @@ class GuiMixin:
         return out | {"kind": kind}
 
     def function_detail(self, slug: str, name: str) -> dict:
+        from ..function_names import state as name_state
         if (fork := self.fork_slug(slug)):
-            return self.forks.function_detail(fork, name)
+            return self.forks.function_detail(fork, name) | name_state(self._function(name, slug))
         fn = self._function(name, slug)
         proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
         attempts = self.store.all(
@@ -258,7 +261,7 @@ class GuiMixin:
             self._seed_for(fn, proj)  # (made again first when what it's made from changed)
             fn = self._function(fn["name"], slug)
         return {
-            "name": fn["name"], "vram": fn["vram"], "rom_offset": fn["rom_offset"], "size": fn["size"],
+            **name_state(fn), "name": fn["name"], "vram": fn["vram"], "rom_offset": fn["rom_offset"], "size": fn["size"],
             "insns": fn["n_insns"], "status": fn["status"], "best": fn["best_score"], **set_aside(fn),
             "asm": self._asm_text(fn, proj),
             "source": fn["matched_source"] or fn["best_source"] or (latest["source"] if latest else None) or fn["seed"],
