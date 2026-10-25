@@ -2348,7 +2348,7 @@ class ForkEngine:
         """m2c draft from the project's assembly for this function, cached in the database."""
         if fn["seed"] is not None:
             return fn["seed"] or None
-        hint = (unit.scratch or {}).get("compiler", "") or json.dumps(fp.needs(cfg.get("version")))
+        hint = (unit.scratch or {}).get("compiler", "") or compiler_info.describe(fp, cfg.get("version")).get("name", "")
         meta = self._meta(fn)
         try:
             text = drafts.draft(fp.root, cfg.get("platform") or "", unit.name, meta.get("symbol") or fn["name"],
@@ -2748,13 +2748,22 @@ class ForkEngine:
         """The open functions autopilot tries in a game started from scratch, smallest first. Raises NetworkError
         when it can't run here."""
         proj, fp, cfg = self.get(slug)
-        if cfg.get("origin") != "scratch":
-            raise NetworkError("autopilot works on games started from scratch: a public decomp's headers don't have "
-                               "what machine drafts need, and its easy functions are done already")
         if not cfg.get("ready"):
             raise NetworkError("finish setting the project up first")
         if not drafts.supported(cfg.get("platform") or "") or toolchains.installed("m2c") is None:
             raise NetworkError("autopilot needs m2c, the draft decompiler: install it in Setup")
+        if cfg.get("origin") != "scratch":
+            from ..forks.scaffold import prepare
+
+            with self._tree(proj).exclusive(), self._build_locks[proj["id"]]:
+                made = prepare(fp)
+            if made:
+                self.sync(slug)
+            rows = self.net.store.all("SELECT id FROM functions WHERE project_id=? AND status='open' ORDER BY n_insns, id",
+                                      proj["id"])
+            if not rows:
+                raise NetworkError("No writable C candidates are available. This imported project's build needs C scaffolding before Autopilot can try drafts.")
+            return [r["id"] for r in rows]
         if drafts.add_m2c_macros(fp.root / "include" / "common.h"):  # projects made before autopilot ran on them
             self._commit(proj, fp, "include/common.h", "Add the macros machine drafts use\n\nWritten by decompdecomp's autopilot.")
         rows = self.net.store.all("SELECT id FROM functions WHERE project_id=? AND status='open' ORDER BY n_insns, id",
@@ -2776,7 +2785,7 @@ class ForkEngine:
             if not unit.source:
                 return "skip"
             meta = self._meta(fn)
-            hint = (unit.scratch or {}).get("compiler", "") or json.dumps(fp.needs(cfg.get("version")))
+            hint = (unit.scratch or {}).get("compiler", "") or compiler_info.describe(fp, cfg.get("version")).get("name", "")
             text = drafts.draft(fp.root, cfg.get("platform") or "", unit.name, meta.get("symbol") or fn["name"],
                                 unit.source, compiler_hint=hint, valid=True)
             _, span = self._find(text, self._names(meta, fn)) if text else (None, None)

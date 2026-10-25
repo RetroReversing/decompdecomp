@@ -254,7 +254,8 @@ function renderAutopilot(ov) {
     if (twinsDone) parts.push(`${twinsDone.toLocaleString()} from identical code`);
     if (tw && tw.asm) parts.push(`${tw.asm.toLocaleString()} copies of assembly set aside (not for agents)`);
     if (ap && ap.tried) parts.push(`${ap.tried.toLocaleString()} machine drafts tried${ap.near ? `, ${ap.near} more 90%+ there` : ""}`);
-    $("apSub").textContent = (parts.length ? parts.join(" · ") + ". " : "") + (ap && ap.no_drafts ? "" : "Run it again after agents add types and names: drafts get better.") + perm;
+    if (ap && ap.no_drafts && !ap.tried) $("apTitle").textContent = "Autopilot could not try machine drafts";
+    $("apSub").textContent = (parts.length ? parts.join(" · ") + ". " : "") + (ap && ap.no_drafts ? ap.no_drafts : "Run it again after agents add types and names: drafts get better.") + perm;
     $("apBtn").textContent = "Run again";
   } else {
     $("apTitle").textContent = "Free matches first";
