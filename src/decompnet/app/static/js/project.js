@@ -301,6 +301,16 @@ function renderStats(ov) {
   const coverageNotes = ov.coverage_notes || [];
   $("coverageNotice").hidden = !coverageNotes.length;
   $("coverageNotice").textContent = coverageNotes.join(" ");
+  const populations = ov.progress_populations || [];
+  const coverage = $("progressPopulations");
+  coverage.hidden = !populations.length;
+  if (populations.length) setHtml(coverage, `
+    <header class="panel-head"><h2>Code coverage by image</h2></header>
+    <p class="muted small image-coverage-note">Known function code, weighted by bytes; data and unidentified regions are excluded.
+      Image entries are read-only: update their C through the project’s build pipeline, then Check again.</p>
+    <div class="image-coverage-table"><table><thead><tr><th>Image</th><th>Matching functions</th><th>Matching code</th></tr></thead>
+    <tbody>${populations.map(p => `<tr><td>${esc(p.name)}</td><td>${p.matched_functions.toLocaleString()} / ${p.total_functions.toLocaleString()}</td>
+      <td>${pctNum(p.matched_code_percent)}% · ${bytes(p.matched_code)} / ${bytes(p.total_code)}</td></tr>`).join("")}</tbody></table></div>`);
   renderAutopilot(ov);
   renderSteering(ov);
   if (exportOpen()) renderSource(ov);

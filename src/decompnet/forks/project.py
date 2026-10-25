@@ -789,7 +789,10 @@ class ForkProject:
         return objdiff.report(self.root, self.root / STATE / "report.json")
 
     def diff(self, unit: Unit, symbol: str) -> objdiff.FunctionDiff:
-        return objdiff.diff(unit.target, unit.base, symbol, cwd=self.root, options=self.diff_options(unit),
+        from .linkedimages import stale
+        entry = next((u for u in self.objdiff_config().get("units", []) if u.get("name") == unit.name), {})
+        base = None if stale(self.root, entry, {}) else unit.base
+        return objdiff.diff(unit.target, base, symbol, cwd=self.root, options=self.diff_options(unit),
                             project=self.root if unit.mappings else None, unit=unit.name)
 
     # ------------------------------------------------------------------ linking (dtk-template projects)

@@ -274,6 +274,11 @@ def test_verified_rebuild_retains_nested_config_version(tmp_path, monkeypatch):
     asm = next(u for u in result['units'] if u['name'] == 'asm/start')
     assert 'base_path' not in asm and 'source_path' not in asm['metadata']
     assert asm['metadata']['assembly_source'] == 'asm/start.s'
+    for unit in result['units']:
+        for key in ('name', 'base_path', 'target_path'):
+            assert '\\' not in unit.get(key, '')
+        for value in unit.get('metadata', {}).values():
+            assert '\\' not in value
     assert len(result['units']) == 2
     assert '1 linked binary assembly' in result['coverage_notes'][0]
 
