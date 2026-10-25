@@ -666,3 +666,10 @@ boundary engine, reject active claims and matched functions, and clear stale dra
 Project-mode source splitting continues through its existing console connector; this route is ROM-only.
 Validation for this increment: focused intrinsic and split tests, plus full compiler/linker regression on a
 private PS1 project. Other console features were not revalidated in this increment.
+
+### Explicit PS1 interpolation and screen FIFO transfer templates
+
+Additional fixed intrinsics name the interpolation destination explicitly (far-colour control registers or
+IR data registers), and provide the older screen-coordinate FIFO transfer order. Existing templates remain
+unchanged so saved byte-exact C keeps its code generation. Validation: all three installed PS1 GCC versions
+compile the expected register transfers; 885 matches pass regression in an isolated private project.

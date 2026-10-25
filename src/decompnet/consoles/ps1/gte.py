@@ -57,6 +57,9 @@ def header() -> str:
     out += _transfer('ldv3', [f'lwc2 ${i}, {4*(i%2)}(%{i//2})' for i in range(6)], 3)
     for name, registers in [('ldsxy3', range(12, 15)), ('ldsz3', range(17, 20)), ('ldsz4', range(16, 20))]:
         out += _transfer(name, [f'mtc2 %{i}, ${reg}' for i, reg in enumerate(registers)], len(registers))
+    # Some SDK generations transfer the last screen coordinate before the middle one.
+    # Keep the existing template stable for saved matches; callers opt into this fixed order.
+    out += _transfer('ldsxy3_fifo', ['mtc2 %0, $12', 'mtc2 %2, $14', 'mtc2 %1, $13'], 3)
     out += _transfer('lddp', ['mtc2 %0, $8'])
     out += _transfer('ldrgb', ['lwc2 $6, 0(%0)'])
     for name, reg in [('stsxy', 14), ('stotz', 7), ('stopz', 24), ('stsz', 19), ('stdp', 8)]:
@@ -94,6 +97,10 @@ def header() -> str:
         stride, first = (4, 21) if name == 'ldfc' else (2, 21 if destination == 'ctc2' else 9)
         out += _transfer(name, [f'{load} ${12+i}, {stride*i}(%0)' for i in range(3)]
                          + [f'{destination} ${12+i}, ${first+i}' for i in range(3)], clobbers=[12, 13, 14])
+    # Explicit destinations avoid SDK-generation naming differences in interpolation helpers.
+    for name, operation, first in [('ld_intpol_far', 'ctc2', 21), ('ld_intpol_ir', 'mtc2', 9)]:
+        out += _transfer(name, [f'lh ${12+i}, {2*i}(%0)' for i in range(3)]
+                         + [f'{operation} ${12+i}, ${first+i}' for i in range(3)], clobbers=[12, 13, 14])
     out += _transfer('strgb', ['swc2 $22, 0(%0)'], memory=True)
     out += _transfer('strgb3', [f'swc2 ${20+i}, 0(%{i})' for i in range(3)], 3, memory=True)
     out += _transfer('ldrgb3', [f'lwc2 ${20+i}, 0(%{i})' for i in range(3)] + ['lwc2 $6, 0(%2)'], 3)
