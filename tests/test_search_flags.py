@@ -175,7 +175,7 @@ def test_apply_function_compiler_preserves_neighbours_and_revalidates(tmp_path, 
                    "VALUES(?,?,?,?,?,?,?,?)", (pid, "f", 0x1040, 32, 8, "open", 200, "int f(void){return 1;}"))
     monkeypatch.setattr(net, "_judge_with", lambda *a: (False, SimpleNamespace(score=100), ""))
     attempts = []
-    monkeypatch.setattr(net, "attempt", lambda *a, **k: attempts.append((a, k)))
+    monkeypatch.setattr(net, "try_quietly", lambda *a, **k: attempts.append((a, k)))
     net.apply_function_compiler("demo", "f", "gcc-2.8.0-psx", ["-O2"])
     ranges = net.cfg(net._project("demo"))["compiler_ranges"]
     assert [(r["start"], r["end"]) for r in ranges] == [(0x1000, 0x1040), (0x1040, 0x1060), (0x1060, 0x1100)]
@@ -184,5 +184,52 @@ def test_apply_function_compiler_preserves_neighbours_and_revalidates(tmp_path, 
     before = net.cfg(net._project("demo"))
     monkeypatch.setattr(net, "_judge_with", lambda *a: (False, SimpleNamespace(score=300), ""))
     with pytest.raises(Exception, match="no longer improve"):
+        net.apply_function_compiler("demo", "f", "gcc-2.8.0-psx", ["-O3"])
+    assert net.cfg(net._project("demo")) == before
+
+
+@pytest.mark.parametrize("compile_ok,matched", [(True, True), (True, False), (False, False)])
+def test_apply_comparison_uses_scoped_claim_while_autopilot_holds_other_work(tmp_path, monkeypatch, compile_ok, matched):
+    from decompnet.app.engine import autopilot
+
+    net = RomNetwork(tmp_path / "decomp.db", tmp_path)
+    cfg = {"kind": "rom", "platform": "ps", "compiler": {"toolchain": "gcc-2.7.2-psx", "flags": ["-O2"]}}
+    source = "int f(void){return 1;}"
+    with net.store.tx() as db:
+        pid = db.execute("INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)",
+                         ("demo", "Demo", str(tmp_path), json.dumps(cfg))).lastrowid
+        db.execute("INSERT INTO context_versions(project_id,version,header,unit) VALUES(?,?,?,?)", (pid, 1, "", ""))
+        ids = [db.execute("INSERT INTO functions(project_id,name,vram,size,n_insns,status,best_score,best_source) "
+                          "VALUES(?,?,?,?,?,?,?,?)", (pid, name, addr, 32, 8, "open", 200, source)).lastrowid
+               for name, addr in [("f", 0x1000), ("g", 0x1100)]]
+    agent, _ = net.local_agent("autopilot")
+    with net.store.tx() as db:
+        db.execute("INSERT INTO claims VALUES(?,?,?,?)", (ids[1], agent.id, 0, 9999999999))
+    monkeypatch.setattr(net, "_judge_with", lambda *a: (False, SimpleNamespace(score=100), ""))
+    compiled = []
+
+    def compile(proj, header, candidate, fn):
+        assert net.store.one("SELECT 1 FROM claims WHERE function_id=?", ids[0])
+        compiled.append(candidate)
+        return SimpleNamespace(ok=compile_ok, obj=b"object")
+
+    monkeypatch.setattr(net, "_compile", compile)
+    monkeypatch.setattr(net, "_evaluate", lambda *a: (SimpleNamespace(code=b"code", relocs=[]), matched, []))
+    monkeypatch.setattr(net, "_target_obj", lambda *a: None)
+    monkeypatch.setattr(autopilot.scoring, "diff", lambda *a: SimpleNamespace(
+        score=100, max_score=200, rows=[], bytes_match=False, percent=50))
+    records = []
+    monkeypatch.setattr(net, "_record", lambda *a, **k: records.append((a, k)))
+    net.apply_function_compiler("demo", "f", "gcc-2.8.0-psx", ["-O2"])
+    assert compiled == [source]
+    assert len(records) == int(compile_ok)
+    if compile_ok:
+        assert records[0][1]["matched"] is matched
+    assert not net.store.one("SELECT 1 FROM claims WHERE function_id=?", ids[0])
+    assert net.store.one("SELECT agent_id FROM claims WHERE function_id=?", ids[1])["agent_id"] == agent.id
+    before = net.cfg(net._project("demo"))
+    with net.store.tx() as db:
+        db.execute("INSERT INTO claims VALUES(?,?,?,?)", (ids[0], agent.id, 0, 9999999999))
+    with pytest.raises(Exception, match="being worked on"):
         net.apply_function_compiler("demo", "f", "gcc-2.8.0-psx", ["-O3"])
     assert net.cfg(net._project("demo")) == before

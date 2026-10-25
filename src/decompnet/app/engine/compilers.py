@@ -655,6 +655,10 @@ class CompilerMixin:
         fn = self._function(function, slug)
         if fn["status"] in ("matched", "asm"):
             raise NetworkError("This function is no longer unmatched. Run a fresh comparison.")
+        with self.store.tx() as db:
+            self._expire_claims(db)
+            if db.execute("SELECT 1 FROM claims WHERE function_id=?", (fn["id"],)).fetchone():
+                raise NetworkError("This function is being worked on. Wait until it is released, then compare again.")
         source = self._source_of(fn)
         if not source:
             raise NetworkError("This function has no C attempt to apply. Run a fresh comparison.")
@@ -663,7 +667,9 @@ class CompilerMixin:
             raise NetworkError("These settings no longer improve this function. Run a fresh comparison.")
         self.set_compiler_ranges(slug, [[fn["vram"], fn["vram"] + fn["size"]]], toolchain, flags)
         agent, _ = self.local_agent("autopilot")
-        self.attempt(agent, function, source, project=slug)
+        # The background autopilot may hold another function. A scoped try checks this function's claim
+        # and releases its own on both matches and misses, without disturbing the other work.
+        self.try_quietly(agent, self._project(slug), self._function(function, slug), source)
         return {"said": f"Compiler settings applied to {function} only."}
 
     def set_compiler_ranges(self, slug: str, ranges: list[list[int]], toolchain: str | None,
