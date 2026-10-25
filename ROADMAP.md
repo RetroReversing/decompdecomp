@@ -43,9 +43,11 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | The game's own debug symbols: names, types, prototypes | — | — | ✓ symbol table, STABS; the compiler of each object file | — | — | — | — |
 | Twins across your games | ✓ | ✓ | ✓ | — | — | — | — |
 | Shared knowledge (two models agree) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Tidy each source file once it's polished (shared types in one header, names, dead declarations) | — | — | — | ✓ | ✓ | ✓ | ✓ |
 | Polish matched code (still matching) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Real names for the game's symbols (`rename_symbol`) | ✓ | ✓ | ✓ | ✓ | — | ✓ | dtk and ds-decomp projects |
+| Real names for the game's symbols (`rename_symbol`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | dtk and ds-decomp projects |
 | Save and restore (`progress/`, Open a saved project) | ✓ | ✓ | ✓ | the project's git; best attempts saved | the project's git; best attempts saved | the project's git; best attempts saved | the project's git; best attempts saved |
+| Saved README preserves notes, with completion bar and function map | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Reimport: a new split, matched work kept (Settings) | ✓ | ✓ | ✓ | — | — | — | — |
 | Rebuildable export | ✓ | ✓ | ✓ | the project | — | the project | the project |
 | Progress bars for foreground jobs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -57,6 +59,9 @@ Where to start on a gap:
 - **Windows PC**: autopilot needs drafts that compile (Ghidra's output doesn't, as it is); the export needs a linker
   story (the project is delinked COFF objects).
 - **Function-end reports** cut MIPS functions (`engine._cut`).
+- **Tidying a ROM project**: its C is the database's, one function at a time, with one shared header per segment
+  (`edit_context`), so there's no file to tidy (`app/readable.py`, `_untidy`). The header is the place to start: its
+  types and names, then the functions' C that uses them, each still matching.
 - **Struct layouts** read MIPS loads and stores (`arch/mips_fields.py`); another processor adds its reader as its
   `Arch.field_accesses`, and structs.py does the rest. Still open on MIPS: the PS2's fifth to eighth arguments
   (t0-t3), and a pointer into the middle of a struct handed to a callee (`&this->pos`).
@@ -70,10 +75,23 @@ SDK object archives. The archive's source is never bundled; a signature is a hin
 
 ## Recently done
 
+- **Saved guides keep your notes.** Saving creates a basic README only when one is missing. Later saves update
+  counts and visuals inside hidden comment pairs, preserving the rest of the guide. A local SVG progress card
+  shows completion, platform and a function map in ROM and project mode; it contains no game code.
+- **Real names on Windows PC.** A PC project names functions and data by address (`func_0041B470`, `D_0066DDA4`),
+  and `tools/names.py` pairs them with the original's symbols by that address, so rename_symbol refused them. A real
+  name is kept by address in `config/<version>/functions.json` ("names"), and names.py takes it as that address in C
+  and C++ (a method's too): the function and its callers still match. The report keeps the original's symbol, so the
+  function's row does too, and agents find and call it by its real name.
 - **The compiler of each object file, from a PS2 game's symbols.** Games linked by CodeWarrior's linker are often
   GCC's code with CodeWarrior's C library: the three with symbols had GCC's mark on 91-93% of their object files.
   The one that built most of the code is the game's, and SN's GCC is told from Sony's by its own code; the others'
   object files get their ranges at import, and Check again suggests them to older projects through the range check.
+- **Polishing reaches every function, then tidies each file.** A floor of 8 instructions and a ceiling of 400 kept
+  polishing off a game's smallest and biggest functions for good: every size comes now, the middle first, and a
+  function three tries didn't make readable is left. Once a source file's functions are all readable, a helper tidies
+  it: types it shares with other files in one header, fields and classes named, the globals it still knows by
+  address named (read_data first), dead declarations gone, one naming style (`tidy_done`).
 - **Every compiler of the console, then the test of them all** (N64, PS1, PS2). The import offers to install the
   console's missing compilers, and a project page offers it until the first match; the compiler test then tries
   every one. A guess from the program alone can miss: one game's GCC code leaves its return delay slots empty as
@@ -300,13 +318,6 @@ Measure each step on that DS game's 25: how many get tried and how far, against 
 matters most for free models: step 3 adds speed, and contention on one file, so it waits until 2 shows parts can be
 worked on alone.
 
-### Real names on Windows PC
-
-A PC project's source names functions and data by address (`func_0041B470`, `D_0066DDA4`), and the project's
-`tools/names.py` pairs them with the original's symbols by that address. So `rename_symbol` says it can't rename yet,
-and polished PC code keeps those names. It needs a name per address in `config/<version>/functions.json` that
-names.py reads, kept by `Console.rename_symbol` like dtk's and ds-decomp's `symbols.txt`.
-
 ### Library decomps built locally
 
 Twins across your games already match library code you matched once. The next step: match library decomps and
@@ -353,10 +364,6 @@ Before building it, find out:
   IP, so only tunnelled rooms could be listed; room names need limits, and a host or the directory can delist one.
 
 The answer goes here: build it, build part of it, or not, and why.
-
-### A shareable progress card
-
-An image with % matched, functions and platform, for READMEs and posts. No game code in it.
 
 ## Later
 

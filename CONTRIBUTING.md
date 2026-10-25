@@ -13,12 +13,9 @@ Before you attach a log (`~/Decomp/.decomp/logs/decomp.log`), read it, and cut o
 
 ## Reporting a bug
 
-[Open an issue](https://github.com/n-delic/decompdecomp/issues) with:
-
-- your version (bottom left of the app, or `decomp update --check`) and your Linux distribution;
-- the platform (N64, PS2, GameCube, PC, ...) and the compiler the project uses;
-- what you did, what you expected, and what happened instead, with the error text;
-- the part of the log around it, if it helps (see above).
+[Open an issue](https://github.com/n-delic/decompdecomp/issues/new/choose) with the bug report form. It asks for
+your version, your system, the console and compiler, what you did, what you expected and what happened, and the part
+of the log around it, if it helps (see above). Your answers label the issue (its console and system).
 
 The name of the game is fine to mention. Many bugs only show up on one game, and the name helps a lot.
 
@@ -314,6 +311,9 @@ An agent is one of two sorts:
 
 ## Pull requests
 
+- Work on a branch named `<type>/<short-name>`, the type one of `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `ci`, `build`, `chore`, `revert` (`fix/ps2-long-symbol-names`). CI fails a pull request from any other branch, and labels it by the prefix.
+- A change to a console or a feature says which of the app's features you ran on it and how (AGENTS.md, "Check
+  every feature on the console you touch"); reviewers check the same list.
 - Keep each one to one change, and say in the description what it fixes or adds, and how you tested it.
 - Commit messages describe what users get, in one sentence, with a body explaining why.
 - Don't bump the version. Releases are made separately.

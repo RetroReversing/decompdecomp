@@ -68,6 +68,28 @@ def _strip_comments(code: str) -> str:
     return _REGVAR.sub(" ", re.sub(r"//[^\n]*|/\*.*?\*/", " ", code, flags=re.S))
 
 
+def _rewrite(path: Path, text: str) -> None:
+    """`path.write_text(text, encoding="utf-8")`, the same bytes, writing only from the first 4 KB block that differs.
+    A compile writes the agent's version of a unit's source and an undo writes the original back: a dtk unit can be
+    a megabyte, and only the part from the changed function on is new. An unchanged file is only touched, so a build
+    still sees it as new."""
+    data = text.replace("\n", os.linesep).encode("utf-8")  # as text mode writes it
+    try:
+        with open(path, "r+b") as f:
+            old = f.read()
+            if old == data:
+                os.utime(path)
+                return
+            at = 0
+            while old[at:at + 4096] == data[at:at + 4096]:
+                at += 4096
+            f.seek(at)
+            f.write(data[at:])
+            f.truncate()
+    except FileNotFoundError:
+        path.write_bytes(data)
+
+
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40] or "fork"
 
@@ -360,14 +382,17 @@ def _file_scope_lines(text: str) -> list[str]:
 
 
 def _pragmas_around(text: str, lo: int, hi: int) -> tuple[int, int]:
-    """Widen a definition's span over the #pragma lines right above and below it (its wrapper)."""
-    start = lo
+    """Widen a definition's span over the #pragma lines right above and below it (its wrapper), and the comment
+    between them and the definition (a polish puts one there: stopping at it left the file's #pragma push behind, never
+    popped, when the next rewrite came without the comment)."""
+    start = above = csource.comment_above(text, lo)
     while start > 0:
         prev = text.rfind("\n", 0, start - 1) + 1
         line = text[prev:start].strip()
         if not _PRAGMA.match(line):
             break
         start = prev
+    start = start if start < above else lo
     end = hi
     while end < len(text):
         nl = text.find("\n", end)
@@ -415,6 +440,7 @@ class ForkEngine:
         self._scores: dict[tuple[int, str], tuple[str, int | None, dict]] = {}
         self._index: dict[int, dict] = {}  # project id -> {unit: {"mtime", "order", "ops"}}
         self._indexing: set[int] = set()
+        self._index_dirty: set[int] = set()  # projects whose index has entries index.json doesn't have yet
         self._ilock = threading.Lock()
         self._linking: dict[str, dict] = {}  # slug -> background link run
         self._preflight_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)
@@ -881,15 +907,27 @@ class ForkEngine:
         log(said)
         return said if kept else None
 
-    def check(self, slug: str, log=print) -> dict:
-        """After a manual setup (or to refresh): pick the project up once it has an objdiff.json."""
+    def check(self, slug: str, log=print, build: bool = False) -> dict:
+        """After a manual setup (or to refresh): pick the project up once it has an objdiff.json. `build` (the
+        project page's Re-measure and Check again): its build runs first, so sources changed outside decompdecomp (a
+        rollback, an editor) are measured as they are; a measure reads build/ as it is, and a rolled-back Xbox game
+        measured its broken build again and again."""
         proj, fp, cfg = self.get(slug)
         if not (fp.root / "objdiff.json").exists():
             raise NetworkError("no objdiff.json yet. The project's build creates it (often `python configure.py` "
                                "or `make`); see its README")
         cfg["ready"] = True
         self._save_cfg(proj, cfg)
-        measures = self.sync(slug, log=log)
+        if build:
+            log("building what changed since the last build")
+            failed: list[str] = []
+            with self._tree(proj).exclusive(), self._build_locks[proj["id"]]:
+                fp.build_all(log=log, failed=failed)
+                rep = fp.report()
+            # a unit whose source doesn't build keeps its last object: what it matched then doesn't count now
+            measures = self.sync(slug, log=log, rep=rep, broken=fp.failed_units(failed))
+        else:
+            measures = self.sync(slug, log=log)
         if fp.linkable():
             self.link_soon(slug)  # files that are finished but not linked yet (in the project as it came, too)
         return measures
@@ -913,6 +951,8 @@ class ForkEngine:
                 if f["name"] not in data.get(u["name"], ())]
         listed = _set_aside(fp)
         aside = listed if fp.scope == GAME else {}  # the whole program: set-aside code is worked on and counted
+        # real names a report doesn't give (a PC game's stay _func_0041B470@8): how the source spells them
+        reals = consoles.get(cfg.get("platform")).real_names(fp, (fp.manifest or {}).get("version") or cfg.get("version"))
         counts: dict[str, int] = defaultdict(int)
         for _, f in rows:
             counts[f["name"]] += 1
@@ -945,6 +985,8 @@ class ForkEngine:
                 meta = {"symbol": sym, "demangled": md.get("demangled_name"), "source": u.source if u else None}
                 if k:
                     meta["nth"] = k
+                if real := reals.get(sym):
+                    meta["real"] = real
                 old = existing.get((uname, sym, k))
                 if old is None and moved.get((uname.split("/", 1)[0], sym)):
                     old = moved[(uname.split("/", 1)[0], sym)].pop(0)
@@ -984,8 +1026,12 @@ class ForkEngine:
                     # matches doesn't: the queue and briefs would say it's done
                     if status != "matched" and old["best_source"] and old["best_score"] and old["status"] != "matched":
                         score = old["best_score"] if score is None else min(score, old["best_score"])
-                    db.execute("UPDATE functions SET size=?, n_insns=?, status=?, best_score=?, meta=? WHERE id=?",
-                               (size, n, status, score, json.dumps(meta), old["id"]))
+                    # only what changed: SQLite writes a row's pages even when its values are the same, and a
+                    # GameCube game's 34,000 functions rewritten on every sync were most of what the app wrote
+                    if (old["size"], old["n_insns"], old["status"], old["best_score"], self._meta(old)) != \
+                            (size, n, status, score, meta):
+                        db.execute("UPDATE functions SET size=?, n_insns=?, status=?, best_score=?, meta=? WHERE id=?",
+                                   (size, n, status, score, json.dumps(meta), old["id"]))
                     if old["status"] == "matched" and status != "matched":
                         self._reopened(db, proj, old, "full report" + (", the unit doesn't build" if uname in broken
                                                                          else ""), fuzzy,
@@ -1597,24 +1643,29 @@ class ForkEngine:
         comes from (Console.rename_symbol), and as a whole word in every source and header file. Kept only when the
         project sets up again, the game still rebuilds as it did and every match still matches; else every file is
         put back. Polishing in project mode had local names only: functions and globals stayed func_0205d0f4 and
-        data_0222f194. The function's row keeps its history under the new name."""
-        if not re.fullmatch(r"[A-Za-z_]\w*", new) or not re.fullmatch(r"[A-Za-z_]\w*", old) or old == new:
+        data_0222f194. The function's row keeps its history under the new name. Where the report keeps the original's
+        symbol (Console.renames_in_report: a PC game's _func_0041B470@8), the row keeps that name too, and the new one
+        is the function's real name (Console.real_names), how its source spells it."""
+        # (`old` as the report gives a PC function: _func_0041B470@8, @func_0041B470@8)
+        if not re.fullmatch(r"[A-Za-z_]\w*", new) or not re.fullmatch(r"@?[A-Za-z_]\w*(?:@\d+)?", old) or old == new:
             raise NetworkError("rename_symbol takes two different C names: old and new")
         proj, fp, cfg = self.get(slug)
         if slug in self.net.links:
             raise NetworkError("in a room, the host's project is the one to rename in: say it in a note")
         console = consoles.get(cfg.get("platform"))
         version = (fp.manifest or {}).get("version") or cfg.get("version")
-        word, taken = re.compile(rf"\b{re.escape(old)}\b"), re.compile(rf"\b{re.escape(new)}\b")
-        files = sorted(p for d in ("src", "include") if (fp.root / d).is_dir() for p in (fp.root / d).rglob("*")
-                       if p.is_file() and p.suffix in self.SOURCE_SUFFIXES)
-        texts = {p: p.read_text(errors="replace", encoding="utf-8") for p in files}
-        if any(taken.search(t) for t in texts.values()):
-            raise NetworkError(f"{new} is used in the project already: pick another name")
-        matched = {self._meta(r).get("symbol") or r["name"] for r in self.net.store.all(
-            "SELECT name, meta FROM functions WHERE project_id=? AND status='matched'", proj["id"])}
+        word, taken = re.compile(console.rename_pattern(old)), re.compile(rf"\b{re.escape(new)}\b")
         checks = consoles.REBUILD_CHECK in console.features
         with self._tree(proj).exclusive(), self._build_locks[proj["id"]]:
+            # read under the lock: eight polishing helpers renamed at once, each wrote back files it had read before
+            # the others' renames, and half of an Xbox game's renames were undone in some files and not others
+            files = sorted(p for d in ("src", "include") if (fp.root / d).is_dir() for p in (fp.root / d).rglob("*")
+                           if p.is_file() and p.suffix in self.SOURCE_SUFFIXES)
+            texts = {p: p.read_text(errors="replace", encoding="utf-8") for p in files}
+            if any(taken.search(t) for t in texts.values()):
+                raise NetworkError(f"{new} is used in the project already: pick another name")
+            matched = {self._meta(r).get("symbol") or r["name"] for r in self.net.store.all(
+                "SELECT name, meta FROM functions WHERE project_id=? AND status='matched'", proj["id"])}
             before = (fp.manifest or {}).get("rebuild") or {}
             saved: dict[Path, str] = {}
             try:
@@ -1632,7 +1683,8 @@ class ForkEngine:
                 rep = fp.report()
                 now = {f["name"] for u in rep.get("units", []) for f in u.get("functions", [])
                        if (f.get("fuzzy_match_percent") or 0) >= 100}
-                if lost := sorted(n for n in matched if (new if n == old else n) not in now):
+                renamed = new if console.renames_in_report else old
+                if lost := sorted(n for n in matched if (renamed if n == old else n) not in now):
                     raise ForkError(f"these functions would stop matching: {', '.join(lost[:8])}")
             except (ForkError, RomError, ObjdiffError, OSError, ValueError) as e:
                 for p, t in saved.items():
@@ -1641,9 +1693,10 @@ class ForkEngine:
                     fp.run(cmd, log=lambda *_: None)
                 raise NetworkError(f"not renamed, nothing changed: {e}") from None
             with self.net.store.tx() as db:  # the function keeps its row, its matches and notes, under its new name
-                db.execute("UPDATE functions SET name=?, meta=json_set(COALESCE(meta, '{}'), '$.symbol', ?) WHERE "
-                           "project_id=? AND (name=? OR json_extract(meta, '$.symbol')=?)",
-                           (new, new, proj["id"], old, old))
+                if console.renames_in_report:  # (else sync gives it its real name, from the console's config)
+                    db.execute("UPDATE functions SET name=?, meta=json_set(COALESCE(meta, '{}'), '$.symbol', ?) WHERE "
+                               "project_id=? AND (name=? OR json_extract(meta, '$.symbol')=?)",
+                               (new, new, proj["id"], old, old))
                 self.net._event(db, proj["id"], agent.id if agent else None, "rename", f"{old} → {new}")
             self._commit_paths(proj, fp, [str(p.relative_to(fp.root)) for p in saved],
                                f"Rename {old} to {new}\n\n{message.strip() or 'Named'} by "
@@ -1689,12 +1742,18 @@ class ForkEngine:
         return self._index[proj["id"]]
 
     def _save_index(self, proj, fp: ForkProject) -> None:
+        """Write index.json, only when something new was indexed: every sync (each pull from a room, each edit)
+        ends an indexing pass, and a GameCube game's 11 MB index rewritten five times a second wrote 50 MB/s."""
         with self._ilock:
+            if proj["id"] not in self._index_dirty:
+                return
+            self._index_dirty.discard(proj["id"])
             snapshot = dict(self._index.get(proj["id"], {}))
         try:
             (fp.root / STATE / "index.json").write_text(json.dumps(snapshot), encoding="utf-8")
         except OSError:
-            pass
+            with self._ilock:
+                self._index_dirty.add(proj["id"])
 
     def _remember(self, proj, fp: ForkProject, unit, d) -> None:
         if unit.target is None or not unit.target.exists():
@@ -1702,7 +1761,10 @@ class ForkEngine:
         entry = {"mtime": unit.target.stat().st_mtime, "order": d.order, "ops": d.ops}
         idx = self._index_of(proj, fp)
         with self._ilock:
+            if idx.get(unit.name) == entry:  # every compile measures its unit again: mostly nothing new
+                return
             idx[unit.name] = entry
+            self._index_dirty.add(proj["id"])
 
     def _unit_index(self, proj, fp: ForkProject, unit, save: bool = True) -> dict | None:
         """Target order and mnemonics of a unit's functions, from its target object only (never races a build)."""
@@ -1789,8 +1851,9 @@ class ForkEngine:
                 lines += ["", f"Source of {best['name']} (matched):", "```c", src.strip()[:4000], "```"]
         return "\n".join(lines)
 
-    def _current_source(self, fp: ForkProject, fn) -> str | None:
-        """fn's definition as its file has it now, also when the file gets it by including another source file."""
+    def _current_source(self, fp: ForkProject, fn, comment: bool = False) -> str | None:
+        """fn's definition as its file has it now, also when the file gets it by including another source file.
+        `comment`: with the comment right above it (polishing's brief shows it)."""
         unit = fp.unit(fn["unit"])
         if not unit.source or not (fp.root / unit.source).exists():
             return None
@@ -1807,7 +1870,7 @@ class ForkEngine:
                 continue
             _, span = self._find(text, names)
             if span:
-                return text[span[0]:span[1]]
+                return text[csource.comment_above(text, span[0]) if comment else span[0]:span[1]]
             for inc in _SOURCE_INCLUDE.findall(text):
                 todo += [p for p in (fp.root / inc, fp.root / "src" / inc, path.parent / inc) if p.is_file()][:1]
         return None
@@ -2003,8 +2066,9 @@ class ForkEngine:
 
     @staticmethod
     def _names(meta: dict, fn) -> list[str]:
-        """Ways the function may be spelled in source: full C++ name, Class::method, then the plain symbol."""
-        out = []
+        """Ways the function may be spelled in source: its real name (a PC game's, Console.real_names), full C++
+        name, Class::method, then the plain symbol."""
+        out = [meta["real"]] if meta.get("real") else []
         dem = (meta.get("demangled") or "").split("(", 1)[0].strip()
         if dem:
             dem = dem.split(" ")[-1] if " " in dem and "operator" not in dem else dem
@@ -2096,7 +2160,7 @@ class ForkEngine:
                     self._reopened(db, proj, r, via, pct, held=pct is not None and pct >= 100)
                 elif pct is not None and r["best_score"] == 0:  # reopened before this was fixed: still says identical
                     db.execute("UPDATE functions SET best_score=? WHERE id=?", (scaled(pct, r["n_insns"]), r["id"]))
-                elif pct is not None and not r["best_source"]:
+                elif pct is not None and not r["best_source"] and r["best_score"] != scaled(pct, r["n_insns"]):
                     db.execute("UPDATE functions SET best_score=? WHERE id=?", (scaled(pct, r["n_insns"]), r["id"]))
 
     def _matched(self, db, proj, r, agent: Agent | None, text: str | None) -> None:
@@ -2343,15 +2407,16 @@ class ForkEngine:
         return "\n".join(out) or "none"
 
     def attempt(self, agent: Agent, slug: str, function: str, source: str, keep: bool = True, prelude: str = "",
-                quiet: int | None = None) -> dict:
+                quiet: int | None = None, comment: bool = False) -> dict:
         """`keep`: whether a version that doesn't match stays in the source file (an agent's work in progress) or
         is undone and kept only as the function's best attempt (autopilot's drafts). `prelude`: (decompdecomp's own
         tries) type definitions the code needs, placed after the file's includes. `quiet`: (the permuter's
         variants) recorded only when better than this score. A try that isn't kept holds the function only while
-        it builds (twins' tries come unclaimed: a 30-minute claim each kept agents off them, then counted as given up)."""
+        it builds (twins' tries come unclaimed: a 30-minute claim each kept agents off them, then counted as given up).
+        `comment`: (polishing) the comment right above the definition goes into the file, in place of the file's."""
         held = None if keep else self._hold_for_try(slug, function, agent)
         try:
-            res = self._attempt(agent, slug, function, source, keep, prelude, quiet)
+            res = self._attempt(agent, slug, function, source, keep, prelude, quiet, comment)
         finally:
             if held is not None:
                 with self.net.store.tx() as db:
@@ -2404,7 +2469,7 @@ class ForkEngine:
             pass
 
     def _attempt(self, agent: Agent, slug: str, function: str, source: str, keep: bool = True, prelude: str = "",
-                 quiet: int | None = None) -> dict:
+                 quiet: int | None = None, comment: bool = False) -> dict:
         proj, fp, cfg = self.get(slug)
         fn = self._fn(slug, function)
         meta = self._meta(fn)
@@ -2416,7 +2481,13 @@ class ForkEngine:
         _, span = self._find(source, names)
         if span is None:
             raise NetworkError(f"send the complete definition of {names[0]} (with its body)")
+        # with the comment right above it (what it does, from polishing): the file kept the definition only
+        # Polishing's only: a twin's note or a decompiling agent's scratch comment replaced a forked decomp's own
+        # doc comments, and piled up in its files
+        if comment:
+            span = (csource.comment_above(source, span[0]), span[1])
         code = source[span[0]:span[1]]
+        commented = code.lstrip().startswith(("//", "/*"))
         unit = fp.unit(fn["unit"])
         if not unit.source:
             raise NetworkError(f"unit {unit.name} has no source file, so there's nowhere to write it")
@@ -2457,9 +2528,16 @@ class ForkEngine:
             pre, post = "".join(ln + "\n" for ln in before_lines), "".join(ln + "\n" for ln in after_lines)
             if old_span:
                 lo, hi = old_span
+                kept = ""  # the file's comment, when none was sent
+                if commented:  # a new comment replaces the old one; without one, the file's stays
+                    lo = csource.comment_above(before, lo)
                 if any(_PRAGMA.match(ln) for ln in before_lines + after_lines):  # a new wrapper replaces the old one
-                    lo, hi = _pragmas_around(before, lo, hi)
-                after = before[:lo] + pre + code.rstrip("\n") + "\n" + post + before[hi:]
+                    above = csource.comment_above(before, lo)
+                    wrapped, hi = _pragmas_around(before, lo, hi)
+                    if not commented and wrapped < above:
+                        kept = before[above:lo]
+                    lo = wrapped
+                after = before[:lo] + pre + kept + code.rstrip("\n") + "\n" + post + before[hi:]
             else:
                 after = self._insert_in_order(proj, fp, unit, fn, before, pre + code.rstrip("\n") + "\n" + post)
             after = _with_includes(after, includes, prelude)
@@ -2469,7 +2547,7 @@ class ForkEngine:
             key = self.net.compile_key(fn, unit.name, after)
             if agents_try and (again := self.net.repeat_of(key, agent, fn)) is not None:
                 return again
-            path.write_text(after, encoding="utf-8")
+            _rewrite(path, after)
 
             def remembered(text: str, score: int | None, kept: bool = True) -> str:
                 """A result as repeat_of gives it back later (agents' tries only), plus the note when this variant
@@ -2481,7 +2559,7 @@ class ForkEngine:
                 return text + self.net.same_score_note(fn["id"], agent.id, score, code)
 
             def undo() -> None:
-                path.write_text(before, encoding="utf-8")
+                _rewrite(path, before)
                 if self._build_unit(proj, fp, unit)[0] and scores is not None:
                     self._keep_scores(proj, unit, before, scores)
 
@@ -2490,7 +2568,7 @@ class ForkEngine:
                 # the build itself is broken, not the agent's code: nothing recorded or counted, and the project
                 # is set up again in the background (one project spent five compiles on a build.ninja whose python
                 # was in another home, then the sessions quit)
-                path.write_text(before, encoding="utf-8")
+                _rewrite(path, before)
                 threading.Thread(target=self.preflight, args=(slug,), daemon=True, name=f"preflight-{slug}").start()
                 return {"text": f"❌ The project's build is broken, not your code: {broken}. Your change was undone, "
                                 "and nothing was recorded or counted. decompdecomp is setting the project up again; "
@@ -3034,11 +3112,11 @@ class ForkEngine:
             existed, text, updated = self._edited(p, rel, old, new)
             bases = {u.name: self._baseline(proj, fp, u, text) for u in units}
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(updated, encoding="utf-8")
+            _rewrite(p, updated)
 
             def undo() -> None:
                 if existed:
-                    p.write_text(text, encoding="utf-8")
+                    _rewrite(p, text)
                 else:
                     p.unlink(missing_ok=True)
                 for u in units:
@@ -3099,11 +3177,11 @@ class ForkEngine:
             protected = {(r["unit"], self._meta(r).get("symbol")) for r in self.net.store.all(
                 "SELECT unit, meta FROM functions WHERE project_id=? AND status='matched'", proj["id"])}
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(updated, encoding="utf-8")
+            _rewrite(p, updated)
 
             def undo() -> None:
                 if existed:
-                    p.write_text(text, encoding="utf-8")
+                    _rewrite(p, text)
                 else:
                     p.unlink(missing_ok=True)
                 self._build_all(proj, fp)
@@ -3137,7 +3215,7 @@ class ForkEngine:
                 if truly:
                     return f"❌ REJECTED and undone: the edit breaks {len(truly)} matched function(s): {', '.join(truly[:10])}"
                 p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_text(updated, encoding="utf-8")
+                _rewrite(p, updated)
                 self._build_all(proj, fp)
             self._scores = {k: v for k, v in self._scores.items() if k[0] != proj["id"]}
             self._commit(proj, fp, rel, f"{message.strip()}\n\nEdited by {agent.name} with decompdecomp.")

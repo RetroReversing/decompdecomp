@@ -91,6 +91,30 @@ def find(text: str, name: str) -> tuple[int, int] | None:
     return _stub(text, simple)
 
 
+# reccmp's annotations (`// FUNCTION: 0x...`, `// GLOBAL:`, `// STUB:`) say which of the original's functions a
+# definition is: the project's markers, not a description of it. Only reccmp's own words: any `// WORD:` took
+# `// NOTE:` and `// TODO:` for one, and a polished comment that had one was dropped
+_MARKER = re.compile(r"//\s*(?:FUNCTION|STUB|TEMPLATE|SYNTHETIC|LIBRARY|GLOBAL|VTABLE|STRING|LINE):")
+
+
+def comment_above(text: str, start: int) -> int:
+    """Where the comment right above a definition (at `start`, a line's start) begins: its `//` lines and `/* */`
+    blocks, with no blank line between, up to a marker such as `// FUNCTION:`; `start` when there's none. A polished
+    function's comment saying what it does belongs to it (a project's file kept only the definition)."""
+    at = start
+    while at > 0:
+        prev = text.rfind("\n", 0, at - 1) + 1
+        line = text[prev:at].strip()
+        if line.startswith("//") and not _MARKER.match(line):
+            at = prev
+        elif line.endswith("*/") and (opens := text.rfind("/*", 0, at)) >= 0 \
+                and not text[text.rfind("\n", 0, opens) + 1:opens].strip():
+            at = text.rfind("\n", 0, opens) + 1
+        else:
+            break
+    return at
+
+
 def get(text: str, name: str) -> str | None:
     span = find(text, name)
     return text[span[0]:span[1]] if span else None

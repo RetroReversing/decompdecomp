@@ -14,7 +14,7 @@ existing installs and projects keep working: the `decomp` command, the `decompne
 come from GitHub (`REPO` in app/updates.py and install.sh); the decomp.wtf domain isn't ours, so nothing may point
 at it. `site/` is the website (decomp.ndelic.com, published to GitHub Pages by `.github/workflows/site.yml` on every
 push to main that changes `site/public/`); `site/public/` also holds the installer, `install.sh`, which updates read
-from GitHub. Work on `main`: it's what users update from.
+from GitHub. `main` is what users update from.
 
 ## Commands
 
@@ -82,6 +82,32 @@ game at 57% had no Polish to choose.) A new PROJECT console therefore implements
 (polishing needs it), `split_source`, `join_functions` and, where its build allows, `set_file_compiler`, plus its
 processor's piece rules if its analysis can cut functions: CONTRIBUTING.md, "Adding a console", step 4.
 
+**Check every feature on the console you touch.** Adding or changing a console (or a feature) isn't done when its
+own tests pass: run each feature the app already has on that console, for real, and make the broken ones work. The
+list is ROADMAP.md's "What works where" table, one row per feature; today:
+- starting from your own copy, the judge, machine drafts, autopilot, drafts that follow the header (`redraft`),
+  C++ methods drafted as `Class::method`;
+- twins (in a game and across your games), the permuter, shared knowledge;
+- hand-written assembly and kernel stubs set aside, pieces joined to their function, the agents' "no C makes this"
+  verdict, Check again, function-end reports (`report_boundary`);
+- compiler ranges and suggestions, range checks, the compiler map and the judge's survey, flag search
+  (`search_flags`);
+- C++ classes (`get_class`), struct layouts (`guess_struct`), the game's own debug symbols in briefs;
+- polishing, real names (`rename_symbol`), saves and Open a saved project, the saved README card, reimport, the
+  rebuildable export, progress bars, rooms.
+
+What made this reliable when the PSP was added: copying another console's column into the table is a guess, not a
+check (the PSP's column was filled from the PS2's, then each row was run). Run each feature through the same engine
+and network calls the app and agents use, on the console's demo game (`projects/demo-<id>`, built unstripped too) and,
+where it matters, on a real game the user owns: in a scratch home (`DECOMP_HOME`/`HOME`, `DECOMP_WINDOW=0`), read
+only, never copied into the repo. A break gets fixed in the shared code with a test that would have caught it
+(a demo-based test that skips without its tools, like `tests/test_consoles.py`); what can't work yet gets its "—"
+and a ROADMAP.md item. Say in the pull request which features you ran and how.
+
+Reviewing a change (a pull request, an agent's branch): check the same list. Does the change reach every console and
+mode it can, does a new or changed console have each feature or a "—" with its ROADMAP item, and does the table
+still say what's true? A gap nobody wrote down is a finding.
+
 Improving a console, adding a console (copy `consoles/template/`, fill in the connector's parts, add a demo game,
 pass `tests/test_consoles.py`, add a ROADMAP.md column) and adding a compiler to a console: CONTRIBUTING.md,
 "Consoles", step by step.
@@ -130,6 +156,10 @@ linting). In short:
 - Every behavior change gets a test in `tests/`. Tests that need a real game or a compiler skip when it isn't there
   (CI has none of them); small homemade games/objects live in `projects/demo-*` and are built by their own scripts.
 - `uv run ruff check src tests projects` passes (CI runs it). No formatter: don't run `ruff format`.
+- A change goes on a branch named `<type>/<short-name>`, the type one of `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `ci`, `build`, `chore`, `revert` (`fix/ps2-long-symbol-names`); a pull request from any other branch fails `.github/workflows/labels.yml`,
+  and the prefix labels it. An issue you open (`gh issue create`) gets `--label` for its kind (`bug`, `enhancement`,
+  `documentation`, `question`) and for each console (`n64`, `psx`, `ps2`, `gc`, `wii`, `pc`, `ds`, `new-console`) and
+  system (`linux`, `windows`) it's about: `gh label list` has them all.
 - Releases bump the version in four places together: `pyproject.toml`, `src/decompnet/__init__.py`,
   `site/public/install.sh`, `uv.lock`; `packaging/release.sh X.Y.Z "what users get"` does that, commits, tags and
   pushes (a tag pushed before the bump fails release.yml's version check). Commit subjects read
