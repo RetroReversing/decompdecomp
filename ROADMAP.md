@@ -40,6 +40,7 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Struct layouts from loads and stores (`guess_struct`) | ✓ | ✓ | ✓ | ✓ | — | ✓ | — | — |
 | The game's own debug symbols: names, types, prototypes | — | — | ✓ symbol table, STABS, DWARF 1; the compiler of each object file | ✓ symbol table, DWARF 1 | — | ✓ PDB (Visual C++ 6.0's PDB 2.0, MSF 7.00), linker map, COFF symbols | — | — |
 | Twins across your games | ✓ | ✓ | ✓ | ✓ | — | ✓ (between PC projects) | — | — |
+| Automatic attempts from similar verified C | ✓ (ROM) | ✓ (ROM) | ✓ (ROM) | ✓ (ROM) | — | — | — | — |
 | Shared knowledge (two models agree) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Tidy each source file once it's polished (shared types in one header, names, dead declarations) | — | — | — | — | ✓ | ✓ | ✓ | ✓ |
 | Polish matched code (still matching) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -92,6 +93,10 @@ Where to start on a gap:
 ROM projects now keep an indexed library of verified functions from the user's other local games, report every
 cross-game transfer, suggest nearby code and names, and can index names and fingerprints from user-selected local
 SDK object archives. The archive's source is never bundled; a signature is a hint until compiled C passes the judge.
+
+Similar-code autopilot attempts are bounded and use the unchanged compiler/link judge on MIPS ROM projects.
+Project-mode support is planned: align target-object relocations and adapt file-local declarations before trying
+similar C through objdiff. Other processors need an instruction reader for this search.
 
 ## Recently done
 

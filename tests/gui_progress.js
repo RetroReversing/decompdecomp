@@ -189,3 +189,16 @@ async function main() {
   assert.equal(test.log.bar.removed, true);
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });
+
+// Reuse searches have no known total: show the shared indeterminate bar until they finish or stop.
+{
+  const text = read("steering");
+  const snippet = text.slice(text.indexOf('  const running = ap &&'), text.indexOf('  const perm = pm &&'));
+  for (const state of ["running", "done", "stopped"]) {
+    const bar = { hidden: true, className: "upbar", firstElementChild: { style: { width: "80%" } } };
+    vm.runInNewContext(snippet, { ap: null, tw: { state }, box: { classList: { toggle() {} } }, $: () => bar });
+    assert.equal(bar.hidden, state !== "running");
+    assert.equal(bar.className, state === "running" ? "workbar" : "upbar");
+    if (state === "running") assert.equal(bar.firstElementChild.style.width, "");
+  }
+}
