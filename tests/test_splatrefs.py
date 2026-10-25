@@ -228,3 +228,14 @@ def test_plan_accepts_source_extension_in_object_name_and_rejects_ambiguity(tmp_
     short.write_bytes(b'stale object')
     with pytest.raises(ForkError, match='ambiguous built objects'):
         splatrefs.plan(tmp_path, cfg)
+
+
+@pytest.mark.skipif(toolchains.installed('binutils-mips') is None, reason='needs pinned MIPS binutils')
+def test_assembly_units_are_visible_without_counting_original_assembly_as_c(tmp_path):
+    cfg = synthetic_project(tmp_path, 'n64')
+    cfg['segments'][0]['subsegments'][0][1] = 'asm'
+    assert splatrefs.generate(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, consoles.get('n64'))
+    entry = json.loads((tmp_path / 'objdiff.json').read_text())['units'][0]
+    assert entry['name'] == 'asm/demo'
+    assert 'base_path' not in entry and 'metadata' not in entry
+    assert (tmp_path / entry['target_path']).is_file()

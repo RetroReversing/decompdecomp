@@ -29,7 +29,7 @@ MAX_UNITS = 2000
 TIMEOUT = 180
 SYMBOL = re.compile(r"[A-Za-z_.$][\w.$]*")
 ADDRESS_COMMENT = re.compile(r"/\* [0-9A-Fa-f]+ ([0-9A-Fa-f]{8})")
-ADDRESS_NAME = re.compile(r"(?:\.L|D_|func_)([0-9A-Fa-f]{8})")
+ADDRESS_NAME = re.compile(r"(?:\.L|D_|func_|jtbl_)([0-9A-Fa-f]{8})")
 
 
 def inside(root: Path, value: str) -> Path:
@@ -144,7 +144,7 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
 
 
 def plan(root: Path, config: dict) -> list[dict]:
-    """Accept named code segments with linear image mappings and ordinary C/data subsegments only."""
+    """Accept linear code mappings; C units have candidates, assembly units remain source-less targets."""
     options = config.get('options', {})
     source_root = options.get('src_path', 'src')
     build_root = options.get('build_path', 'build')
@@ -182,26 +182,28 @@ def plan(root: Path, config: dict) -> list[dict]:
                 raise ForkError("automatic objdiff setup needs explicit numeric subsegment offsets")
             if kind not in ('c', 'asm', 'hasm', 'data', 'rodata', 'bss', '.data', '.rodata', '.bss', 'bin'):
                 raise ForkError(f"automatic objdiff setup does not support splat subsegment {kind!r} yet")
-            if kind != 'c':
+            if kind not in ('c', 'asm', 'hasm'):
                 continue
             name = str(entry[2]) if len(entry) > 2 else f'{offset:X}'
             if Path(name).is_absolute() or '..' in Path(name).parts or '\\' in name or ':' in name:
                 raise ForkError("automatic objdiff setup needs relative unit names without parent paths")
-            source = inside(root, str(Path(source_root) / (name + '.c')))
-            relative = source.relative_to(root)
-            candidates = [inside(root, str(Path(build_root) / relative.with_suffix('.o'))),
-                          inside(root, str(Path(build_root) / (str(relative) + '.o')))]
-            built = [path for path in candidates if path.is_file()]
-            if not source.is_file() or not built:
-                raise ForkError("automatic objdiff setup needs the project's C objects built first; follow its README")
-            if len(built) != 1:
-                raise ForkError(f"ambiguous built objects for {relative}; remove stale build outputs or configure objdiff manually")
-            base = built[0]
+            source = base = None
+            if kind == 'c':
+                source = inside(root, str(Path(source_root) / (name + '.c')))
+                relative = source.relative_to(root)
+                candidates = [inside(root, str(Path(build_root) / relative.with_suffix('.o'))),
+                              inside(root, str(Path(build_root) / (str(relative) + '.o')))]
+                built = [path for path in candidates if path.is_file()]
+                if not source.is_file() or not built:
+                    raise ForkError("automatic objdiff setup needs the project's C objects built first; follow its README")
+                if len(built) != 1:
+                    raise ForkError(f"ambiguous built objects for {relative}; remove stale build outputs or configure objdiff manually")
+                base = built[0]
             units.append({'name': name, 'source': source, 'base': base, 'offset': offset,
                           'vram': segment['vram'] + offset - segment['start'],
                           'delta': segment['start'] - segment['vram']})
     if not units or len(units) > MAX_UNITS or len({u['name'] for u in units}) != len(units):
-        raise ForkError("automatic objdiff setup needs distinct C units in a supported splat layout")
+        raise ForkError("automatic objdiff setup needs distinct code units in a supported splat layout")
     return units
 
 
@@ -351,10 +353,12 @@ def generate(project, config_path: Path, config: dict, console, log=print) -> bo
         for index, unit in enumerate(units, 1):
             log(f'Verifying objdiff reference {index}/{len(units)}: {unit["name"]}')
             target = assemble(root, work, unit, definitions, image, assembler, linker, console.as_flags, log)
-            entries.append({'name': str(unit['source'].relative_to(root).with_suffix('')),
-                            'target_path': str((destination / target.relative_to(work)).relative_to(root)),
-                            'base_path': str(unit['base'].relative_to(root)),
-                            'metadata': {'source_path': str(unit['source'].relative_to(root))}})
+            entry = {'name': str(unit['source'].relative_to(root).with_suffix('')) if unit['source'] else 'asm/' + unit['name'],
+                     'target_path': str((destination / target.relative_to(work)).relative_to(root))}
+            if unit['source']:
+                entry.update(base_path=str(unit['base'].relative_to(root)),
+                             metadata={'source_path': str(unit['source'].relative_to(root))})
+            entries.append(entry)
         pending = work / 'objdiff.json'
         pending.write_text(json.dumps({'custom_make': 'make', 'build_target': False, 'build_base': True,
                                        'units': entries}, indent=2) + '\n', encoding='utf-8')
