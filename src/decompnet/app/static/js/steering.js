@@ -280,6 +280,28 @@ function renderAutopilot(ov) {
   };
 }
 
+async function renderSdkSelection() {
+  const data = await api(`/api/sdk-library?slug=${encodeURIComponent(S.slug)}`);
+  $("sdkMode").value = data.selection === null ? "auto" : "manual";
+  const detected = data.libraries.filter(r => r.detected);
+  $("sdkDetected").textContent = detected.length
+    ? `${detected.length} local libraries share exact function signatures with this game.`
+    : "No library signatures detected yet. Add folders in global Settings or build the imported project's target objects first.";
+  $("sdkChoices").innerHTML = data.libraries.map(r => `<label class="check"><input type="checkbox" data-sdk-corpus="${esc(r.corpus)}" ${r.enabled ? "checked" : ""}><span>${esc(r.corpus.split(" / sha256:")[0])} · ${r.detected} fingerprints</span></label>`).join("");
+  const toggle = () => { $("sdkChoices").hidden = $("sdkMode").value === "auto"; };
+  $("sdkMode").onchange = toggle; toggle();
+}
+$("sdkSelectionSave").onclick = async () => {
+  const log = $("sdkSelectionLog"), button = $("sdkSelectionSave");
+  const finish = beginWork(log, "Saving this game's libraries", [button], "Library selection saved.");
+  try {
+    const selection = $("sdkMode").value === "auto" ? null : Array.from($("sdkChoices").querySelectorAll("input:checked"), e => e.dataset.sdkCorpus);
+    await api("/api/sdk-library", { method: "POST", body: { slug: S.slug, selection } });
+    S.ov = await api(`/api/project?slug=${encodeURIComponent(S.slug)}`);
+    await renderProjectSettings();
+  } catch (e) { showJobError(log, e.message); } finally { finish(); }
+};
+
 $("sdkImport").onclick = async () => {
   const button = $("sdkImport"), log = $("sdkLog");
   showJobError(log, "");
@@ -289,6 +311,7 @@ $("sdkImport").onclick = async () => {
       slug: S.slug, path: $("sdkPath").value, corpus: $("sdkCorpus").value,
       source_path: $("sdkSourcePath").value, header_path: $("sdkHeaderPath").value } });
     log.hidden = false;
+    await renderSdkSelection();
     log.textContent = `${result.signatures} signatures and ${result.sources || 0} C definitions indexed from ${result.corpus}.`;
   } catch (e) { showJobError(log, e.message); } finally { finish(); }
 };
@@ -411,6 +434,7 @@ async function renderProjectSettings() {
     renderCompilerWaiting(ov);
     loadCompilerAnswer();
   }
+  await renderSdkSelection();
   const facts = [["Platform", ov.platform_name], ["Game", ov.rom?.title || ov.title], [fork ? "Version" : "Game code", ov.rom?.game_code || ov.version],
     !fork && ov.rom?.region ? ["Region", ov.rom.region] : null, fork ? ["Layout", ov.origin === "scratch" ? (ov.layout || "decomp") + " (from scratch)" : ov.fork_kind] : ["Compiler", `${ov.compiler.name} ${ov.compiler.flags.join(" ")}`],
     ...projectCompilerFacts(ov),

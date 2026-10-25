@@ -747,3 +747,15 @@ def test_free_search_settings_are_bounded_and_can_disable_automatic_work(app):
     assert response.json()['reuse_seconds'] == 600 and response.json()['reuse_attempts'] == 1
     assert not net.cascades.enabled
     client.post('/api/settings', json={'reuse_seconds': 120, 'reuse_attempts': 128}, headers={'X-Decomp': '1'})
+
+
+def test_sdk_inventory_is_global_and_selection_is_a_guarded_project_setting(app, monkeypatch):
+    client, net, _ = app
+    from decompnet.app import sdk_library
+    monkeypatch.setattr(sdk_library, 'state', lambda net, slug=None: {'folders': [], 'libraries': [], 'selection': None})
+    assert client.get('/api/sdk-library').json()['folders'] == []
+    assert client.post('/api/sdk-library', json={'folders': []}).status_code == 403
+    selected = []
+    monkeypatch.setattr(sdk_library, 'choose', lambda net, slug, selection: selected.append((slug, selection)))
+    response = client.post('/api/sdk-library', json={'slug': 'example', 'selection': []}, headers={'X-Decomp': '1'})
+    assert response.status_code == 200 and selected == [('example', [])]

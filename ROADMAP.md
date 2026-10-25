@@ -93,7 +93,9 @@ Where to start on a gap:
 
 ROM projects now keep an indexed library of verified functions from the user's other local games, report every
 cross-game transfer, suggest nearby code and names, and can index names and fingerprints from user-selected local
-SDK object archives. The archive's source is never bundled; a signature is a hint until compiled C passes the judge.
+SDK object archives. Global SDK folders are scanned once for every project, with unchanged-file caching and
+per-project automatic or explicit library selection. Imported project target objects supply detection evidence too.
+Removing a managed folder removes its indexed references, while manual imports are preserved. The archive's source is never bundled; a signature is a hint until compiled C passes the judge.
 
 Similar-code autopilot attempts are bounded and use the unchanged compiler/link judge on MIPS ROM projects.
 They learn unambiguous symbol correspondences, try local-permuter repairs and proven donor flags, and persist

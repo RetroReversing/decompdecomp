@@ -11,6 +11,7 @@ from pathlib import Path
 
 from ..network import NetworkError
 from .function_names import record, state
+from .sdk_library import allowed
 
 _VERSION = re.compile(r"\blib(?:g)?ultra\s+(2\.0[A-L])\b", re.I)
 log = logging.getLogger("decompdecomp")
@@ -65,6 +66,8 @@ def report(net, proj):
     names = defaultdict(set)
     versions = defaultdict(set)
     for row in net.store.all("SELECT corpus,name,fingerprint FROM sdk_signatures WHERE arch='mips' AND big_endian=1"):
+        if not allowed(net, proj, row["corpus"]):
+            continue
         match = _VERSION.search(row["corpus"])
         if not match or row["fingerprint"] not in keys:
             continue
@@ -91,7 +94,7 @@ def name_functions(net, slug, job=None):
         return 0
     donors = defaultdict(lambda: defaultdict(set))
     for r in net.store.all("SELECT corpus,name,fingerprint,size FROM sdk_signatures WHERE arch='mips' AND big_endian=1"):
-        if _VERSION.search(r["corpus"]) and r["size"] >= MIN_BYTES and re.fullmatch(r"[A-Za-z_]\w*", r["name"]):
+        if allowed(net, proj, r["corpus"]) and _VERSION.search(r["corpus"]) and r["size"] >= MIN_BYTES and re.fullmatch(r"[A-Za-z_]\w*", r["name"]):
             donors[r["fingerprint"]][r["name"]].add(r["corpus"])
     prints = net.twins.prints(proj)
     rows = net.store.all("SELECT * FROM functions WHERE project_id=?", proj["id"])

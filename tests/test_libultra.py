@@ -6,6 +6,7 @@ import pytest
 
 from decompnet.app.engine import RomNetwork
 from decompnet.app.libultra import name_functions, report
+from decompnet.app.sdk_library import choose
 
 from .test_rom import ROM, built  # noqa: F401
 
@@ -24,6 +25,9 @@ def test_local_library_names_need_one_unambiguous_signature(built, tmp_path, con
         for name in ([library_name, "osOtherMeaning"] if conflicting else [library_name]):
             db.execute("INSERT INTO sdk_signatures(corpus,arch,big_endian,name,fingerprint,size) VALUES(?,?,?,?,?,?)",
                        ("libultra 2.0I / libultra_rom.a", "mips", 1, name, p.key, p.size))
+    choose(net, slug, [])
+    assert name_functions(net, slug) == 0
+    choose(net, slug, None)
     assert name_functions(net, slug) == expected
     if expected:
         detail = net.function_detail(slug, library_name)
@@ -35,7 +39,10 @@ def test_local_library_names_need_one_unambiguous_signature(built, tmp_path, con
     data = bytearray(path.read_bytes())
     data[12:16] = bytes.fromhex("00001449")
     path.write_bytes(data)
-    result = report(net, proj)
+    choose(net, slug, [])
+    assert report(net, net.project_row(slug))["signature_candidates"] == []
+    choose(net, slug, None)
+    result = report(net, net.project_row(slug))
     assert result["header_version"] == "2.0I" and result["header_raw"] == "00001449"
     assert result["signature_candidates"][0]["fingerprints"] == 1
     assert "not proof" in result["note"]
