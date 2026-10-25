@@ -751,7 +751,7 @@ class ForkEngine:
                     self._save_cfg(proj, cfg)
                 except (OSError, ForkError):
                     pass
-            dest = fp.place_game(Path(game), filename or Path(game).name, cfg.get("version"), move=move)
+            dest = fp.place_game(Path(game), filename or Path(game).name, cfg.get("version"), move=move, log=log)
             log(f"your copy of the game is at {dest.relative_to(fp.root)}")
         if not fp.needs(cfg.get("version"))["auto"]:
             raise NetworkError("this project has its own setup: follow its README, then click Check again")
@@ -763,23 +763,19 @@ class ForkEngine:
         which ones the project has, instead of failing deep in the build."""
         originals = fp.splat_baseroms() if fp.kind() == "splat" else {}
         if originals:
-            from ..consoles.n64.rom import z64_file_sha1
+            from ..consoles.n64.rom import file_hashes
 
+            hashes = file_hashes(game)
             if game.stat().st_size == 0:
-                raise NetworkError("that ROM file is empty (0 bytes). Select a complete copy of the game.")
-            normalized = z64_file_sha1(game)
-            if normalized:
-                digest, byte_order = normalized
-            else:
-                raw = hashlib.sha1()
-                with game.open("rb") as stream:
-                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                        raw.update(chunk)
-                digest, byte_order = raw.hexdigest(), None
+                raise NetworkError("That ROM file is empty (0 bytes). Select a complete copy of the game.\n"
+                                   + hashes.describe())
+            digest = hashes.normalized_sha1 or hashes.source_sha1
+            byte_order = hashes.byte_order
             version = next((v for v, sha1 in originals.items() if sha1 == digest), None)
             if version is None:
                 raise NetworkError("that ROM's SHA-1 doesn't match an original ROM supported by this project: "
-                                   + ", ".join(f"{v}: {sha1}" for v, sha1 in originals.items()))
+                                   + ", ".join(f"{v}: {sha1}" for v, sha1 in originals.items())
+                                   + "\n" + hashes.describe())
             if byte_order in ("n64", "v64"):
                 log(f"your {byte_order} ROM matches after conversion to z64 byte order")
             if version != cfg.get("version"):

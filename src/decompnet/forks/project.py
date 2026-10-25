@@ -370,27 +370,35 @@ class ForkProject:
 
     # ------------------------------------------------------------------ setup
 
-    def place_game(self, src: Path, filename: str, version: str | None = None, move: bool = False) -> Path:
+    def place_game(self, src: Path, filename: str, version: str | None = None, move: bool = False, log=None) -> Path:
         """Put the user's game file where the project expects it, checking its sha1 when the project has one.
         Works from a file on disk, so multi-gigabyte discs are never read into memory."""
         need = self.needs(version)
         if not need["path"]:
             raise ForkError("decompdecomp doesn't know where this project expects the game; follow its README")
         src = Path(src)
-        if need.get("sha1") and _sha1(src) != need["sha1"]:
-            if need["path"].endswith(".z64"):
-                from ..consoles.n64.rom import copy_z64_file, z64_file_sha1
+        supplied_sha1 = _sha1(src) if need.get("sha1") or need["path"].endswith(".z64") else None
+        details = f"Supplied file SHA-1: {supplied_sha1}"
+        normalized_sha1 = None
+        if need["path"].endswith(".z64"):
+            from ..consoles.n64.rom import copy_z64_file, file_hashes
 
-                normalized = z64_file_sha1(src)
-                if normalized and normalized[0] == need["sha1"]:
+            hashes = file_hashes(src, supplied_sha1)
+            details, normalized_sha1 = hashes.describe(), hashes.normalized_sha1
+            if log:
+                log(details)
+        if need.get("sha1") and supplied_sha1 != need["sha1"]:
+            if need["path"].endswith(".z64"):
+                if normalized_sha1 == need["sha1"]:
                     dest = self.root / need["path"]
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     copy_z64_file(src, dest)
                     return dest
             inner = self._from_disc(src.read_bytes(), Path(need["path"]).name) if src.stat().st_size < 1 << 30 else None
             if inner is None or hashlib.sha1(inner).hexdigest() != need["sha1"]:
-                raise ForkError("that file isn't the version this project decompiles (its sha1 doesn't match the "
-                                "project's); check the README for the exact version")
+                raise ForkError("That file does not match the version this project expects.\n"
+                                f"Expected SHA-1: {need['sha1']}\n{details}\n"
+                                "Check the project's README for the required region and revision.")
             dest = self.root / need["path"]
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(inner)

@@ -79,8 +79,10 @@ def test_splat_generated_target_uses_original_rom_versions(tmp_path, monkeypatch
     with pytest.raises(NetworkError, match=r"empty \(0 bytes\)"):
         engine._match_version(SimpleNamespace(), fp, cfg, game, log=lambda *_: None)
     game.write_bytes(b"wrong edition")
-    with pytest.raises(NetworkError, match="supported by this project"):
+    with pytest.raises(NetworkError, match="supported by this project") as error:
         engine._match_version(SimpleNamespace(), fp, cfg, game, log=lambda *_: None)
+    assert hashlib.sha1(game.read_bytes()).hexdigest() in str(error.value)
+    assert "Big-endian conversion: not attempted" in str(error.value)
 
 
 @pytest.mark.parametrize("fmt", ["v64", "n64"])
@@ -146,7 +148,7 @@ def fork(tmp_path_factory):
     slug = net.forks.clone(str(upstream), name="Demo Quest decomp", platform="n64", log=lambda *_: None)
     need = net.forks.needs(slug)
     assert need["kind"] == "manifest" and need["path"] == "baserom.z64"
-    with pytest.raises(NetworkError, match="sha1"):
+    with pytest.raises(NetworkError, match="Expected SHA-1:"):
         net.forks.setup(slug, b"\0" * 1024, "nope.z64", log=lambda *_: None)
     m = net.forks.setup(slug, ROM.read_bytes(), "demo.z64", log=lambda *_: None)
     assert m["total_functions"] == 13
