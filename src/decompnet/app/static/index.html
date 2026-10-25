@@ -272,9 +272,11 @@
         <div class="ap-text"><b id="apTitle"></b><span class="muted small" id="apSub"></span><div class="upbar" id="apBar" role="progressbar" aria-label="Automatic matching progress" hidden><i></i></div></div>
         <button class="ghost small-btn" id="apBtn" type="button"></button>
       </div>
-      <details class="more" id="crossGamePanel"><summary>Matches from other games</summary>
-        <div class="more-body"><p class="muted small" id="crossGameSummary"></p><ol class="mini-list" id="crossGameRecent"></ol></div>
-      </details>
+      <section class="panel" id="crossGamePanel" hidden>
+        <header class="panel-head"><h2>Matches from other games</h2></header>
+        <p class="muted small" id="crossGameSummary" style="padding: 13px 16px; margin: 0"></p>
+        <ol class="mini-list" id="crossGameRecent"></ol>
+      </section>
     </div>
 
     <div class="cols">
@@ -492,6 +494,7 @@
       <div class="dh-title">
         <p class="eyebrow" id="fnAddr"></p>
         <h2 id="fnName" class="mono"></h2>
+        <p class="muted small" id="fnNaming" hidden></p>
       </div>
       <div class="row">
         <span class="badge" id="fnStatus"></span>
@@ -504,6 +507,12 @@
     </header>
     <div class="drawer-body">
       <p class="set-aside" id="fnAside" hidden><span id="fnAsideWhy"></span> <button class="link-btn" id="fnReopen" type="button">Give it back to the agents</button></p>
+      <div id="fnCompilerTest" hidden>
+        <button class="ghost small-btn" id="fnTestCompilers" type="button">Test installed compilers &amp; flags</button>
+        <p class="small muted">Tests this function’s saved C attempt locally with every installed compiler and supported flag-search variant. No AI tokens; settings stay unchanged. This is not every possible compiler option.</p>
+        <p class="compiler-result" id="fnCompilerSummary" role="status" hidden></p>
+        <details class="more"><summary>Comparison details</summary><pre class="joblog" id="fnCompilerLog" hidden></pre></details>
+      </div>
       <div class="fn-tabs">
         <div class="tabs" role="tablist" aria-label="Function view">
           <button role="tab" class="tab on" data-ftab="diff" type="button">Diff</button>

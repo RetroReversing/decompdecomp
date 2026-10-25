@@ -43,6 +43,20 @@ class EditMixin:
         return (f"✅ split: {fn['name']} is now {len(head.lines)} instructions; {new_name} at 0x{addr:08X} has "
                 f"{len(tail.lines)}. Continue with {fn['name']} (get_function shows its new assembly).")
 
+    def split_rom_by_you(self, slug: str, function: str, at: str, new_name: str = "") -> str:
+        """Operator correction of a merged ROM entry; keep both sides as code requiring a fresh judgement."""
+        self._rom_only(slug, "split_rom_by_you")
+        if self._link(slug) is not None or slug in self.rooms:
+            raise NetworkError("leave the shared room before changing ROM function boundaries")
+        proj, fn = self._project(slug), self._function(function, slug)
+        if self.store.one("SELECT 1 FROM claims WHERE function_id=? AND expires_at>?", fn["id"], time.time()):
+            raise NetworkError("release the function's active claim before splitting it")
+        image, _ = self._rom(proj)
+        if image[fn["rom_offset"]:fn["rom_offset"] + fn["size"]] != fn["target"]:
+            raise NetworkError("the function differs from the original image")
+        agent, _ = self.local_agent("you")
+        return self.split_function(agent, slug, function, at, new_name)
+
     def _cut(self, proj, fn, addr: int, new_name: str, syms: SymbolTable, agent_id: int | None, kind: str, detail: str,
              tail_meta: dict | None = None):
         """Cut a MIPS function in two at `addr`: the head keeps its row, the tail becomes `new_name` (status 'asm'
@@ -58,7 +72,7 @@ class EditMixin:
             old.size = head.size
         th, tt = self._make_target(proj, head, syms), self._make_target(proj, tail, syms)
         with self.store.tx() as db:
-            db.execute("UPDATE functions SET size=?, n_insns=?, target=?, relocs=?, asm=?, seed=NULL, best_score=NULL "
+            db.execute("UPDATE functions SET size=?, n_insns=?, target=?, relocs=?, asm=?, seed=NULL, best_score=NULL, best_source=NULL "
                        "WHERE id=?", (head.size, len(head.lines), th.code, json.dumps(th.to_json()),
                                       self._asm_source(head), fn["id"]))
             db.execute("INSERT INTO functions(project_id,name,size,n_insns,target,relocs,asm,seed,unit,vram,rom_offset,"
@@ -280,6 +294,11 @@ class EditMixin:
                     db.execute("INSERT OR REPLACE INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)",
                                (proj["id"], new, s.address, s.size, s.kind))
                 db.execute("UPDATE functions SET name=? WHERE project_id=? AND (name=? OR vram=?)", (new, proj["id"], old, addr))
+                from ..function_names import record
+                for renamed in db.execute("SELECT id FROM functions WHERE project_id=? AND vram=?",
+                                          (proj["id"], addr)).fetchall():
+                    record(db, renamed["id"], old, new)
+
             for u, header in changed.items():
                 version = self._next_version(db, proj["id"])
                 db.execute("INSERT INTO context_versions(project_id,version,header,agent_id,message,created_at,unit) "

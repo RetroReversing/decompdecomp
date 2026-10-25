@@ -1059,3 +1059,30 @@ url = "https://github.com/encounter/dtk-template/archive/95a941f755919ebe50c1725
 sha256 = "c49f889a4e092388beef4867340887ec6f0410bd1055d79a8f8850bea89ada61"
 subdir = "dtk-template-95a941f755919ebe50c1725a4ce73524470e7a02"
 
+
+["sn-n64-281"]
+name = "SN Systems N64 GCC 2.8.1"
+kind = "compiler-pack"
+platform = "N64"
+license = "proprietary"
+source = "marijnvdwerf/sn64 release 1,0,0,2"
+description = "Preserved Windows N64 compiler for public project builds; run using wibo."
+requires = ["wibo"]
+[["sn-n64-281".parts]]
+url = "https://github.com/marijnvdwerf/sn64/releases/download/1%2C0%2C0%2C2/cc1n64.exe"
+sha256 = "d90df1028c46d826e37146dbcc3e3385f78c59e05a9ddd952daa94c9ad379d9c"
+binary = "cc1n64.exe"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
+
+["sn-n64-272-0001"]
+name = "SN Systems N64 GCC 2.7.2 (0001)"
+kind = "compiler-pack"
+platform = "N64"
+license = "proprietary"
+source = "decompme/compilers n64_sn272_0001"
+description = "Preserved Windows N64 compiler, preprocessor and assembler for public project builds; run using wibo."
+requires = ["wibo"]
+[["sn-n64-272-0001".parts]]
+url = "https://github.com/decompme/compilers/releases/download/compilers/n64_sn272_0001.tar.gz"
+sha256 = "17c57ccd5f2305fe5445c576d4cc2c1fea681dd78b29dd3d1f15c5ca0fdf2cea"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
