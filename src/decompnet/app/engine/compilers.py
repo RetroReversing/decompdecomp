@@ -637,6 +637,24 @@ class CompilerMixin:
         self._update_cfg(slug, lambda cfg: next(s for s in cfg["suggestions"] if s["id"] == sid).__setitem__(
             "status", "applied" if apply else "dismissed"))
 
+    def apply_function_compiler(self, slug: str, function: str, toolchain: str, flags: list[str]) -> dict:
+        """Revalidate an improved comparison, apply only its function's range, then record its C normally."""
+        self._rom_only(slug, "applying function compiler settings")
+        proj = self._project(slug)
+        fn = self._function(function, slug)
+        if fn["status"] in ("matched", "asm"):
+            raise NetworkError("This function is no longer unmatched. Run a fresh comparison.")
+        source = self._source_of(fn)
+        if not source:
+            raise NetworkError("This function has no C attempt to apply. Run a fresh comparison.")
+        ok, diff, _ = self._judge_with(proj, fn, toolchain, flags, source)
+        if diff is None or (not ok and fn["best_score"] is not None and diff.score >= fn["best_score"]):
+            raise NetworkError("These settings no longer improve this function. Run a fresh comparison.")
+        self.set_compiler_ranges(slug, [[fn["vram"], fn["vram"] + fn["size"]]], toolchain, flags)
+        agent, _ = self.local_agent("autopilot")
+        self.attempt(agent, function, source, project=slug)
+        return {"said": f"Compiler settings applied to {function} only."}
+
     def set_compiler_ranges(self, slug: str, ranges: list[list[int]], toolchain: str | None,
                             flags: list[str] | None = None, reopen: bool = False) -> None:
         """Address ranges built by another compiler than the rest of the game (replacing ranges they overlap), or
@@ -654,7 +672,13 @@ class CompilerMixin:
         before = self.cfg(self._project(slug)).get("compiler_ranges", [])
 
         def change(cfg):
-            keep = [r for r in cfg.get("compiler_ranges", []) if all(r["end"] <= a or r["start"] >= b for a, b in ranges)]
+            keep = []
+            for r in cfg.get("compiler_ranges", []):
+                pieces = [(r["start"], r["end"])]
+                for a, b in ranges:
+                    pieces = [(x, y) for start, end in pieces
+                              for x, y in ((start, min(end, a)), (max(start, b), end)) if x < y]
+                keep.extend(dict(r, start=a, end=b) for a, b in pieces)
             if toolchain:
                 keep += [{"start": a, "end": b, "toolchain": toolchain, "flags": flags} for a, b in ranges]
             cfg["compiler_ranges"] = sorted(keep, key=lambda r: r["start"])

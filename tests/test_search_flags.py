@@ -138,3 +138,27 @@ def test_installed_compiler_comparison_is_local_and_report_only(tmp_path, monkey
         failed = net.survey_compilers("demo", all_installed=True, function=function, log=messages.append)
         assert failed["comparison"]["best"] is None
         assert any("could not compile or compare" in line for line in messages)
+
+
+def test_apply_function_compiler_preserves_neighbours_and_revalidates(tmp_path, monkeypatch):
+    net = RomNetwork(tmp_path / "decomp.db", tmp_path)
+    cfg = {"kind": "rom", "platform": "ps", "compiler": {"toolchain": "gcc-2.7.2-psx", "flags": ["-O2"]},
+           "compiler_ranges": [{"start": 0x1000, "end": 0x1100, "toolchain": "gcc-2.7.2-psx", "flags": ["-O1"]}]}
+    with net.store.tx() as db:
+        pid = db.execute("INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)",
+                         ("demo", "Demo", str(tmp_path), json.dumps(cfg))).lastrowid
+        db.execute("INSERT INTO functions(project_id,name,vram,size,n_insns,status,best_score,best_source) "
+                   "VALUES(?,?,?,?,?,?,?,?)", (pid, "f", 0x1040, 32, 8, "open", 200, "int f(void){return 1;}"))
+    monkeypatch.setattr(net, "_judge_with", lambda *a: (False, SimpleNamespace(score=100), ""))
+    attempts = []
+    monkeypatch.setattr(net, "attempt", lambda *a, **k: attempts.append((a, k)))
+    net.apply_function_compiler("demo", "f", "gcc-2.8.0-psx", ["-O2"])
+    ranges = net.cfg(net._project("demo"))["compiler_ranges"]
+    assert [(r["start"], r["end"]) for r in ranges] == [(0x1000, 0x1040), (0x1040, 0x1060), (0x1060, 0x1100)]
+    assert ranges[0]["flags"] == ranges[2]["flags"] == ["-O1"]
+    assert ranges[1]["toolchain"] == "gcc-2.8.0-psx" and len(attempts) == 1
+    before = net.cfg(net._project("demo"))
+    monkeypatch.setattr(net, "_judge_with", lambda *a: (False, SimpleNamespace(score=300), ""))
+    with pytest.raises(Exception, match="no longer improve"):
+        net.apply_function_compiler("demo", "f", "gcc-2.8.0-psx", ["-O3"])
+    assert net.cfg(net._project("demo")) == before

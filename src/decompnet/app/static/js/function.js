@@ -64,6 +64,7 @@ async function refreshFn(first) {
       ? `${d.unit} · ${d.insns} instructions${d.match_percent != null ? ` · ${d.match_percent >= 100 ? "100" : (Math.floor(d.match_percent * 10) / 10).toFixed(1)}% now` : ""}`
       : `${hex8(d.vram)} · ROM 0x${d.rom_offset.toString(16).toUpperCase()} · ${d.insns} instructions`;
     if ($("fnName").textContent !== d.name) {
+      $("fnApplyCompiler").hidden = true;
       $("fnCompilerSummary").hidden = true;
       $("fnCompilerLog").textContent = "";
       $("fnCompilerLog").hidden = true;
@@ -417,6 +418,7 @@ $("fnTestCompilers").onclick = async () => {
   const slug = S.slug, name = S.fn;
   log.hidden = false;
   const summary = $("fnCompilerSummary");
+  $("fnApplyCompiler").hidden = true;
   summary.hidden = false;
   summary.textContent = "Comparing installed compilers and flag variants…";
   delete summary.dataset.improved;
@@ -431,6 +433,21 @@ $("fnTestCompilers").onclick = async () => {
     else {
       const before = c.before == null ? "no previous score" : `${c.before.toFixed(2)}%`;
       summary.dataset.improved = String(c.improved);
+      if (c.improved && c.profile) {
+        const apply = $("fnApplyCompiler");
+        apply.hidden = false;
+        apply.textContent = `Apply ${c.profile[0]} ${c.profile[1].join(" ")} to this function`;
+        apply.onclick = async () => {
+          const done = beginWork(summary, "Applying function compiler settings", [apply], "Settings applied.");
+          try {
+            await api("/api/compiler", { method: "POST", body: { slug, function: name, toolchain: c.profile[0], flags: c.profile[1] } });
+            apply.hidden = true;
+            summary.textContent = "Applied to this function only. Its saved C has been rechecked with these settings.";
+            await refreshFn(false);
+            await refreshMap(true);
+          } catch (e) { summary.textContent = e.message; } finally { done(); }
+        };
+      }
       summary.textContent = `${c.improved ? "Better settings found" : "No improvement found"}: ${before} → ${c.best.toFixed(2)}% best tested. ${c.tested} combinations tested; ${c.exact_matches} exact matches. Compiler settings and saved progress are unchanged.`;
     }
   } catch (e) { summary.textContent = e.message; showJobError(log, e.message); } finally { finish(); }
