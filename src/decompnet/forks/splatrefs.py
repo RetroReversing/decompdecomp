@@ -188,9 +188,15 @@ def plan(root: Path, config: dict) -> list[dict]:
             if Path(name).is_absolute() or '..' in Path(name).parts or '\\' in name or ':' in name:
                 raise ForkError("automatic objdiff setup needs relative unit names without parent paths")
             source = inside(root, str(Path(source_root) / (name + '.c')))
-            base = inside(root, str(Path(build_root) / source.relative_to(root).with_suffix('.o')))
-            if not source.is_file() or not base.is_file():
+            relative = source.relative_to(root)
+            candidates = [inside(root, str(Path(build_root) / relative.with_suffix('.o'))),
+                          inside(root, str(Path(build_root) / (str(relative) + '.o')))]
+            built = [path for path in candidates if path.is_file()]
+            if not source.is_file() or not built:
                 raise ForkError("automatic objdiff setup needs the project's C objects built first; follow its README")
+            if len(built) != 1:
+                raise ForkError(f"ambiguous built objects for {relative}; remove stale build outputs or configure objdiff manually")
+            base = built[0]
             units.append({'name': name, 'source': source, 'base': base, 'offset': offset,
                           'vram': segment['vram'] + offset - segment['start'],
                           'delta': segment['start'] - segment['vram']})

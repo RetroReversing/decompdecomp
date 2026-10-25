@@ -215,3 +215,14 @@ def test_an_unsupported_console_leaves_generation_to_manual_setup(tmp_path):
     (tmp_path / 'splat.yaml').write_text(yaml.safe_dump(cfg))
     assert not project.generate_objdiff()
     assert not (tmp_path / 'objdiff.json').exists()
+
+
+def test_plan_accepts_source_extension_in_object_name_and_rejects_ambiguity(tmp_path):
+    cfg = config(tmp_path)
+    short = tmp_path / 'build/src/demo.o'
+    long = tmp_path / 'build/src/demo.c.o'
+    short.rename(long)
+    assert splatrefs.plan(tmp_path, cfg)[0]['base'] == long
+    short.write_bytes(b'stale object')
+    with pytest.raises(ForkError, match='ambiguous built objects'):
+        splatrefs.plan(tmp_path, cfg)
