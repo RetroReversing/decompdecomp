@@ -44,6 +44,20 @@ Makefiles, compiler settings and the assembly used for the linked baseline. Unsu
 blocked preparation; zero attempts are not described as a completed search with no matches. Drafts still pass
 the same compiler and objdiff judge as agent submissions. A matching candidate is not a full linked-ROM rebuild.
 
+## Free attempts from similar code
+
+After exact transfers, autopilot tries closely similar verified C from your other imported MIPS ROM projects.
+It adapts symbol names and can test small integer-literal differences suggested by the instructions. Every
+candidate must still compile and link to the destination's exact bytes. No AI model or API tokens are used.
+
+The pass tries up to three candidates per function, at most 128 compiles, and stops starting work after two
+minutes. Use **Run again** to continue; failed candidates are cached for 24 hours. See **Matches from other games**
+for accepted matches and failed attempts labelled "similar code". Similarity percentages describe the candidate
+search, not verified progress. Compiler settings must agree, and relocation layouts must line up.
+
+This pass supports N64, PS1, PS2 and PSP ROM projects. Imported repository projects still use exact transfers;
+adapting similar functions across their source files and object relocations is planned.
+
 ## ROM library
 
 Set **Settings → ROM library** to the folder containing your extracted game files. When an imported project
