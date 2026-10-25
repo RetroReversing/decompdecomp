@@ -169,7 +169,8 @@ class CompilerMixin:
         threading.Thread(target=run, daemon=True, name=f"survey-{slug}").start()
         return state
 
-    def survey_compilers(self, slug: str, log=lambda line: None, limit: int = 400, state: dict | None = None) -> dict:
+    def survey_compilers(self, slug: str, log=lambda line: None, limit: int = 400, state: dict | None = None,
+                         all_installed: bool = False) -> dict:
         """The judge's part of the compiler map. Agents' C for functions that don't match yet, built with each other
         compiler the project uses: C that matches the game with another compiler (and not with today's) confirms that
         compiler for its function. Contradicted functions first, then the closest attempts; C already tried is
@@ -182,11 +183,20 @@ class CompilerMixin:
         cfg = self.cfg(proj)
         candidates = sorted({(cfg["compiler"]["toolchain"], tuple(cfg["compiler"]["flags"]))}
                             | {(r["toolchain"], tuple(r["flags"])) for r in cfg.get("compiler_ranges", [])})
+        if all_installed:
+            # Only this console's installed, usable compilers: never download tools or call an AI provider.
+            candidates = sorted({(c.id, tuple(consoles.default_flags(cfg, c.id)))
+                                 for c in consoles.of(cfg).compilers
+                                 if toolchains.installed(c.id) and toolchains.get(c.id).supported
+                                 and not toolchains.runtime_error(c.id)} | set(candidates))
+            candidates = [(tc, flags) for tc, flags in candidates if toolchains.installed(tc)
+                          and toolchains.get(tc).supported and not toolchains.runtime_error(tc)]
+            log(f"Testing {len(candidates)} compiler/flag profiles on up to {limit} existing unmatched C attempts.")
         # Debug line labels can change old GCC assemblers' delay-slot scheduling even at the same -O level.
         candidates = sorted({(tc, tuple(variant)) for tc, flags in candidates
                              for variant in self.debug_flag_variants(tc, list(flags))})
         old = cfg.get("compiler_survey") or {}
-        tried, confirmed = dict(old.get("tried", {})), dict(old.get("confirmed", {}))
+        tried, confirmed = ({}, {}) if all_installed else (dict(old.get("tried", {})), dict(old.get("confirmed", {})))
         rows = self.store.all("SELECT * FROM functions WHERE project_id=? AND status NOT IN ('matched', 'asm') AND n_insns>=?",
                               proj["id"], self.SURVEY_MIN_INSNS)
         rows.sort(key=lambda f: (f["vram"] not in cmap.contradicted, f["best_score"] if f["best_score"] is not None else 1 << 30))
@@ -217,6 +227,12 @@ class CompilerMixin:
             state.update(tried=n, confirmed=found)
             if n % 25 == 0:
                 log(f"{n} functions tried, {found} confirmed")
+        if all_installed:
+            # An explicit comparison is a report, even when automatic compiler changes are enabled.
+            log(f"Finished: {n} functions tested; {found} match another compiler/flag profile. Project settings unchanged.")
+            if not n:
+                log("No eligible unmatched C attempts yet. Run the free matching pass or agents first.")
+            return {"tried": n, "confirmed": found, "matches": confirmed}
         self._update_cfg(slug, lambda c: c.__setitem__("compiler_survey", {"tried": tried, "confirmed": confirmed,
                                                                            "t": time.time()}))
         suggested = self._suggest_from_map(proj, confirmed)
@@ -388,7 +404,7 @@ class CompilerMixin:
             c = audits.get(((r["start"], r["end"]),)) or {}
             parts.append({"start": r["start"], "end": r["end"], "compiler": consoles.compiler_name(r["toolchain"]),
                           "flags": " ".join(r["flags"]),
-                          "check": c.get("status", ""), "said": c.get("said", "")})
+                          "check_id": c.get("id"), "check": c.get("status", ""), "said": c.get("said", "")})
         elsewhere = sorted((r for r in (cmap.runs if cmap else []) if r.differs()), key=lambda r: -r.functions)
         # the compiler's name and its flags apart: "built with KMC GCC 2.7.2" reads at a glance, the flags are details
         return {"compiler": consoles.compiler_name(main[0]), "flags": " ".join(main[1]), "parts": parts, "mips": cmap is not None,
@@ -401,6 +417,22 @@ class CompilerMixin:
                            "running_tried": state.get("tried", 0), "t": (cfg.get("compiler_survey") or {}).get("t")},
                 "checks": [{"id": c["id"], "audit": bool(c.get("audit")), "status": c["status"], "said": c.get("said") or "",
                             "ranges": c["spans"], "compiler": self._short((c["toolchain"], tuple(c["flags"])))} for c in checks]}
+
+    def recheck_compiler_claim(self, slug: str, cid: int, log=print) -> dict:
+        """Explicitly retry one claim, without starting the whole compiler survey."""
+        self._rom_only(slug, "the compiler claim check")
+        checks = self.cfg(self._project(slug)).get("range_checks", [])
+        claim = next((c for c in checks if c["id"] == cid), None)
+        if claim is None:
+            raise NetworkError("That compiler claim no longer exists. Refresh the project's Settings.")
+        if claim["status"] not in ("waiting", "checking"):
+            log(f"Claim #{cid} is already {claim['status']}.")
+            return {"id": cid, "status": claim["status"]}
+        log(f"Checking compiler claim #{cid} against its neighbouring functions locally.")
+        self.rangechecks.recheck(slug, cid, background=False)
+        claim = next(c for c in self.cfg(self._project(slug)).get("range_checks", []) if c["id"] == cid)
+        log(f"Claim #{cid}: {claim['status']}. {claim.get('said', '')}")
+        return {"id": cid, "status": claim["status"]}
 
     def install_compilers(self, slug: str, accept_license: bool, retest: bool = True, log=print) -> dict:
         """Every compiler of the project's console the app installs and this computer lacks (a proprietary one only

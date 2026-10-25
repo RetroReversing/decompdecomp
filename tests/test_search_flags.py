@@ -84,3 +84,57 @@ def test_the_survey_retries_old_misses_with_debug_flags(tmp_path, monkeypatch, d
     before = len(judged)
     assert net.survey_compilers("demo")["tried"] == 0
     assert len(judged) == before
+
+
+def test_installed_compiler_comparison_is_local_and_report_only(tmp_path, monkeypatch):
+    from decompnet import toolchains
+
+    net = RomNetwork(tmp_path / "decomp.db", tmp_path)
+    source = "int f(int x) { return x + 1; }"
+    cfg = {"kind": "rom", "platform": "ps", "compiler": {"toolchain": "gcc-2.7.2-psx", "flags": ["-O2", "-G8"]},
+           "auto_compiler": True}
+    with net.store.tx() as db:
+        pid = db.execute("INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)",
+                         ("demo", "Demo", str(tmp_path), json.dumps(cfg))).lastrowid
+        db.execute("INSERT INTO functions(project_id,name,vram,n_insns,status,best_score,best_source) "
+                   "VALUES(?,?,?,?,?,?,?)", (pid, "f", 0x80010000, 16, "open", 160, source))
+    monkeypatch.setattr(net, "compiler_map", lambda *a, **k: SimpleNamespace(contradicted=set()))
+    monkeypatch.setattr(toolchains, "installed", lambda tc: {"installed": True} if tc in (
+        "gcc-2.7.2-psx", "gcc-2.8.0-psx") else None)
+    monkeypatch.setattr(toolchains, "get", lambda tc: SimpleNamespace(supported=True, flags=["-O2", "-G8"]))
+    monkeypatch.setattr(toolchains, "runtime_error", lambda tc: None)
+    judged = []
+
+    def judge(proj, fn, tc, flags, candidate):
+        judged.append(tc)
+        return tc == "gcc-2.8.0-psx", None, ""
+
+    monkeypatch.setattr(net, "_judge_with", judge)
+    monkeypatch.setattr(net, "_suggest_from_map", lambda *a: pytest.fail("comparison must not apply suggestions"))
+    result = net.survey_compilers("demo", all_installed=True)
+    assert result["confirmed"] == 1
+    assert result["matches"][str(0x80010000)][0] == "gcc-2.8.0-psx"
+    assert set(judged) <= {"gcc-2.7.2-psx", "gcc-2.8.0-psx"}
+    assert json.loads(net._project("demo")["config"]) == cfg
+
+
+def test_manual_claim_check_targets_only_the_selected_claim(tmp_path, monkeypatch):
+    net = RomNetwork(tmp_path / "decomp.db", tmp_path)
+    cfg = {"kind": "rom", "platform": "ps", "range_checks": [
+        {"id": 1, "status": "waiting"}, {"id": 2, "status": "waiting"}]}
+    with net.store.tx() as db:
+        db.execute("INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)",
+                   ("demo", "Demo", str(tmp_path), json.dumps(cfg)))
+    calls = []
+
+    def recheck(slug, cid, background=True):
+        calls.append((slug, cid, background))
+        net._update_cfg(slug, lambda c: c["range_checks"][1].update(status="confirmed", said="Neighbours agree"))
+
+    monkeypatch.setattr(net.rangechecks, "recheck", recheck)
+    result = net.recheck_compiler_claim("demo", 2, log=lambda *_: None)
+    assert calls == [("demo", 2, False)]
+    assert result == {"id": 2, "status": "confirmed"}
+    assert net.cfg(net._project("demo"))["range_checks"][0]["status"] == "waiting"
+    with pytest.raises(Exception, match="no longer exists"):
+        net.recheck_compiler_claim("demo", 999)

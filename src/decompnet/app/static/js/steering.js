@@ -386,6 +386,7 @@ async function renderProjectSettings() {
   $("reimportGame").hidden = fork && !ov.reimports;  // (a PC project analyses its program again)
   // a fork's build sets its compilers, except where each source file has one (DS): then the same panel, with the
   // project's flags its build's and nothing for the ROM engine's survey to check
+  $("installedCompilerTest").hidden = fork;
   $("compilerPanel").hidden = !(ov.compilers || []).length;
   for (const id of ["setFlagsRow", "setTcReset", "autoAdjustRow", "compilerHow"]) $(id).hidden = fork;
   $("setTcWhat").textContent = fork
@@ -585,6 +586,7 @@ async function loadCompilerAnswer() {
   if (a.checking) S.answerTimer = setTimeout(loadCompilerAnswer, COMPILER_ANSWER_EVERY_MS);
 }
 function renderCompilerAnswer(a) {
+  $("installedCompilerTest").hidden = S.ov.kind === "fork" || !a.mips;
   const parts = a.parts || [];
   setHtml($("compilerAnswer"), `This game was built with <b>${esc(a.compiler)}</b>${a.flags ? ` <span class="flags mono" title="the flags it was given">${esc(a.flags)}</span>` : ""}.${parts.length ? ` ${parts.length === 1 ? "One part" : `${parts.length} parts`} of it with another compiler: below.` : ""}`
     + (a.elsewhere_count ? ` <span class="muted">${a.elsewhere_count === 1 ? "One more stretch of code looks" : `${a.elsewhere_count.toLocaleString()} more stretches of code look`} like another compiler's work; the app suggests a change once agents' C proves it.</span>` : ""));
@@ -593,6 +595,7 @@ function renderCompilerAnswer(a) {
     const [word, why] = PART_STATE[p.check] || PART_STATE[""];
     return `<li><code>${hexShort(p.start)}–${hexShort(p.end)}</code><span class="grow">${esc(p.compiler)} <span class="flags mono">${esc(p.flags)}</span></span>
       ${p.file ? `<span class="muted small mono">${esc(p.file)}</span>` : ""}<span class="part-state ${esc(p.check || "none")}" title="${esc(p.said || why)}">${word}</span>
+      ${p.check === "waiting" && p.check_id != null ? `<button class="ghost small-btn" type="button" data-check-claim="${p.check_id}">Check now</button>` : ""}
       <button class="ghost small-btn" type="button" data-unrange="${hexShort(p.start)}-${hex8(p.end)}" aria-label="Build ${hexShort(p.start)} to ${hexShort(p.end)} with ${esc(a.compiler)} again" title="Build this part with ${esc(a.compiler)} again">Remove</button></li>`;
   }).join("")}</ol>` : "");
   const sv = a.survey || {};
@@ -601,7 +604,7 @@ function renderCompilerAnswer(a) {
       sv.state === "running" ? `running now: ${plural(sv.running_tried || 0, a.unit || "function")} tried` : sv.t ? `last run ${since(sv.t)}: ${plural(sv.tried || 0, a.unit || "function")} tried, ${sv.confirmed || 0} matched with another compiler` : a.mips ? "not run yet: it runs once the game uses two compilers" : "it reads MIPS code only"}),
       and it tests each part on the functions next to it before a part counts. A part applies by itself only when you let proven changes apply.</p>
     ${a.elsewhere.length ? `<p class="col-title">Code that looks like another compiler's</p><ol class="parts">${a.elsewhere.map((r) => `<li><code>${hexShort(r.start)}–${hexShort(r.end)}</code><span class="grow">${esc(r.compiler)}</span><span class="muted small">${plural(r.functions, "function")}${r.confirmed ? `, ${r.confirmed} proven` : ""}</span></li>`).join("")}</ol>` : ""}
-    ${checks.length ? `<p class="col-title">Checks</p><ol class="parts">${checks.map((c) => `<li><span class="part-state ${esc(c.status)}">${(PART_STATE[c.status] || PART_STATE[""])[0]}</span><span class="grow small">${c.audit ? "part" : "suggested"} ${c.ranges.map(([s, e]) => `${hexShort(s)}–${hexShort(e)}`).join(", ")} · ${esc(c.compiler)}${c.said ? `<br><span class="muted">${esc(c.said)}</span>` : ""}</span></li>`).join("")}</ol>` : ""}
+    ${checks.length ? `<p class="col-title">Checks</p><ol class="parts">${checks.map((c) => `<li><span class="part-state ${esc(c.status)}">${(PART_STATE[c.status] || PART_STATE[""])[0]}</span><span class="grow small">${c.status === "waiting" ? `<button class="ghost small-btn" type="button" data-check-claim="${c.id}">Check now</button>` : ""}${c.audit ? "part" : "suggested"} ${c.ranges.map(([s, e]) => `${hexShort(s)}–${hexShort(e)}`).join(", ")} · ${esc(c.compiler)}${c.said ? `<br><span class="muted">${esc(c.said)}</span>` : ""}</span></li>`).join("")}</ol>` : ""}
     <div class="row"><button class="ghost small-btn" type="button" id="checkNow"${a.checking ? " disabled" : ""}>${a.checking ? "Checking…" : "Check again now"}</button></div>`);
   $("checkNow").onclick = async () => {
     try { renderCompilerAnswer(await api("/api/compilermap", { method: "POST", body: { slug: S.slug } })); } catch (e) { return toast(esc(e.message), "err"); }
@@ -626,3 +629,29 @@ $("deleteBtn").onclick = () => {
     } catch (e) { toast(esc(e.message), "err"); }
   };
 };
+
+$("testInstalledCompilers").onclick = async () => {
+  const button = $("testInstalledCompilers"), log = $("installedCompilerLog");
+  const finish = beginWork(log, "Testing installed compilers", [button], "Compiler comparison finished.");
+  log.hidden = false;
+  showJobError(log, "");
+  try {
+    const { job } = await api("/api/compilermap", { method: "POST", body: { slug: S.slug, all_installed: true } });
+    await followJob(job, log);
+  } catch (e) { showJobError(log, e.message); } finally { finish(); }
+};
+
+// Delegate claim buttons without replacing the compiler-parts handler for removing a range.
+document.addEventListener("click", async (e) => {
+  const button = e.target.closest("button[data-check-claim]");
+  if (!button) return;
+  const log = $("compilerClaimLog");
+  log.hidden = false;
+  const finish = beginWork(log, "Checking compiler claim", [button], "Claim check finished.");
+  showJobError(log, "");
+  try {
+    const { job } = await api("/api/compilermap", { method: "POST", body: { slug: S.slug, claim_id: Number(button.dataset.checkClaim) } });
+    await followJob(job, log);
+    await loadCompilerAnswer();
+  } catch (err) { showJobError(log, err.message); } finally { finish(); }
+});
