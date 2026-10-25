@@ -108,7 +108,7 @@ installed automatically. IDO still needs your explicit license acceptance in Com
 | Mac capability | Availability |
 | --- | --- |
 | N64 ROM import, compile, match and export | KMC GCC via Rosetta on Apple Silicon; directly on Intel |
-| PS1 GCC 2.6.3, 2.7.2 and 2.8.1, with maspsx | All three build natively on Apple Silicon; GCC 2.6.3 also builds from pinned source on Intel Macs |
+| PS1 GCC 2.6.3, 2.7.2 and 2.8.1, with maspsx | All three run natively on Apple Silicon; GCC 2.6.3 builds from pinned source on both Mac architectures |
 | Native window, file/folder pickers and export downloads | Cocoa and system WKWebView, no GTK or X11 |
 | m2c, decomp-permuter and objdiff | Pinned Mac/Python builds |
 | Other consoles and public decomp projects | Only where their pinned compiler/tool builds support this Mac |
