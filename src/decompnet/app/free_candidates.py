@@ -68,6 +68,7 @@ def exhausted(job):
 def run(twins, slug, job):
     """Try recognisable leaf patterns and exact SDK fingerprints before spending CPU on wider similarity."""
     from .address_repairs import variants as address_variants
+    from .sdk_source_repairs import variant as sdk_variant
     from .similar_matches import REPAIR_PERCENT, trial_key
     from .twins import apply
 
@@ -123,6 +124,10 @@ def run(twins, slug, job):
             key = trial_key(source, context, settings, fn, [kind, symbols])
             previous = net.store.one("SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=? AND outcome='miss'", fn['id'], key)
             if previous:
+                if kind == 'library':
+                    repaired = sdk_variant(net, proj, fn, source, fingerprint, job)
+                    if repaired:
+                        candidates.append(('library-repair', origin, repaired))
                 if kind == 'address-probe':
                     candidates.extend(('address-repair', origin, v) for v in
                                       address_variants(source, json.loads(previous['feedback']), fn,
@@ -140,6 +145,10 @@ def run(twins, slug, job):
                            (fn['id'], key, outcome, reason, json.dumps(result)))
                 db.execute('INSERT INTO free_match_attempts(project_id,function_id,strategy,outcome,reason,created_at) VALUES(?,?,?,?,?,?)',
                            (proj['id'], fn['id'], kind, outcome, reason, time.time()))
+            if kind == 'library' and not result['matched']:
+                repaired = sdk_variant(net, proj, fn, source, fingerprint, job)
+                if repaired:
+                    candidates.append(('library-repair', origin, repaired))
             if kind == 'address-probe' and not result['matched']:
                 candidates.extend(('address-repair', origin, v) for v in
                                   address_variants(source, result, fn, bool(proj['big_endian']),
