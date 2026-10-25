@@ -68,3 +68,17 @@ def test_missing_hash_or_folder_and_symlink_loop(tmp_path):
     except OSError:
         pytest.skip('symlinks unavailable')
     assert romlibrary.find(p, needs(b'x'), str(tmp_path))['path'] is None
+
+
+def test_windows_rehashes_when_same_size_overwrite_keeps_stat_timestamps(tmp_path, monkeypatch):
+    file = tmp_path / 'game.bin'
+    file.write_bytes(b'first')
+    stat_before = file.stat()
+    original_stat = type(file).stat
+    def unchanged_stat(path, *args, **kwargs):
+        return stat_before if path == file else original_stat(path, *args, **kwargs)
+    monkeypatch.setattr(type(file), 'stat', unchanged_stat)
+    monkeypatch.setattr(romlibrary, 'CACHE_HASHES', False)
+    assert romlibrary.fingerprint(file, 'ps') == hashlib.sha1(b'first').hexdigest()
+    file.write_bytes(b'other')
+    assert romlibrary.fingerprint(file, 'ps') == hashlib.sha1(b'other').hexdigest()

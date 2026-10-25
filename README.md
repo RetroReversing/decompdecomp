@@ -44,8 +44,8 @@ click **Use path** to continue. The search does not unpack archives or start a b
 
 If setup fails after accepting your ROM, reopen the project or retry: its verified copy is detected first and
 **Retry setup** reuses it without opening the file chooser. Projects without a declared SHA-1 still need manual
-selection. Clear the folder setting to disable library searches. Hashes are cached in memory until files change
-or the app restarts; original files are never moved by the search.
+selection. Clear the folder setting to disable library searches. On POSIX systems, hashes are cached in memory until files change
+or the app restarts. Windows rehashes files because timestamps may not reliably reflect overwrites; original files are never moved by the search.
 
 ## Install
 

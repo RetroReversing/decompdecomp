@@ -10,6 +10,10 @@ from pathlib import Path
 
 from .. import consoles
 
+# Windows stat timestamps can remain unchanged after a same-size overwrite (ctime is creation time).
+# Rehash there rather than offering a stale ROM match. POSIX inode-change timestamps invalidate the cache.
+CACHE_HASHES = os.name != "nt"
+
 
 @lru_cache(maxsize=10000)
 def _hash(path: str, size: int, mtime: int, ctime: int, platform: str) -> str:
@@ -24,7 +28,8 @@ def fingerprint(path: Path, platform: str) -> str | None:
         stat = path.stat()
         if not path.is_file():
             return None
-        value = _hash(str(path.resolve()), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, platform)
+        hasher = _hash if CACHE_HASHES else _hash.__wrapped__
+        value = hasher(str(path.resolve()), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, platform)
         after = path.stat()
         if (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
             return None
