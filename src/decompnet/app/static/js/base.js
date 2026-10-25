@@ -148,21 +148,50 @@ async function followJob(id, logEl, onUpdate) {
    (`message` ""): a toast is gone before it's read. A fork of a repository that doesn't exist sat on "cloning …"
    for good, and a join with a wrong link showed an empty box. */
 function showJobError(logEl, message) {
+  const summary = (message || "").split("\n")[0];
   if (message && logEl._workStatus) {
-    logEl._workStatus.textContent = message;
+    logEl._workStatus.textContent = "Stopped";
     logEl._workStatus.dataset.state = "error";
   }
-  let box = logEl.previousElementSibling;
-  if (!box || !box.classList.contains("err-msg")) {
+  let box = logEl._errorBox;
+  if (!box) {
     box = document.createElement("p");
     box.className = "err-msg";
     box.setAttribute("role", "alert");
     logEl.before(box);
+    logEl._errorBox = box;
   }
   box.hidden = !message;
-  box.textContent = message || "";
-  if (message) logEl.hidden = !logEl.textContent.trim();
-  else { logEl.textContent = ""; logEl.hidden = false; }
+  box.textContent = summary;
+  if (message) {
+    // The exception repeats the build tail already streamed into the log. Add only genuinely missing lines.
+    const current = logEl.textContent.trim();
+    const extra = message.split("\n").filter((line) => line.trim() && line !== "Build output:" && !current.includes(line));
+    logEl.textContent = [extra.join("\n"), current].filter(Boolean).join("\n\n");
+    logEl.hidden = false;
+    if (!logEl._copyToolbar) {
+      const toolbar = document.createElement("div");
+      toolbar.className = "row joblog-toolbar";
+      const label = document.createElement("b");
+      label.textContent = "Build log";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ghost small-btn";
+      button.textContent = "Copy log";
+      button.onclick = async () => {
+        if (await copyText(logEl.textContent)) toast("Log copied.");
+        else toast("Could not copy the log. Select the log text and copy it manually.", "err");
+      };
+      toolbar.append(label); toolbar.append(button);
+      logEl.before(toolbar);
+      logEl._copyToolbar = toolbar;
+    }
+    logEl._copyToolbar.hidden = false;
+  } else {
+    logEl.textContent = "";
+    logEl.hidden = false;
+    if (logEl._copyToolbar) logEl._copyToolbar.hidden = true;
+  }
 }
 
 /* The map's still cells are drawn once into `base` (again only when one of them changes); a frame copies it and
