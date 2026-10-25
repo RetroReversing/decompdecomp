@@ -41,6 +41,7 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | The game's own debug symbols: names, types, prototypes | — | — | ✓ symbol table, STABS, DWARF 1; the compiler of each object file | ✓ symbol table, DWARF 1 | — | ✓ PDB (Visual C++ 6.0's PDB 2.0, MSF 7.00), linker map, COFF symbols | — | — |
 | Twins across your games | ✓ | ✓ | ✓ | ✓ | — | ✓ (between PC projects) | — | — |
 | Automatic attempts from similar verified C | ✓ (ROM) | ✓ (ROM) | ✓ (ROM) | ✓ (ROM) | — | — | — | — |
+| Bounded automatic reuse, tiny templates and local SDK C | ✓ (ROM) | ✓ (ROM) | ✓ (ROM) | ✓ (ROM) | — | — | — | — |
 | Shared knowledge (two models agree) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Tidy each source file once it's polished (shared types in one header, names, dead declarations) | — | — | — | — | ✓ | ✓ | ✓ | ✓ |
 | Polish matched code (still matching) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -97,7 +98,12 @@ SDK object archives. The archive's source is never bundled; a signature is a hin
 Similar-code autopilot attempts are bounded and use the unchanged compiler/link judge on MIPS ROM projects.
 They learn unambiguous symbol correspondences, try local-permuter repairs and proven donor flags, and persist
 trial results and a resume cursor. Compiler-flag hits are saved as evidence for review, not silently applied.
-Project-mode support is planned: align target-object relocations and adapt file-local declarations before trying
+Near-miss repairs now use percentage eligibility and assembly-guided mutations, plus an installed full permuter.
+Tiny MIPS templates and explicitly imported SDK C go through the same judge. Verified regional pairs can teach
+explicit pointer-offset edits; reconstructing named struct layouts and shared types remains planned. New verified
+matches trigger a bounded, configurable automatic cascade. Project-mode support for these additions is planned:
+per-file compiler context, template readers and SDK source placement must be integrated with the object judge.
+Project-mode similar-transfer support is planned: align target-object relocations and adapt file-local declarations before trying
 similar C through objdiff. Other processors need an instruction reader for this search.
 
 ## Recently done
@@ -595,7 +601,8 @@ worked on alone.
 
 ### Library decomps built locally
 
-Twins across your games already match library code you matched once. The next step: match library decomps and
+Local SDK archives can now be paired with explicitly supplied C and declarations, then tried by exact fingerprint
+with the destination compiler. The next step: match library decomps and
 libgcc/newlib, built on your computer with the project's compiler (libultra on N64, the PS2 SDK libraries), and try
 them as twins. Library sources are fetched only when you ask, never bundled: SDK code is the console maker's
 copyright.

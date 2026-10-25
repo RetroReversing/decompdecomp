@@ -64,6 +64,17 @@ CREATE TABLE IF NOT EXISTS cross_game_attempts(
   source_project_id INTEGER NOT NULL, source_function_id INTEGER NOT NULL,
   outcome TEXT NOT NULL, reason TEXT, created_at REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_cross_game_attempts_project ON cross_game_attempts(project_id, created_at);
+CREATE TABLE IF NOT EXISTS sdk_sources(
+  corpus TEXT NOT NULL, name TEXT NOT NULL, arch TEXT NOT NULL, big_endian INTEGER NOT NULL,
+  source TEXT NOT NULL, header TEXT NOT NULL, compiler TEXT NOT NULL,
+  PRIMARY KEY(corpus,name,arch,big_endian));
+CREATE TABLE IF NOT EXISTS free_match_attempts(
+  id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL, function_id INTEGER NOT NULL,
+  strategy TEXT NOT NULL, outcome TEXT NOT NULL, reason TEXT, created_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS reuse_runs(
+  id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL, attempts INTEGER NOT NULL, matched INTEGER NOT NULL,
+  bytes INTEGER NOT NULL, seconds REAL NOT NULL, created_at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_reuse_runs_project ON reuse_runs(project_id,id);
 CREATE TABLE IF NOT EXISTS sdk_signatures(
   id INTEGER PRIMARY KEY, corpus TEXT NOT NULL, arch TEXT NOT NULL, big_endian INTEGER NOT NULL,
   name TEXT NOT NULL, fingerprint TEXT NOT NULL, size INTEGER NOT NULL,
@@ -73,6 +84,7 @@ CREATE INDEX IF NOT EXISTS idx_sdk_signatures_fingerprint ON sdk_signatures(arch
 
 # Columns added after the first release; applied in place to existing databases.
 MIGRATIONS = [
+    ("reuse_trials", "feedback", "TEXT NOT NULL DEFAULT '{}'"),
     ("agents", "trusted", "INTEGER NOT NULL DEFAULT 0"),      # operator-vetted (CLI) vs. self-registered
     ("agents", "origin", "TEXT"),                              # cli | web
     ("agents", "terms_accepted_at", "REAL"),                   # evidence of accepting the terms

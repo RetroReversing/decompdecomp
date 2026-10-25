@@ -62,6 +62,8 @@ class Core(Network):
         self.readability = Readability(self)
         from ..drafts import Drafter
         self.drafter = Drafter(self)
+        from ..reuse_cascade import Cascade
+        self.cascades = Cascade(self)
         self.find_moved_projects()
 
     @staticmethod

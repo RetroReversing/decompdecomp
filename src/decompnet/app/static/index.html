@@ -424,6 +424,9 @@
           <div class="pad"><p class="muted small">Choose a local SDK .a or .o file. The app indexes function signatures and names on this computer; it never uploads or bundles the file. A signature suggests a name, while C still needs a byte match.</p>
             <label class="field"><span>SDK name and version</span><input id="sdkCorpus" placeholder="libultra 2.0L"></label>
             <label class="field"><span>Object archive</span><span class="pick-row"><input id="sdkPath" class="mono" placeholder="/path/to/libultra.a"><button class="ghost small-btn" type="button" data-pick="file" data-for="sdkPath" data-title="Choose a local SDK object archive">Choose…</button></span></label>
+            <label class="field"><span>C source file or folder (optional, for matching)</span><input id="sdkSourcePath" placeholder="/path/to/sdk/src"></label>
+            <label class="field"><span>Declarations header (optional)</span><input id="sdkHeaderPath" placeholder="/path/to/declarations.h"></label>
+            <p class="muted small">Source definitions are tried with this project's compiler settings during Run again. Supply self-contained declarations for any SDK types they need. No SDK build scripts run.</p>
             <div class="row"><button class="ghost small-btn" id="sdkImport" type="button">Index signatures</button></div>
             <pre class="joblog" id="sdkLog" hidden></pre>
           </div>

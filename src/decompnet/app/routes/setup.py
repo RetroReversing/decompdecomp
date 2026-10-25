@@ -157,6 +157,14 @@ def register(app: App) -> None:
             settings.data["autopilot"] = bool(data["autopilot"])
         if "budget_usd" in data:
             settings.data["budget_usd"] = max(0.0, float(data["budget_usd"] or 0))
+        if 'reuse_auto' in data:
+            settings.data['reuse_auto'] = bool(data['reuse_auto'])
+        for key, maximum in [('reuse_seconds', 600), ('reuse_attempts', 1024)]:
+            if key in data:
+                settings.data[key] = max(1, min(maximum, int(data[key])))
+        if any(key in data for key in ('reuse_auto', 'reuse_seconds', 'reuse_attempts')):
+            net.cascades.configure(settings.data.get('reuse_auto', True), settings.data.get('reuse_seconds', 120),
+                                   settings.data.get('reuse_attempts', 128))
         if "auto_update" in data:
             settings.data["auto_update"] = bool(data["auto_update"])
         if "check_updates" in data:
