@@ -54,3 +54,37 @@ def test_gte_commands_and_vector_transfers(tmp_path, toolchain):
     assert any(w >> 26 == 0x32 and (w >> 16) & 31 == 0 for w in words)
     assert any(w >> 26 == 0x3A and (w >> 16) & 31 == 14 for w in words)
     assert get('ps').asm_reason(fn.code) is None
+
+
+@pytest.mark.parametrize('toolchain', ['gcc-2.6.3-psx', 'gcc-2.7.2-psx', 'gcc-2.8.1-psx'])
+def test_lighting_and_fixed_register_c(tmp_path, toolchain):
+    if toolchains.installed(toolchain) is None:
+        pytest.skip('needs installed PS1 GCC')
+    cfg = compiler_config(tmp_path, {'compiler': {'toolchain': toolchain, 'flags': ['-O2', '-G0']}})
+    source = ('int f(void *p) { register int value PS1_REGISTER_S4 = 0; '
+              'gte_ld_intpol_sv0(p); gte_intpl(); gte_strgb(p); gte_stopz_cpu(value); return value; }')
+    result = compile_source(cfg, '', source)
+    assert result.ok, result.log
+    fn = extract_function(result.obj, 'f')
+    words = struct.unpack('<' + 'I' * (len(fn.code) // 4), fn.code)
+    assert 0x4A980011 in words
+    assert any(w >> 26 == 0x12 and (w >> 21) & 31 == 0 and (w >> 11) & 31 == 24 for w in words)
+    assert get('ps').asm_reason(fn.code) is None
+    with pytest.raises(SourceRejected, match='inline assembly'):
+        check_source('int f(void) { register int x asm("$20"); return x; }')
+
+
+@pytest.mark.parametrize('toolchain', ['gcc-2.6.3-psx', 'gcc-2.7.2-psx', 'gcc-2.8.1-psx'])
+def test_explicit_interpolation_destinations_and_fifo_order(tmp_path, toolchain):
+    if toolchains.installed(toolchain) is None:
+        pytest.skip('needs installed PS1 GCC')
+    cfg = compiler_config(tmp_path, {'compiler': {'toolchain': toolchain, 'flags': ['-O2', '-G0']}})
+    source = ('void f(void *p, int a, int b, int c) { gte_ld_intpol_far(p); '
+              'gte_ld_intpol_ir(p); gte_ldsxy3_fifo(a,b,c); }')
+    result = compile_source(cfg, '', source)
+    assert result.ok, result.log
+    fn = extract_function(result.obj, 'f')
+    words = struct.unpack('<' + 'I' * (len(fn.code) // 4), fn.code)
+    transfers = [((w >> 21) & 31, (w >> 11) & 31) for w in words if w >> 26 == 0x12]
+    assert transfers == [(6, 21), (6, 22), (6, 23), (4, 9), (4, 10), (4, 11), (4, 12), (4, 14), (4, 13)]
+    assert get('ps').asm_reason(fn.code) is None

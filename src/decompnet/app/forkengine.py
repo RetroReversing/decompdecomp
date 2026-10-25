@@ -1011,6 +1011,8 @@ class ForkEngine:
                         name += "'"
                     used.add(name)
                     db.execute("UPDATE functions SET unit=?, name=? WHERE id=?", (uname, name, old["id"]))
+                if old is not None and "naming" in self._meta(old):
+                    meta["naming"] = self._meta(old)["naming"]
                 if old is not None and "held" in self._meta(old):
                     meta["held"] = self._meta(old)["held"]
                     if sym in held.get(uname, ()):
@@ -1667,6 +1669,9 @@ class ForkEngine:
         if not re.fullmatch(r"[A-Za-z_]\w*", new) or not re.fullmatch(r"@?[A-Za-z_]\w*(?:@\d+)?", old) or old == new:
             raise NetworkError("rename_symbol takes two different C names: old and new")
         proj, fp, cfg = self.get(slug)
+        renamed_ids = [r["id"] for r in self.net.store.all(
+            "SELECT id FROM functions WHERE project_id=? AND (name=? OR json_extract(meta, '$.symbol')=?)",
+            proj["id"], old, old)]
         if slug in self.net.links:
             raise NetworkError("in a room, the host's project is the one to rename in: say it in a note")
         console = consoles.get(cfg.get("platform"))
@@ -1720,6 +1725,10 @@ class ForkEngine:
                                f"{agent.name if agent else 'decompdecomp'} with decompdecomp; the game still builds as it "
                                "did and every match still matches.")
         self.sync(slug, log=lambda *_: None, rep=rep)
+        from .function_names import record
+        with self.net.store.tx() as db:
+            for fid in renamed_ids:
+                record(db, fid, old, new)
         return f"✅ {old} is {new} now, in the game's symbols and in {len(saved)} file(s); every match still matches."
 
     def _commit_paths(self, proj, fp: ForkProject, paths: list[str], message: str) -> None:

@@ -214,3 +214,23 @@ def test_sdk_source_import_does_not_cross_compiler_settings(pair, monkeypatch, t
         db.execute("UPDATE sdk_sources SET compiler='different compiler'")
     monkeypatch.setattr(pair, 'try_quietly', lambda *a: pytest.fail('wrong compiler corpus used'))
     assert free.run(pair.twins, 'destination', Job()) == 0
+
+
+def test_saved_near_miss_address_repairs_use_cached_probe_and_byte_judge(pair, monkeypatch):
+    from .test_similar_matches import code
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET best_source='int new(int x) { return original + 60; }',best_score=20 WHERE id=2")
+        db.execute("INSERT INTO symbols(project_id,name,address) VALUES(2,'destination',2147487744)")
+    seen = []
+    def judge(agent, proj, function, source):
+        seen.append(source)
+        return {'matched': False, 'score': 20, 'candidate_target': code(60).hex(), 'candidate_relocs': '[]',
+                'rows': [('i','lui $v0, %hi(destination)','lui $v0, %hi(original)'),
+                         ('i','lw $v0, %lo(destination)($v0)','lw $v0, %lo(original)($v0)')]}
+    monkeypatch.setattr(pair, 'try_quietly', judge)
+    assert free.run(pair.twins,'destination',Job()) == 0
+    assert any('destination + 61' in s for s in seen)
+    assert pair._function('new','destination')['status'] == 'open'
+    count = len(seen)
+    assert free.run(pair.twins,'destination',Job()) == 0
+    assert len(seen) == count
