@@ -651,6 +651,14 @@ class Twins:
                     except Exception:  # another project that can't be read now (moved, half set up): never in the way
                         log.exception("twins: %s from %s", slug, other["slug"])
                 continue
+        if not fork:
+            # Imported projects do not necessarily fill the database's architecture columns.
+            for other in self.net.store.all("SELECT * FROM projects WHERE id != ?", proj["id"]):
+                if self.net.fork_slug(other["slug"]) and other["slug"] not in self.net.links:
+                    try:
+                        matched += self._fork_to_rom(agent, proj, other, wanted, mine, job)
+                    except Exception:
+                        log.exception("twins: ROM %s from imported %s", slug, other["slug"])
         by_id = {p["id"]: p for p in others}
         sources = []
         keys = list(wanted)
@@ -850,6 +858,63 @@ class Twins:
             db.executemany("INSERT OR IGNORE INTO sdk_signatures(corpus,arch,big_endian,name,fingerprint,size) "
                            "VALUES(?,?,?,?,?,?)", signatures)
         return len(signatures)
+
+    def _fork_to_rom(self, agent, proj, other, wanted, mine, job) -> int:
+        """Try imported, verified C against identical ROM fingerprints; only the ROM judge accepts it.
+
+        Donor headers are deliberately not installed in the ROM project. Self-contained functions and
+        declarations already available in its context work; missing dependencies remain ordinary misses.
+        """
+        from .. import consoles
+
+        _, fp, cfg = self.net.forks.get(other["slug"])
+        console = consoles.of(cfg)
+        if console.arch != proj["arch"] or console.big_endian != bool(proj["big_endian"]):
+            return 0
+        bounded = job is not None and hasattr(job, "reuse_limit")
+        theirs = self.prints(other)
+        matched = 0
+        for a in self.net.store.all("SELECT * FROM functions WHERE project_id=? AND status='matched'", other["id"]):
+            pa = theirs.get(a["id"])
+            if pa is None or pa.asm:
+                continue
+            for b_id in wanted.get(pa.key, []):
+                if job is not None and (job.stop.is_set() or (bounded and (
+                        job.reuse_attempts >= job.reuse_limit or time.monotonic() >= job.reuse_deadline))):
+                    return matched
+                b = self.net.store.one("SELECT * FROM functions WHERE id=? AND status='open'", b_id)
+                if b is None or self.net.store.one("SELECT 1 FROM claims WHERE function_id=?", b_id):
+                    continue
+                names = renames(pa, mine[b_id], pa.name or a["name"].split("@")[0], b["name"])
+                if names is None or self.net.forks.is_asm(other, a):
+                    continue
+                original = self.net.forks._current_source(fp, a)
+                if not original:
+                    continue
+                source = apply(original, names)
+                if self._missed(b_id, source):
+                    continue
+                if job is not None:
+                    job.cross_candidates += 1
+                    job.cross_tried += 1
+                if bounded:
+                    job.reuse_attempts += 1
+                outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}")
+                with self.net.store.tx() as db:
+                    db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,"
+                               "source_function_id,outcome,reason,created_at) VALUES(?,?,?,?,?,?,?)",
+                               (proj["id"], b_id, other["id"], a["id"], outcome, why[:WHY_CHARS], time.time()))
+                    if outcome == "miss":
+                        db.execute("INSERT OR REPLACE INTO twin_misses(function_id,source_hash,project_id,at,why) "
+                                   "VALUES(?,?,?,?,?)", (b_id, self._miss_key(source), proj["id"], time.time(), why))
+                if outcome == "match":
+                    if bounded:
+                        job.reuse_matched += 1
+                        job.reuse_bytes += b["size"]
+                    matched += 1
+                    if job is not None:
+                        job.cross_matched += 1
+        return matched
 
     def _across_projects(self, agent, proj, other, wanted: dict[str, list[int]], mine: dict[int, Print],
                          job: Job | None) -> int:

@@ -76,3 +76,44 @@ def test_local_object_signatures_are_name_hints_not_matches(built, tmp_path):  #
         pass
     else:
         assert False, "invalid archives must be rejected"
+
+
+def test_imported_c_is_rejudged_in_rom_and_misses_are_remembered(built, tmp_path, monkeypatch):  # noqa: F811
+    from types import SimpleNamespace
+
+    from decompnet.app.twins import Print
+
+    net = RomNetwork(tmp_path / "decomp.db", tmp_path)
+    slug = net.import_rom(ROM, confirmed=True, log=lambda *_: None)
+    agent, _ = net.local_agent("autopilot")
+    net.split_function(agent, slug, "func_800007C4", "0x800007D0")
+    donor_id = copy_project(net, slug, "imported-library")
+    proj, donor = net._project(slug), net._project("imported-library")
+    b = net._function("func_800007D0", slug)
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET status='matched' WHERE project_id=? AND name=?", (donor_id, b["name"]))
+    mine = net.twins.prints(proj)
+    fingerprint = mine[b["id"]]
+    a = net._function(b["name"], "imported-library")
+    monkeypatch.setattr(net.forks, "get", lambda _: (donor, object(), {"platform": "n64"}))
+    monkeypatch.setattr(net.forks, "is_asm", lambda *_: False)
+    monkeypatch.setattr(net.twins, "prints", lambda _: {
+        a["id"]: Print(fingerprint.key, fingerprint.refs, fingerprint.size, name="library_clamp")})
+    # Even a donor marked matched cannot bypass the destination's actual compiler and judge.
+    monkeypatch.setattr(net.forks, "_current_source", lambda *_: "int library_clamp(int x) { return 123; }")
+    wanted = {fingerprint.key: [b["id"]]}
+    stopped = SimpleNamespace(stop=SimpleNamespace(is_set=lambda: False), reuse_limit=0,
+                              reuse_attempts=0, reuse_deadline=float("inf"))
+    assert net.twins._fork_to_rom(agent, proj, donor, wanted, mine, stopped) == 0
+    assert net.store.one("SELECT COUNT(*) AS n FROM cross_game_attempts")["n"] == 0
+    assert net.twins._fork_to_rom(agent, proj, donor, wanted, mine, None) == 0
+    assert net._function(b["name"], slug)["status"] == "open"
+    assert net.twins._fork_to_rom(agent, proj, donor, wanted, mine, None) == 0
+    assert net.store.one("SELECT COUNT(*) AS n FROM cross_game_attempts")["n"] == 1
+    monkeypatch.setattr(net.forks, "_current_source", lambda *_: CLAMP.replace(b["name"], "library_clamp"))
+    assert net.twins._fork_to_rom(agent, proj, donor, wanted, mine, None) == 1
+    result = net._function(b["name"], slug)
+    assert result["status"] == "matched" and "in Another Game" in result["matched_source"]
+    assert net.store.one("SELECT COUNT(*) AS n FROM cross_game_attempts WHERE outcome='match'")["n"] == 1
+    job = SimpleNamespace(stop=SimpleNamespace(is_set=lambda: True))
+    assert net.twins._fork_to_rom(agent, proj, donor, wanted, mine, job) == 0
