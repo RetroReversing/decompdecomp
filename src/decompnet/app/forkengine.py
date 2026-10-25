@@ -3749,6 +3749,7 @@ class ForkEngine:
             "matched_bytes": agg["matched_bytes"] or 0, "set_aside": agg["set_aside"] or 0,
             "set_aside_bytes": agg["set_aside_bytes"] or 0, "attempts": agg["attempts"] or 0,
             "context_version": 0, "folder": proj["root"], "room": self.net._room_info(slug),
+            "coverage_notes": fp.objdiff_config().get("coverage_notes", []) if cfg.get("ready") else [],
             "progress_populations": cfg.get("progress_populations", []),
             "measures": m, "uncovered": self.uncovered(slug) if cfg.get("ready") and fp.linkable() else None,
             "rebuild": (fp.manifest or {}).get("rebuild") if cfg.get("origin") == "scratch" else None,

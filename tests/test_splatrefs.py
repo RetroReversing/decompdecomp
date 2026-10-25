@@ -239,3 +239,63 @@ def test_assembly_units_are_visible_without_counting_original_assembly_as_c(tmp_
     assert entry['name'] == 'asm/demo'
     assert 'base_path' not in entry and 'metadata' not in entry
     assert (tmp_path / entry['target_path']).is_file()
+
+
+def test_verified_rebuild_retains_nested_config_version(tmp_path, monkeypatch):
+    cfg = config(tmp_path)
+    data = b'full original cartridge'
+    image = tmp_path/'baserom.jp.z64'
+    image.write_bytes(data)
+    elf = tmp_path/'build/demo.elf'
+    elf.write_bytes(b'linked ELF read by mocked objcopy')
+    (tmp_path/'build/demo.map').write_text(' .text 0x80000400 0x10 build/src/demo.o\n')
+    (tmp_path/'asm').mkdir()
+    (tmp_path/'build/asm').mkdir()
+    (tmp_path/'src/demo.s').write_text('assembly alternative for the same linked C object')
+    (tmp_path/'asm/start.s').write_text('glabel boot\n  jr $ra\n  nop\n')
+    (tmp_path/'build/asm/start.o').write_bytes(b'linked original assembly object')
+    (tmp_path/'asm/microcode.s').write_text('.incbin "program.bin"\n')
+    (tmp_path/'build/asm/microcode.o').write_bytes(b'whole program blob')
+    with (tmp_path/'build/demo.map').open('a') as f:
+        f.write(' .text 0x80000410 0x8 build/asm/start.o\n .text 0x80000418 0x80 build/asm/microcode.o\n')
+    elf.touch()
+
+    bindir = tmp_path/'tools'
+    bindir.mkdir()
+    (bindir/'mips-ps2-decompals-objcopy').touch()
+    monkeypatch.setattr(toolchains, 'require', lambda _: bindir)
+    monkeypatch.setattr(splatrefs, 'run', lambda cmd, *a, **kw: __import__('pathlib').Path(cmd[-1]).write_bytes(data))
+    project = ForkProject(tmp_path)
+    selected = tmp_path/'config/jp/demo.jp.yaml'
+    monkeypatch.setattr(project, '_splat_version_configs', lambda: {'jp':selected})
+    assert splatrefs.verified_rebuild(project, selected, cfg, image, hashlib.sha1(data).hexdigest(), lambda *_: None)
+    result = json.loads((tmp_path/'objdiff.json').read_text())
+    assert result['custom_args'] == ['VERSION=jp']
+    asm = next(u for u in result['units'] if u['name'] == 'asm/start')
+    assert 'base_path' not in asm and 'source_path' not in asm['metadata']
+    assert asm['metadata']['assembly_source'] == 'asm/start.s'
+    for unit in result['units']:
+        for key in ('name', 'base_path', 'target_path'):
+            assert '\\' not in unit.get(key, '')
+        for value in unit.get('metadata', {}).values():
+            assert '\\' not in value
+    assert len(result['units']) == 2
+    assert '1 linked binary assembly' in result['coverage_notes'][0]
+
+
+def test_padding_fallback_still_requires_a_byte_exact_full_rebuild(tmp_path, monkeypatch):
+    cfg = config(tmp_path)
+    image = tmp_path/'baserom.z64'
+    image.write_bytes(b'original cartridge')
+    cfg.update(sha1=hashlib.sha1(image.read_bytes()).hexdigest())
+    cfg['options']['target_path'] = 'baserom.z64'
+    cfg['segments'][0]['subsegments'].insert(1, [8, 'pad'])
+    (tmp_path/'build/demo.elf').write_bytes(b'nonmatching ELF')
+    bindir = tmp_path/'tools'
+    bindir.mkdir()
+    (bindir/'mips-ps2-decompals-objcopy').touch()
+    monkeypatch.setattr(toolchains, 'require', lambda _: bindir)
+    monkeypatch.setattr(splatrefs, 'run', lambda cmd, *a, **kw: __import__('pathlib').Path(cmd[-1]).write_bytes(b'wrong'))
+    with pytest.raises(ForkError, match='complete binary matches'):
+        splatrefs.generate(ForkProject(tmp_path), tmp_path/'demo.yaml', cfg, consoles.get('n64'))
+    assert not (tmp_path/'objdiff.json').exists()
