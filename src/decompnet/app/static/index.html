@@ -501,6 +501,12 @@
     </header>
     <div class="drawer-body">
       <p class="set-aside" id="fnAside" hidden><span id="fnAsideWhy"></span> <button class="link-btn" id="fnReopen" type="button">Give it back to the agents</button></p>
+      <div id="fnCompilerTest" hidden>
+        <button class="ghost small-btn" id="fnTestCompilers" type="button">Test installed compilers &amp; flags</button>
+        <p class="small muted">Tests this function’s saved C attempt locally with every installed compiler and supported flag-search variant. No AI tokens; settings stay unchanged. This is not every possible compiler option.</p>
+        <p class="compiler-result" id="fnCompilerSummary" role="status" hidden></p>
+        <details class="more"><summary>Comparison details</summary><pre class="joblog" id="fnCompilerLog" hidden></pre></details>
+      </div>
       <div class="fn-tabs">
         <div class="tabs" role="tablist" aria-label="Function view">
           <button role="tab" class="tab on" data-ftab="diff" type="button">Diff</button>

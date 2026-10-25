@@ -1016,3 +1016,10 @@ details.more[open] > summary::before { content: "− "; }
 #installedCompilerTest > .small { line-height: 1.55; }
 #installedCompilerLog { min-width: 0; max-width: 100%; max-height: 280px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
 #compilerPanel .workbar { min-width: 0; max-width: 100%; }
+
+#fnCompilerTest { padding: 16px; margin-bottom: 18px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raise); display: grid; gap: 10px; min-width: 0; }
+#fnTestCompilers { justify-self: start; }
+#fnCompilerTest > .small { max-width: 78ch; line-height: 1.55; }
+#fnCompilerLog { max-height: 240px; overflow-wrap: anywhere; }
+.compiler-result { padding: 12px 14px; border-left: 3px solid var(--line); background: var(--code-bg); line-height: 1.6; }
+.compiler-result[data-improved="true"] { border-left-color: var(--match); }
