@@ -136,13 +136,14 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
             target = work / 'targets' / base.relative_to(build_dir)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(base, target)
-            entry = {'name': str(source.relative_to(root).with_suffix('')),
-                     'target_path': str((destination / target.relative_to(work)).relative_to(root))}
+            # Keep objdiff unit identities and exported paths stable across Windows and POSIX hosts.
+            entry = {'name': source.relative_to(root).with_suffix('').as_posix(),
+                     'target_path': (destination / target.relative_to(work)).relative_to(root).as_posix()}
             if source.suffix == '.c':
-                entry.update(base_path=str(base.relative_to(root)),
-                             metadata={'source_path': str(source.relative_to(root))})
+                entry.update(base_path=base.relative_to(root).as_posix(),
+                             metadata={'source_path': source.relative_to(root).as_posix()})
             else:
-                entry['metadata'] = {'assembly_source': str(source.relative_to(root))}
+                entry['metadata'] = {'assembly_source': source.relative_to(root).as_posix()}
             entries.append(entry)
         pending = work / 'objdiff.json'
         pending.write_text(json.dumps({'custom_make': 'make', 'custom_args': make_args,
@@ -376,11 +377,11 @@ def generate(project, config_path: Path, config: dict, console, log=print) -> bo
         for index, unit in enumerate(units, 1):
             log(f'Verifying objdiff reference {index}/{len(units)}: {unit["name"]}')
             target = assemble(root, work, unit, definitions, image, assembler, linker, console.as_flags, log)
-            entry = {'name': str(unit['source'].relative_to(root).with_suffix('')) if unit['source'] else 'asm/' + unit['name'],
-                     'target_path': str((destination / target.relative_to(work)).relative_to(root))}
+            entry = {'name': unit['source'].relative_to(root).with_suffix('').as_posix() if unit['source'] else 'asm/' + unit['name'],
+                     'target_path': (destination / target.relative_to(work)).relative_to(root).as_posix()}
             if unit['source']:
-                entry.update(base_path=str(unit['base'].relative_to(root)),
-                             metadata={'source_path': str(unit['source'].relative_to(root))})
+                entry.update(base_path=unit['base'].relative_to(root).as_posix(),
+                             metadata={'source_path': unit['source'].relative_to(root).as_posix()})
             entries.append(entry)
         pending = work / 'objdiff.json'
         pending.write_text(json.dumps({'custom_make': 'make', 'build_target': False, 'build_base': True,
