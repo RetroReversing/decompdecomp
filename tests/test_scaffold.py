@@ -76,3 +76,26 @@ def test_imported_project_can_prepare_autopilot_without_origin_gate(tmp_path, mo
                            _tree=lambda proj: SimpleNamespace(exclusive=nullcontext),
                            _build_locks={1: nullcontext()}, net=SimpleNamespace(store=store))
     assert ForkEngine.autopilot_prepare(fake, 'demo') == [17]
+
+
+def test_upstream_draft_pipeline_keeps_imported_compiler_hint(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from decompnet.app import forkengine
+
+    source = tmp_path / 'candidate.c'
+    source.write_text('')
+    code = 'void demo(void) {}'
+    seen = []
+    def draft(*args, **kwargs):
+        seen.append(kwargs['compiler_hint'])
+        return code
+    monkeypatch.setattr(forkengine.drafts, 'draft', draft)
+    monkeypatch.setattr(forkengine.compiler_info, 'describe', lambda *a: {'name': 'IDO 5.3'})
+    fake = SimpleNamespace(_meta=lambda fn: {'symbol': 'demo'}, _names=lambda meta, fn: ['demo'],
+                           _find=lambda text, names: ('demo', (0, len(text))))
+    fp = SimpleNamespace(root=tmp_path)
+    unit = SimpleNamespace(scratch=None, name='asm/demo', source='candidate.c')
+    result = list(forkengine.ForkEngine._autopilot_drafts(fake, {}, fp, {'platform': 'n64'}, {'name': 'demo'}, unit))
+    assert seen == ['IDO 5.3']
+    assert len(result) == 1 and 'void demo(void)' in result[0][1]

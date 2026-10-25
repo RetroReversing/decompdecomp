@@ -119,15 +119,29 @@ def tick(_timer):
             state["phase"] = 1
         elif phase == 1:
             state["phase"] = 2
-            evaluate('location.href="https://example.invalid/external"; true', lambda _: None)
+            evaluate('var a=document.createElement("a");a.href="https://example.invalid/external";'
+                     'a.target="_blank";a.click();true', lambda _: None)
         elif phase == 2:
             if not external:
                 return
             assert external == ["https://example.invalid/external"]
             assert "native-mac-test-secret" not in external[0]
-            state["phase"] = 3
-            evaluate('window.decompClose=()=>"wait"; true', lambda _: None)
+            state["phase"] = 21
+            state["requests_before"] = len(headers)
+            evaluate('var a=document.createElement("a");a.href="/";a.target="_blank";a.click();true',
+                     lambda _: None)
+        elif phase == 21:
+            if len(headers) <= state["requests_before"]:
+                return
+            state["phase"] = 22
+            evaluate('Boolean(typeof S !== "undefined" && S.st)',
+                     lambda loaded: state.update(phase=3) if loaded else failures.append("internal new tab lost app page"))
+        elif phase == 22:
+            return
         elif phase == 3:
+            state["phase"] = 31
+            evaluate('window.decompClose=()=>"wait"; true', lambda _: None)
+        elif phase == 31:
             state["phase"] = 4
             delegate.windowShouldClose_(delegate.window)
         elif phase == 4:
