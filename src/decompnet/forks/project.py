@@ -32,7 +32,7 @@ from pathlib import Path
 
 from decompnet.hostenv import NO_WINDOW, console_python
 
-from .. import toolchains
+from .. import consoles, toolchains
 from ..limits import capped, killed_for_memory
 from ..network import NetworkError
 from . import objdiff
@@ -187,6 +187,26 @@ class ForkProject:
 
     def versions(self) -> list[str]:
         return sorted(p.parent.name for p in self.root.glob("config/*/config.yml"))
+
+    def detect_platform(self) -> str:
+        """Read the console declared by a public project's manifest or Splat config without running its code."""
+        if value := (self.manifest or {}).get("platform"):
+            return value
+        path = self._splat_yaml()
+        if path is None:
+            return ""
+        import yaml
+
+        try:
+            config = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, yaml.YAMLError):
+            return ""
+        options = config.get("options") if isinstance(config, dict) else None
+        value = options.get("platform") if isinstance(options, dict) else None
+        if not isinstance(value, str):
+            return ""
+        console = consoles.get(value.strip().lower())
+        return console.id if console.id in {c.id for c in consoles.CONSOLES} else ""
 
     def _splat_yaml(self) -> Path | None:
         for p in sorted(self.root.glob("*.yaml")) + sorted(self.root.glob("config/*.yaml")) + sorted(self.root.glob("config/**/*.yaml")):

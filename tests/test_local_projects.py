@@ -109,6 +109,7 @@ def test_git_worktrees_are_found_and_symlinks_are_not_followed(tmp_path):
 
 def test_default_import_clones_committed_files_and_preserves_original_work(tmp_path):
     root = repo(tmp_path / "collection" / "game")
+    (root / "splat.yaml").write_text("options:\n  platform: n64\nsegments: []\n")
     subprocess.run(["git", "-C", str(root), "add", "."], check=True)
     subprocess.run(["git", "-C", str(root), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
                     "commit", "-qm", "Synthetic fixture"], check=True)
@@ -119,7 +120,9 @@ def test_default_import_clones_committed_files_and_preserves_original_work(tmp_p
     net = RomNetwork(tmp_path / "app.db", tmp_path / "workspace")
     result = net.forks.import_local(root.parent, [str(root)])
     assert not result["errors"]
-    copied = Path(net.project_row(result["imported"][0]["slug"])["root"])
+    project = net.project_row(result["imported"][0]["slug"])
+    assert json.loads(project["config"])["platform"] == "n64"
+    copied = Path(project["root"])
     assert copied.resolve() != root and copied.is_dir()
     assert "welcome" in (copied / "README.md").read_text()
     assert not (copied / "private.rom").exists()
@@ -129,3 +132,35 @@ def test_default_import_clones_committed_files_and_preserves_original_work(tmp_p
     assert after == before
     assert net.forks.import_local(root.parent, [str(root)])["imported"][0]["slug"] == result["imported"][0]["slug"]
     assert net.forks.scan_local(root.parent)["projects"][0]["existing"] == result["imported"][0]["slug"]
+
+
+@pytest.mark.parametrize("platform", ["n64", "psx", "ps2"])
+def test_local_splat_import_reads_platform_and_repairs_old_imports(tmp_path, platform):
+    root = repo(tmp_path / "collection" / "game")
+    (root / "decompressed.pal.yaml").write_text(
+        f"options:\n  platform: {platform}\n  target_path: decompressed.pal.z64\nsegments: []\n")
+    (root / "Makefile").write_text("all:\n\t@true\n")
+    net = RomNetwork(tmp_path / "app.db", tmp_path / "workspace")
+    result = net.forks.import_local(root.parent, [str(root)], copies=False)
+    slug = result["imported"][0]["slug"]
+    expected = "ps" if platform == "psx" else platform
+    assert json.loads(net.project_row(slug)["config"])["platform"] == expected
+    net._update_cfg(slug, lambda cfg: cfg.__setitem__("platform", ""))
+    assert net.forks.get(slug)[2]["platform"] == expected
+    assert net.summary(slug)["platform"] == expected
+    net._update_cfg(slug, lambda cfg: cfg.__setitem__("platform", "n64"))
+    assert net.forks.get(slug)[2]["platform"] == "n64"  # keep an explicit selection
+
+
+def test_platform_detection_tolerates_invalid_splat_and_prefers_manifest(tmp_path):
+    from decompnet.forks.project import ForkProject
+
+    root = repo(tmp_path / "game")
+    config = root / "splat.yaml"
+    config.write_text("options: [\nsegments: []\n")
+    assert ForkProject(root, create_state=False).detect_platform() == ""
+    config.write_text("options:\n  platform: made-up\nsegments: []\n")
+    assert ForkProject(root, create_state=False).detect_platform() == ""
+    config.write_text("options:\n  platform: n64\nsegments: []\n")
+    (root / ".decomp.wtf.json").write_text(json.dumps({"platform": "ps2"}))
+    assert ForkProject(root, create_state=False).detect_platform() == "ps2"

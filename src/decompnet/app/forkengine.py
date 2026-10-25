@@ -555,7 +555,12 @@ class ForkEngine:
         proj = self.net._project(slug)
         if not self.is_fork(proj):
             raise NetworkError(f"{slug} isn't a fork")
-        return proj, ForkProject(Path(proj["root"])), json.loads(proj["config"])
+        fp, cfg = ForkProject(Path(proj["root"])), json.loads(proj["config"])
+        if not cfg.get("platform") and (platform := fp.detect_platform()):
+            cfg["platform"] = platform
+            self._save_cfg(proj, cfg)
+            proj = self.net._project(slug)
+        return proj, fp, cfg
 
     def _save_cfg(self, proj, cfg: dict) -> None:
         with self.net.store.tx() as db:
@@ -605,7 +610,7 @@ class ForkEngine:
         kind = fp.kind()
         versions = fp.versions()
         version = version if version in versions else (versions[0] if versions else version)
-        cfg = {"kind": "fork", "repo_url": url, "platform": platform, "version": version, "fork_kind": kind,
+        cfg = {"kind": "fork", "repo_url": url, "platform": platform or fp.detect_platform(), "version": version, "fork_kind": kind,
                "ready": False, "legal": {"basis": "personal-copy", "license": "the project's own license"}}
         self._register(slug, name or url.rstrip("/").split("/")[-1], f"fork of {url}", dest, cfg, f"cloned {url}")
         log(f"cloned into {dest} ({kind} project)")
@@ -665,7 +670,7 @@ class ForkEngine:
                     cfg = {"kind": "fork", "origin": "local", "repo_url": str(root), "platform": "",
                            "version": next(iter(info["versions"]), None), "fork_kind": info["kind"], "ready": False,
                            "legal": {"basis": "personal-copy", "license": "the project's own license"}}
-                    cfg["platform"] = (project.manifest or {}).get("platform") or ""
+                    cfg["platform"] = project.detect_platform()
                     self._register(slug, root.name, f"local checkout at {root}", root, cfg, "imported local checkout")
                     log(f"Imported {root.name}; open it to check its setup and measure progress.")
                 imported.append({"path": str(root), "slug": slug, "existing": False})
