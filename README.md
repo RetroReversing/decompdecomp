@@ -35,6 +35,18 @@ This fork of [NDelic's decompdecomp](https://github.com/n-delic/decompdecomp) ad
 The original decomp.wtf and decompdecomp credits and licenses are preserved. Report fork issues to
 [RetroReversing/decompdecomp](https://github.com/RetroReversing/decompdecomp/issues).
 
+## ROM library
+
+Set **Settings → ROM library** to the folder containing your extracted game files. When an imported project
+needs its game, decompdecomp searches that folder recursively for the project's expected SHA-1 and fills in a
+matching path. N64 .z64, .v64 and .n64 byte orders are recognized regardless of filename. Confirm ownership and
+click **Use path** to continue. The search does not unpack archives or start a build.
+
+If setup fails after accepting your ROM, reopen the project or retry: its verified copy is detected first and
+**Retry setup** reuses it without opening the file chooser. Projects without a declared SHA-1 still need manual
+selection. Clear the folder setting to disable library searches. Hashes are cached in memory until files change
+or the app restarts; original files are never moved by the search.
+
 ## Install
 
 decompdecomp runs on **Linux and Windows 10/11** on x86-64, and **macOS 12+** on Intel or Apple Silicon. On Linux, install it with one command. The installer also gets
