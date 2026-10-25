@@ -52,7 +52,10 @@ Every accepted candidate must compile and link to the destination's exact bytes.
 - **Better near-miss repairs:** eligibility uses percentage similarity, so a single changed operand no longer
   excludes an otherwise close function. Assembly differences guide casts, signedness, literal and ordering edits.
   Agreeing high/low address references can also propose a known destination symbol or an automatic address name, alone or combined with a
-  constant or explicit field-offset edit. Literal pointer addresses can be corrected too. Ambiguous mappings and address addend expressions are skipped. These
+  constant or explicit field-offset edit. Literal pointer addresses can be corrected too.
+  Literal base-plus-offset expressions and array indices use the stride evidenced by the old compiled address;
+  adjacent symbolic-high/numeric-low address pairs account for signed low-half carry. These can combine with
+  explicit field-offset edits. Ambiguous mappings, dynamic indices and unproven strides are skipped. These
   Saved best attempts get the same address checks before wider donor searches; probe feedback and failed edits
   are cached and share the ordinary search budget. These edits affect only candidate C; shared symbols and types stay unchanged. An already-installed decomp-permuter
   supplies a small additional batch when time remains.
