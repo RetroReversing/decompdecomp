@@ -159,8 +159,14 @@ class Core(Network):
 
     def reader(self, proj, function=None):
         rom, segs = self._rom(proj)
-        owner = next((s for s in segs if function is not None and
-                      s.rom_start <= function["rom_offset"] < s.rom_end), None)
+        offset = None
+        if function is not None:
+            offset = function["rom_offset"] if "rom_offset" in function.keys() else None
+            if offset is None:
+                row = self.store.one("SELECT rom_offset FROM functions WHERE project_id=? AND name=?",
+                                     proj["id"], function["name"])
+                offset = row["rom_offset"] if row else None
+        owner = next((s for s in segs if offset is not None and s.rom_start <= offset < s.rom_end), None)
         extra = None
         if owner is not None:
             from ...rom.memory import overlay_reader

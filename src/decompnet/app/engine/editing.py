@@ -73,6 +73,86 @@ class EditMixin:
         self._xrefs.pop(proj["id"], None)
         return head, tail
 
+    def join_rom_functions(self, slug: str, names: list[str], reason: str) -> str:
+        """An explicit operator correction: join consecutive, unmatched pieces of one ROM segment.
+
+        Keep internal symbols at their original addresses, so callers and already matched C stay valid.
+        Matching still requires a fresh compile and the normal linked code/data comparison.
+        """
+        self._rom_only(slug, "join_rom_functions")
+        if self._link(slug) is not None or slug in self.rooms:
+            raise NetworkError("leave the shared room before changing ROM function boundaries")
+        if len(names) < 2 or len(names) != len(set(names)):
+            raise NetworkError("choose at least two distinct consecutive pieces")
+        proj = self._project(slug)
+        pieces = sorted((self._function(name, slug) for name in names), key=lambda f: f["rom_offset"])
+        head = pieces[0]
+        if any(f["status"] == "matched" for f in pieces):
+            raise NetworkError("a matched function cannot be joined")
+        if any(f["unit"] != head["unit"] for f in pieces):
+            raise NetworkError("the pieces must belong to the same source unit")
+        for a, b in zip(pieces, pieces[1:]):
+            gap = b["rom_offset"] - (a["rom_offset"] + a["size"])
+            if gap not in (0, -4) or b["vram"] - a["vram"] != b["rom_offset"] - a["rom_offset"]:
+                raise NetworkError("the pieces must be consecutive in the original image and memory")
+            if gap == -4 and a["target"][-4:] != b["target"][:4]:
+                raise NetworkError("overlapping delay-slot bytes disagree")
+        ids = [f["id"] for f in pieces]
+        if any(self.store.one("SELECT 1 FROM claims WHERE function_id=?", fid) for fid in ids):
+            raise NetworkError("release the pieces' claims before joining them")
+        image, segments = self._rom(proj)
+        end = pieces[-1]["rom_offset"] + pieces[-1]["size"]
+        raw = image[head["rom_offset"]:end]
+        if any(image[f["rom_offset"]:f["rom_offset"] + f["size"]] != f["target"] for f in pieces):
+            raise NetworkError("a piece differs from the original image")
+        owner = next((seg for seg in segments if seg.rom_start <= head["rom_offset"] < seg.rom_end), None)
+        end = head["rom_offset"] + len(raw)
+        if owner is None or end > owner.rom_end or image[head["rom_offset"]:end] != raw:
+            raise NetworkError("the pieces do not describe one unchanged original segment")
+        relocations = set()
+        for f in pieces:
+            offset = f["rom_offset"] - head["rom_offset"]
+            relocations.update((r[0] + offset, *r[1:]) for r in json.loads(f["relocs"]))
+        relocs = sorted(relocations)
+        meta = {k: v for k, v in json.loads(head["meta"] or "{}").items()
+                if k not in ("asm_code", "asm_twin", "not_c", "set_aside")}
+        meta["joined_from"] = [{k: f[k] for k in ("name", "size", "vram", "rom_offset", "meta")} for f in pieces]
+        meta["reopened"] = True
+        lines, labels = {}, {}
+        for f in pieces:
+            pending = []
+            for text in f["asm"].splitlines():
+                insn = split._INSN.match(text)
+                if insn:
+                    at = int(insn.group(1), 16)
+                    lines[at] = text
+                    labels.setdefault(at, set()).update(pending)
+                    pending = []
+                elif text.lstrip().startswith((".L", "glabel ", "jlabel ")):
+                    pending.append(text)
+        assembly = "\n".join("\n".join(sorted(labels.get(at, set()))) + "\n" + text
+                             for at, text in sorted(lines.items()))
+        assembly += f"\nendlabel {head['name']}\n"
+        with self.store.tx() as db:
+            for child in pieces[1:]:
+                db.execute("UPDATE notes SET function_id=? WHERE function_id=?", (head["id"], child["id"]))
+                db.execute("UPDATE attempts SET function_id=? WHERE function_id=?", (head["id"], child["id"]))
+                db.execute("DELETE FROM functions WHERE id=?", (child["id"],))
+            db.execute("UPDATE functions SET size=?,n_insns=?,target=?,relocs=?,asm=?,status='open',meta=?,"
+                       "best_source=NULL,best_score=NULL,seed=NULL,seed_key=NULL WHERE id=?",
+                       (len(raw), len(raw) // 4, raw, json.dumps(relocs), assembly,
+                        json.dumps(meta), head["id"]))
+            db.execute("UPDATE symbols SET size=? WHERE project_id=? AND name=?",
+                       (len(raw), proj["id"], head["name"]))
+            self._event(db, proj["id"], None, "boundary", f"joined {', '.join(names)}: {reason[:600]}")
+        self._syms.pop(proj["id"], None)
+        self._xrefs.pop(proj["id"], None)
+        self._ops.pop(proj["id"], None)
+        self._warmed.pop(proj["id"], None)
+        self.twins.forget(proj)
+        self.bump_generation(proj["id"])
+        return f"Joined {len(pieces)} original pieces as {head['name']} ({len(raw)} bytes); not matched until judged"
+
     def request_boundary(self, agent: Agent, slug: str, function: str, end: str, reason: str) -> str:
         """An agent's report that a function really ends earlier: what follows is alignment padding, linker leftovers
         or data, not code anyone wrote. Changing the function list is the user's call, so it waits for them on the

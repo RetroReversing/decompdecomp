@@ -138,7 +138,7 @@ SDK object archives. The archive's source is never bundled; a signature is a hin
 - **PlayStation (PS1) games from your own copy** (beta): a disc image (BIN, ISO or CHD; SYSTEM.CNF says which
   program it boots) or its PS-X EXE, with the disc's overlays. Functions are built as PSY-Q games were: GCC 2.6.3,
   2.7.2 or 2.8.1, then maspsx, which does what Sony's assembler ASPSX did, then GNU as; the import tries the three on
-  the game's code. BIOS call stubs and GTE code are set aside as assembly. The demo game matches function by function
+  the game's code. BIOS call stubs and unsupported GTE operations are set aside as assembly. Fixed rotation and translation matrix intrinsics let ordinary C callers pass the same byte-exact judge without accepting submitted inline assembly. The demo game matches function by function
   and rebuilds byte for byte; no real game is tested from start to end yet. A disc whose boot program is a loader
   gives the program it loads (`exe.loaded_program`), and where splat's guess at the code misses the entry point (a
   loader that is mostly a picture: 1 function found), .text is where the code's returns and frames are (137).
@@ -385,3 +385,5 @@ The answer goes here: build it, build part of it, or not, and why.
 
 - Done: the ROM judge and machine-draft jump-table reader select a function's owning segment before other overlays at the same RAM address. A checksummed local `memory_regions.json` can supply original overlay data omitted at import, without relaxing byte comparison.
 - Planned: automatically retain complete embedded overlay members and their data during import; preserve and regenerate supplemental memory inputs through save/restore and rebuildable export. Until then, supplemental region files are local analysis inputs that must accompany the private project.
+
+- **Original-image function boundary repair**: an operator can join adjacent ROM pieces (including a shared delay slot) after confirming their boundary. Original bytes are preserved and the complete C function must still pass the normal judge. Other boundary suspects remain unchanged.

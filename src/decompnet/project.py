@@ -29,10 +29,10 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     ro_paths = [str((root / p).resolve()) for p in c.get("ro_paths", [])]
     runtime32 = None
     linux = False
-    prelude, cplusplus = "", False
+    prelude, cplusplus, intrinsics = "", False, ""
     if "toolchain" in c:
         tc = toolchains.get(c["toolchain"])
-        prelude, cplusplus = tc.prelude, tc.cplusplus
+        prelude, cplusplus, intrinsics = tc.prelude, tc.cplusplus, tc.intrinsics
         linux = tc.via_wsl  # Windows: a Linux toolchain, run inside WSL 2
         if linux and not (ok := wsl.status())[0]:
             raise toolchains.ToolchainError(f"{tc.name} is a Linux program: on Windows it runs in WSL 2. {ok[1]}")
@@ -70,5 +70,6 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         runtime32=runtime32,
         wsl=linux,
         prelude=prelude,
+        intrinsics=intrinsics,
         cplusplus=cplusplus,
     )

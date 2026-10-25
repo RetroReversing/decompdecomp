@@ -59,6 +59,7 @@ platforms = ["macos-x86_64", "macos-arm64"]
 rosetta = true
 
 ["gcc-2.6.3-psx"]
+intrinsics = "decompnet.consoles.ps1.gte"
 name = "GCC 2.6.3 for PlayStation + maspsx (ASPSX 2.34)"
 platform = "PS1"
 arch = "mipsel"
@@ -85,6 +86,7 @@ sha256 = "01e6e8c4933414ea3f8d8e3bc766a1f5fafd4fc0110e0b75d1f691bd791989b1"
 platforms = ["linux-x86_64"]
 
 ["gcc-2.7.2-psx"]
+intrinsics = "decompnet.consoles.ps1.gte"
 name = "GCC 2.7.2 for PlayStation + maspsx (ASPSX 2.56)"
 platform = "PS1"
 arch = "mipsel"
@@ -105,6 +107,7 @@ sha256 = "4280894661c9792bc19f5c970c283d35381937fb44e479a91d0c044c95fcd208"
 platforms = ["macos-arm64"]
 
 ["gcc-2.8.1-psx"]
+intrinsics = "decompnet.consoles.ps1.gte"
 name = "GCC 2.8.1 for PlayStation + maspsx (ASPSX 2.79)"
 platform = "PS1"
 arch = "mipsel"
