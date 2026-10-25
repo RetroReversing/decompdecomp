@@ -102,7 +102,9 @@ Near-miss repairs now use percentage eligibility and assembly-guided mutations, 
 Aligned high/low address evidence can correct known symbols and combine that with literal/explicit field-offset
 edits. Literal address addends and typed array indices now use compiled stride evidence, including adjacent
 symbolic-high/numeric-low address pairs. Dynamic addends, ambiguous mappings and named-field reconstruction
-still need deeper analysis.
+still need deeper analysis. Candidate-local padding repair now handles simple struct definitions in the
+candidate itself, with bounded proposals from aligned load/store offsets. Shared-header layout reconstruction,
+complex/nested types and field reordering remain planned.
 Tiny MIPS templates and explicitly imported SDK C go through the same judge. Verified regional pairs can teach
 explicit pointer-offset edits; reconstructing named struct layouts and shared types remains planned. New verified
 matches trigger a bounded, configurable automatic cascade. Project-mode support for these additions is planned:

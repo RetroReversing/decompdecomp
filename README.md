@@ -55,7 +55,10 @@ Every accepted candidate must compile and link to the destination's exact bytes.
   constant or explicit field-offset edit. Literal pointer addresses can be corrected too.
   Literal base-plus-offset expressions and array indices use the stride evidenced by the old compiled address;
   adjacent symbolic-high/numeric-low address pairs account for signed low-half carry. These can combine with
-  explicit field-offset edits. Ambiguous mappings, dynamic indices and unproven strides are skipped.
+  explicit field-offset edits. Small candidate-local structs can also have byte padding resized or inserted
+  before a used field, based on aligned memory operands. These proposals support simple scalar/pointer fields
+  and common fixed-width aliases; packed types, bitfields, unions and ambiguous offsets are skipped. Shared
+  headers are never rewritten. Ambiguous mappings, dynamic indices and unproven strides are skipped.
   Saved best attempts get the same address checks before wider donor searches; probe feedback and failed edits
   are cached and share the ordinary search budget. These edits affect only candidate C; shared symbols and types stay unchanged. An already-installed decomp-permuter
   supplies a small additional batch when time remains.
