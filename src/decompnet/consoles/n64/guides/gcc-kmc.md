@@ -3,6 +3,11 @@
 Flags are usually `-O2 -mips3 -G0` (some games `-O1` or `-O3`; ask the user to change the project's
 compiler settings if nothing matches at all).
 
+When instruction order differs around calls or returns, use `search_flags`: it also checks `-g` and `-g3`
+while keeping `-O2`. Debug line labels can prevent the old assembler moving an instruction into a delay slot.
+A matching result proves the flags for that function; keep the override scoped to the verified address range.
+The automatic compiler survey also checks these debug variants on saved attempts.
+
 Traits
 - Unconditional jumps inside a function are `j label`; IDO would use `b`. (That's how the app guessed.)
 - `move` is written as `addu rd, rs, $zero`.

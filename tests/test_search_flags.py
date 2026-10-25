@@ -1,7 +1,9 @@
 """Flags searched, not only compilers (search_flags): the C that looks right but won't match is often built with the
 wrong flags. Each variant is judged like an attempt and recorded nowhere."""
 
+import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -34,3 +36,48 @@ def test_a_project_with_the_wrong_flags_hears_which_ones_match(built, tmp_path):
     assert json.loads(net._project(slug)["config"])["compiler"]["flags"][-1] == "-O1"  # it only says, changes nothing
     with pytest.raises(Exception, match="no attempt yet"):
         net.search_flags(agent, slug, "func_800007D0")
+
+
+@pytest.mark.parametrize("toolchain", ["gcc-2.7.2-kmc", "ee-gcc-2.95.3"])
+@pytest.mark.parametrize("debug", [None, "-g", "-g2", "-g3"])
+def test_gcc_debug_search_replaces_the_debug_level(toolchain, debug):
+    net = RomNetwork(":memory:", ".")
+    plain = ["-G0", "-mips3", "-mgp32", "-mfp32", "-O2"]
+    base = plain + ([debug] if debug else [])
+    variants = net.flag_variants(toolchain, base)
+    assert variants[0] == base
+    for flags in (plain, [*plain, "-g"], [*plain, "-g3"]):
+        assert flags in variants
+    assert all(sum(f.startswith("-g") for f in flags) <= 1 for flags in variants)
+    assert len(variants) <= 12
+
+
+@pytest.mark.parametrize("debug", ["-g", "-g3"])
+def test_the_survey_retries_old_misses_with_debug_flags(tmp_path, monkeypatch, debug):
+    net = RomNetwork(tmp_path / "decomp.db", tmp_path)
+    source = "int f(int x) { return x + 1; }"
+    flags = ["-G0", "-mips3", "-mgp32", "-mfp32", "-O2"]
+    cfg = {"kind": "rom", "platform": "n64", "compiler": {"toolchain": "gcc-2.7.2-kmc", "flags": flags},
+           "compiler_survey": {"tried": {str(0x80001000): hashlib.sha1(source.encode()).hexdigest()[:16]}}}
+    with net.store.tx() as db:
+        pid = db.execute("INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)",
+                         ("demo", "Demo", str(tmp_path), json.dumps(cfg))).lastrowid
+        db.execute("INSERT INTO functions(project_id,name,vram,n_insns,status,best_score,best_source) "
+                   "VALUES(?,?,?,?,?,?,?)", (pid, "f", 0x80001000, 16, "open", 160, source))
+    monkeypatch.setattr(net, "compiler_map", lambda *a, **k: SimpleNamespace(contradicted=set()))
+    monkeypatch.setattr(net, "_suggest_from_map", lambda *a: [])
+    judged = []
+
+    def judge(proj, fn, tc, variant, candidate):
+        judged.append(variant)
+        return debug in variant, None, ""
+
+    monkeypatch.setattr(net, "_judge_with", judge)
+    result = net.survey_compilers("demo")
+    assert result["confirmed"] == 1
+    saved = json.loads(net._project("demo")["config"])
+    assert saved["compiler_survey"]["confirmed"][str(0x80001000)] == ["gcc-2.7.2-kmc", [*flags, debug]]
+    assert saved["compiler"] == cfg["compiler"]  # detection alone does not change the project's flags
+    before = len(judged)
+    assert net.survey_compilers("demo")["tried"] == 0
+    assert len(judged) == before
