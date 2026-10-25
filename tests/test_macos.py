@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from decompnet import hostenv, toolchains
+from decompnet.app import agents as app_agents
 from decompnet.app import launcher, macwindow, picker, updates, window
 
 
@@ -35,6 +36,31 @@ def test_only_local_exports_can_download():
     assert not macwindow.export_url(origin, "https://other.example/export")
 
 
+def test_missing_pyobjc_still_shows_a_finder_launch_error(monkeypatch):
+    monkeypatch.setattr(window, "IS_MACOS", True)
+    monkeypatch.setattr(window, "IS_WINDOWS", False)
+    monkeypatch.setitem(sys.modules, "AppKit", None)
+    calls = []
+    monkeypatch.setattr(window.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+    window.tell_desktop("decompdecomp can't open", "Install PyObjC")
+    assert calls and calls[0][0] == "/usr/bin/osascript"
+    assert calls[0][-2:] == ["decompdecomp can't open", "Install PyObjC"]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="uses macOS ps process metadata")
+def test_mac_finds_detached_helpers_even_with_spaces_in_home(tmp_path):
+    manager = object.__new__(app_agents.Manager)
+    manager.home = tmp_path / "space home"
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                            env=dict(os.environ, **{app_agents.HELPER_ENV: str(manager.home)}), start_new_session=True)
+    try:
+        assert app_agents._proc_start(proc.pid) is not None
+        assert os.getpgid(proc.pid) in manager._strays()
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)
+
+
 @pytest.mark.parametrize("cpu", ["x86_64", "arm64"])
 def test_mac_hosts_use_pinned_tools(cpu, monkeypatch):
     monkeypatch.setattr(toolchains, "current_platform", lambda: "macos-" + cpu)
@@ -48,13 +74,17 @@ def test_mac_hosts_use_pinned_tools(cpu, monkeypatch):
 def test_missing_rosetta_is_an_actionable_error_before_download(monkeypatch, tmp_path):
     monkeypatch.setattr(toolchains, "current_platform", lambda: "macos-arm64")
     monkeypatch.setenv("DECOMPNET_TOOLCHAINS", str(tmp_path))
+    downloads = []
+    monkeypatch.setattr(toolchains, "_download", lambda *a, **kw: downloads.append(a))
     monkeypatch.setattr(toolchains.subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=1))
     with pytest.raises(toolchains.ToolchainError, match="softwareupdate --install-rosetta"):
         toolchains.install("gcc-2.7.2-kmc")
     assert not list(tmp_path.iterdir())
+    assert not downloads
     monkeypatch.setattr(toolchains.subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=0))
-    toolchains._intel_mac_runtime_ready.cache_clear()
-    assert toolchains.runtime_error("gcc-2.7.2-kmc") is None
+    (tmp_path / "gcc-2.7.2-kmc").mkdir()
+    (tmp_path / "gcc-2.7.2-kmc" / toolchains.MANIFEST).write_text("{}")
+    assert toolchains.require("gcc-2.7.2-kmc") == tmp_path / "gcc-2.7.2-kmc"
     toolchains._intel_mac_runtime_ready.cache_clear()
 
 
@@ -68,7 +98,7 @@ def test_finder_launcher_preserves_interpreter_and_helper_path(monkeypatch, tmp_
     launcher.install_launcher()
     bundle = home / "Applications/decompdecomp.app/Contents"
     info = plistlib.loads((bundle / "Info.plist").read_bytes())
-    assert info["CFBundleIdentifier"] == "com.retroreversing.decompdecomp"
+    assert info["CFBundleIdentifier"] == "com.ndelic.decompdecomp"
     script = bundle / "MacOS" / info["CFBundleExecutable"]
     if os.name != "nt":
         assert script.stat().st_mode & 0o111
@@ -158,13 +188,14 @@ def test_mac_installer_skips_linux_packages_and_tracks_this_fork(tmp_path):
         path = bindir / name
         path.write_text("#!/bin/sh\n" + text + "\n")
         path.chmod(0o755)
-    script = Path(__file__).resolve().parents[1] / "site/public/install.sh"
-    env = dict(os.environ, PATH=str(bindir) + ":/usr/bin:/bin")
-    result = subprocess.run(["bash", str(script), "--no-start", "--source", "branch:macos-support"],
+    script = tmp_path / "install.sh"
+    script.write_bytes((Path(__file__).resolve().parents[1] / "site/public/install.sh").read_bytes())
+    env = dict(os.environ, HOME=str(tmp_path / "home"), PATH=str(bindir) + ":/usr/bin:/bin")
+    result = subprocess.run(["bash", str(script), "--no-start", "--source", "branch:main"],
                             capture_output=True, text=True, env=env, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr
     recorded = calls.read_text()
-    assert "--repo RetroReversing/decompdecomp" in recorded and "--branch macos-support" in recorded
+    assert "--repo RetroReversing/decompdecomp" in recorded and "--branch main" in recorded
     assert "setup" in recorded and "shortcut" in recorded
     assert "GTK" not in result.stdout and "sudo" not in result.stdout
 
@@ -263,7 +294,7 @@ def test_ps1_assembler_uses_app_python_on_mac_only(host, expected, tmp_path, mon
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="native macOS PS1 compilers")
-@pytest.mark.parametrize("tid", ["gcc-2.6.3-psx", "gcc-2.7.2-psx", "gcc-2.8.1-psx"])
+@pytest.mark.parametrize("tid", ["gcc-2.6.0-psx", "gcc-2.6.3-psx", "gcc-2.7.2-psx", "gcc-2.7.2-cdk", "gcc-2.8.0-psx", "gcc-2.8.1-psx"])
 def test_native_ps1_compiler_produces_little_endian_mips(tid, tmp_path):
     from io import BytesIO
 
@@ -280,3 +311,15 @@ def test_native_ps1_compiler_produces_little_endian_mips(tid, tmp_path):
     elf = ELFFile(BytesIO(result.obj))
     assert elf["e_machine"] == "EM_MIPS" and elf.little_endian
     assert elf.get_section_by_name(".text").data()
+
+
+@pytest.mark.parametrize("version", ["2.6.0", "2.8.0"])
+def test_more_ps1_source_builds_are_pinned_for_mac(version):
+    tc = toolchains.get("gcc-" + version + "-psx")
+    for cpu in ("arm64", "x86_64"):
+        part, = tc.parts_for("macos-" + cpu)
+        assert part["build"] == "psx-gcc" and part["version"] == version
+        assert all(len(part[key]) == 64 for key in ("sha256", "patches_sha256", "config_guess_sha256", "config_sub_sha256"))
+    assert not toolchains.get("gcc-2.5.7-psx").parts_for("macos-arm64")
+    assert not toolchains.get("gcc-2.91.66-psx").parts_for("macos-arm64")
+    assert not toolchains.get("gcc-2.95.2-psx").parts_for("macos-arm64")

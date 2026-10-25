@@ -161,6 +161,7 @@ def runtime_error(tid: str) -> str | None:
         return None
     if _intel_mac_runtime_ready():
         return None
+    _intel_mac_runtime_ready.cache_clear()  # a newly installed Rosetta runtime works on the next compile
     return (f"{tid} uses Intel macOS binaries and needs Rosetta 2 on Apple Silicon. "
             "Run `softwareupdate --install-rosetta` in Terminal, accept Apple's license if you agree, then try again.")
 
@@ -214,7 +215,17 @@ def _deb_data(deb: Path, out: Path) -> Path:
     raise ToolchainError(f"{deb.name} has no data.tar")
 
 
-def _extract(archive: Path, dest: Path, subdir: str | None) -> None:
+def _extract(archive: Path, dest: Path, subdir: str | None, keep: dict[str, str] | None = None) -> None:
+    """Unpack an archive (or its `subdir`) into `dest`. `keep`: {path in it: where it goes in dest}, and nothing else:
+    a compiler's archive is often a whole install (its IDE, libraries, the C runtime's sources: 700 MB for Visual C++
+    2010) of which a build needs the compiler and headers. Two paths may go to one folder: they're merged."""
+    prefix = f"{subdir.strip('/')}/" if subdir else ""
+    wanted = None if keep is None else [prefix + k.strip("/") for k in keep]
+
+    def take(name: str) -> bool:
+        name = name.rstrip("/")
+        return wanted is None or any(name == w or name.startswith(w + "/") for w in wanted)
+
     with tempfile.TemporaryDirectory(dir=dest.parent) as tmp:
         if archive.name.endswith(".deb"):
             with tempfile.TemporaryDirectory(dir=dest.parent) as raw:
@@ -225,6 +236,8 @@ def _extract(archive: Path, dest: Path, subdir: str | None) -> None:
 
             with zipfile.ZipFile(archive) as z:
                 for info in z.infolist():
+                    if not take(info.filename):
+                        continue
                     target = (Path(tmp) / info.filename).resolve()
                     if Path(tmp).resolve() not in target.parents and target != Path(tmp).resolve():
                         raise ToolchainError(f"refusing to extract {info.filename} outside the toolchain folder")
@@ -249,11 +262,20 @@ def _extract(archive: Path, dest: Path, subdir: str | None) -> None:
             # gz/xz in pure Python, so this works on Windows and macOS too. The "data" filter refuses
             # absolute paths, links out of the tree and device files, and drops setuid bits.
             with tarfile.open(archive) as t:
-                t.extractall(tmp, filter="data")
+                t.extractall(tmp, members=[m for m in t.getmembers() if take(m.name)], filter="data")
         src = Path(tmp) / subdir if subdir else Path(tmp)
-        if not src.is_dir():
+        if not src.is_dir() and keep is None:  # (with `keep`, the first path it doesn't have is named)
             raise ToolchainError(f"archive {archive.name} has no {subdir}/")
-        for item in src.iterdir():
+        for path, to in (keep or {}).items():
+            item, target = src / path, dest / to
+            if item.is_dir():
+                shutil.copytree(item, target, dirs_exist_ok=True)
+            elif item.is_file():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, target)
+            else:
+                raise ToolchainError(f"archive {archive.name} has no {path}")
+        for item in src.iterdir() if keep is None else ():
             target = dest / item.name
             if target.exists():
                 shutil.rmtree(target) if target.is_dir() and not target.is_symlink() else target.unlink()
@@ -317,8 +339,8 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
                 log(f"  no pinned checksum in the registry; pinning on first use: sha256 {digest}")
             if part.get("build") == "mips-binutils":
                 _build_mips_binutils(archive, dest, part.get("subdir"), log)
-            elif part.get("build") == "psx-gcc-2.6.3":
-                _build_psx_gcc_263(archive, dest, part, log)
+            elif part.get("build") in ("psx-gcc-2.6.3", "psx-gcc"):
+                _build_psx_gcc(archive, dest, part, log)
                 for url_key, hash_key, _ in (
                     ("patches_url", "patches_sha256", "old-gcc-patches.tar.gz"),
                     ("config_guess_url", "config_guess_sha256", "config.guess"),
@@ -331,7 +353,7 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
             else:
                 into = dest / part.get("into", "")  # a pack of several versions: each in its own folder
                 into.mkdir(parents=True, exist_ok=True)
-                _extract(archive, into, part.get("subdir"))
+                _extract(archive, into, part.get("subdir"), part.get("keep"))
                 if part.get("executable"):  # archives that don't record the executable bit
                     for f in dest.rglob("*"):
                         if f.is_file():
@@ -389,19 +411,23 @@ def _build_mips_binutils(archive: Path, dest: Path, subdir: str | None, log) -> 
                    "ranlib": "binutils/ranlib", "strip": "binutils/strip-new", "readelf": "binutils/readelf"}
         for name, binary in outputs.items():
             target = dest / ("mips-ps2-decompals-" + name)
+            if not (build / binary).is_file():
+                raise ToolchainError(f"The pinned MIPS binutils build did not produce {name} ({binary}). "
+                                     "Check Xcode Command Line Tools and try again.")
             shutil.copy2(build / binary, target)
             target.chmod(0o755)
 
 
-def _build_psx_gcc_263(archive: Path, dest: Path, part: dict, log) -> None:
-    """Build the GPL PlayStation GCC 2.6.3 natively for this Mac.
+def _build_psx_gcc(archive: Path, dest: Path, part: dict, log) -> None:
+    """Build a pinned GPL PlayStation GCC natively for this Mac.
 
     The only host tools are Xcode's clang and make. GCC source and the old-gcc patch bundle,
     plus modern config.guess/config.sub, are checksum-pinned by this toolchain part.
     """
+    version = part.get("version", "2.6.3")
     if not shutil.which("/usr/bin/clang") or not shutil.which("/usr/bin/make"):
         raise ToolchainError(
-            "Building GCC 2.6.3 for PlayStation needs Xcode Command Line Tools. "
+            f"Building GCC {version} for PlayStation needs Xcode Command Line Tools. "
             "Run `xcode-select --install`, then try again."
         )
     dest.mkdir(parents=True, exist_ok=True)
@@ -410,14 +436,14 @@ def _build_psx_gcc_263(archive: Path, dest: Path, part: dict, log) -> None:
         ("config_guess_url", "config_guess_sha256", "config.guess"),
         ("config_sub_url", "config_sub_sha256", "config.sub"),
     )
-    with tempfile.TemporaryDirectory(prefix="decomp-psx-gcc-263-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="decomp-psx-gcc-") as tmp:
         root = Path(tmp)
         source_root = root / "source"
         source_root.mkdir()
         _extract(archive, source_root, None)
-        source = source_root / "gcc-2.6.3"
+        source = source_root / f"gcc-{version}"
         if not source.is_dir():
-            raise ToolchainError("The pinned GCC 2.6.3 archive has no gcc-2.6.3 source directory.")
+            raise ToolchainError(f"The pinned GCC {version} archive has no gcc-{version} source directory.")
 
         downloads = root / "inputs"
         downloads.mkdir()
@@ -437,9 +463,6 @@ def _build_psx_gcc_263(archive: Path, dest: Path, part: dict, log) -> None:
         if old_gcc is None:
             raise ToolchainError("The pinned old-gcc patch archive has no repository directory.")
         patches = old_gcc / "patches"
-        for name in ("obstack-2.7.2.h.patch", "sdbout-2.6.3.c.patch", "g++-2.6.3.c.patch", "psx-2.5.7.patch"):
-            if not (patches / name).is_file():
-                raise ToolchainError(f"The pinned old-gcc patch archive is missing {name}.")
 
         env = dict(os.environ)
         env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin:" + env.get("PATH", "")
@@ -451,12 +474,25 @@ def _build_psx_gcc_263(archive: Path, dest: Path, part: dict, log) -> None:
             if "include <varargs.h>" in text:
                 source_file.write_text(text.replace("include <varargs.h>", "include <stdarg.h>"), encoding="latin-1")
 
-        commands = [
-            ["/usr/bin/patch", "-u", "-p1", "-i", str(patches / "obstack-2.7.2.h.patch")],
-            ["/usr/bin/patch", "-u", "-p0", "-i", str(patches / "g++-2.6.3.c.patch")],
-            ["/usr/bin/patch", "-su", "-p1", "-i", str(patches / "psx-2.5.7.patch")],
-        ]
+        recipes = {
+            "2.6.0": (("obstack.h", "obstack-2.7.2.h.patch"), ("collect2.c", "collect2-2.6.0.c.patch"),
+                      ("cccp.c", "cccp-2.6.0.c.patch"), ("gcc.c", "gcc-2.6.0.c.patch"),
+                      ("cp/g++.c", "g++-2.6.0.c.patch"), ("config/mips/mips.h", "mipsel-2.6.patch")),
+            "2.6.3": (("obstack.h", "obstack-2.7.2.h.patch"), ("cp/g++.c", "g++-2.6.3.c.patch")),
+            "2.8.0": (("obstack.h", "obstack-2.8.0.h.patch"), ("config/mips/mips.h", "mips.patch")),
+        }
+        if version not in recipes:
+            raise ToolchainError(f"No native PS1 GCC build recipe for {version}.")
+        commands = []
+        for target, patch in recipes[version]:
+            file = source / target
+            file.chmod(file.stat().st_mode | 0o200)
+            commands.append(["/usr/bin/patch", "-f", "-u", target, "-i", str(patches / patch)])
+        target_patch = "psx.patch" if version == "2.8.0" else "psx-2.5.7.patch"
+        commands.append(["/usr/bin/patch", "-f", "-su", "-p1", "-i", str(patches / target_patch)])
         for argv in commands:
+            if not Path(argv[-1]).is_file():
+                raise ToolchainError(f"The pinned old-gcc archive is missing {Path(argv[-1]).name}.")
             log("  applying pinned PlayStation GCC patch " + Path(argv[-1]).name)
             res = subprocess.run(argv, cwd=source, capture_output=True, text=True, errors="replace",
                                  timeout=60, env=env)
@@ -465,15 +501,20 @@ def _build_psx_gcc_263(archive: Path, dest: Path, part: dict, log) -> None:
 
         # The upstream sdbout patch's context is one line off in the released 2.6.3 tarball; make the same
         # portability change directly and fail closed if upstream changes the source.
-        sdbout = source / "sdbout.c"
-        sdb = sdbout.read_text(encoding="latin-1")
-        old_guard = "#if defined(USG) && !defined(MIPS) && !defined (hpux) && !defined(WINNT)"
-        new_guard = "#if defined(USG) && !defined(MIPS) && !defined (hpux) && !defined(_WIN32) && !defined(__linux__)"
-        if old_guard not in sdb:
-            raise ToolchainError("GCC 2.6.3 sdbout.c no longer matches the pinned portability patch.")
-        sdbout.write_text(sdb.replace(old_guard, new_guard, 1), encoding="latin-1")
+        if version in ("2.6.0", "2.6.3"):
+            sdbout = source / "sdbout.c"
+            sdb = sdbout.read_text(encoding="latin-1")
+            old_guard = "#if defined(USG) && !defined(MIPS) && !defined (hpux)"
+            if version == "2.6.3":
+                old_guard += " && !defined(WINNT)"
+            new_guard = "#if defined(USG) && !defined(MIPS) && !defined (hpux) && !defined(_WIN32) && !defined(__linux__)"
+            if old_guard not in sdb:
+                raise ToolchainError(f"GCC {version} sdbout.c no longer matches the pinned portability patch.")
+            sdbout.write_text(sdb.replace(old_guard, new_guard, 1), encoding="latin-1")
 
-        for name in ("gcc.c", "cp/g++.c"):
+        for name in ("gcc.c", "cp/g++.c", "g++.c", "cccp.c"):
+            if not (source / name).exists():
+                continue
             path = source / name
             path.chmod(path.stat().st_mode | 0o200)
             text = path.read_text(encoding="latin-1")
@@ -486,11 +527,11 @@ def _build_psx_gcc_263(archive: Path, dest: Path, part: dict, log) -> None:
         configure = source / "configure"
         config_text = configure.read_text(encoding="latin-1")
         target_defs = "DEFS=-Dpsx -D__psx__ -D__psx"
-        if target_defs not in config_text:
-            raise ToolchainError("GCC 2.6.3 configure no longer has the expected PSX target stanza.")
+        if version in ("2.6.0", "2.6.3") and target_defs not in config_text:
+            raise ToolchainError(f"GCC {version} configure no longer has the expected PSX target stanza.")
         config_text = config_text.replace(target_defs, 'DEFS="-Dpsx -D__psx__ -D__psx"', 1)
 
-        # GCC 2.6.3's config scripts predate Apple Silicon and do not recognize Sony's PSX target OS.
+        # These GCC releases' config scripts predate Apple Silicon and do not recognize Sony's PSX target OS.
         for filename, destination in (("config.guess", source / "config.guess"),
                                       ("config.sub", source / "config.sub")):
             destination.chmod(destination.stat().st_mode | 0o200)
@@ -505,16 +546,18 @@ def _build_psx_gcc_263(archive: Path, dest: Path, part: dict, log) -> None:
         # Teach this GCC release's hand-written configure script the native Darwin host description.
         case = "\t*)\n\t\techo \"Configuration $machine not supported\" 1>&2"
         if case not in config_text:
-            raise ToolchainError("GCC 2.6.3 configure no longer has the expected host fallback.")
+            raise ToolchainError(f"GCC {version} configure no longer has the expected host fallback.")
         config_text = config_text.replace(
             case,
-            "\t\t*-apple-darwin*)\n\t\t\txm_file=xm-darwin.h\n\t\t\tfixincludes=Makefile.in\n\t\t\t;;\n" + case,
+            "\t\t*-apple-darwin*)\n\t\t\txm_file=xm-darwin.h\n\t\t\txmake_file=x-darwin\n\t\t\tfixincludes=Makefile.in\n\t\t\t;;\n" + case,
             1,
         )
         configure.chmod(configure.stat().st_mode | 0o200)
         configure.write_text(config_text, encoding="latin-1")
         configure.chmod(0o755)
         shutil.copyfile(patches / "xm-darwin.h", source / "config" / "xm-darwin.h")
+        # Older configure scripts otherwise fall back to the MIPS host Makefile and pass IRIX flags to clang.
+        (source / "config" / "x-darwin").write_text("# Native Darwin host: use the system clang defaults.\n")
         for name in ("cp/parse.y", "cp/parse.h", "cp/parse.c", "insn-config.h"):
             path = source / name
             if path.exists():
@@ -523,21 +566,26 @@ def _build_psx_gcc_263(archive: Path, dest: Path, part: dict, log) -> None:
 
         build = root / "build"
         build.mkdir()
+        (build / "insn-config.h").touch()
+        cflags = "-std=gnu89 -w -Wno-int-conversion -Wno-implicit-function-declaration -Wno-return-mismatch"
+        env["CFLAGS"] = cflags
+        host_flags = ["--host=" + _platform.machine() + "-apple-darwin",
+                      "--build=" + _platform.machine() + "-apple-darwin"]
         commands = [
             [str(source / "configure"), "--target=mips-sony-psx", "--prefix=/opt/cross",
-             "--with-endian-little", "--with-gnu-as"],
+             "--with-endian-little", "--with-gnu-as", *host_flags],
             ["/usr/bin/make", "-j" + str(min(4, os.cpu_count() or 1)), "cpp", "cc1", "xgcc", "cc1plus", "g++",
-             "CFLAGS=-std=gnu89 -w -Wno-int-conversion -Wno-implicit-function-declaration -Wno-return-mismatch"],
+             "CFLAGS=" + cflags],
         ]
         for argv in commands:
-            log("  building native GCC 2.6.3 for PlayStation (first install only): " + Path(argv[0]).name)
+            log(f"  building native GCC {version} for PlayStation (first install only): " + Path(argv[0]).name)
             try:
                 res = subprocess.run(limits.capped(argv), cwd=build, capture_output=True, text=True,
                                      errors="replace", timeout=900, env=dict(env, CC="/usr/bin/clang"))
             except (OSError, subprocess.TimeoutExpired) as error:
-                raise ToolchainError(f"Couldn't build GCC 2.6.3 for PlayStation: {error}. Install Xcode Command Line Tools and retry.") from error
+                raise ToolchainError(f"Couldn't build GCC {version} for PlayStation: {error}. Install Xcode Command Line Tools and retry.") from error
             if res.returncode:
-                raise ToolchainError("Couldn't build GCC 2.6.3 for PlayStation. Install Xcode Command Line Tools and retry.\n"
+                raise ToolchainError(f"Couldn't build GCC {version} for PlayStation. Install Xcode Command Line Tools and retry.\n"
                                      + (res.stdout + res.stderr)[-4000:])
 
         # Check the target's byte order and the GCC extensions expected by PSY-Q before exposing the toolchain.
@@ -548,12 +596,14 @@ def _build_psx_gcc_263(archive: Path, dest: Path, part: dict, log) -> None:
             res = subprocess.run([str(build / "cc1"), "-quiet", "-O2", str(smoke), "-o", str(asm)],
                                  capture_output=True, text=True, errors="replace", timeout=30, env=env)
         except (OSError, subprocess.TimeoutExpired) as error:
-            raise ToolchainError(f"GCC 2.6.3 failed its target smoke test: {error}") from error
+            raise ToolchainError(f"GCC {version} failed its target smoke test: {error}") from error
         if res.returncode or not re.search(r"lbu\s+\$2,0\(\$4\)", asm.read_text(errors="replace")):
-            raise ToolchainError("GCC 2.6.3 failed its little-endian MIPS smoke test.\n" + (res.stdout + res.stderr)[-2000:])
+            raise ToolchainError(f"GCC {version} failed its little-endian MIPS smoke test.\n" + (res.stdout + res.stderr)[-2000:])
         outputs = {"cpp": "cpp", "cc1": "cc1", "gcc": "xgcc", "cc1plus": "cc1plus", "g++": "g++"}
         for name, binary in outputs.items():
             target = dest / name
+            if not (build / binary).is_file():
+                raise ToolchainError(f"The pinned PS1 GCC build did not produce {name} ({binary}).")
             shutil.copy2(build / binary, target)
             target.chmod(0o755)
 

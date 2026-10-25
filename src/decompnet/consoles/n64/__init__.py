@@ -51,6 +51,17 @@ class Nintendo64(Console):
         rom, info = read_info(Path(file).read_bytes() if isinstance(file, (str, Path)) else bytes(file))
         return Picked(self.id, rom, "rom.z64", info.to_dict() | {"platform": self.id, "gp": 0}, True)
 
+    def library_sha1(self, path: Path) -> str:
+        from .rom import file_hashes
+
+        hashes = file_hashes(path)
+        return hashes.normalized_sha1 or hashes.source_sha1
+
+    def project_build_command(self, project, command: list[str]) -> list[str]:
+        from .buildtools import command as prepare
+
+        return prepare(project, command)
+
     def default_compiler(self, info: dict, splat_guess: str) -> str:
         """splat's look at the code first (it says KMC or IDO), then the ROM reader's."""
         by_guess = {c.guess: c.id for c in self.compilers if c.guess}

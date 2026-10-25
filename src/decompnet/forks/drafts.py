@@ -34,6 +34,13 @@ def find_asm(root: Path, unit_name: str, symbol: str, source_text: str | None) -
         if base.is_dir():
             for hit in base.rglob(f"{symbol}.s"):
                 return hit
+    # Verified Splat reference assembly for a generated C candidate (same unit name across preparation).
+    if unit_name.startswith("asm/"):
+        relative = Path(unit_name[4:])
+        if not relative.is_absolute() and '..' not in relative.parts:
+            reference = root / ".decomp-wtf/objdiff-references/asm" / relative.with_suffix('.s')
+            if reference.is_file():
+                return reference
     # dtk: build/<version>/asm/<unit path>.s, unit names being "<module>/<path>"
     parts = unit_name.split("/")
     for asm_root in root.glob("build/*/asm"):

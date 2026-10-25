@@ -1,7 +1,7 @@
 """decompdecomp's one window, tied to the app.
 
-The window is a program of its own (gtkwindow.py, run by the system's python3 on the system's WebKitGTK), so the
-app's Python needs no GTK. The app starts it, talks to it on its stdin, and watches it: when the window ends without
+The window is a program of its own: gtkwindow.py uses system Python and WebKitGTK on Linux, macwindow.py uses
+Cocoa/WebKit through the app's Python on macOS. The app starts it, talks to it on its stdin, and watches it: when it ends without
 the app asking (it crashed, or the page couldn't answer a close), the app quits, unless helpers or a job are still
 working; then they carry on in the background, the tray icon or `decomp` opens the window again.
 
@@ -113,12 +113,21 @@ def tell_desktop(title: str, text: str) -> None:
         ctypes.windll.user32.MessageBoxW(None, text, title, 0x10)  # MB_ICONERROR: shortcuts have no console
         return
     if IS_MACOS:
-        from AppKit import NSAlert
-
-        alert = NSAlert.alloc().init()
-        alert.setMessageText_(title)
-        alert.setInformativeText_(text)
-        alert.runModal()
+        try:
+            from AppKit import NSAlert
+        except ImportError:
+            # PyObjC may be the missing dependency; Finder launches have no console for the error.
+            try:
+                subprocess.run(["/usr/bin/osascript", "-e", "on run argv",
+                                "-e", "display alert (item 1 of argv) message (item 2 of argv) as critical",
+                                "-e", "end run", title, text], capture_output=True, timeout=CHECK_SECONDS)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        else:
+            alert = NSAlert.alloc().init()
+            alert.setMessageText_(title)
+            alert.setInformativeText_(text)
+            alert.runModal()
         return
     gdbus = shutil.which("gdbus")
     if not gdbus:

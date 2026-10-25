@@ -2,7 +2,7 @@
 
 One pool, so "up to four workers" holds for the app as a whole: each part with a pool of its own made eight threads
 on a big computer, beside the agents' compiles. Each worker lowers its own CPU priority as it starts (on Linux a
-thread's own, and inherited by what it runs: m2c, the compiler, the linker, the permuter's generator), so the app and
+thread's own, inherited by what it runs; on macOS, the thread's QoS), so the app and
 the agents come first.
 """
 

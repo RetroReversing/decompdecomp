@@ -137,6 +137,7 @@ def synthetic_project(root, platform):
 def test_generated_targets_are_rom_derived_and_failed_generation_is_atomic(tmp_path, monkeypatch, platform):
     cfg = synthetic_project(tmp_path, platform)
     source_before = (tmp_path / 'src/demo.c').read_bytes()
+    includes_before = {p.relative_to(tmp_path): p.read_bytes() for p in (tmp_path / 'include').rglob('*') if p.is_file()}
     real_verify = splatrefs.verify
     monkeypatch.setattr(splatrefs, 'verify', lambda *a: (_ for _ in ()).throw(ForkError('injected verification failure')))
     with pytest.raises(ForkError, match='injected verification failure'):
@@ -155,6 +156,7 @@ def test_generated_targets_are_rom_derived_and_failed_generation_is_atomic(tmp_p
     assert expected != candidate
     assert expected == (tmp_path / 'baserom.z64').read_bytes()
     assert (tmp_path / 'src/demo.c').read_bytes() == source_before
+    assert {p.relative_to(tmp_path): p.read_bytes() for p in (tmp_path / 'include').rglob('*') if p.is_file()} == includes_before
     assert cfg['segments'][0]['subsegments'][0][1] == 'c'
     assert not splatrefs.generate(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, consoles.get(platform))
 
@@ -173,18 +175,22 @@ def test_paths_cannot_escape_the_checkout_through_symlinks(tmp_path):
 
 
 @pytest.mark.skipif(toolchains.installed('binutils-mips') is None, reason='needs pinned MIPS binutils')
-def test_verified_full_rebuild_snapshots_linked_overlay_objects(tmp_path):
+@pytest.mark.parametrize('object_suffix', ['.c.o', '.o'])
+def test_verified_full_rebuild_snapshots_linked_overlay_objects(tmp_path, object_suffix):
     cfg = synthetic_project(tmp_path, 'n64')
+    object_path = 'build/src/demo' + object_suffix
     tools = toolchains.require('binutils-mips')
     assembler = str(tools / 'mips-ps2-decompals-as')
     linker = str(tools / 'mips-ps2-decompals-ld')
     objcopy = str(tools / 'mips-ps2-decompals-objcopy')
-    splatrefs.run([assembler, *consoles.get('n64').as_flags, '-o', 'build/src/demo.c.o', 'original.s'], tmp_path, print)
+    splatrefs.run([assembler, *consoles.get('n64').as_flags, '-o', object_path, 'original.s'], tmp_path, print)
     splatrefs.run([linker, '-EB', '-Ttext', '0x0', '-Map', 'build/program.map', '-e', 'demo_func',
-                   '-o', 'build/program.elf', 'build/src/demo.c.o'], tmp_path, print)
+                   '-o', 'build/program.elf', object_path], tmp_path, print)
     splatrefs.run([objcopy, '-O', 'binary', 'build/program.elf', 'baserom.z64'], tmp_path, print)
     cfg['sha1'] = hashlib.sha1((tmp_path / 'baserom.z64').read_bytes()).hexdigest()
-    cfg['segments'][0]['exclusive_ram_id'] = 'overlay'
+    cfg['segments'].insert(0, {'type': 'code', 'start': 0, 'vram': 0,
+                               'subsegments': [[0, 'textbin', 'microcode']]})
+    cfg['segments'][1]['exclusive_ram_id'] = 'overlay'
     assert splatrefs.generate(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, consoles.get('n64'))
     objdiff = json.loads((tmp_path / 'objdiff.json').read_text())
     assert len(objdiff['units']) == 1
@@ -211,3 +217,25 @@ def test_an_unsupported_console_leaves_generation_to_manual_setup(tmp_path):
     (tmp_path / 'splat.yaml').write_text(yaml.safe_dump(cfg))
     assert not project.generate_objdiff()
     assert not (tmp_path / 'objdiff.json').exists()
+
+
+def test_plan_accepts_source_extension_in_object_name_and_rejects_ambiguity(tmp_path):
+    cfg = config(tmp_path)
+    short = tmp_path / 'build/src/demo.o'
+    long = tmp_path / 'build/src/demo.c.o'
+    short.rename(long)
+    assert splatrefs.plan(tmp_path, cfg)[0]['base'] == long
+    short.write_bytes(b'stale object')
+    with pytest.raises(ForkError, match='ambiguous built objects'):
+        splatrefs.plan(tmp_path, cfg)
+
+
+@pytest.mark.skipif(toolchains.installed('binutils-mips') is None, reason='needs pinned MIPS binutils')
+def test_assembly_units_are_visible_without_counting_original_assembly_as_c(tmp_path):
+    cfg = synthetic_project(tmp_path, 'n64')
+    cfg['segments'][0]['subsegments'][0][1] = 'asm'
+    assert splatrefs.generate(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, consoles.get('n64'))
+    entry = json.loads((tmp_path / 'objdiff.json').read_text())['units'][0]
+    assert entry['name'] == 'asm/demo'
+    assert 'base_path' not in entry and 'metadata' not in entry
+    assert (tmp_path / entry['target_path']).is_file()
