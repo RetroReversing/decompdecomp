@@ -29,6 +29,8 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
   stand-in for a model that hands in the demo's own C; the app compiles and judges every function for real.</sub>
 </p>
 
+For local library research, see [Comparing local SDK libraries and source](docs/local-sdk-comparisons.md).
+
 ## RetroReversing fork
 
 This fork of [NDelic's decompdecomp](https://github.com/n-delic/decompdecomp) adds project import, ROM handling and matching features. Native macOS support is now upstream.
