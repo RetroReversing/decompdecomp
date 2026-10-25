@@ -319,12 +319,15 @@ class ForkProject:
             originals = self.splat_baseroms()
             if originals:
                 selected = version if version in originals else self.splat_default_version()
+                docker_help = (" On macOS, setup uses the project's Dockerfile and requires a running Docker engine."
+                               if self._docker_only_macos() else "")
                 return {"what": f"your original game ROM (baserom.{selected}.z64)",
                         "path": f"baserom.{selected}.z64", "sha1": originals[selected], "auto": True,
                         "rom_versions": [{"version": v, "sha1": digest} for v, digest in originals.items()],
                         "help": "Supply an original cartridge ROM in .z64, .v64 or .n64 byte order. Its normalized "
                                 "SHA-1 selects the build version; decompdecomp saves a .z64 copy for the project. "
-                                "The splat YAML's SHA-1 is for a decompressed file the build generates later."}
+                                "The splat YAML's SHA-1 is for a decompressed file the build generates later."
+                                + docker_help}
             y = self._splat_yaml().read_text(errors="replace", encoding="utf-8")
             target = re.search(r"^\s*target_path:\s*['\"]?([^'\"\n#]+)", y, re.M)
             base = re.search(r"^\s*base_path:\s*['\"]?([^'\"\n#]+)", y, re.M)
