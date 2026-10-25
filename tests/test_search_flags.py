@@ -114,6 +114,8 @@ def test_installed_compiler_comparison_is_local_and_report_only(tmp_path, monkey
     monkeypatch.setattr(net, "_suggest_from_map", lambda *a: pytest.fail("comparison must not apply suggestions"))
     result = net.survey_compilers("demo", all_installed=True, function=function)
     assert result["confirmed"] == 1
+    assert result["improvements"][0]["function"] == "f"
+    assert result["improvements"][0]["best"] == 100
     matches = result["matches"][str(0x80010000)]
     assert {m[0] for m in matches} == {"gcc-2.7.2-psx", "gcc-2.8.0-psx"}
     assert len(matches) > (6 if function else 1)
@@ -128,6 +130,8 @@ def test_installed_compiler_comparison_is_local_and_report_only(tmp_path, monkey
         missed = net.survey_compilers("demo", all_installed=True, function=function, log=messages.append)
         assert missed["comparison"]["improved"] is False
         assert missed["comparison"]["best"] == 80.0
+        assert missed["improvements"] == []
+        assert all(r["percent"] == 80.0 for r in missed["comparison"]["ranked"])
         assert not any("400" in line for line in messages)
 
         score_lines = [line for line in messages if " · " in line]
@@ -137,6 +141,11 @@ def test_installed_compiler_comparison_is_local_and_report_only(tmp_path, monkey
         messages.clear()
         failed = net.survey_compilers("demo", all_installed=True, function=function, log=messages.append)
         assert failed["comparison"]["best"] is None
+        assert all(r["percent"] is None for r in failed["comparison"]["ranked"])
+        scores = iter([70.0, 95.0, 80.0] * 1000)
+        monkeypatch.setattr(net, "_judge_with", lambda *a: (False, SimpleNamespace(percent=next(scores)), ""))
+        ranked = net.survey_compilers("demo", all_installed=True, function=function, log=lambda *_: None)["comparison"]["ranked"]
+        assert [r["percent"] for r in ranked] == sorted((r["percent"] for r in ranked), reverse=True)
         assert any("could not compile or compare" in line for line in messages)
 
 

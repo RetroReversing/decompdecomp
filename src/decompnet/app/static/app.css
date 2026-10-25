@@ -1023,3 +1023,11 @@ details.more[open] > summary::before { content: "− "; }
 #fnCompilerLog { max-height: 240px; overflow-wrap: anywhere; }
 .compiler-result { padding: 12px 14px; border-left: 3px solid var(--line); background: var(--code-bg); line-height: 1.6; }
 .compiler-result[data-improved="true"] { border-left-color: var(--match); }
+
+.compiler-table { max-width: 100%; min-width: 0; overflow-x: auto; max-height: 360px; }
+.compiler-table table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.compiler-table th, .compiler-table td { text-align: left; padding: 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+.compiler-table th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+.compiler-table td { overflow-wrap: anywhere; }
+.compiler-table th:first-child, .compiler-table td:first-child { white-space: nowrap; }
+#compilerImprovements { display: grid; gap: 10px; min-width: 0; }

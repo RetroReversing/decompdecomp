@@ -389,6 +389,7 @@ function projectCompilerFacts(ov) {
 }
 
 async function renderProjectSettings() {
+  if ($("compilerImprovements").dataset.slug !== S.slug) $("compilerImprovements").replaceChildren();
   const ov = S.ov;
   if (!ov) return;
   const fork = ov.kind === "fork";
@@ -639,12 +640,34 @@ $("deleteBtn").onclick = () => {
 };
 
 $("testInstalledCompilers").onclick = async () => {
+  const slug = S.slug;
   const button = $("testInstalledCompilers"), log = $("installedCompilerLog");
   const finish = beginWork(log, "Testing installed compilers", [button], "Compiler comparison finished.");
   log.hidden = false;
   showJobError(log, "");
   try {
-    const { job } = await api("/api/compilermap", { method: "POST", body: { slug: S.slug, all_installed: true } });
-    await followJob(job, log);
+    const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true } });
+    const result = await followJob(job, log);
+    if (S.slug !== slug) return;
+    renderCompilerImprovements(slug, result.improvements || []);
   } catch (e) { showJobError(log, e.message); } finally { finish(); }
 };
+
+function renderCompilerImprovements(slug, rows) {
+  const list = $("compilerImprovements");
+  list.dataset.slug = slug;
+  setHtml(list, `<h3>${rows.length} function${rows.length === 1 ? "" : "s"} with better settings</h3><p class="small muted">Highest resulting percentage first. Review and apply each function individually; the app revalidates before applying. These results are from this comparison.</p>`
+    + (rows.length ? `<div class="compiler-table"><table><thead><tr><th>Function</th><th>Before → tested</th><th>Compiler and flags</th><th>Action</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td class="mono">${esc(r.function)}</td><td>${r.before == null ? "—" : `${r.before.toFixed(2)}%`} → <b>${r.best.toFixed(2)}%</b></td><td>${esc(r.profile[0])}<br><span class="mono">${esc(r.profile[1].join(" "))}</span></td><td><button type="button" class="ghost small-btn" data-apply-improvement="${i}">Apply to function</button><span class="small" role="status"></span></td></tr>`).join("")}</tbody></table></div>` : ""));
+  list.onclick = async (e) => {
+    const button = e.target.closest("button[data-apply-improvement]");
+    if (!button) return;
+    const r = rows[Number(button.dataset.applyImprovement)], status = button.nextElementSibling;
+    const finish = beginWork(status, `Applying settings to ${r.function}`, [button], "Function updated.");
+    try {
+      await api("/api/compiler", { method: "POST", body: { slug, function: r.function, toolchain: r.profile[0], flags: r.profile[1] } });
+      button.hidden = true;
+      status.textContent = "Applied and rechecked";
+      if (S.slug === slug) await refreshMap(true);
+    } catch (err) { status.textContent = err.message; } finally { finish(); }
+  };
+}

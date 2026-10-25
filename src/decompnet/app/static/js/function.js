@@ -64,6 +64,7 @@ async function refreshFn(first) {
       ? `${d.unit} · ${d.insns} instructions${d.match_percent != null ? ` · ${d.match_percent >= 100 ? "100" : (Math.floor(d.match_percent * 10) / 10).toFixed(1)}% now` : ""}`
       : `${hex8(d.vram)} · ROM 0x${d.rom_offset.toString(16).toUpperCase()} · ${d.insns} instructions`;
     if ($("fnName").textContent !== d.name) {
+      $("fnCompilerRanked").replaceChildren();
       $("fnApplyCompiler").hidden = true;
       $("fnCompilerSummary").hidden = true;
       $("fnCompilerLog").textContent = "";
@@ -419,6 +420,7 @@ $("fnTestCompilers").onclick = async () => {
   log.hidden = false;
   const summary = $("fnCompilerSummary");
   $("fnApplyCompiler").hidden = true;
+  $("fnCompilerRanked").replaceChildren();
   summary.hidden = false;
   summary.textContent = "Comparing installed compilers and flag variants…";
   delete summary.dataset.improved;
@@ -429,6 +431,7 @@ $("fnTestCompilers").onclick = async () => {
     const result = await followJob(job, log);
     if (S.fn !== name || S.slug !== slug) return;
     const c = result.comparison;
+    setHtml($("fnCompilerRanked"), compilerRankedTable(c?.ranked || []));
     if (!c || c.best == null) summary.textContent = "No usable compiled results. See comparison details for errors.";
     else {
       const before = c.before == null ? "no previous score" : `${c.before.toFixed(2)}%`;
