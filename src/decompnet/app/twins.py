@@ -705,7 +705,7 @@ class Twins:
                     job.cross_tried += 1
                 if bounded:
                     job.reuse_attempts += 1
-                outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}")
+                outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}", mapping=names)
                 with self.net.store.tx() as db:
                     db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,"
                                "source_function_id,outcome,reason,created_at) VALUES(?,?,?,?,?,?,?)",
@@ -782,13 +782,19 @@ class Twins:
         """What exact transfers tried, including failures and where accepted C came from."""
         proj = self.net.project_row(slug)
         rows = self.net.store.all(
-            "SELECT a.outcome,a.reason,a.created_at,f.name AS target,s.name AS source,p.name AS game "
+            "SELECT a.outcome,a.reason,a.created_at,f.name AS target,s.name AS source,p.name AS game,p.slug AS source_slug "
             "FROM cross_game_attempts a JOIN functions f ON f.id=a.function_id "
             "JOIN functions s ON s.id=a.source_function_id JOIN projects p ON p.id=a.source_project_id "
             "WHERE a.project_id=? ORDER BY a.id DESC LIMIT 30", proj["id"])
+        matches = self.net.store.all(
+            "SELECT a.outcome,a.reason,a.created_at,f.name AS target,s.name AS source,p.name AS game,p.slug AS source_slug "
+            "FROM cross_game_attempts a JOIN functions f ON f.id=a.function_id "
+            "JOIN functions s ON s.id=a.source_function_id JOIN projects p ON p.id=a.source_project_id "
+            "WHERE a.project_id=? AND a.outcome='match' ORDER BY a.id DESC LIMIT 30", proj["id"])
         counts = self.net.store.all("SELECT outcome,COUNT(*) AS n FROM cross_game_attempts WHERE project_id=? "
                                     "GROUP BY outcome", proj["id"])
-        return {"counts": {r["outcome"]: r["n"] for r in counts}, "recent": [dict(r) for r in rows]}
+        return {"counts": {r["outcome"]: r["n"] for r in counts}, "recent": [dict(r) for r in rows],
+                "matches": [dict(r) for r in matches]}
 
     def suggestions(self, slug: str, function: str, limit: int = 5) -> list[dict]:
         """Read-only cross-game and local SDK name hints. Similar code is a lead, never a verified match."""
@@ -997,7 +1003,7 @@ class Twins:
                     job.cross_tried += 1
                 if bounded:
                     job.reuse_attempts += 1
-                outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}")
+                outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}", mapping=names)
                 with self.net.store.tx() as db:
                     db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,"
                                "source_function_id,outcome,reason,created_at) VALUES(?,?,?,?,?,?,?)",
@@ -1089,12 +1095,15 @@ class Twins:
         return (res.get("text") or "").splitlines()[0][:WHY_CHARS] if res.get("text") else f"score {res.get('score')}"
 
     def _attempt_twin(self, agent, proj, a, b, source: str, origin: str = "", theirs: bool = False,
-                      similar: bool = False, feedback: dict | None = None) -> tuple[str, str]:
+                      similar: bool = False, feedback: dict | None = None, mapping: dict | None = None) -> tuple[str, str]:
         """match | miss | skip for a's code made into b's (`source`). `theirs`: a is another project's, so the tries
         that take more from a's file (its types, includes, declarations) don't apply: twin_source took its
         declarations already."""
         relation = "adapted from similar verified C in" if similar else "identical to"
         note = f"/* {relation} {a['name']}{origin} (matched), with its names changed by decompdecomp */\n"
+        if mapping is not None and self.net.is_rom(proj) and not self.net.fork_slug(proj['slug']):
+            from .repair_mappings import remember
+            remember(self.net, a, b, note + source, mapping)
         try:
             if theirs:
                 res = self.net.forks.attempt(agent, proj["slug"], b["name"], note + source, keep=False)

@@ -37,6 +37,19 @@ This fork of [NDelic's decompdecomp](https://github.com/n-delic/decompdecomp) ad
 The original decomp.wtf and decompdecomp credits and licenses are preserved. Report fork issues to
 [RetroReversing/decompdecomp](https://github.com/RetroReversing/decompdecomp/issues).
 
+## Independently linked code images
+
+Projects with compressed game code or overlays can export their verified linked functions through
+`decompnet.forks.linkedimages.export`. These are normal objdiff units: original-image bytes form immutable
+references, and only source-backed, relocated bodies that pass the project's image gates become candidates.
+Assembly passthrough functions remain in the denominator without counting as recovered C. Source checksums
+invalidate stale candidates. Population identifiers distinguish overlays even when their RAM addresses overlap.
+
+The overview shows code-byte-weighted totals and a breakdown by image. This covers known function extents;
+data and unidentified regions are excluded. These special image snapshots are read-only in the app: change their
+sources through the project's promotion/build workflow and use **Check again**. Ordinary object units keep their
+existing agent workflow. See [the export contract](docs/linked-image-progress.md).
+
 ## Autopilot on imported projects
 
 Autopilot can try machine drafts in imported projects with writable C files and a supported draft decompiler.
@@ -88,6 +101,12 @@ Global-address repairs also track symbolic MIPS upper halves through straight-li
 load/store offsets. Register clobbers, branches, calls and unknown instructions stop tracking; conflicting
 consumers are rejected. Full-address comparison also resolves C identifiers whose address is shown as another symbol plus an offset
 in disassembly. Reconstructed addresses only propose local C edits and still require exact verification.
+
+Repairs retain the original donor when the candidate's provenance is known. Successful repairs can then
+teach symbol mappings for other candidates from that same donor. New data/callee mappings need agreement
+from two independently verified function pairs; conflicts, reopened functions and changed donor code invalidate
+the evidence. Each proposed transfer still goes through the exact compiler/link judge. Old saved candidates
+can recover provenance only when recorded donor history reproduces their adapted C exactly.
 
 When eligible near misses exist, similarity transfers use at most three quarters of the remaining search budget;
 the rest is reserved for repairs. The transfer cursor is retained so the next pass continues through the queue.

@@ -439,3 +439,15 @@ def test_table_id_macro_does_not_scale_arithmetic_immediates():
     a = {'target': (0x24820000 | 980).to_bytes(4, 'big'), 'relocs': '[]'}
     b = {'target': (0x24820000 | 960).to_bytes(4, 'big'), 'relocs': '[]'}
     assert sm.literal_variants(source, a, b, True) == []
+
+
+def test_successful_transfers_remain_available_after_many_recent_misses(pair):
+    with pair.store.tx() as db:
+        for index in range(36):
+            db.execute('INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,source_function_id,outcome,reason,created_at) VALUES(2,2,1,1,?,?,?)',
+                       ('match' if index == 0 else 'miss', 'score 0' if index == 0 else 'score 430', index))
+    result = pair.twins.cross_game_results('destination')
+    assert all(r['outcome'] == 'miss' for r in result['recent'])
+    assert len(result['matches']) == 1 and result['matches'][0]['outcome'] == 'match'
+    assert result['matches'][0]['source_slug'] == 'source'
+    assert result['recent'][0]['source_slug'] == 'source'

@@ -53,6 +53,12 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Progress bars for foreground jobs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Rooms: decompile together | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
+Linked-image exports: progress, maps, disassembly and Check again work through objdiff. Agent edits,
+autopilot, permuting, polishing, joins/splits and compiler changes for these **read-only snapshot units: —**.
+They require a project adapter that preserves whole-program compilation and promotion locks while rebuilding
+individual drafts. Ordinary source-object units retain the table's existing behavior. The first exporter is MIPS;
+other processors need their own linked-object writer.
+
 Where to start on a gap:
 - **PowerPC (GameCube, Wii) and x86 (PC)**: class recovery and the compiler map work on a project's objects in fork
   mode, not on a ROM; the readers are the part to write (CodeWarrior's vtable pointer is often not at offset 0). x86
@@ -112,6 +118,10 @@ remain planned. Dynamic addends, ambiguous mappings and named-field reconstructi
 still need deeper analysis. Candidate-local padding repair now handles simple struct definitions in the
 candidate itself, with bounded proposals from aligned load/store offsets. Shared-header layout reconstruction,
 complex/nested types and field reordering remain planned.
+Saved repair candidates retain donor provenance, including conservative exact-reconstruction recovery for
+older saved transfers. Verified repair pairs feed regional symbol learning; new data/callee bindings require
+two independent pairs. Mappings can repair other saved candidates and stale/ambiguous evidence is excluded.
+These mappings share the MIPS ROM pipeline; object mode still needs its per-file context and relocation work.
 Tiny MIPS templates and explicitly imported SDK C go through the same judge. Verified regional pairs can teach
 explicit pointer-offset edits; reconstructing named struct layouts and shared types remains planned. New verified
 matches trigger a bounded, configurable automatic cascade. Project-mode support for these additions is planned:
