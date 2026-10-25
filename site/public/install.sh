@@ -6,7 +6,7 @@
 # decompdecomp installs on this computer, with uv:
 #   1. installs uv, Astral's Python tool manager, if you don't have it (asks first)
 #   2. installs decompdecomp (open source, AGPL-3.0) with uv, in its own environment
-#   3. checks for what its window needs from your system (GTK and WebKitGTK 4.1), and offers to install it
+#   3. on Linux, checks for GTK and WebKitGTK 4.1 and offers to install them
 #   4. downloads the free compilers and the m2c draft decompiler (pinned and checksum-verified)
 #   5. adds decompdecomp to your apps menu (replacing an older .deb or .rpm of it) and opens it
 #
@@ -57,14 +57,18 @@ if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
     CHECKOUT="$(cd "$SCRIPT_DIR/../.." && pwd)"
   fi
 fi
-[ -n "$SOURCE" ] || SOURCE="${CHECKOUT:-release}"
-
 bold "decompdecomp setup"
 OS="$(uname -s)"
 case "$OS" in
   Linux|Darwin) ;;
   *) fail "This installer supports Linux x86-64 and macOS Intel/Apple Silicon. Use the Windows installer on Windows." ;;
 esac
+if [ -z "$SOURCE" ]; then
+  if [ -n "$CHECKOUT" ]; then SOURCE="$CHECKOUT"
+  elif [ "$OS" = Darwin ]; then SOURCE=branch:main
+  else SOURCE=release
+  fi
+fi
 case "$(uname -m)" in
   x86_64|amd64) ;;
   arm64) [ "$OS" = Darwin ] || fail "ARM is supported on macOS only" ;;
@@ -105,8 +109,11 @@ resolve_branch() {  # the branch's newest commit, installed from GitHub's archiv
 }
 
 # ------------------------------------------------------------------------------------------- on this host
-if ! command -v uv >/dev/null; then
-  for d in "$HOME/.local/bin" "$HOME/.cargo/bin" /opt/homebrew/bin /usr/local/bin; do
+for d in "$HOME/.local/bin" "$HOME/.cargo/bin"; do
+  [ -x "$d/uv" ] && export PATH="$d:$PATH"
+done
+if [ "$OS" = Darwin ] && ! command -v uv >/dev/null; then
+  for d in /opt/homebrew/bin /usr/local/bin; do
     [ -x "$d/uv" ] && export PATH="$d:$PATH"
   done
 fi

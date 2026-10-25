@@ -159,6 +159,7 @@ def runtime_error(tid: str) -> str | None:
         return None
     if _intel_mac_runtime_ready():
         return None
+    _intel_mac_runtime_ready.cache_clear()  # a newly installed Rosetta runtime works on the next compile
     return (f"{tid} uses Intel macOS binaries and needs Rosetta 2 on Apple Silicon. "
             "Run `softwareupdate --install-rosetta` in Terminal, accept Apple's license if you agree, then try again.")
 
@@ -379,6 +380,9 @@ def _build_mips_binutils(archive: Path, dest: Path, subdir: str | None, log) -> 
                    "ranlib": "binutils/ranlib", "strip": "binutils/strip-new", "readelf": "binutils/readelf"}
         for name, binary in outputs.items():
             target = dest / ("mips-ps2-decompals-" + name)
+            if not (build / binary).is_file():
+                raise ToolchainError(f"The pinned MIPS binutils build did not produce {name} ({binary}). "
+                                     "Check Xcode Command Line Tools and try again.")
             shutil.copy2(build / binary, target)
             target.chmod(0o755)
 

@@ -220,3 +220,13 @@ def test_source_build_failure_reports_the_build_output(monkeypatch, tmp_path):
         returncode=1, stdout="", stderr="C compiler cannot create executables"))
     with pytest.raises(toolchains.ToolchainError, match="C compiler cannot create executables"):
         toolchains._build_mips_binutils(tmp_path / "source.tar.gz", tmp_path, None, lambda _: None)
+
+
+def test_source_build_reports_a_missing_binary(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(toolchains.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(toolchains, "_extract", lambda *args: None)
+    monkeypatch.setattr(toolchains.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0))
+    with pytest.raises(toolchains.ToolchainError, match="did not produce as"):
+        toolchains._build_mips_binutils(tmp_path / "source.tar.gz", tmp_path, None, lambda _: None)
