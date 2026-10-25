@@ -99,6 +99,8 @@ Similar-code autopilot attempts are bounded and use the unchanged compiler/link 
 They learn unambiguous symbol correspondences, try local-permuter repairs and proven donor flags, and persist
 trial results and a resume cursor. Compiler-flag hits are saved as evidence for review, not silently applied.
 Near-miss repairs now use percentage eligibility and assembly-guided mutations, plus an installed full permuter.
+Aligned high/low address evidence can correct known symbols and combine that with literal/explicit field-offset
+edits. Address addends, ambiguous mappings and named-field reconstruction still need deeper analysis.
 Tiny MIPS templates and explicitly imported SDK C go through the same judge. Verified regional pairs can teach
 explicit pointer-offset edits; reconstructing named struct layouts and shared types remains planned. New verified
 matches trigger a bounded, configurable automatic cascade. Project-mode support for these additions is planned:
