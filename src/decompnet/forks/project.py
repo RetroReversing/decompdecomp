@@ -472,8 +472,11 @@ class ForkProject:
         if self._docker_only_macos() and Path(cmd[0]).name in ("make", "gmake"):
             self._prepare_docker(log)
             cmd = self._docker_command(["make", *cmd[1:]])
+        else:
+            cmd = consoles.get(self.detect_platform()).project_build_command(self, cmd)
         env = dict(os.environ)
-        env["PATH"] = os.pathsep.join([*(str(d) for d in _tool_dirs()), env.get("PATH", "")])
+        project_tools = consoles.get(self.detect_platform()).project_tool_paths(self)
+        env["PATH"] = os.pathsep.join([*(str(d) for d in [*_tool_dirs(), *project_tools]), env.get("PATH", "")])
         # found on that PATH (decompdecomp's own ninja): Linux looks a command up there itself, Windows only in this
         # process's PATH, where decompdecomp's environment isn't when it's installed
         executable = sys.executable if cmd[0] in ("python", "python3") else shutil.which(cmd[0], path=env["PATH"]) or cmd[0]

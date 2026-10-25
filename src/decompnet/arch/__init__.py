@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import arm, mips, mips_fields, ppc, x86
+from . import arm, mips, mips_fields, mips_tools, ppc, x86
 
 # What decompdecomp's readers can do with a processor's code (each is a module of its own that reads MIPS today):
 COMPILER_MAP = "compiler_map"  # which compiler built each part of a game, from its habits (compilermap.py)
@@ -39,11 +39,13 @@ class Arch:
     # the float constants a diff row's instruction loads from data by address: text -> [(address, "f" | "d")], so
     # the diff can show their values (forkengine)
     float_operands: Callable[[str], list[tuple[int, str]]] | None = None
+    build_tool_paths: Callable[[Any], list[Any]] | None = None
 
 
 ARCHES = [
     Arch("mips", "MIPS", mips.CAPSTONE, mips.RELOC_MASKS, mips.asm_reason, True,
-         frozenset({COMPILER_MAP, CLASSES, BOUNDARIES, STRUCTS}), mips_fields.read_facts),
+         frozenset({COMPILER_MAP, CLASSES, BOUNDARIES, STRUCTS}), mips_fields.read_facts,
+         build_tool_paths=mips_tools.build_paths),
     Arch("ppc", "PowerPC", ppc.CAPSTONE, ppc.RELOC_MASKS, ppc.asm_reason),
     Arch("x86", "x86", x86.CAPSTONE, x86.RELOC_MASKS, float_operands=x86.float_operands),
     Arch("x86_64", "x86-64", x86.CAPSTONE_64, x86.RELOC_MASKS_64),
