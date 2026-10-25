@@ -365,7 +365,7 @@ similar C through objdiff. Other processors need an instruction reader for this 
 - **PlayStation (PS1) games from your own copy** (beta): a disc image (BIN, ISO or CHD; SYSTEM.CNF says which
   program it boots) or its PS-X EXE, with the disc's overlays. Functions are built as PSY-Q games were: GCC 2.6.3,
   2.7.2 or 2.8.1, then maspsx, which does what Sony's assembler ASPSX did, then GNU as; the import tries the three on
-  the game's code. BIOS call stubs and GTE code are set aside as assembly. The demo game matches function by function
+  the game's code. BIOS call stubs and unsupported GTE operations are set aside as assembly. Fixed rotation and translation matrix intrinsics let ordinary C callers pass the same byte-exact judge without accepting submitted inline assembly. The demo game matches function by function
   and rebuilds byte for byte; no real game is tested from start to end yet. A disc whose boot program is a loader
   gives the program it loads (`exe.loaded_program`), and where splat's guess at the code misses the entry point (a
   loader that is mostly a picture: 1 function found), .text is where the code's returns and frames are (137).
