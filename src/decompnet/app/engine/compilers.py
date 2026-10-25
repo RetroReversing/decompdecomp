@@ -193,17 +193,17 @@ class CompilerMixin:
                                  and not toolchains.runtime_error(c.id)} | set(candidates))
             candidates = [(tc, flags) for tc, flags in candidates if toolchains.installed(tc)
                           and toolchains.get(tc).supported and not toolchains.runtime_error(tc)]
-            if not function:
-                log(f"Testing {len(candidates)} compiler/flag profiles on up to {limit} existing unmatched C attempts.")
         # Debug line labels can change old GCC assemblers' delay-slot scheduling even at the same -O level.
         candidates = sorted({(tc, tuple(variant)) for tc, flags in candidates
                              for variant in self.debug_flag_variants(tc, list(flags))})
-        if function:
-            if not all_installed:
-                raise NetworkError("Single-function comparison needs installed-compiler mode.")
+        if function and not all_installed:
+            raise NetworkError("Single-function comparison needs installed-compiler mode.")
+        if all_installed:
             candidates = sorted({(tc, tuple(debug)) for tc, flags in candidates
                                  for variant in self.flag_variants(tc, list(flags))
                                  for debug in self.debug_flag_variants(tc, variant)})
+        if all_installed and not function:
+            log(f"Testing {len(candidates)} compiler/flag combinations per function on up to {limit} existing unmatched C attempts. This uses the same flag search as a single-function comparison and may take longer.")
         old = cfg.get("compiler_survey") or {}
         tried, confirmed = ({}, {}) if all_installed else (dict(old.get("tried", {})), dict(old.get("confirmed", {})))
         rows = self.store.all("SELECT * FROM functions WHERE project_id=? AND status NOT IN ('matched', 'asm') AND n_insns>=?",
@@ -257,8 +257,8 @@ class CompilerMixin:
                         matches.append([tc, list(flags)])
                         log(f"{fn['name']}: MATCH {self._short((tc, flags))}"
                             + (" (current settings)" if (tc, flags) == today else ""))
-                    if function and index % 10 == 0:
-                        log(f"{index}/{len(candidates)} combinations tested; {len(matches)} exact matches.")
+                    if index % 10 == 0:
+                        log(f"{fn['name']}: {index}/{len(candidates)} combinations tested; {len(matches)} exact matches.")
                 improved = best is not None and (baseline is None or best > baseline + 0.001)
                 if improved:
                     improvements.append({"function": fn["name"], "before": baseline, "best": best,
