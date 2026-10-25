@@ -78,6 +78,11 @@ Settings lets you disable automatic reuse and adjust its time and compile limits
 existing exact-transfer phase, then shares the additional budget between templates, libraries and similarity repairs.
 The last search reports verified bytes, attempts and bytes per minute of elapsed time, not CPU time.
 
+Saved near misses also get a bounded iterative search: up to three edit rounds, retaining the best three
+improving or equal-score alternatives. It combines address/layout fixes with local cast, register and ordering
+mutations. Its frontier survives restarts; each wave spends at most a quarter of the available search budget
+on it, with at most eight new compilations per function. Only exact judge matches count as progress.
+
 When eligible near misses exist, similarity transfers use at most three quarters of the remaining search budget;
 the rest is reserved for repairs. The transfer cursor is retained so the next pass continues through the queue.
 

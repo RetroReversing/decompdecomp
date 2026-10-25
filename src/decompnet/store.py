@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS twin_misses(
 CREATE TABLE IF NOT EXISTS reuse_trials(
   function_id INTEGER NOT NULL, signature TEXT NOT NULL, outcome TEXT NOT NULL, reason TEXT NOT NULL,
   PRIMARY KEY(function_id, signature));
+CREATE TABLE IF NOT EXISTS repair_frontiers(
+    function_id INTEGER PRIMARY KEY REFERENCES functions(id) ON DELETE CASCADE, context TEXT NOT NULL, state TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS reuse_cursors(project_id INTEGER PRIMARY KEY, function_id INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS cross_game_index(
   function_id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL, fingerprint TEXT NOT NULL,
