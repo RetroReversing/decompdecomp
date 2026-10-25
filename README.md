@@ -52,7 +52,7 @@ Every accepted candidate must compile and link to the destination's exact bytes.
 - **Better near-miss repairs:** eligibility uses percentage similarity, so a single changed operand no longer
   excludes an otherwise close function. Assembly differences guide casts, signedness, literal and ordering edits.
   Agreeing high/low address references can also propose a known destination symbol or an automatic address name, alone or combined with a
-  constant or explicit field-offset edit. Ambiguous mappings and address addend expressions are skipped. These
+  constant or explicit field-offset edit. Literal pointer addresses can be corrected too. Ambiguous mappings and address addend expressions are skipped. These
   edits affect only candidate C; shared symbols and types stay unchanged. An already-installed decomp-permuter
   supplies a small additional batch when time remains.
 - **Regional differences:** verified transfers teach symbol mappings and explicit pointer offsets. Offset

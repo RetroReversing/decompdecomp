@@ -14,7 +14,7 @@ def variants(source, report, target, big, known_symbols):
     Addend expressions, changed register/instruction layouts and ambiguous one-to-many mappings are left alone.
     These are candidate-local hypotheses: never rename the project's symbols or change shared declarations.
     """
-    from .similar_matches import TOKENS, literal_variants
+    from .similar_matches import INTEGER, TOKENS, literal_variants
 
     votes = defaultdict(set)
     halves = defaultdict(set)
@@ -33,7 +33,23 @@ def variants(source, report, target, big, known_symbols):
     if not names or len(names) > 2:
         return []
     # Token replacement preserves comments, strings and identifier substrings, and handles swaps simultaneously.
-    renamed = TOKENS.sub(lambda m: names.get(m.group(), m.group()), source)
+    addresses = {}
+    for old, new in names.items():
+        a, b = AUTO_NAME.fullmatch(old), AUTO_NAME.fullmatch(new)
+        if a and b and int(a[1], 16) >= 0x10000000:
+            addresses.setdefault(int(a[1], 16), set()).add(int(b[1], 16))
+    def replace(token):
+        text = token.group()
+        if text in names:
+            return names[text]
+        number = INTEGER.fullmatch(text)
+        if number:
+            value = int(number[1], 16 if number[1].lower().startswith('0x') else 10)
+            targets = addresses.get(value, set())
+            if len(targets) == 1:
+                return hex(next(iter(targets))) + number[2]
+        return text
+    renamed = TOKENS.sub(replace, source)
     if renamed == source:
         return []
     result = [renamed]
