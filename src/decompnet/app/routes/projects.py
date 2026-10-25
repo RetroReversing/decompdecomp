@@ -105,6 +105,11 @@ def register(app: App) -> None:
     def p_compilermap(slug, request, data):
         """The compiler answer (GET): which compiler built the game, and its parts; the app checks by itself when the
         answer is old. POST: check again now (the survey and the applied ranges)."""
+        if request.method == "POST" and data.get("all_installed"):
+            if net.fork_slug(slug):
+                raise NetworkError("This comparison currently needs a ROM-mode project.")
+            return {"job": jobs.start("installed compilers", lambda log: net.survey_compilers(
+                slug, log=log, all_installed=True))}
         return net.compiler_answer(slug, check_now=request.method == "POST")
 
     def p_open(slug, request, data):

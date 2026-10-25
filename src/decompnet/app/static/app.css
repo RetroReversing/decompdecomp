@@ -1003,3 +1003,16 @@ details.more[open] > summary::before { content: "− "; }
 
 /* the app has quit (pages.js, showStopped): nothing on the page answers any more */
 .stopped { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: var(--bg); color: var(--ink); text-align: center; }
+
+/* Settings must shrink to their grid column even when compiler flags or result lines are long. */
+.ptab[data-pane="settings"] .pad { min-width: 0; }
+.ptab[data-pane="settings"] .pad > * { min-width: 0; max-width: 100%; }
+.ptab[data-pane="settings"] .answer,
+.ptab[data-pane="settings"] .flags,
+.ptab[data-pane="settings"] dd,
+.ptab[data-pane="settings"] .check span { overflow-wrap: anywhere; }
+#installedCompilerTest { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+#testInstalledCompilers { justify-self: start; }
+#installedCompilerTest > .small { line-height: 1.55; }
+#installedCompilerLog { min-width: 0; max-width: 100%; max-height: 280px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+#compilerPanel .workbar { min-width: 0; max-width: 100%; }
