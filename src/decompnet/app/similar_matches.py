@@ -235,7 +235,7 @@ def run(twins, slug: str, job) -> int:
     symbol_state = [(r['name'], r['address']) for r in net.store.all(
         'SELECT name,address FROM symbols WHERE project_id=? ORDER BY name', proj['id'])]
     source_cache, ops_cache = {}, {}
-    from . import regional_layouts
+    from . import address_repairs, regional_layouts
     layouts = {pid: regional_layouts.learn(net, proj, other) for pid, other in others.items()}
     maps = {pid: regional_names(twins, proj, other) for pid, other in others.items()}
     saved = net.store.one('SELECT function_id FROM reuse_cursors WHERE project_id=?', proj['id'])
@@ -396,26 +396,32 @@ def run(twins, slug: str, job) -> int:
         if incomplete:
             break
     # Cached trials regenerate this deterministic queue, so a later pass resumes even after an app restart.
-    for _, a, b, other, score, prelude, source, settings, names, header, report in sorted(repairs.values(), key=lambda r: r[0]):
+    # Concrete address evidence goes before speculative cast/order mutations within the repair allowance.
+    known = {name for name, _ in symbol_state}
+    prepared = [(address_repairs.variants(r[5] + r[6], r[10], r[2], bool(proj['big_endian']), known), r)
+                for r in repairs.values()]
+    prepared.sort(key=lambda item: (not item[0], item[1][0]))
+    for address_variants, (_, a, b, other, score, prelude, source, settings, names, header, report) in prepared:
         if exhausted():
             if not incomplete:
                 resume(0)
             return matched
         if net.store.one('SELECT status FROM functions WHERE id=?', b['id'])['status'] != 'open':
             continue
-        guided = []
+        guided = list(address_variants)
         if report.get('candidate_target'):
             compiled = {'target': bytes.fromhex(report['candidate_target']), 'relocs': report.get('candidate_relocs', '[]')}
-            guided = literal_variants(source, compiled, b, bool(proj['big_endian']))
+            guided.extend(literal_variants(prelude + source, compiled, b, bool(proj['big_endian'])))
         simple = repair_variants(source, report)
         deep = deeper_variants(source, header + '\n' + prelude, settings, b['name'], deadline)
-        variants = [*guided, *(simple[:MAX_REPAIRS // 2] if deep else simple), *deep]
+        variants = [*guided, *(prelude + v for v in (simple[:MAX_REPAIRS // 2] if deep else simple)),
+                    *(prelude + v for v in deep)]
         for variant in list(dict.fromkeys(variants))[:MAX_REPAIRS]:
             if exhausted():
                 if not incomplete:
                     resume(0)
                 return matched
-            outcome, _ = attempt(a, b, other, score, prelude + variant, settings, 'repair', names, header)
+            outcome, _ = attempt(a, b, other, score, variant, settings, 'repair', names, header)
             if outcome == 'match':
                 break
     if not incomplete:

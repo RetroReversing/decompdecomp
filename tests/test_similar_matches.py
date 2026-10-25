@@ -383,3 +383,25 @@ def test_large_transfer_queue_reserves_attempts_for_repairs_and_keeps_cursor(pai
     job = Job(); budget(job, attempts=4)
     sm.run(pair.twins, 'destination', job)
     assert any(fid > cursor for fid, _ in seen)
+
+
+def test_address_and_literal_repairs_reach_judge_as_one_candidate(pair, monkeypatch):
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET matched_source='int old(int x) { return original + 60; }' WHERE id=1")
+        db.execute("INSERT INTO symbols(project_id,name,address) VALUES(2,'destination',2147487744)")
+    seen = []
+    def attempt(agent, proj, a, b, source, feedback, **kwargs):
+        seen.append(source)
+        if 'destination + 61' in source:
+            with pair.store.tx() as db:
+                db.execute("UPDATE functions SET status='matched',matched_source=? WHERE id=?", (source,b['id']))
+            return 'match', ''
+        feedback.update(percent=97.5, candidate_target=code(60).hex(), candidate_relocs='[]',
+                        rows=[('i','lui $v0, %hi(destination)','lui $v0, %hi(original)'),
+                              ('i','lw $v0, %lo(destination)($v0)','lw $v0, %lo(original)($v0)')])
+        return 'miss', 'score 20'
+    monkeypatch.setattr(pair.twins, '_attempt_twin', attempt)
+    monkeypatch.setattr(sm, 'deeper_variants', lambda *a: [])
+    assert sm.run(pair.twins, 'destination', Job()) == 1
+    assert any('destination + 61' in s for s in seen)
+    assert pair.store.one("SELECT 1 FROM cross_game_attempts WHERE outcome='match' AND reason LIKE '%; repair;%'")
