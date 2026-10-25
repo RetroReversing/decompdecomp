@@ -100,6 +100,9 @@ Removing a managed folder removes its indexed references, while manual imports a
 Similar-code autopilot attempts are bounded and use the unchanged compiler/link judge on MIPS ROM projects.
 They learn unambiguous symbol correspondences, try local-permuter repairs and proven donor flags, and persist
 trial results and a resume cursor. Compiler-flag hits are saved as evidence for review, not silently applied.
+Aligned MIPS word-table offsets can also propose a candidate-local numeric ID macro correction when the
+source explicitly declares a 32-bit table and the macro has one unambiguous index use. Relocated offsets,
+redefinitions, other uses and uncertain element sizes are skipped; every proposal still passes the linked judge.
 Near-miss repairs now use percentage eligibility and assembly-guided mutations, plus an installed full permuter.
 Aligned high/low address evidence can correct known symbols and combine that with literal/explicit field-offset
 edits. Literal address addends and typed array indices now use compiled stride evidence, including adjacent
