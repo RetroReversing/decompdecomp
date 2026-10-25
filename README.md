@@ -74,6 +74,8 @@ Every accepted candidate must compile and link to the destination's exact bytes.
   before a used field, based on aligned memory operands. These proposals support simple scalar/pointer fields
   and common fixed-width aliases; packed types, bitfields, unions and ambiguous offsets are skipped. Shared
   headers are never rewritten. Ambiguous mappings, dynamic indices and unproven strides are skipped.
+  Numeric ID macros used once to index an explicit 32-bit table can be corrected from aligned word offsets;
+  ambiguous declarations, macro uses and relocations are skipped.
   Saved best attempts get the same address checks before wider donor searches; probe feedback and failed edits
   are cached and share the ordinary search budget. These edits affect only candidate C; shared symbols and types stay unchanged. An already-installed decomp-permuter
   supplies a small additional batch when time remains.
@@ -95,6 +97,15 @@ Settings lets you disable automatic reuse and adjust its time and compile limits
 existing exact-transfer phase, then shares the additional budget between templates, libraries and similarity repairs.
 The last search reports verified bytes, attempts and bytes per minute of elapsed time, not CPU time.
 
+In Settings, optionally enable **deeper iterative repairs** after normal autopilot. This experimental phase is
+**off by default**, with its own additional 120-second / 128-attempt budget (both adjustable). Normal matching
+finishes first and keeps its full allowance; automatic background reuse does not start this extra phase.
+Iterative repairs try up to three edit rounds and keep the best three improving/equal-score alternatives.
+Each function gets at most eight new compilations per pass. A persistent round-robin cursor continues with the
+next function on the next pass, instead of repeatedly prioritising the closest candidates. Unfinished frontiers
+survive restarts. The phase records its own results and adds a summary note; only exact judge matches count.
+
+
 Global-address repairs also track symbolic MIPS upper halves through straight-line instructions to later
 load/store offsets. Register clobbers, branches, calls and unknown instructions stop tracking; conflicting
 consumers are rejected. Full-address comparison also resolves C identifiers whose address is shown as another symbol plus an offset
@@ -105,6 +116,12 @@ teach symbol mappings for other candidates from that same donor. New data/callee
 from two independently verified function pairs; conflicts, reopened functions and changed donor code invalidate
 the evidence. Each proposed transfer still goes through the exact compiler/link judge. Old saved candidates
 can recover provenance only when recorded donor history reproduces their adapted C exactly.
+
+Saved candidates also get bounded constant-only repairs when no address correction is proposed. Aligned
+MIPS immediate and fixed-shift differences can guide literal, explicit multiply/divide and shift edits.
+Repeated constants are tried individually (up to four occurrences), with small consistent group edits and
+combinations capped at eight proposals. Comments, strings, symbol addresses and suffixes are preserved;
+register/control-flow changes, signed expressions and implicit type/array-stride changes are left alone.
 
 When eligible near misses exist, similarity transfers use at most three quarters of the remaining search budget;
 the rest is reserved for repairs. The transfer cursor is retained so the next pass continues through the queue.
@@ -470,3 +487,7 @@ An identical rebuild can still contain assembly and binary fallbacks. Check the 
 selected as C separately; an identical cartridge does not mean that every function has been decompiled.
 
 For imported overlays missing their original strings or tables, see [supplemental original overlay data](docs/OVERLAY_DATA.md).
+
+Verified full-image imports include linked assembly routines as target-only units: assembly bytes never count
+as recovered C. Assembly wrappers containing whole binary programs are not treated as single functions; an
+explicit coverage notice identifies their exclusion from function progress.

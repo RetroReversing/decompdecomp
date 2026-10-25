@@ -106,6 +106,9 @@ Removing a managed folder removes its indexed references, while manual imports a
 Similar-code autopilot attempts are bounded and use the unchanged compiler/link judge on MIPS ROM projects.
 They learn unambiguous symbol correspondences, try local-permuter repairs and proven donor flags, and persist
 trial results and a resume cursor. Compiler-flag hits are saved as evidence for review, not silently applied.
+Aligned MIPS word-table offsets can also propose a candidate-local numeric ID macro correction when the
+source explicitly declares a 32-bit table and the macro has one unambiguous index use. Relocated offsets,
+redefinitions, other uses and uncertain element sizes are skipped; every proposal still passes the linked judge.
 Near-miss repairs now use percentage eligibility and assembly-guided mutations, plus an installed full permuter.
 Aligned high/low address evidence can correct known symbols and combine that with literal/explicit field-offset
 edits. Literal address addends and typed array indices now use compiled stride evidence, including adjacent
@@ -115,10 +118,20 @@ remain planned. Dynamic addends, ambiguous mappings and named-field reconstructi
 still need deeper analysis. Candidate-local padding repair now handles simple struct definitions in the
 candidate itself, with bounded proposals from aligned load/store offsets. Shared-header layout reconstruction,
 complex/nested types and field reordering remain planned.
+Saved near misses now have a persistent three-round, width-three repair search, disabled by default with a separate
+configurable budget after normal autopilot, a persistent round-robin cursor, and cached failed compilations.
+It retains improving/equal-score candidates and chains local repairs. This uses
+the same MIPS ROM feedback; object-mode and other-processor support await the context/readers described below.
+
+
 Saved repair candidates retain donor provenance, including conservative exact-reconstruction recovery for
 older saved transfers. Verified repair pairs feed regional symbol learning; new data/callee bindings require
 two independent pairs. Mappings can repair other saved candidates and stale/ambiguous evidence is excluded.
 These mappings share the MIPS ROM pipeline; object mode still needs its per-file context and relocation work.
+Saved MIPS candidates now get direct constant repairs without first needing an address change. Fixed shifts,
+explicit multiply/divide factors and bounded repeated-literal edits share the normal judge and search budget.
+Signed expression reconstruction, implicit pointer/array strides, variable shifts and other processors' readers
+remain planned; object mode still needs per-file source adaptation.
 Tiny MIPS templates and explicitly imported SDK C go through the same judge. Verified regional pairs can teach
 explicit pointer-offset edits; reconstructing named struct layouts and shared types remains planned. New verified
 matches trigger a bounded, configurable automatic cascade. Project-mode support for these additions is planned:
@@ -680,10 +693,3 @@ The answer goes here: build it, build part of it, or not, and why.
 - **Polish in the drafts.** Methods of known classes are drafted as `Class::method` in the brief; the polishing pass
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
-
-
-Candidate-local pointer steps can use an agreed MIPS stride change evidenced by both forward and backward
-increments. A source-local struct pointer must have both a standalone increment and a one-element addition;
-proposals use explicit byte steps while preserving shared headers. Other instruction changes, relocations,
-stack/global-base adjustments and ambiguous strides do not establish this evidence. Every proposal uses the
-ordinary compiler/link judge within the existing repair budget.

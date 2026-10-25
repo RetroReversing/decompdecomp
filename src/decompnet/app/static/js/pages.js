@@ -94,6 +94,9 @@ async function showSettingsPage() {
     <label class="check"><input type="checkbox" id="reuseAuto" ${st.settings.reuse_auto !== false ? "checked" : ""}><span>Automatically try new matches in other compatible projects (no AI calls).</span></label>
     <label class="field"><span>Free matching: seconds per search wave</span><input id="reuseSeconds" type="number" min="1" max="600" value="${st.settings.reuse_seconds || 120}"></label>
     <label class="field"><span>Free matching: compile attempts per search wave</span><input id="reuseAttempts" type="number" min="1" max="1024" value="${st.settings.reuse_attempts || 128}"></label>
+    <label class="check"><input type="checkbox" id="iterativeEnabled" ${st.settings.iterative_enabled ? "checked" : ""}><span>After normal autopilot, run deeper iterative repairs (experimental, no AI calls). Uses its own extra budget; background reuse is unchanged.</span></label>
+    <label class="field"><span>Iterative repairs: additional seconds per pass</span><input id="iterativeSeconds" type="number" min="1" max="600" value="${st.settings.iterative_seconds || 120}"></label>
+    <label class="field"><span>Iterative repairs: additional compile attempts per pass</span><input id="iterativeAttempts" type="number" min="1" max="1024" value="${st.settings.iterative_attempts || 128}"></label>
     <label class="check"><input type="checkbox" id="autopilotSet" ${st.settings.autopilot !== false ? "checked" : ""}><span><b>Autopilot after each import</b>: try every function's machine draft first, so free matches cost no agent time.</span></label>`;
   const theme = savedTheme();
   $("setComputer").innerHTML = `
@@ -164,6 +167,9 @@ async function showSettingsPage() {
   $("perSession").onchange = () => save({ per_session: Number($("perSession").value) }, "Saved.");
   $("autopilotSet").onchange = () => save({ autopilot: $("autopilotSet").checked }, "Saved.");
   $("reuseAuto").onchange = () => save({ reuse_auto: $("reuseAuto").checked }, "Saved.");
+  $("iterativeEnabled").onchange = () => save({ iterative_enabled: $("iterativeEnabled").checked }, "Saved.");
+  $("iterativeSeconds").onchange = () => save({ iterative_seconds: Number($("iterativeSeconds").value) || 120 }, "Saved.");
+  $("iterativeAttempts").onchange = () => save({ iterative_attempts: Number($("iterativeAttempts").value) || 128 }, "Saved.");
   $("reuseSeconds").onchange = () => save({ reuse_seconds: Number($("reuseSeconds").value) || 120 }, "Saved.");
   $("reuseAttempts").onchange = () => save({ reuse_attempts: Number($("reuseAttempts").value) || 128 }, "Saved.");
   $("budgetSet").onchange = () => save({ budget_usd: Number($("budgetSet").value) || 0 }, "Budget saved.");

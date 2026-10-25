@@ -218,11 +218,37 @@ class ForkProject:
                 return p
         return None
 
-    def splat_baseroms(self) -> dict[str, str]:
-        """Original ROM hashes for splat builds whose YAML targets a generated decompressed ROM.
+    def _splat_version_configs(self) -> dict[str, Path]:
+        """Only infer editions from the YAML template the project's Makefile actually uses."""
+        makefile = self.root / "Makefile"
+        if not makefile.is_file():
+            return {}
+        make = makefile.read_text(errors="replace", encoding="utf-8")
+        basename = re.search(r"^BASENAME\s*[:?]?=\s*([A-Za-z0-9_-]+)\s*$", make, re.M)
+        if not basename:
+            return {}
+        suffix = "$(BASENAME).$(VERSION).yaml"
+        nested = "config/$(VERSION)/" + suffix
+        if nested in make:
+            paths = self.root.glob("config/*/" + basename[1] + ".*.yaml")
+        elif suffix in make:
+            paths = self.root.glob(basename[1] + ".*.yaml")
+        else:
+            return {}
+        configs = {}
+        for path in sorted(paths):
+            version = path.name[len(basename[1]) + 1:-5]
+            if (re.fullmatch(r"[A-Za-z0-9._-]+", version) and
+                    (nested not in make or path.parent.name == version) and
+                    self.root.resolve() in path.resolve().parents):
+                configs[version] = path
+        return configs
 
-        The Makefile names the input and generated file; the README supplies the original ROM hashes. Do not
-        treat the generated file's splat SHA-1 as the hash of a copy the user should provide.
+    def splat_baseroms(self) -> dict[str, str]:
+        """Original ROM hashes for direct versioned splits and generated decompressed images.
+
+        Direct configs supply the original hash. For generated images the Makefile names the input/output
+        and the README supplies original hashes; a decompressed-image hash is never a cartridge hash.
         """
         makefile = self.root / "Makefile"
         if not makefile.is_file():
@@ -230,15 +256,12 @@ class ForkProject:
         make = makefile.read_text(errors="replace", encoding="utf-8")
         # Direct versioned splits must select the same edition for placement and Make.
         # Require the build's explicit template, not just similarly named YAML files.
-        basename = re.search(r"^BASENAME\s*[:?]?=\s*([A-Za-z0-9_-]+)\s*$", make, re.M)
-        if basename and "$(BASENAME).$(VERSION).yaml" in make:
+        configs = self._splat_version_configs()
+        if configs:
             import yaml
 
             originals = {}
-            for path in sorted(self.root.glob(basename.group(1) + ".*.yaml")):
-                version = path.name[len(basename.group(1)) + 1:-5]
-                if not re.fullmatch(r"[A-Za-z0-9._-]+", version):
-                    continue
+            for version, path in configs.items():
                 try:
                     config = yaml.safe_load(path.read_text(encoding="utf-8"))
                 except (OSError, ValueError, yaml.YAMLError):
@@ -247,8 +270,9 @@ class ForkProject:
                     continue
                 options = config["options"]
                 digest = config.get("sha1", options.get("sha1"))
+                base = path.parent / str(options.get("base_path", "."))
                 if (options.get("target_path") == f"baserom.{version}.z64"
-                        and options.get("base_path", ".") == "."
+                        and base.resolve() == self.root.resolve()
                         and isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{40}", digest)):
                     originals[version] = digest.lower()
             if originals:
@@ -601,7 +625,8 @@ class ForkProject:
             return False
         path = self._splat_yaml()
         if version and self.splat_baseroms():
-            path = next((p for p in self.root.glob("*.yaml") if p.name.endswith(f".{version}.yaml")), path)
+            path = self._splat_version_configs().get(version) or next(
+                (p for p in self.root.glob("*.yaml") if p.name.endswith(f".{version}.yaml")), path)
         if path is None:
             return False
         import yaml

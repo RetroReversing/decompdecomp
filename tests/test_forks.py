@@ -924,3 +924,38 @@ def test_direct_splat_version_follows_rom_on_import_and_retry(tmp_path, monkeypa
     p = tmp_path / 'game.eu.yaml'
     p.write_text(p.read_text().replace('base_path: .', 'base_path: ..'))
     assert 'eu' not in fp.splat_baseroms()
+
+
+def test_nested_splat_editions_use_rom_hash_for_build_and_reference_config(tmp_path, monkeypatch):
+    import yaml
+
+    from decompnet import consoles
+    from decompnet.app.forkengine import ForkEngine
+
+    (tmp_path/'Makefile').write_text('BASENAME := demo\nVERSION ?= us\n'
+        'SPLAT_YAML := config/$(VERSION)/$(BASENAME).$(VERSION).yaml\nextract:\n\tpython -m splat split $(SPLAT_YAML)\n')
+    data = {v: b'\x80\x37\x12\x40'+v.encode()*32 for v in ('jp','us')}
+    for version, rom in data.items():
+        path = tmp_path/f'config/{version}/demo.{version}.yaml'
+        path.parent.mkdir(parents=True)
+        path.write_text(yaml.safe_dump(dict(sha1=hashlib.sha1(rom).hexdigest(),
+            options=dict(base_path='../..', target_path=f'baserom.{version}.z64', platform='n64'), segments=[])))
+    fp = ForkProject(tmp_path)
+    assert fp.needs()['path'] == 'baserom.us.z64'
+    engine = object.__new__(ForkEngine)
+    cfg = {}
+    monkeypatch.setattr(ForkEngine, '_save_cfg', lambda *_: None)
+    game = tmp_path/'upload.z64'
+    game.write_bytes(data['jp'])
+    engine._match_version(SimpleNamespace(), fp, cfg, game, log=lambda *_: None)
+    assert cfg['version'] == 'jp'
+    assert fp.place_game(game, game.name, 'jp').name == 'baserom.jp.z64'
+    assert fp.setup_commands('jp')[0] == ['make','VERSION=jp','extract']
+    seen = []
+    monkeypatch.setattr(type(consoles.get('n64')), 'generate_objdiff',
+                        lambda self, project, path, config, **kwargs: seen.append(path) or True)
+    assert fp.generate_objdiff('us', log=lambda *_: None)
+    assert seen == [tmp_path/'config/us/demo.us.yaml']
+    bad = tmp_path/'config/jp/demo.jp.yaml'
+    bad.write_text(bad.read_text().replace('../..','../../..'))
+    assert 'jp' not in fp.splat_baseroms()

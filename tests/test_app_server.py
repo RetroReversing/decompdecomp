@@ -749,6 +749,21 @@ def test_free_search_settings_are_bounded_and_can_disable_automatic_work(app):
     client.post('/api/settings', json={'reuse_seconds': 120, 'reuse_attempts': 128}, headers={'X-Decomp': '1'})
 
 
+def test_iterative_settings_opt_in_and_separate_limits(app):
+    client, net, _ = app
+    assert not net.cascades.iterative_enabled
+    response = client.post('/api/settings', json={'iterative_enabled': True, 'iterative_seconds': 9999,
+                                                  'iterative_attempts': -1}, headers={'X-Decomp': '1'})
+    assert response.status_code == 200
+    assert response.json()['iterative_enabled'] is True
+    assert response.json()['iterative_seconds'] == 600
+    assert response.json()['iterative_attempts'] == 1
+    assert net.cascades.iterative_enabled and net.cascades.iterative_seconds == 600
+    assert net.cascades.attempts == 128 and net.cascades.seconds == 120
+    client.post('/api/settings', json={'iterative_enabled': False}, headers={'X-Decomp': '1'})
+    assert not net.cascades.iterative_enabled
+
+
 def test_sdk_inventory_is_global_and_selection_is_a_guarded_project_setting(app, monkeypatch):
     client, net, _ = app
     from decompnet.app import sdk_library
