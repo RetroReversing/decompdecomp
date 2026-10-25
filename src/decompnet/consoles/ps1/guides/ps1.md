@@ -92,5 +92,28 @@ For function boundaries, combine a return and delay slot, the next prologue, and
 references. A compiler size mismatch alone does not justify splitting a function. Overlay references must be
 read from the function's own segment, even when multiple overlays share a RAM address.
 
+### Check merged entries before rewriting correct source
+
+A candidate that ends cleanly before its target does may already describe a whole function. For a bulk pass:
+
+1. Compile each source candidate with its own declarations and the target's compiler settings. Record its
+   byte length alongside the target's length, rather than treating the difference as missing C statements.
+2. Inspect the candidate-length offset in the target. A completed return and delay slot followed by a fresh
+   stack prologue is a boundary clue. Check callers, callback tables, or independently identified source
+   neighbours too; an internal return or unreachable block is not sufficient evidence.
+3. Split only an unmatched entry in the isolated copy. Retain the trailing bytes as a separate function;
+   do not discard them or remove them from coverage. Run the ordinary judge on the complete prefix.
+4. Try the newly separated neighbour against its own source. A useful split can recover both functions,
+   but the neighbour stays unmatched until its own linked bytes pass.
+5. Record split operations before source submissions so the verified batch can be replayed through the app.
+   Recheck all existing matches after replaying it.
+
+If the boundaries are sound and just a few instructions differ, inspect register lifetimes and pointer
+qualification before making broad source changes. Period GCC may keep the address of a global in a saved
+register when it is accessed through a local const pointer. An equivalent candidate can therefore restore a
+missing move without changing the compiler flags. Treat this as a hypothesis to test against the complete
+linked function, not a rule to add const pointers everywhere. Record such adaptations separately from the
+reference source, and do not patch machine instructions to make the comparison pass.
+
 Record unsuccessful candidates separately from verified matches. Report matched bytes as well as function
 counts, and retain the original project snapshot so a bulk import remains reviewable.
