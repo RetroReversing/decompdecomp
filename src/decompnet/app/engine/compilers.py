@@ -176,6 +176,9 @@ class CompilerMixin:
         cfg = self.cfg(proj)
         candidates = sorted({(cfg["compiler"]["toolchain"], tuple(cfg["compiler"]["flags"]))}
                             | {(r["toolchain"], tuple(r["flags"])) for r in cfg.get("compiler_ranges", [])})
+        # Debug line labels can change old GCC assemblers' delay-slot scheduling even at the same -O level.
+        candidates = sorted({(tc, tuple(variant)) for tc, flags in candidates
+                             for variant in self.debug_flag_variants(tc, list(flags))})
         old = cfg.get("compiler_survey") or {}
         tried, confirmed = dict(old.get("tried", {})), dict(old.get("confirmed", {}))
         rows = self.store.all("SELECT * FROM functions WHERE project_id=? AND status NOT IN ('matched', 'asm') AND n_insns>=?",
@@ -189,7 +192,7 @@ class CompilerMixin:
             source = self._source_of(fn)
             if not source:
                 continue
-            digest = hashlib.sha1(source.encode()).hexdigest()[:16]
+            digest = hashlib.sha1(json.dumps([source, candidates]).encode()).hexdigest()[:16]
             if tried.get(str(fn["vram"])) == digest:
                 continue
             n += 1
@@ -456,6 +459,18 @@ class CompilerMixin:
                     f"function=\"{fn['name']}\", ranges=<the address range it built>, source=<this C>)")
         return f"{what}: score {d.score} ({d.percent:.1f}%), not a match\n{d.render(context=1, max_rows=40)}"
 
+    @staticmethod
+    def debug_flag_variants(toolchain: str, base: list[str]) -> list[list[str]]:
+        """Old GCC's debug labels affect assembler scheduling: try no debug, -g and -g3 independently."""
+        if not toolchain.startswith(("gcc", "ee-gcc")):
+            return [base]
+        plain = [f for f in base if not re.fullmatch(r"-g[0-3]?", f)]
+        out = [base]
+        for variant in (plain, [*plain, "-g"], [*plain, "-g3"]):
+            if variant not in out:
+                out.append(variant)
+        return out
+
     def flag_variants(self, toolchain: str, base: list[str]) -> list[list[str]]:
         """The flags worth trying for a function on this compiler: its optimisation levels, small data on and off
         (MIPS GCC's -G; CodeWarrior's -sdatathreshold), and the few options that change the shape of code most.
@@ -477,6 +492,7 @@ class CompilerMixin:
             for g in SMALL_DATA_SIZES:
                 if base[at] != str(g):
                     out.append(base[:at] + [str(g)] + base[at + 1:])
+        out += [v for v in self.debug_flag_variants(toolchain, base) if v not in out]
         out += [[*base, extra] for extra in extras if extra not in base]
         return out[:MAX_FLAG_VARIANTS]
 
