@@ -118,6 +118,12 @@ remain planned. Dynamic addends, ambiguous mappings and named-field reconstructi
 still need deeper analysis. Candidate-local padding repair now handles simple struct definitions in the
 candidate itself, with bounded proposals from aligned load/store offsets. Shared-header layout reconstruction,
 complex/nested types and field reordering remain planned.
+Saved near misses now have a persistent three-round, width-three repair search, disabled by default with a separate
+configurable budget after normal autopilot, a persistent round-robin cursor, and cached failed compilations.
+It retains improving/equal-score candidates and chains local repairs. This uses
+the same MIPS ROM feedback; object-mode and other-processor support await the context/readers described below.
+
+
 Saved repair candidates retain donor provenance, including conservative exact-reconstruction recovery for
 older saved transfers. Verified repair pairs feed regional symbol learning; new data/callee bindings require
 two independent pairs. Mappings can repair other saved candidates and stale/ambiguous evidence is excluded.

@@ -97,6 +97,15 @@ Settings lets you disable automatic reuse and adjust its time and compile limits
 existing exact-transfer phase, then shares the additional budget between templates, libraries and similarity repairs.
 The last search reports verified bytes, attempts and bytes per minute of elapsed time, not CPU time.
 
+In Settings, optionally enable **deeper iterative repairs** after normal autopilot. This experimental phase is
+**off by default**, with its own additional 120-second / 128-attempt budget (both adjustable). Normal matching
+finishes first and keeps its full allowance; automatic background reuse does not start this extra phase.
+Iterative repairs try up to three edit rounds and keep the best three improving/equal-score alternatives.
+Each function gets at most eight new compilations per pass. A persistent round-robin cursor continues with the
+next function on the next pass, instead of repeatedly prioritising the closest candidates. Unfinished frontiers
+survive restarts. The phase records its own results and adds a summary note; only exact judge matches count.
+
+
 Global-address repairs also track symbolic MIPS upper halves through straight-line instructions to later
 load/store offsets. Register clobbers, branches, calls and unknown instructions stop tracking; conflicting
 consumers are rejected. Full-address comparison also resolves C identifiers whose address is shown as another symbol plus an offset
