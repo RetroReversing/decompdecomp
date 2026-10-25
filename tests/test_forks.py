@@ -60,6 +60,8 @@ def test_splat_generated_target_uses_original_rom_versions(tmp_path, monkeypatch
     (tmp_path / "README.md").write_text("\n".join(f"`baserom.{v}.z64`: `{sha1}`" for v, sha1 in hashes.items()))
     (tmp_path / "decompressed.pal.yaml").write_text("options:\n  target_path: decompressed.pal.z64\n"
                                                       f"  sha1: {'e' * 40}\nsegments: []\n")
+    (tmp_path / "decompressed.us.v10.yaml").write_text("options:\n  target_path: decompressed.us.v10.z64\n"
+                                                         f"  sha1: {'f' * 40}\nsegments: []\n")
     fp = ForkProject(tmp_path)
     assert fp.needs()["sha1"] == hashes["us.v10"]
     assert fp.needs("pal")["sha1"] == hashes["pal"]
@@ -103,6 +105,31 @@ def test_splat_accepts_other_n64_byte_orders(tmp_path, monkeypatch, fmt):
     assert cfg["version"] == "pal"
     assert fp.place_game(game, game.name, cfg["version"]).read_bytes() == original
     assert game.read_bytes() != original
+
+
+def test_macos_docker_only_project_routes_make_through_container(tmp_path, monkeypatch):
+    from decompnet.forks import project as project_module
+
+    (tmp_path / "Dockerfile").write_text("FROM example\n")
+    (tmp_path / "README.md").write_text("- Docker only\n    - Linux\n    - macOS\n")
+    (tmp_path / "Makefile").write_text("all:\n\t@true\n")
+    monkeypatch.setattr(project_module.sys, "platform", "darwin")
+    fp = ForkProject(tmp_path)
+    assert fp._docker_only_macos()
+    monkeypatch.setattr(ForkProject, "_prepare_docker", lambda *_: None)
+    seen = []
+
+    class Process:
+        stdout = []
+
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(project_module.subprocess, "Popen", lambda cmd, **kwargs: seen.append(cmd) or Process())
+    assert fp.run(["make", "VERSION=pal", "-j4"])[0]
+    assert Path(seen[0][0]).name == "docker" and seen[0][1:3] == ["run", "--rm"]
+    assert seen[0][-2:] == ["-c", "make VERSION=pal -j4"]
+    assert seen[0][seen[0].index("--entrypoint") + 1] == "/bin/sh"
 
 
 @pytest.fixture(scope="module")

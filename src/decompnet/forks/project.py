@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -46,6 +47,7 @@ GAME, PROGRAM = "game", "program"
 SCOPES = (GAME, PROGRAM)
 _CONFIG_CACHE: dict[str, tuple] = {}  # objdiff.json path -> (stat key, parsed, units by name)
 _CONFIG_LOCK = threading.Lock()
+_DOCKER_SETUP_LOCK = threading.Lock()
 # Agents may only edit source and header files, never the project's build setup, targets or verification.
 EDITABLE = re.compile(r"\.(c|cc|cpp|cxx|h|hh|hpp|hxx|inc|inl)$", re.I)
 FORBIDDEN_PARTS = {".git", STATE, "orig", "build", "asm", "expected", "tools", "config", ".github", "assets", "bin"}
@@ -212,8 +214,11 @@ class ForkProject:
         if not readme.is_file():
             return {}
         text = readme.read_text(errors="replace", encoding="utf-8")
+        configured = {p.name.removeprefix("decompressed.").removesuffix(".yaml")
+                      for p in self.root.glob("decompressed.*.yaml")}
         return {version: digest.lower() for version, digest in re.findall(
-            r"`?baserom\.([A-Za-z0-9._-]+)\.z64`?\s*:\s*`?([0-9a-fA-F]{40})\b", text)}
+            r"`?baserom\.([A-Za-z0-9._-]+)\.z64`?\s*:\s*`?([0-9a-fA-F]{40})\b", text)
+                if version in configured}
 
     def splat_default_version(self) -> str | None:
         versions = self.splat_baseroms()
@@ -222,6 +227,61 @@ class ForkProject:
         make = (self.root / "Makefile").read_text(errors="replace", encoding="utf-8")
         match = re.search(r"^VERSION\s*\?=\s*([A-Za-z0-9._-]+)", make, re.M)
         return match.group(1) if match and match.group(1) in versions else next(iter(versions))
+
+    def _docker_only_macos(self) -> bool:
+        """Some public decomps explicitly support macOS only through their Dockerfile."""
+        if sys.platform != "darwin" or not (self.root / "Dockerfile").is_file():
+            return False
+        readme = self.root / "README.md"
+        return readme.is_file() and bool(re.search(r"macOS.*Docker only|Docker only.*macOS", readme.read_text(
+            errors="replace", encoding="utf-8"), re.I | re.S))
+
+    def _docker_image(self) -> str:
+        paths = (self.root / "Dockerfile", self.root / "packages.txt")
+        digest = hashlib.sha1(str(self.root.resolve()).encode())
+        for path in paths:
+            if path.is_file():
+                digest.update(path.read_bytes())
+        return f"decompdecomp-project-{digest.hexdigest()[:16]}"
+
+    def _docker_command(self, command: list[str]) -> list[str]:
+        arch = ["--platform", "linux/amd64"] if os.uname().machine == "arm64" else []
+        return ["docker", "run", "--rm", *arch, "--volume", f"{self.root.resolve()}:/project",
+                "--workdir", "/project", "--entrypoint", "/bin/sh", self._docker_image(), "-c",
+                shlex.join(command)]
+
+    def _prepare_docker(self, log) -> None:
+        with _DOCKER_SETUP_LOCK:
+            if getattr(self, "_docker_ready", False):
+                return
+            if not shutil.which("docker"):
+                raise ForkError("this project builds on macOS through Docker, but Docker is not installed. "
+                                "Install Docker or a Docker-compatible runtime, then retry setup.")
+            ok, tail = self.run(["docker", "info", "--format", "{{.ServerVersion}}"], log=log, timeout=15)
+            if not ok:
+                raise ForkError("this project needs a running Docker engine on macOS. Start it, then retry setup.\n" + tail)
+            image = self._docker_image()
+            ok, _ = self.run(["docker", "image", "inspect", image], log=lambda *_: None, timeout=15)
+            if not ok:
+                arch = ["--platform", "linux/amd64"] if os.uname().machine == "arm64" else []
+                log("building the project's Docker image with its MIPS toolchain")
+                ok, tail = self.run(["docker", "build", *arch, "--tag", image, "."], log=log, timeout=3600)
+                if not ok:
+                    raise ForkError("the project's Docker image could not be built:\n" + tail)
+            if (self.root / ".gitmodules").is_file():
+                ok, tail = self.run(["git", "submodule", "update", "--init", "--recursive"], log=log, timeout=900)
+                if not ok:
+                    raise ForkError("the project's submodules could not be fetched:\n" + tail)
+            if ".venv/bin/python3" in (self.root / "Makefile").read_text(errors="replace", encoding="utf-8") and (
+                    self.root / "requirements.txt").is_file() and not (self.root / ".venv/bin/python3").exists():
+                log("installing the project's Python requirements inside Docker")
+                ok, tail = self.run(self._docker_command(["python3", "-m", "venv", ".venv"]), log=log, timeout=600)
+                if ok:
+                    ok, tail = self.run(self._docker_command([".venv/bin/pip", "install", "-r", "requirements.txt"]),
+                                        log=log, timeout=1200)
+                if not ok:
+                    raise ForkError("the project's Python requirements could not be installed:\n" + tail)
+            self._docker_ready = True
 
     def _inside(self, rel: str) -> str | None:
         """`rel` as a clean path inside the project, or None if it points outside or is a template."""
@@ -367,7 +427,8 @@ class ForkProject:
             make = (self.root / "Makefile").read_text(errors="replace", encoding="utf-8")
             chosen = [f"VERSION={version}"] if version and self.splat_baseroms() else []
             steps = [["make", *chosen, t] for t in ("setup", "extract") if re.search(rf"^{t}\s*:", make, re.M)][:1]
-            return steps + [["make", *chosen, f"-j{os.cpu_count() or 4}"]]
+            jobs = min(os.cpu_count() or 4, 4) if self._docker_only_macos() else os.cpu_count() or 4
+            return steps + [["make", *chosen, f"-j{jobs}"]]
         if kind == "objdiff":
             cfg = self.objdiff_config()
             return [[cfg.get("custom_make") or "make", *cfg.get("custom_args", [])]]
@@ -376,6 +437,9 @@ class ForkProject:
     def run(self, cmd: list[str], log=print, timeout: float = 3600, failed: list[str] | None = None) -> tuple[bool, str]:
         """Run a build step in the project. Targets the build reports as failed (ninja's FAILED:, make's Error lines)
         are added to `failed`."""
+        if self._docker_only_macos() and Path(cmd[0]).name in ("make", "gmake"):
+            self._prepare_docker(log)
+            cmd = self._docker_command(["make", *cmd[1:]])
         env = dict(os.environ)
         env["PATH"] = os.pathsep.join([*(str(d) for d in _tool_dirs()), env.get("PATH", "")])
         # found on that PATH (decompdecomp's own ninja): Linux looks a command up there itself, Windows only in this
