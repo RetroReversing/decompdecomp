@@ -117,6 +117,10 @@ Saved MIPS candidates now get direct constant repairs without first needing an a
 explicit multiply/divide factors and bounded repeated-literal edits share the normal judge and search budget.
 Signed expression reconstruction, implicit pointer/array strides, variable shifts and other processors' readers
 remain planned; object mode still needs per-file source adaptation.
+Candidate-local MIPS signatures can now repair ordinary register-argument shifts: missing incoming parameters
+and forwarded leading arguments in small single-call wrappers. Both byte orders use the same reader/judge.
+Floating/aggregate/variadic arguments, stack arguments, nonempty wrapper signatures, complex calls and other
+processors' calling conventions remain planned. Imported object projects still need per-file prototype support.
 Tiny MIPS templates and explicitly imported SDK C go through the same judge. Verified regional pairs can teach
 explicit pointer-offset edits; reconstructing named struct layouts and shared types remains planned. New verified
 matches trigger a bounded, configurable automatic cascade. Project-mode support for these additions is planned:

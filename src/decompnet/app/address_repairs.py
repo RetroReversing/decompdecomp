@@ -16,6 +16,7 @@ def variants(source, report, target, big, known_symbols):
     These are candidate-local hypotheses: never rename the project's symbols or change shared declarations.
     """
     from .addend_repairs import variants as addend_variants
+    from .argument_repairs import variants as argument_variants
     from .constant_repairs import variants as constant_variants
     from .global_addresses import alias_variant, normalize
     from .layout_repairs import variants as layout_variants
@@ -67,6 +68,8 @@ def variants(source, report, target, big, known_symbols):
             result.extend(constant_variants(variant, candidate, target, big))
         if not result:
             result.extend(constant_variants(source, candidate, target, big))
+    for variant in list(result) or [source]:
+        result.extend(argument_variants(variant, report, target, big))
     layouts = layout_variants(source, report, target, big)
     for variant in list(result):
         layouts.extend(layout_variants(variant, report, target, big))
