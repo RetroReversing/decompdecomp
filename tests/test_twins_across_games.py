@@ -117,3 +117,46 @@ def test_imported_c_is_rejudged_in_rom_and_misses_are_remembered(built, tmp_path
     assert net.store.one("SELECT COUNT(*) AS n FROM cross_game_attempts WHERE outcome='match'")["n"] == 1
     job = SimpleNamespace(stop=SimpleNamespace(is_set=lambda: True))
     assert net.twins._fork_to_rom(agent, proj, donor, wanted, mine, job) == 0
+
+
+def test_exact_donor_names_are_tracked_and_do_not_overwrite_names(built, tmp_path):  # noqa: F811
+    net = RomNetwork(tmp_path / "decomp.db", tmp_path)
+    slug = net.import_rom(ROM, confirmed=True, log=lambda *_: None)
+    agent, _ = net.local_agent("tester")
+    net.split_function(agent, slug, "func_800007C4", "0x800007D0")
+    copy_project(net, slug, "target")
+    assert net.compile_and_diff(agent, "func_800007D0", CLAMP, slug).startswith("✅ MATCH")
+    assert net.rename_symbol(agent, slug, "func_800007D0", "clamp_s32").startswith("✅")
+    before = next(r for r in net.function_map("target") if r["name"] == "func_800007D0")
+    assert not before["named"] and not before["renamed"]
+    assert net.twins.reuse_names("target") == 1
+    fn = net._function("clamp_s32", "target")
+    naming = json.loads(fn["meta"])["naming"]
+    assert naming["method"] == "exact_cross_game" and naming["source_project"] == slug
+    assert naming["original_name"] == "func_800007D0"
+    after = next(r for r in net.function_map("target") if r["name"] == "clamp_s32")
+    assert after["named"] and after["renamed"]
+    assert net.twins.reuse_names("target") == 0
+    assert net.rename_symbol(agent, "target", "clamp_s32", "my_clamp").startswith("✅")
+    assert net.twins.reuse_names("target") == 0
+    assert json.loads(net._function("my_clamp", "target")["meta"])["naming"]["original_name"] == "func_800007D0"
+    # Even an explicit rename to another generated-looking name is owned by the user.
+    assert net.rename_symbol(agent, "target", "my_clamp", "sub_800007D0").startswith("✅")
+    assert net.twins.reuse_names("target") == 0
+
+
+
+def test_conflicting_exact_donor_names_are_not_guessed(built, tmp_path):  # noqa: F811
+    net = RomNetwork(tmp_path / "decomp.db", tmp_path)
+    slug = net.import_rom(ROM, confirmed=True, log=lambda *_: None)
+    agent, _ = net.local_agent("tester")
+    net.split_function(agent, slug, "func_800007C4", "0x800007D0")
+    copy_project(net, slug, "target")
+    copy_project(net, slug, "second-donor")
+    for donor, name in [(slug, "clamp_s32"), ("second-donor", "limit_s32")]:
+        assert net.compile_and_diff(agent, "func_800007D0", CLAMP, donor).startswith("✅ MATCH")
+        assert net.rename_symbol(agent, donor, "func_800007D0", name).startswith("✅")
+    assert net.twins.reuse_names("target") == 0
+    assert net._function("func_800007D0", "target")["name"] == "func_800007D0"
+    assert net.twins.reuse_names("target", donor_slug="not-a-project") == 0
+    assert net.twins.reuse_names("target", donor_slug=slug) == 1

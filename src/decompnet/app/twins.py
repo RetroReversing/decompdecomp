@@ -538,6 +538,7 @@ class Twins:
                 db.execute('INSERT INTO reuse_runs(project_id,attempts,matched,bytes,seconds,created_at) VALUES(?,?,?,?,?,?)',
                            (proj['id'], job.reuse_attempts, job.reuse_matched,
                             job.reuse_bytes, time.monotonic() - started, time.time()))
+            self.reuse_names(slug, job)
             self.update_boosts(self.net.project_row(slug))
         finally:
             job.ordered.set()
@@ -858,6 +859,98 @@ class Twins:
             db.executemany("INSERT OR IGNORE INTO sdk_signatures(corpus,arch,big_endian,name,fingerprint,size) "
                            "VALUES(?,?,?,?,?,?)", signatures)
         return len(signatures)
+
+    def reuse_names(self, slug: str, job: Job | None = None, *, donor_slug: str | None = None) -> int:
+        """Infer names from exact verified donors, preserving existing names and rejecting ambiguity.
+
+        These are inferred names, not proof of the original source's spelling. Tiny generic functions
+        are excluded. The normal rename operation checks all existing matches before saving changes.
+        """
+        from .. import consoles
+        from .function_names import generated, record
+        from .function_names import state as name_state
+
+        proj = self.net.project_row(slug)
+        if slug in self.net.links:
+            return 0
+        cfg = self.net.cfg(proj)
+        console = consoles.of(cfg)
+        mine = self.prints(proj)
+        wanted = {p.key for p in mine.values() if p.size >= ACROSS_MIN_BYTES and not p.asm}
+        donors = defaultdict(dict)
+        for other in self.net.store.all("SELECT * FROM projects WHERE id != ?", proj["id"]):
+            if job is not None and job.stop.is_set():
+                return 0
+            if donor_slug is not None and other["slug"] != donor_slug:
+                continue
+            if other["slug"] in self.net.links:
+                continue
+            try:
+                con = consoles.of(self.net.cfg(other))
+                if (con.arch, con.big_endian) != (console.arch, console.big_endian):
+                    continue
+                rows = self.net.store.all("SELECT id,name,meta FROM functions WHERE project_id=? AND status='matched'",
+                                          other["id"])
+                if not rows:
+                    continue
+                prints = self.prints(other)
+                for row in rows:
+                    p = prints.get(row["id"])
+                    name = (json.loads(row["meta"] or "{}").get("real") or p.name or row["name"].split("@")[0]) if p else ""
+                    if p and p.key in wanted and not p.asm and IDENT.fullmatch(name) and not generated(name):
+                        donors[p.key].setdefault(name, {"source_project": other["slug"],
+                                                       "source_function_id": row["id"], "source_name": name})
+            except (NetworkError, OSError, ValueError):
+                continue  # moved or incompletely prepared donor
+        rows = self.net.store.all("SELECT * FROM functions WHERE project_id=?", proj["id"])
+        taken = {r["name"] for r in rows}
+        candidates = []
+        for row in rows:
+            p = mine.get(row["id"])
+            choices = donors.get(p.key, {}) if p else {}
+            naming = name_state(row)
+            if naming["named"] or naming["renamed"] or len(choices) != 1:
+                continue
+            name, provenance = next(iter(choices.items()))
+            if name in taken or self.net.store.one("SELECT 1 FROM claims WHERE function_id=?", row["id"]):
+                continue
+            candidates.append((row, name, provenance))
+        # A shared fingerprint can occur several times in the target. Do not pick an arbitrary owner.
+        counts = defaultdict(int)
+        for _, name, _ in candidates:
+            counts[name] += 1
+        candidates = [(r, n, p) for r, n, p in candidates if counts[n] == 1][:32]
+        if not candidates or (job is not None and job.stop.is_set()):
+            return 0
+        agent, _ = self.net.local_agent("autopilot")
+        if not self.net.fork_slug(slug):
+            try:
+                result = self.net.rename_symbols(agent, slug, [(r["name"], n) for r, n, _ in candidates],
+                                                 "Names inferred from exact verified functions in other projects")
+            except (NetworkError, OSError, ValueError):
+                return 0
+            if not result.startswith("✅"):
+                return 0
+            with self.net.store.tx() as db:
+                for row, name, provenance in candidates:
+                    record(db, row["id"], row["name"], name, method="exact_cross_game", **provenance)
+            return len(candidates)
+        renamed = 0
+        for row, name, provenance in candidates[:4]:
+            if job is not None and job.stop.is_set():
+                break
+            try:
+                result = self.net.rename_symbol(agent, slug, row["name"], name,
+                                                "Name inferred from an exact verified function in "
+                                                + provenance["source_project"])
+            except (NetworkError, OSError, ValueError):
+                continue
+            if not result.startswith("✅"):
+                continue
+            with self.net.store.tx() as db:
+                record(db, row["id"], row["name"], name, method="exact_cross_game", **provenance)
+            renamed += 1
+        return renamed
 
     def _fork_to_rom(self, agent, proj, other, wanted, mine, job) -> int:
         """Try imported, verified C against identical ROM fingerprints; only the ROM judge accepts it.

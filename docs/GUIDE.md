@@ -391,3 +391,16 @@ ROMs. [objdiff](https://github.com/encounter/objdiff) judges forks. [m2c](https:
 [decomp-toolkit](https://github.com/encounter/decomp-toolkit) splits GameCube and Wii games, and
 [wibo](https://github.com/decompals/wibo) runs the Windows compilers on Linux. Thank you to the decomp community for
 these tools. decompdecomp is not related to these projects.
+
+### Reusing function names
+
+The free matching pass also looks for useful names in other local ROM and imported projects. It only names
+functions that still have generated names and have not been explicitly renamed. Donors must be matched,
+share the processor and byte order, and have an identical relocation-normalized machine-code fingerprint.
+Functions smaller than 32 bytes, conflicting donor names, duplicate target candidates, occupied names and
+claimed functions are skipped. Existing names are preserved. Every rename uses the normal regression checks.
+
+Function details distinguish generated names, named functions and recorded renames. An automatic transfer
+is labelled **inferred**, with its donor project: identical machine code does not prove an original source
+name or identical purpose. New renames retain their original name and provenance; older names are recognized
+as named, without inventing a rename history that was never recorded.

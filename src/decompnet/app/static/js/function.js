@@ -64,6 +64,10 @@ async function refreshFn(first) {
       ? `${d.unit} · ${d.insns} instructions${d.match_percent != null ? ` · ${d.match_percent >= 100 ? "100" : (Math.floor(d.match_percent * 10) / 10).toFixed(1)}% now` : ""}`
       : `${hex8(d.vram)} · ROM 0x${d.rom_offset.toString(16).toUpperCase()} · ${d.insns} instructions`;
     $("fnName").textContent = d.name;
+    $("fnNaming").hidden = d.named == null;
+    $("fnNaming").textContent = d.naming?.method === "exact_cross_game"
+      ? `Name inferred from ${d.naming.source_project} · exact code match`
+      : d.renamed ? `Renamed from ${d.naming.original_name}` : d.named ? "Named function" : "Generated name";
     fnBadge(d);
     $("fnSetAside").hidden = d.status !== "open";
     $("fnSetAside").onclick = async () => {
