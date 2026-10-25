@@ -223,7 +223,7 @@ function renderAutopilot(ov) {
   const cross = ov.cross_game || { counts: {}, recent: [] };
   const count = cross.counts.match || 0, tried = Object.values(cross.counts).reduce((a, b) => a + b, 0);
   $("crossGamePanel").hidden = ov.kind === "fork";
-  $("crossGameSummary").textContent = `${count} verified matches from other games · ${tried} transfer attempts. Exact matches are compiled and checked against this game's bytes. Names and similar code are suggestions until verified.`;
+  $("crossGameSummary").textContent = `${count} verified matches from other games · ${tried} transfer attempts. Exact and similar candidates are compiled and checked against this game's bytes. Only verified matches count.`;
   $("crossGameRecent").innerHTML = cross.recent.slice(0, 12).map((r) =>
     `<li><b>${esc(r.target)}</b> from ${esc(r.source)} in ${esc(r.game)} · ${esc(r.outcome)}${r.reason ? ` · ${esc(r.reason)}` : ""}</li>`).join("") || `<li class="muted small">No cross-game transfers yet. Run autopilot after another game has matched functions.</li>`;
   const box = $("autopilot"), ap = ov.autopilot, tw = ov.twins, pm = ov.permuter;
@@ -233,28 +233,32 @@ function renderAutopilot(ov) {
   const running = ap && ap.state === "running";
   const twinsRunning = tw && tw.state === "running";
   box.classList.toggle("on", !!(running || twinsRunning));
-  $("apBar").hidden = !running || ap.phase === "twins";
+  const reuseRunning = twinsRunning || (running && ap.phase === "twins");
+  $("apBar").hidden = !(running || twinsRunning);
+  $("apBar").className = reuseRunning ? "workbar" : "upbar";
+  if (reuseRunning) $("apBar").firstElementChild.style.width = "";
   const perm = pm && (pm.tried || pm.state === "running")
     ? ` The permuter ${pm.state === "running" ? `is rewriting near misses${pm.current ? ` (now ${pm.current})` : ""}` : "rewrote near misses"}: ${plural(pm.tried, "function")}, ${pm.matched} matched.` : "";
   const twinsDone = (ap && ap.twins) || (tw && tw.matched) || 0;
   if (running && ap.phase === "twins") {
-    $("apTitle").textContent = "Autopilot: matching code the game has more than once (twins of matched functions)";
-    $("apSub").textContent = `Each match's code is tried on its identical copies, names swapped; the judge decides.${perm}`;
+    $("apTitle").textContent = "Autopilot: trying verified C from this game and other projects";
+    $("apSub").textContent = `Exact and close candidates are compiled locally; only byte-for-byte matches count.${perm}`;
     $("apBtn").textContent = "Stop";
   } else if (running) {
     $("apTitle").textContent = `Autopilot: trying each function's machine draft · ${ap.matched.toLocaleString()} matched for free`;
-    $("apSub").textContent = `${ap.tried.toLocaleString()} of ${ap.total.toLocaleString()} tried${ap.near ? ` · ${ap.near} more are 90%+ there` : ""}${ap.twins ? ` · ${ap.twins.toLocaleString()} from identical code` : ""}. Agents work alongside it.${perm}`;
+    $("apSub").textContent = `${ap.tried.toLocaleString()} of ${ap.total.toLocaleString()} tried${ap.near ? ` · ${ap.near} more are 90%+ there` : ""}${ap.twins ? ` · ${ap.twins.toLocaleString()} from reused C` : ""}. Agents work alongside it.${perm}`;
     $("apBar").firstElementChild.style.width = `${(100 * ap.tried) / Math.max(1, ap.total)}%`;
     $("apBtn").textContent = "Stop";
   } else if (ap || tw) {
     const total = (ap ? ap.matched : 0) + (ap ? 0 : twinsDone);
-    $("apTitle").textContent = twinsRunning ? `Matching identical code: ${tw.matched.toLocaleString()} so far`
+    $("apTitle").textContent = twinsRunning ? `Trying reusable C: ${tw.matched.toLocaleString()} so far`
       : total ? `Autopilot matched ${total.toLocaleString()} function${total === 1 ? "" : "s"} for free` : "Autopilot found no free matches this time";
     const parts = [];
-    if (twinsDone) parts.push(`${twinsDone.toLocaleString()} from identical code`);
+    if (twinsDone) parts.push(`${twinsDone.toLocaleString()} from reused C`);
     if (tw && tw.asm) parts.push(`${tw.asm.toLocaleString()} copies of assembly set aside (not for agents)`);
     if (ap && ap.tried) parts.push(`${ap.tried.toLocaleString()} machine drafts tried${ap.near ? `, ${ap.near} more 90%+ there` : ""}`);
-    $("apSub").textContent = (parts.length ? parts.join(" · ") + ". " : "") + (ap && ap.no_drafts ? "" : "Run it again after agents add types and names: drafts get better.") + perm;
+    if (ap && ap.no_drafts && !ap.tried) $("apTitle").textContent = "Autopilot could not try machine drafts";
+    $("apSub").textContent = (parts.length ? parts.join(" · ") + ". " : "") + (ap && ap.no_drafts ? ap.no_drafts : "Run it again after agents add types and names: drafts get better.") + perm;
     $("apBtn").textContent = "Run again";
   } else {
     $("apTitle").textContent = "Free matches first";

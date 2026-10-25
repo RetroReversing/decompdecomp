@@ -526,7 +526,11 @@ class Twins:
             self.update_boosts(proj, pending=True)
             job.ordered.set()
             self.run(slug, job)
+            job.state = "running"  # run() finishes its local pass; cross-project work is still cancellable
             job.matched += self.across_games(slug, job)
+            from . import similar_matches
+
+            job.matched += similar_matches.run(self, slug, job)
             self.update_boosts(self.net.project_row(slug))
         finally:
             job.ordered.set()
@@ -903,11 +907,13 @@ class Twins:
             return (lines[0] if lines else "it didn't build")[:WHY_CHARS]
         return (res.get("text") or "").splitlines()[0][:WHY_CHARS] if res.get("text") else f"score {res.get('score')}"
 
-    def _attempt_twin(self, agent, proj, a, b, source: str, origin: str = "", theirs: bool = False) -> tuple[str, str]:
+    def _attempt_twin(self, agent, proj, a, b, source: str, origin: str = "", theirs: bool = False,
+                      similar: bool = False) -> tuple[str, str]:
         """match | miss | skip for a's code made into b's (`source`). `theirs`: a is another project's, so the tries
         that take more from a's file (its types, includes, declarations) don't apply: twin_source took its
         declarations already."""
-        note = f"/* identical to {a['name']}{origin} (matched), with its names changed by decompdecomp */\n"
+        relation = "adapted from similar verified C in" if similar else "identical to"
+        note = f"/* {relation} {a['name']}{origin} (matched), with its names changed by decompdecomp */\n"
         try:
             if theirs:
                 res = self.net.forks.attempt(agent, proj["slug"], b["name"], note + source, keep=False)
