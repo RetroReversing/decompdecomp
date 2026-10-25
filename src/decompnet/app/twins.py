@@ -705,7 +705,7 @@ class Twins:
                     job.cross_tried += 1
                 if bounded:
                     job.reuse_attempts += 1
-                outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}")
+                outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}", mapping=names)
                 with self.net.store.tx() as db:
                     db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,"
                                "source_function_id,outcome,reason,created_at) VALUES(?,?,?,?,?,?,?)",
@@ -997,7 +997,7 @@ class Twins:
                     job.cross_tried += 1
                 if bounded:
                     job.reuse_attempts += 1
-                outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}")
+                outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}", mapping=names)
                 with self.net.store.tx() as db:
                     db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,"
                                "source_function_id,outcome,reason,created_at) VALUES(?,?,?,?,?,?,?)",
@@ -1089,12 +1089,15 @@ class Twins:
         return (res.get("text") or "").splitlines()[0][:WHY_CHARS] if res.get("text") else f"score {res.get('score')}"
 
     def _attempt_twin(self, agent, proj, a, b, source: str, origin: str = "", theirs: bool = False,
-                      similar: bool = False, feedback: dict | None = None) -> tuple[str, str]:
+                      similar: bool = False, feedback: dict | None = None, mapping: dict | None = None) -> tuple[str, str]:
         """match | miss | skip for a's code made into b's (`source`). `theirs`: a is another project's, so the tries
         that take more from a's file (its types, includes, declarations) don't apply: twin_source took its
         declarations already."""
         relation = "adapted from similar verified C in" if similar else "identical to"
         note = f"/* {relation} {a['name']}{origin} (matched), with its names changed by decompdecomp */\n"
+        if mapping is not None and self.net.is_rom(proj) and not self.net.fork_slug(proj['slug']):
+            from .repair_mappings import remember
+            remember(self.net, a, b, note + source, mapping)
         try:
             if theirs:
                 res = self.net.forks.attempt(agent, proj["slug"], b["name"], note + source, keep=False)

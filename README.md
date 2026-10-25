@@ -87,6 +87,12 @@ load/store offsets. Register clobbers, branches, calls and unknown instructions 
 consumers are rejected. Full-address comparison also resolves C identifiers whose address is shown as another symbol plus an offset
 in disassembly. Reconstructed addresses only propose local C edits and still require exact verification.
 
+Repairs retain the original donor when the candidate's provenance is known. Successful repairs can then
+teach symbol mappings for other candidates from that same donor. New data/callee mappings need agreement
+from two independently verified function pairs; conflicts, reopened functions and changed donor code invalidate
+the evidence. Each proposed transfer still goes through the exact compiler/link judge. Old saved candidates
+can recover provenance only when recorded donor history reproduces their adapted C exactly.
+
 When eligible near misses exist, similarity transfers use at most three quarters of the remaining search budget;
 the rest is reserved for repairs. The transfer cursor is retained so the next pass continues through the queue.
 
