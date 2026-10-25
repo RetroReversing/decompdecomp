@@ -657,3 +657,12 @@ The answer goes here: build it, build part of it, or not, and why.
 - **Selected PS1 GTE C intrinsics**: fixed vector transfers and transformation/clipping/averaging/square
   commands on the original three PS1 GCC toolchains. Known operations no longer imply handwritten assembly.
   Submitted assembly stays rejected; other GTE operations and additional compiler registrations remain work.
+
+### Additional PS1 source recovery support
+
+Fixed GTE intrinsics now cover selected lighting, colour interpolation, RGB FIFO, primitive screen stores and
+fixed-register C operands. Arbitrary submitted assembly remains rejected. Operator ROM splits use the normal
+boundary engine, reject active claims and matched functions, and clear stale drafts when bounds change.
+Project-mode source splitting continues through its existing console connector; this route is ROM-only.
+Validation for this increment: focused intrinsic and split tests, plus full compiler/linker regression on a
+private PS1 project. Other console features were not revalidated in this increment.
