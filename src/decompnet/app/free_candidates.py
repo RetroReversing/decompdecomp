@@ -87,6 +87,7 @@ def exhausted(job):
 def run(twins, slug, job):
     """Try recognisable leaf patterns and exact SDK fingerprints before spending CPU on wider similarity."""
     from .address_repairs import variants as address_variants
+    from .sdk_library import allowed
     from .sdk_source_repairs import variant as sdk_variant
     from .similar_matches import REPAIR_PERCENT, trial_key
     from .twins import apply
@@ -123,8 +124,9 @@ def run(twins, slug, job):
             candidates.insert(0, ('address-probe', 'saved near miss', fn['best_source']))
         sdk = net.store.all('SELECT DISTINCT s.* FROM sdk_sources s JOIN sdk_signatures i '
                             'ON s.corpus=i.corpus AND s.name=i.name AND s.arch=i.arch AND s.big_endian=i.big_endian '
-                            'WHERE i.arch=? AND i.big_endian=? AND i.fingerprint=? AND s.compiler=? ORDER BY s.corpus,s.name LIMIT 3',
+                            'WHERE i.arch=? AND i.big_endian=? AND i.fingerprint=? AND s.compiler=? ORDER BY s.corpus,s.name',
                             proj['arch'], proj['big_endian'], fingerprint.key, twins._compiler_key(settings))
+        sdk = [row for row in sdk if allowed(net, proj, row['corpus'])][:3]
         for row in sdk:
             corpus = row['corpus']
             if corpus not in sdk_maps:

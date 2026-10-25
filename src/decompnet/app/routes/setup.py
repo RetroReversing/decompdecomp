@@ -24,6 +24,23 @@ def register(app: App) -> None:
     net, mcp, manager, jobs = app.net, app.mcp, app.manager, app.jobs
     settings, guard, body, call, fail = app.settings, app.guard, app.body, app.call, app.fail
 
+    @mcp.custom_route("/api/sdk-library", methods=["GET", "POST"])
+    async def api_sdk_library(request: Request) -> Response:
+        from .. import sdk_library
+        if (bad := guard(request, write=request.method == "POST")):
+            return bad
+        try:
+            if request.method == "GET":
+                return JSONResponse(await call(lambda: sdk_library.state(net, request.query_params.get('slug'))))
+            data = await body(request)
+            if data.get('slug'):
+                await call(lambda: sdk_library.choose(net, str(data['slug']), data.get('selection')))
+                return JSONResponse(await call(lambda: sdk_library.state(net, str(data['slug']))))
+            folders = data.get('folders', [])
+            return JSONResponse({'job': jobs.start('sdk-library', lambda log: sdk_library.scan(net, folders, log))})
+        except (NetworkError, ValueError, OSError) as e:
+            return fail(e)
+
     @mcp.custom_route("/api/toolchain", methods=["POST"])
     async def api_toolchain(request: Request) -> Response:
         if (bad := guard(request, write=True)):

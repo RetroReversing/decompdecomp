@@ -68,7 +68,9 @@ Every accepted candidate must compile and link to the destination's exact bytes.
   mappings need two independent matching pairs and no conflicting evidence. Named struct definitions are not rewritten.
 - **Tiny functions:** constants, arithmetic, getters, setters and simple forwarding wrappers can be proposed
   without another project containing matched C.
-- **Local libraries:** in the SDK panel, supply an object archive and optionally its C source file/folder and a
+- **Local libraries:** add SDK archive folders once in global **Settings → Local SDK libraries**. Each game
+  detects matching signatures automatically; its Settings can select libraries explicitly, including disabling all.
+  For advanced source matching, in the project SDK panel, supply an object archive and optionally its C source file/folder and a
   self-contained declarations header. Matching fingerprints select C to try with the project's compiler.
   Sources stay local; nothing is downloaded or built by an SDK's scripts. Import with the compiler settings you
   intend to use; reimport after changing them. Ambiguous definitions are excluded.

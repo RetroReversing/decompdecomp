@@ -809,7 +809,10 @@ class Twins:
         hints = [{"name": r["name"], "game": r["game"], "score": 1.0, "kind": "verified C in another game",
                   "function_id": r["function_id"]} for r in exact]
         for r in self.net.store.all("SELECT corpus,name FROM sdk_signatures WHERE arch=? AND big_endian=? "
-                                    "AND fingerprint=? LIMIT ?", proj["arch"], proj["big_endian"], target.key, limit):
+                                    "AND fingerprint=?", proj["arch"], proj["big_endian"], target.key):
+            from .sdk_library import allowed
+            if not allowed(self.net, proj, r["corpus"]):
+                continue
             hints.append({"name": r["name"], "game": r["corpus"], "score": 1.0,
                           "kind": "SDK object signature; name only"})
         if proj["arch"] != "mips" or len(hints) >= limit:
