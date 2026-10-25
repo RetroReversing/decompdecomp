@@ -11,9 +11,11 @@ SYMBOL = re.compile(r'%(hi|lo)\(([A-Za-z_]\w*)\)')
 def variants(source, report, target, big, known_symbols):
     """Require agreeing HI/LO evidence and resolvable destination names, then combine with literal edits.
 
-    Addend expressions, changed register/instruction layouts and ambiguous one-to-many mappings are left alone.
+    Literal addends can use evidenced pointer strides. Changed instruction layouts and ambiguous mappings
+    are left alone.
     These are candidate-local hypotheses: never rename the project's symbols or change shared declarations.
     """
+    from .addend_repairs import variants as addend_variants
     from .similar_matches import INTEGER, TOKENS, literal_variants
 
     votes = defaultdict(set)
@@ -30,8 +32,9 @@ def variants(source, report, target, big, known_symbols):
     names = {old: next(iter(values)) for old, values in votes.items()
              if len(values) == 1 and old not in values and (next(iter(values)) in known_symbols or AUTO_NAME.fullmatch(next(iter(values))))
              and halves[old, next(iter(values))] == {'hi', 'lo'}}
-    if not names or len(names) > 2:
-        return []
+    addends = addend_variants(source, report)
+    if len(names) > 2:
+        names = {}
     # Token replacement preserves comments, strings and identifier substrings, and handles swaps simultaneously.
     addresses = {}
     for old, new in names.items():
@@ -50,10 +53,11 @@ def variants(source, report, target, big, known_symbols):
                 return hex(next(iter(targets))) + number[2]
         return text
     renamed = TOKENS.sub(replace, source)
-    if renamed == source:
-        return []
-    result = [renamed]
+    result = ([renamed] if renamed != source else []) + addends
+    if renamed != source:
+        result.extend(addend_variants(renamed, report))
     if report.get('candidate_target'):
         candidate = {'target': bytes.fromhex(report['candidate_target']), 'relocs': report.get('candidate_relocs', '[]')}
-        result.extend(literal_variants(renamed, candidate, target, big))
-    return list(dict.fromkeys(result))
+        for variant in list(result):
+            result.extend(literal_variants(variant, candidate, target, big))
+    return list(dict.fromkeys(result))[:8]
