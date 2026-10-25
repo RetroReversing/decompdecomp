@@ -18,6 +18,48 @@ function highlightC(text) {
   }).join("\n");
 }
 
+function groupNameHints(hints) {
+  const groups = new Map();
+  for (const hint of hints || []) {
+    if (!groups.has(hint.name)) groups.set(hint.name, { name: hint.name, hints: [] });
+    const group = groups.get(hint.name);
+    if (!group.hints.some((h) => h.game === hint.game && h.kind === hint.kind)) group.hints.push(hint);
+  }
+  return [...groups.values()].map((g) => ({ ...g,
+    exact: g.hints.filter((h) => h.score === 1 && h.kind !== "similar code; unverified").length,
+    score: Math.max(...g.hints.map((h) => h.score)),
+  })).sort((a, b) => b.exact - a.exact || b.hints.length - a.hints.length || b.score - a.score || a.name.localeCompare(b.name));
+}
+function nameHintsHTML(hints, current) {
+  return groupNameHints(hints).map((g) => {
+    const sources = g.hints.length;
+    const details = g.hints.map((h) => `<li>${esc(h.game.replace(/\s*\/\s*sha256:.*$/, ""))} · ${esc(h.kind)}${h.score < 1 ? ` · ${Math.round(h.score * 100)}% similar` : ""}</li>`).join("");
+    return `<div class="note"><b class="mono">${esc(g.name)}</b> · ${sources} source${sources === 1 ? "" : "s"}${sources > 1 ? " agree" : ""}${g.exact && g.name !== current ? ` <button class="link-btn" type="button" data-name="${esc(g.name)}">Use name</button>` : ""}<details><summary>Supporting sources</summary><ul>${details}</ul></details></div>`;
+  }).join("");
+}
+let nameChangeBusy = false;
+async function useSuggestedName(button, detail) {
+  const slug = S.slug, old = detail.name, name = button.dataset.name;
+  const log = $("fnNameLog");
+  nameChangeBusy = true;
+  log.hidden = false;
+  showJobError(log, "");
+  const done = beginWork(log, "Applying name and checking existing matches", [...$("fnCrossHints").querySelectorAll("[data-name]")]);
+  try {
+    const result = await api("/api/cross-game/name", { method: "POST", body: { slug, function: old, name } });
+    log.textContent = result.message;
+    if (S.slug === slug && S.fn === old) {
+      S.fn = name;
+      // Show success immediately, even if the next map refresh is slow.
+      $("fnName").textContent = name;
+      nameChangeBusy = false;
+      await refreshMap(true);
+      await refreshFn(false);
+    }
+  } catch (e) { showJobError(log, e.message); }
+  finally { nameChangeBusy = false; done(); }
+}
+
 async function openFn(name) {
   const again = S.fn === name && !$("drawer").hidden;
   if (!again) { giveBack(name); S.editDirty = false; $("tryMsg").hidden = true; }
@@ -54,11 +96,14 @@ document.querySelectorAll("#diffWhich [data-which]").forEach((b) => {
 
 let fnBusy = false;
 async function refreshFn(first) {
-  if (fnBusy || !S.fn) return;
+  if (fnBusy || nameChangeBusy || !S.fn) return;
   fnBusy = true;
   try {
-    const d = await api(`/api/function?slug=${S.slug}&name=${encodeURIComponent(S.fn)}`);
-    if (d.name !== S.fn) return;
+    const slug = S.slug, requested = S.fn;
+    const d = await api(`/api/function?slug=${slug}&name=${encodeURIComponent(requested)}`);
+    if (slug !== S.slug || requested !== S.fn || nameChangeBusy) return;
+    // The server follows old-name aliases after a rename (including names inferred by Autopilot).
+    S.fn = d.name;
     S.fnDetail = d;
     $("fnAddr").textContent = S.ov.kind === "fork"
       ? `${d.unit} · ${d.insns} instructions${d.match_percent != null ? ` · ${d.match_percent >= 100 ? "100" : (Math.floor(d.match_percent * 10) / 10).toFixed(1)}% now` : ""}`
@@ -129,18 +174,8 @@ async function refreshFn(first) {
     if (d.called_by.length) xr.push(`<div><b>called by</b>${d.called_by.map(fnLink).join("")}</div>`);
     $("fnXref").innerHTML = xr.join("");
     $("fnCrossHints").innerHTML = d.cross_game_hints?.length
-      ? `<p class="col-title">Other games and local SDKs</p><p class="muted small">Possible names and starting points. Only a compiled byte match verifies C for this game.</p>${d.cross_game_hints.map((h) =>
-        `<div class="note"><b class="mono">${esc(h.name)}</b> · ${esc(h.game)} · ${esc(h.kind)}${h.score < 1 ? ` · ${Math.round(h.score * 100)}% similar` : ""}${h.score === 1 && h.kind !== "similar code; unverified" && h.name !== d.name ? ` <button class="link-btn" type="button" data-name="${esc(h.name)}">Use name</button>` : ""}</div>`).join("")}` : "";
-    $("fnCrossHints").querySelectorAll("[data-name]").forEach((b) => { b.onclick = async () => {
-      try {
-        const result = await api("/api/cross-game/name", { method: "POST", body: {
-          slug: S.slug, function: d.name, name: b.dataset.name } });
-        toast(esc(result.message));
-        S.fn = b.dataset.name;
-        await refreshMap(true);
-        await refreshFn(false);
-      } catch (e) { toast(esc(e.message), "err"); }
-    }; });
+      ? `<p class="col-title">Other games and local SDKs</p><p class="muted small">Sources suggesting the same name are grouped together. Agreement is a naming lead; only a compiled byte match verifies C for this game.</p>${nameHintsHTML(d.cross_game_hints, d.name)}<pre id="fnNameLog" class="log" hidden></pre>` : "";
+    $("fnCrossHints").querySelectorAll("[data-name]").forEach((b) => { b.onclick = () => useSuggestedName(b, d); });
     $("fnXref").querySelectorAll(".fn").forEach((x) => { x.onclick = () => openFn(x.dataset.fn.split("+")[0]); });
     // your own notes (written here, as "you") apart from the agents': they aren't notes from an agent
     const noteRow = (n) => `<div class="note"><small>${esc(n.agent)} · ${clock(n.created_at)}</small>${esc(n.text)}</div>`;
