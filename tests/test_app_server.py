@@ -737,3 +737,13 @@ def test_rom_library_setting_and_background_lookup(app, tmp_path, monkeypatch):
     assert result['state'] == 'done' and result['result']['path'].endswith('game.z64')
     assert seen == [(p, {'sha1': 'a' * 40}, str(library))]
     assert client.post('/api/settings', json={'rom_library': ''}, headers={'X-Decomp': '1'}).json()['rom_library'] == ''
+
+
+def test_free_search_settings_are_bounded_and_can_disable_automatic_work(app):
+    client, net, _ = app
+    response = client.post('/api/settings', json={'reuse_auto': False, 'reuse_seconds': 9999, 'reuse_attempts': -1},
+                           headers={'X-Decomp': '1'})
+    assert response.status_code == 200
+    assert response.json()['reuse_seconds'] == 600 and response.json()['reuse_attempts'] == 1
+    assert not net.cascades.enabled
+    client.post('/api/settings', json={'reuse_seconds': 120, 'reuse_attempts': 128}, headers={'X-Decomp': '1'})

@@ -20,6 +20,7 @@ class AutopilotMixin:
         background. Whatever already matches is saved before any agent spends a token on it; drafts that compile
         become the function's best attempt, so agents start from them. Agents and autopilot never collide: a
         function is held only while its draft compiles, and claimed ones are skipped."""
+        self.cascades.resume(slug)
         state = self.autopilots.get(slug)
         if state and state["state"] == "running":
             return state
@@ -50,6 +51,8 @@ class AutopilotMixin:
         return state
 
     def stop_autopilot(self, slug: str) -> None:
+        self.cascades.pause(slug)
+        self.twins.stop(slug)
         if (state := self.autopilots.get(slug)) and state["state"] == "running":
             state["stop"].set()
 
@@ -111,6 +114,7 @@ class AutopilotMixin:
         if proj is None:
             return
         self.twins.index_function(proj, function_id)
+        self.cascades.notify(proj, function_id)
         if agent is not None and agent.name == "autopilot" and self.twins._full_running(proj["slug"]):
             return
         self.twins.after_match(proj, function_id)
@@ -138,7 +142,10 @@ class AutopilotMixin:
             if verdict is not None:
                 d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
             self._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match)
-            return {"matched": d.bytes_match, "score": d.score}
+            return {"matched": d.bytes_match, "score": d.score, "max_score": d.max_score,
+                    "percent": d.percent, "rows": d.rows,
+                    "candidate_target": cand.code.hex(),
+                    "candidate_relocs": json.dumps([(r.offset, r.type, 0) for r in cand.relocs])}
         finally:
             with self.store.tx() as db:
                 db.execute("DELETE FROM claims WHERE function_id=? AND agent_id=?", (fn["id"], agent.id))

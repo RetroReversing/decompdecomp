@@ -123,12 +123,23 @@ decompdecomp helps with these steps:
 
 ### Reusing similar functions without AI
 
-Run autopilot after another compatible ROM project has verified C. It learns names from accepted transfers,
-tries close source code, and gives close failures a small local-permuter search. Run again to resume unfinished
-work. Changed headers, symbols and source make affected trials eligible again.
+Run autopilot after another compatible ROM project has verified C. It learns names and conservative byte-offset
+changes from accepted transfers, tries close C, and gives close failures a bounded search guided by the assembly
+differences. Tiny-function templates also work without another matched project. Every result still passes the
+ordinary compiler/link byte check.
+
+New matches automatically queue compatible projects. In **Settings**, turn automatic reuse on/off and set the
+elapsed-time and attempt budgets (two minutes / 128 by default, shared across an automatic wave). **Stop** pauses
+that project's automatic reuse; **Run again** resumes it. Completed trials are cached across restarts. Changed
+headers, symbols, compiler settings and source make affected trials eligible again.
+
+For library code, open the SDK panel and supply a local object archive, its optional C file/folder and an optional
+self-contained declarations header. Fingerprints select definitions to try with the compiler used when importing.
+This does not download source, run SDK build scripts, or resolve a library's header dependencies for you.
 
 A **compiler** result means the candidate matches with the donor's flags. Its C and settings are saved in the
 function's notes for review. It is not counted as progress until accepted with the project's build settings.
+These additional searches currently support MIPS ROM projects; imported repository projects retain exact transfers.
 
 ## Agents
 

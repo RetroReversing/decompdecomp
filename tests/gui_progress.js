@@ -117,6 +117,20 @@ async function main() {
       }
     }
   }
+  // SDK indexing includes optional local C and always clears its foreground progress bar.
+  for (const fail of [false, true]) {
+    const test = setup("steering", '$("sdkImport").onclick = async () => {', '\n};', "sdkLog", "sdkImport");
+    const running = test.ctx.run();
+    assert.equal(test.button.disabled, true);
+    assert.equal(test.log.bar.removed, undefined);
+    if (fail) test.start.reject(new Error("Invalid source folder"));
+    else test.start.resolve({ signatures: 12, sources: 4, corpus: "local" });
+    await running;
+    assert.equal(test.button.disabled, false);
+    assert.equal(test.log.bar.removed, true);
+    if (fail) assert.equal(test.log.error, "Invalid source folder");
+    else assert.match(test.log.textContent, /12 signatures and 4 C definitions/);
+  }
   // Passive overview refreshes keep a pending check's panel and indicator intact.
   for (const caseIndex of [0, 6]) {
     const test = setup(...cases[caseIndex]);
