@@ -5,16 +5,19 @@ decompiled src/), for Demo Quest 64. The test clones it like a repository from d
 builds it and has an agent work through the guarded tools.
 """
 
+import hashlib
 import json
 import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from decompnet import toolchains
 from decompnet.app.engine import RomNetwork
 from decompnet.forks import csource
+from decompnet.forks.project import ForkProject
 from decompnet.network import NetworkError
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,6 +34,103 @@ def _git(cwd: Path, *args: str) -> str:
     return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True,
                           env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
                                "GIT_COMMITTER_EMAIL": "t@t", "PATH": "/usr/bin:/bin", "HOME": str(cwd)}).stdout
+
+
+def test_splat_setup_reports_the_expected_hash_or_its_absence(tmp_path):
+    (tmp_path / "Makefile").write_text("all:\n\t@true\n")
+    config = tmp_path / "game.yaml"
+    expected = "A" * 40
+    config.write_text(f"options:\n  target_path: baserom.z64\n  sha1: '{expected}'\nsegments: []\n")
+    need = ForkProject(tmp_path).needs()
+    assert need["sha1"] == expected.lower()
+    assert need["path"] == "baserom.z64"
+    config.write_text("options:\n  target_path: baserom.z64\nsegments: []\n")
+    need = ForkProject(tmp_path).needs()
+    assert need["sha1"] is None
+    assert "does not specify a SHA-1" in need["help"]
+
+
+def test_splat_generated_target_uses_original_rom_versions(tmp_path, monkeypatch):
+    from decompnet.app.forkengine import ForkEngine
+
+    us, pal = b"original us rom", b"original pal rom"
+    hashes = {"us.v10": hashlib.sha1(us).hexdigest(), "pal": hashlib.sha1(pal).hexdigest()}
+    (tmp_path / "Makefile").write_text("VERSION ?= us.v10\nBASEROM := baserom.$(VERSION).z64\n"
+                                       "DECOMPRESSED_BASEROM := decompressed.$(VERSION).z64\n")
+    (tmp_path / "README.md").write_text("\n".join(f"`baserom.{v}.z64`: `{sha1}`" for v, sha1 in hashes.items()))
+    (tmp_path / "decompressed.pal.yaml").write_text("options:\n  target_path: decompressed.pal.z64\n"
+                                                      f"  sha1: {'e' * 40}\nsegments: []\n")
+    (tmp_path / "decompressed.us.v10.yaml").write_text("options:\n  target_path: decompressed.us.v10.z64\n"
+                                                         f"  sha1: {'f' * 40}\nsegments: []\n")
+    fp = ForkProject(tmp_path)
+    assert fp.needs()["sha1"] == hashes["us.v10"]
+    assert fp.needs("pal")["sha1"] == hashes["pal"]
+    assert fp.needs("pal")["path"] == "baserom.pal.z64"
+    assert fp.setup_commands("pal") == [["make", "VERSION=pal", "-j" + str(__import__("os").cpu_count() or 4)]]
+    game = tmp_path / "my-copy.z64"
+    game.write_bytes(pal)
+    cfg = {}
+    engine = object.__new__(ForkEngine)
+    monkeypatch.setattr(ForkEngine, "_save_cfg", lambda _self, _proj, _cfg: None)
+    engine._match_version(SimpleNamespace(), fp, cfg, game, log=lambda *_: None)
+    assert cfg["version"] == "pal"
+    assert fp.place_game(game, game.name, cfg["version"]) == tmp_path / "baserom.pal.z64"
+    game.write_bytes(b"")
+    with pytest.raises(NetworkError, match=r"empty \(0 bytes\)"):
+        engine._match_version(SimpleNamespace(), fp, cfg, game, log=lambda *_: None)
+    game.write_bytes(b"wrong edition")
+    with pytest.raises(NetworkError, match="supported by this project"):
+        engine._match_version(SimpleNamespace(), fp, cfg, game, log=lambda *_: None)
+
+
+@pytest.mark.parametrize("fmt", ["v64", "n64"])
+def test_splat_accepts_other_n64_byte_orders(tmp_path, monkeypatch, fmt):
+    from decompnet.app.forkengine import ForkEngine
+
+    original = b"\x80\x37\x12\x40" + bytes(range(64))
+    digest = hashlib.sha1(original).hexdigest()
+    (tmp_path / "Makefile").write_text("VERSION ?= pal\nBASEROM := baserom.$(VERSION).z64\n"
+                                       "DECOMPRESSED_BASEROM := decompressed.$(VERSION).z64\n")
+    (tmp_path / "README.md").write_text(f"`baserom.pal.z64`: `{digest}`\n")
+    (tmp_path / "decompressed.pal.yaml").write_text("options:\n  target_path: decompressed.pal.z64\n"
+                                                      f"  sha1: {'e' * 40}\nsegments: []\n")
+    width = 2 if fmt == "v64" else 4
+    game = tmp_path / f"my-copy.{fmt}"
+    game.write_bytes(b"".join(original[i:i + width][::-1] for i in range(0, len(original), width)))
+    fp = ForkProject(tmp_path)
+    cfg = {}
+    engine = object.__new__(ForkEngine)
+    monkeypatch.setattr(ForkEngine, "_save_cfg", lambda _self, _proj, _cfg: None)
+    engine._match_version(SimpleNamespace(), fp, cfg, game, log=lambda *_: None)
+    assert cfg["version"] == "pal"
+    assert fp.place_game(game, game.name, cfg["version"]).read_bytes() == original
+    assert game.read_bytes() != original
+
+
+def test_macos_docker_only_project_routes_make_through_container(tmp_path, monkeypatch):
+    from decompnet.forks import project as project_module
+
+    (tmp_path / "Dockerfile").write_text("FROM example\n")
+    (tmp_path / "README.md").write_text("- Docker only\n    - Linux\n    - macOS\n")
+    (tmp_path / "Makefile").write_text("all:\n\t@true\n")
+    monkeypatch.setattr(project_module.sys, "platform", "darwin")
+    fp = ForkProject(tmp_path)
+    assert fp._docker_only_macos()
+    monkeypatch.setattr(ForkProject, "_prepare_docker", lambda *_: None)
+    seen = []
+
+    class Process:
+        stdout = []
+
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(project_module.subprocess, "Popen", lambda cmd, **kwargs: seen.append(cmd) or Process())
+    assert fp.run(["make", "VERSION=pal", "-j4"])[0]
+    docker = seen[0][next(i for i, part in enumerate(seen[0]) if Path(part).stem == "docker"):]
+    assert docker[1:3] == ["run", "--rm"]
+    assert docker[-2:] == ["-c", "make VERSION=pal -j4"]
+    assert docker[docker.index("--entrypoint") + 1] == "/bin/sh"
 
 
 @pytest.fixture(scope="module")

@@ -1,4 +1,4 @@
-"""Create objdiff references from a verified, directly mapped splat image, never from candidate C objects.
+"""Create objdiff references from a verified splat image or a byte-exact, fully linked rebuild.
 
 Only simple code/data layouts are supported. A private all-assembly split supplies the reference bytes and
 relocations; linking those references must reproduce every initialized section's original image range before
@@ -54,6 +54,89 @@ def run(command: list[str], root: Path, log) -> None:
         raise ForkError("automatic objdiff reference step failed:\n" + (result.stdout + result.stderr)[-3000:])
     if result.stdout:
         log(result.stdout[-1000:])
+
+
+def verified_rebuild(project, config_path: Path, config: dict, image_path: Path, sha1: str, log) -> bool:
+    """Freeze linked C objects only when objcopy of the ELF reproduces the complete original image.
+
+    This covers overlay layouts that cannot be split into independent ROM-derived objects. The linker map
+    must locate each included object's nonempty text; unused or data-only objects are left out.
+    """
+    root = project.root.resolve()
+    if digest(image_path) != sha1:
+        raise ForkError("the decompressed image no longer matches the splat config's SHA-1")
+    options = config['options']
+    build_dir = inside(root, options.get('build_path', 'build'))
+    source_dir = inside(root, options.get('src_path', 'src'))
+    if not build_dir.is_dir() or not source_dir.is_dir():
+        raise ForkError("a verified overlay import needs the project's built objects and source tree")
+    directory = toolchains.require('binutils-mips')
+    objcopy = next((p for p in (directory / 'mips-ps2-decompals-objcopy',
+                                directory / 'bin' / 'mips-ps2-decompals-objcopy') if p.is_file()), None)
+    if objcopy is None:
+        raise ForkError("the installed MIPS reference tools are missing objcopy")
+    matches = []
+    parent = inside(root, STATE)
+    parent.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='verified-rebuild-', dir=parent) as temp:
+        binary = Path(temp) / 'rebuilt.z64'
+        for elf in sorted(build_dir.glob('*.elf')):
+            run([str(objcopy), '-O', 'binary', str(elf), str(binary)], root, log=lambda *_: None)
+            if digest(binary) == sha1:
+                matches.append(elf)
+        if len(matches) != 1:
+            raise ForkError("overlay references need exactly one ELF whose complete binary matches the original "
+                            "image's SHA-1")
+    elf = matches[0]
+    maps = list(elf.parent.glob('*.map'))
+    if len(maps) != 1:
+        raise ForkError("overlay references need one linker map beside the matching ELF")
+    mapped = maps[0].read_text(errors='replace', encoding='utf-8')
+    mapped_text = set(re.findall(r'^\s*\.text\s+0x[0-9A-Fa-f]+\s+0x[1-9A-Fa-f][0-9A-Fa-f]*\s+(\S+\.o)\s*$',
+                                 mapped, re.M))
+    units = []
+    for source in sorted(source_dir.rglob('*.c')):
+        relative = source.relative_to(root)
+        base = build_dir / (str(relative) + '.o')
+        object_name = base.relative_to(root).as_posix()
+        if base.is_file() and object_name in mapped_text:
+            if base.stat().st_mtime_ns > elf.stat().st_mtime_ns:
+                raise ForkError(f'{object_name} changed after the verified ELF was linked; rebuild the project')
+            units.append((source, base))
+    if not units or len(units) > MAX_UNITS:
+        raise ForkError(f"the verified overlay rebuild has {len(units)} linked C objects; supported range is "
+                        f"1–{MAX_UNITS}")
+    destination = inside(root, STATE + '/objdiff-references')
+    if destination.exists():
+        raise ForkError("existing automatic reference files were retained; restore their objdiff.json or set up manually")
+    version = config_path.name.removeprefix('decompressed.').removesuffix('.yaml')
+    make_args = [f'VERSION={version}'] if version != config_path.stem else []
+    with tempfile.TemporaryDirectory(prefix='reference-stage-', dir=parent) as temporary:
+        work = Path(temporary)
+        entries = []
+        for source, base in units:
+            target = work / 'targets' / base.relative_to(build_dir)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(base, target)
+            entries.append({'name': str(source.relative_to(root).with_suffix('')),
+                            'target_path': str((destination / target.relative_to(work)).relative_to(root)),
+                            'base_path': str(base.relative_to(root)),
+                            'metadata': {'source_path': str(source.relative_to(root))}})
+        pending = work / 'objdiff.json'
+        pending.write_text(json.dumps({'custom_make': 'make', 'custom_args': make_args,
+                                       'build_target': False, 'build_base': True, 'units': entries}, indent=2) + '\n',
+                           encoding='utf-8')
+        if (root / 'objdiff.json').exists():
+            raise ForkError("objdiff.json appeared during setup; the existing configuration was retained")
+        try:
+            shutil.move(str(work), destination)
+            os.link(destination / 'objdiff.json', root / 'objdiff.json')
+        except OSError:
+            shutil.rmtree(destination, ignore_errors=True)
+            raise
+    log(f'Generated objdiff.json with {len(entries)} objects from a byte-exact rebuilt image; '
+        f'{sum(1 for _ in source_dir.rglob("*.c")) - len(entries)} unlinked or data-only sources were excluded.')
+    return True
 
 
 def plan(root: Path, config: dict) -> list[dict]:
@@ -189,7 +272,12 @@ def generate(project, config_path: Path, config: dict, console, log=print) -> bo
     original_base = inside(root, str(config_path.parent / options.get('base_path', '.')))
     if original_base != root:
         raise ForkError("automatic objdiff setup needs the splat base_path to identify this checkout's root")
-    units = plan(root, config)
+    try:
+        units = plan(root, config)
+    except ForkError as error:
+        if "compressed or overlay code segments" not in str(error):
+            raise
+        return verified_rebuild(project, config_path, config, image_path, sha1.lower(), log)
     configured_elf = inside(root, options.get('elf_path', 'build/project.elf'))
     candidates = [configured_elf] if configured_elf.is_file() else list(inside(root, 'build').rglob('*.elf'))
     # A reference address map is accepted only beside a complete image rebuilt byte-for-byte.

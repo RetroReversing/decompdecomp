@@ -6,8 +6,11 @@ Only facts read from the user's own file. Nothing here identifies a game against
 from __future__ import annotations
 
 import hashlib
+import os
 import struct
+import tempfile
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import rabbitizer
 
@@ -60,6 +63,58 @@ def to_z64(data: bytes) -> tuple[bytes, str]:
         words = struct.unpack(f"<{len(data) // 4}I", data)
         return struct.pack(f">{len(words)}I", *words), fmt
     return data, fmt
+
+
+def z64_file_sha1(path: Path) -> tuple[str, str] | None:
+    """Return (normalized SHA-1, source byte order) for a cartridge image, streaming large files."""
+    with path.open("rb") as stream:
+        fmt = MAGIC.get(stream.read(4))
+        if fmt is None:
+            return None
+        stream.seek(0)
+        if path.stat().st_size % 4:
+            raise RomError("ROM size is not a multiple of 4 bytes; the file may be truncated")
+        digest = hashlib.sha1()
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(_z64_chunk(chunk, fmt))
+    return digest.hexdigest(), fmt
+
+
+def _z64_chunk(chunk: bytes, fmt: str) -> bytes:
+    if fmt == "v64":
+        data = bytearray(chunk)
+        data[0::2], data[1::2] = chunk[1::2], chunk[0::2]
+        return bytes(data)
+    if fmt == "n64":
+        data = bytearray(chunk)
+        data[0::4], data[1::4], data[2::4], data[3::4] = (
+            chunk[3::4], chunk[2::4], chunk[1::4], chunk[0::4])
+        return bytes(data)
+    return chunk
+
+
+def copy_z64_file(src: Path, dest: Path) -> None:
+    """Write a normalized cartridge image atomically, leaving the supplied file unchanged."""
+    with src.open("rb") as source:
+        fmt = MAGIC.get(source.read(4))
+        if fmt is None or src.stat().st_size % 4:
+            raise RomError("this doesn't look like a complete N64 ROM image")
+        source.seek(0)
+        with tempfile.NamedTemporaryFile(dir=dest.parent, prefix=".rom-", delete=False) as out:
+            tmp = Path(out.name)
+            try:
+                for chunk in iter(lambda: source.read(1 << 20), b""):
+                    out.write(_z64_chunk(chunk, fmt))
+                out.flush()
+                os.fsync(out.fileno())
+            except BaseException:
+                tmp.unlink(missing_ok=True)
+                raise
+    try:
+        os.replace(tmp, dest)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _text(raw: bytes) -> str:

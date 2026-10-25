@@ -19,7 +19,9 @@ import functools
 import hashlib
 import json
 import os
+import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -46,6 +48,7 @@ GAME, PROGRAM = "game", "program"
 SCOPES = (GAME, PROGRAM)
 _CONFIG_CACHE: dict[str, tuple] = {}  # objdiff.json path -> (stat key, parsed, units by name)
 _CONFIG_LOCK = threading.Lock()
+_DOCKER_SETUP_LOCK = threading.Lock()
 # Agents may only edit source and header files, never the project's build setup, targets or verification.
 EDITABLE = re.compile(r"\.(c|cc|cpp|cxx|h|hh|hpp|hxx|inc|inl)$", re.I)
 FORBIDDEN_PARTS = {".git", STATE, "orig", "build", "asm", "expected", "tools", "config", ".github", "assets", "bin"}
@@ -195,6 +198,92 @@ class ForkProject:
                 return p
         return None
 
+    def splat_baseroms(self) -> dict[str, str]:
+        """Original ROM hashes for splat builds whose YAML targets a generated decompressed ROM.
+
+        The Makefile names the input and generated file; the README supplies the original ROM hashes. Do not
+        treat the generated file's splat SHA-1 as the hash of a copy the user should provide.
+        """
+        makefile = self.root / "Makefile"
+        if not makefile.is_file():
+            return {}
+        make = makefile.read_text(errors="replace", encoding="utf-8")
+        if not (re.search(r"^BASEROM\s*[:?+]?=\s*baserom\.\$\(VERSION\)\.z64\s*$", make, re.M) and
+                re.search(r"^DECOMPRESSED_BASEROM\s*[:?+]?=\s*decompressed\.\$\(VERSION\)\.z64\s*$", make, re.M)):
+            return {}
+        readme = self.root / "README.md"
+        if not readme.is_file():
+            return {}
+        text = readme.read_text(errors="replace", encoding="utf-8")
+        configured = {p.name.removeprefix("decompressed.").removesuffix(".yaml")
+                      for p in self.root.glob("decompressed.*.yaml")}
+        return {version: digest.lower() for version, digest in re.findall(
+            r"`?baserom\.([A-Za-z0-9._-]+)\.z64`?\s*:\s*`?([0-9a-fA-F]{40})\b", text)
+                if version in configured}
+
+    def splat_default_version(self) -> str | None:
+        versions = self.splat_baseroms()
+        if not versions:
+            return None
+        make = (self.root / "Makefile").read_text(errors="replace", encoding="utf-8")
+        match = re.search(r"^VERSION\s*\?=\s*([A-Za-z0-9._-]+)", make, re.M)
+        return match.group(1) if match and match.group(1) in versions else next(iter(versions))
+
+    def _docker_only_macos(self) -> bool:
+        """Some public decomps explicitly support macOS only through their Dockerfile."""
+        if sys.platform != "darwin" or not (self.root / "Dockerfile").is_file():
+            return False
+        readme = self.root / "README.md"
+        return readme.is_file() and bool(re.search(r"macOS.*Docker only|Docker only.*macOS", readme.read_text(
+            errors="replace", encoding="utf-8"), re.I | re.S))
+
+    def _docker_image(self) -> str:
+        paths = (self.root / "Dockerfile", self.root / "packages.txt")
+        digest = hashlib.sha1(str(self.root.resolve()).encode())
+        for path in paths:
+            if path.is_file():
+                digest.update(path.read_bytes())
+        return f"decompdecomp-project-{digest.hexdigest()[:16]}"
+
+    def _docker_command(self, command: list[str]) -> list[str]:
+        arch = ["--platform", "linux/amd64"] if platform.machine() == "arm64" else []
+        return ["docker", "run", "--rm", *arch, "--volume", f"{self.root.resolve()}:/project",
+                "--workdir", "/project", "--entrypoint", "/bin/sh", self._docker_image(), "-c",
+                shlex.join(command)]
+
+    def _prepare_docker(self, log) -> None:
+        with _DOCKER_SETUP_LOCK:
+            if getattr(self, "_docker_ready", False):
+                return
+            if not shutil.which("docker"):
+                raise ForkError("this project builds on macOS through Docker, but Docker is not installed. "
+                                "Install Docker or a Docker-compatible runtime, then retry setup.")
+            ok, tail = self.run(["docker", "info", "--format", "{{.ServerVersion}}"], log=log, timeout=15)
+            if not ok:
+                raise ForkError("this project needs a running Docker engine on macOS. Start it, then retry setup.\n" + tail)
+            image = self._docker_image()
+            ok, _ = self.run(["docker", "image", "inspect", image], log=lambda *_: None, timeout=15)
+            if not ok:
+                arch = ["--platform", "linux/amd64"] if platform.machine() == "arm64" else []
+                log("building the project's Docker image with its MIPS toolchain")
+                ok, tail = self.run(["docker", "build", *arch, "--tag", image, "."], log=log, timeout=3600)
+                if not ok:
+                    raise ForkError("the project's Docker image could not be built:\n" + tail)
+            if (self.root / ".gitmodules").is_file():
+                ok, tail = self.run(["git", "submodule", "update", "--init", "--recursive"], log=log, timeout=900)
+                if not ok:
+                    raise ForkError("the project's submodules could not be fetched:\n" + tail)
+            if ".venv/bin/python3" in (self.root / "Makefile").read_text(errors="replace", encoding="utf-8") and (
+                    self.root / "requirements.txt").is_file() and not (self.root / ".venv/bin/python3").exists():
+                log("installing the project's Python requirements inside Docker")
+                ok, tail = self.run(self._docker_command(["python3", "-m", "venv", ".venv"]), log=log, timeout=600)
+                if ok:
+                    ok, tail = self.run(self._docker_command([".venv/bin/pip", "install", "-r", "requirements.txt"]),
+                                        log=log, timeout=1200)
+                if not ok:
+                    raise ForkError("the project's Python requirements could not be installed:\n" + tail)
+            self._docker_ready = True
+
     def _inside(self, rel: str) -> str | None:
         """`rel` as a clean path inside the project, or None if it points outside or is a template."""
         if not rel or "__" in rel or "$" in rel or "{" in rel:
@@ -228,10 +317,22 @@ class ForkProject:
                         "sha1": None, "auto": True, "help": "The build checks the game against the project's hashes."}
             return manual
         if kind == "splat":
+            originals = self.splat_baseroms()
+            if originals:
+                selected = version if version in originals else self.splat_default_version()
+                docker_help = (" On macOS, setup uses the project's Dockerfile and requires a running Docker engine."
+                               if self._docker_only_macos() else "")
+                return {"what": f"your original game ROM (baserom.{selected}.z64)",
+                        "path": f"baserom.{selected}.z64", "sha1": originals[selected], "auto": True,
+                        "rom_versions": [{"version": v, "sha1": digest} for v, digest in originals.items()],
+                        "help": "Supply an original cartridge ROM in .z64, .v64 or .n64 byte order. Its normalized "
+                                "SHA-1 selects the build version; decompdecomp saves a .z64 copy for the project. "
+                                "The splat YAML's SHA-1 is for a decompressed file the build generates later."
+                                + docker_help}
             y = self._splat_yaml().read_text(errors="replace", encoding="utf-8")
             target = re.search(r"^\s*target_path:\s*['\"]?([^'\"\n#]+)", y, re.M)
             base = re.search(r"^\s*base_path:\s*['\"]?([^'\"\n#]+)", y, re.M)
-            sha1 = re.search(r"^sha1:\s*['\"]?([0-9a-fA-F]{40})", y, re.M)
+            sha1 = re.search(r"^[ \t]*sha1:[ \t]*['\"]?([0-9a-fA-F]{40})(?=['\"\s#]|$)", y, re.M)
             path = target.group(1).strip() if target else ""
             yaml_dir = os.path.relpath(self._splat_yaml().parent, self.root)
             if path and base:
@@ -241,8 +342,10 @@ class ForkProject:
                 return manual
             return {"what": f"your copy of the game ({Path(path).name})", "path": path,
                     "sha1": sha1.group(1).lower() if sha1 else None, "auto": True,
-                    "help": "Checked against the sha1 in the project's splat config. A PlayStation disc image works "
-                            "too: the file is taken from it."}
+                    "help": ("Checked against the SHA-1 in the project's splat config. " if sha1 else
+                             "This splat config does not specify a SHA-1, so decompdecomp cannot check the game "
+                             "file by hash before setup. Check the project's README for the required version. ") +
+                            "For PlayStation projects, a disc image can supply the expected file."}
         return manual
 
     # ------------------------------------------------------------------ setup
@@ -255,6 +358,15 @@ class ForkProject:
             raise ForkError("decompdecomp doesn't know where this project expects the game; follow its README")
         src = Path(src)
         if need.get("sha1") and _sha1(src) != need["sha1"]:
+            if need["path"].endswith(".z64"):
+                from ..consoles.n64.rom import copy_z64_file, z64_file_sha1
+
+                normalized = z64_file_sha1(src)
+                if normalized and normalized[0] == need["sha1"]:
+                    dest = self.root / need["path"]
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    copy_z64_file(src, dest)
+                    return dest
             inner = self._from_disc(src.read_bytes(), Path(need["path"]).name) if src.stat().st_size < 1 << 30 else None
             if inner is None or hashlib.sha1(inner).hexdigest() != need["sha1"]:
                 raise ForkError("that file isn't the version this project decompiles (its sha1 doesn't match the "
@@ -317,8 +429,10 @@ class ForkProject:
             return [[sys.executable, "configure.py"], [_tool("ninja") or "ninja"]]
         if kind == "splat":
             make = (self.root / "Makefile").read_text(errors="replace", encoding="utf-8")
-            steps = [["make", t] for t in ("setup", "extract") if re.search(rf"^{t}\s*:", make, re.M)][:1]
-            return steps + [["make", f"-j{os.cpu_count() or 4}"]]
+            chosen = [f"VERSION={version}"] if version and self.splat_baseroms() else []
+            steps = [["make", *chosen, t] for t in ("setup", "extract") if re.search(rf"^{t}\s*:", make, re.M)][:1]
+            jobs = min(os.cpu_count() or 4, 4) if self._docker_only_macos() else os.cpu_count() or 4
+            return steps + [["make", *chosen, f"-j{jobs}"]]
         if kind == "objdiff":
             cfg = self.objdiff_config()
             return [[cfg.get("custom_make") or "make", *cfg.get("custom_args", [])]]
@@ -327,6 +441,9 @@ class ForkProject:
     def run(self, cmd: list[str], log=print, timeout: float = 3600, failed: list[str] | None = None) -> tuple[bool, str]:
         """Run a build step in the project. Targets the build reports as failed (ninja's FAILED:, make's Error lines)
         are added to `failed`."""
+        if self._docker_only_macos() and Path(cmd[0]).name in ("make", "gmake"):
+            self._prepare_docker(log)
+            cmd = self._docker_command(["make", *cmd[1:]])
         env = dict(os.environ)
         env["PATH"] = os.pathsep.join([*(str(d) for d in _tool_dirs()), env.get("PATH", "")])
         # found on that PATH (decompdecomp's own ninja): Linux looks a command up there itself, Windows only in this
@@ -410,16 +527,18 @@ class ForkProject:
             log("compiling every source file, so objdiff can measure each one (some work in progress may not compile)")
             self.build_all(log=log)
         if not (self.root / "objdiff.json").exists():
-            self.generate_objdiff(log=log)
+            self.generate_objdiff(version=version, log=log)
         if not (self.root / "objdiff.json").exists():
             raise ForkError("the project built, but has no objdiff.json, so decompdecomp can't measure matches. "
                             "Some projects generate it with an extra step; check the README.")
 
-    def generate_objdiff(self, log=print) -> bool:
+    def generate_objdiff(self, version: str | None = None, log=print) -> bool:
         """Try the console's supported reference generator without changing an existing configuration."""
         if (self.root / "objdiff.json").exists():
             return False
         path = self._splat_yaml()
+        if version and self.splat_baseroms():
+            path = next((p for p in self.root.glob("*.yaml") if p.name.endswith(f".{version}.yaml")), path)
         if path is None:
             return False
         import yaml

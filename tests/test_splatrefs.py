@@ -172,6 +172,38 @@ def test_paths_cannot_escape_the_checkout_through_symlinks(tmp_path):
         splatrefs.inside(root, 'linked/reference.o')
 
 
+@pytest.mark.skipif(toolchains.installed('binutils-mips') is None, reason='needs pinned MIPS binutils')
+def test_verified_full_rebuild_snapshots_linked_overlay_objects(tmp_path):
+    cfg = synthetic_project(tmp_path, 'n64')
+    tools = toolchains.require('binutils-mips')
+    assembler = str(tools / 'mips-ps2-decompals-as')
+    linker = str(tools / 'mips-ps2-decompals-ld')
+    objcopy = str(tools / 'mips-ps2-decompals-objcopy')
+    splatrefs.run([assembler, *consoles.get('n64').as_flags, '-o', 'build/src/demo.c.o', 'original.s'], tmp_path, print)
+    splatrefs.run([linker, '-EB', '-Ttext', '0x0', '-Map', 'build/program.map', '-e', 'demo_func',
+                   '-o', 'build/program.elf', 'build/src/demo.c.o'], tmp_path, print)
+    splatrefs.run([objcopy, '-O', 'binary', 'build/program.elf', 'baserom.z64'], tmp_path, print)
+    cfg['sha1'] = hashlib.sha1((tmp_path / 'baserom.z64').read_bytes()).hexdigest()
+    cfg['segments'][0]['exclusive_ram_id'] = 'overlay'
+    assert splatrefs.generate(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, consoles.get('n64'))
+    objdiff = json.loads((tmp_path / 'objdiff.json').read_text())
+    assert len(objdiff['units']) == 1
+    unit = objdiff['units'][0]
+    assert (tmp_path / unit['target_path']).read_bytes() == (tmp_path / unit['base_path']).read_bytes()
+
+
+@pytest.mark.skipif(toolchains.installed('binutils-mips') is None, reason='needs pinned MIPS binutils')
+def test_overlay_snapshot_rejects_unverified_elf(tmp_path):
+    cfg = synthetic_project(tmp_path, 'n64')
+    cfg['segments'][0]['exclusive_ram_id'] = 'overlay'
+    altered = (tmp_path / 'baserom.z64').read_bytes() + b'not rebuilt'
+    (tmp_path / 'baserom.z64').write_bytes(altered)
+    cfg['sha1'] = hashlib.sha1(altered).hexdigest()
+    with pytest.raises(ForkError):
+        splatrefs.generate(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, consoles.get('n64'))
+    assert not (tmp_path / 'objdiff.json').exists()
+
+
 def test_an_unsupported_console_leaves_generation_to_manual_setup(tmp_path):
     project = ForkProject(tmp_path)
     cfg = config(tmp_path)
