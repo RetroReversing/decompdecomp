@@ -249,8 +249,15 @@ def register(app: App) -> None:
                 net.knowledge.decide(slug, int(data.get("id") or 0), bool(data.get("accept")))
         return net.knowledge.listing(slug)
 
+    def p_join_rom(slug, request, data):
+        names = data.get("functions") or []
+        if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+            raise ValueError("functions must be a list of names")
+        return {"message": net.join_rom_functions(slug, names, str(data.get("reason") or "operator boundary correction"))}
+
     routes = {
         "/api/project": (p_overview, ["GET"]),
+        "/api/join-rom": (p_join_rom, ["POST"]),
         "/api/knowledge": (p_knowledge, ["GET", "POST"]),
         "/api/modelcosts": (lambda s, r, d: manager.costs(s), ["GET"]),
         "/api/save": (p_save, ["POST"]),

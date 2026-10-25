@@ -95,7 +95,7 @@ def test_no_attempt_when_incompatible_busy_cancelled_or_over_budget(pair, monkey
         with pair.store.tx() as db:
             db.execute('INSERT INTO claims VALUES(?,?,?,?)', (2, agent.id, 0, 9999999999))
     elif blocked == 'compiler':
-        p = pair._project('destination'); cfg = json.loads(p['config']); cfg['compiler']['flags'] = ['-O0']
+        p = pair._project('destination'); cfg = json.loads(p['config']); cfg['compiler']['toolchain'] = 'other-compiler'
         with pair.store.tx() as db:
             db.execute('UPDATE projects SET config=? WHERE id=2', (json.dumps(cfg),))
     elif blocked == 'relocations':
@@ -169,3 +169,182 @@ def test_full_pass_runs_similarity_after_exact_transfers(pair, monkeypatch):
     monkeypatch.setattr(sm, 'run', similar)
     result = pair.twins.full_pass('destination')
     assert order == ['local', 'exact', 'similar'] and result.matched == 2 and result.state == 'done'
+
+
+def test_near_miss_repairs_are_bounded_deterministic_and_judged(pair, monkeypatch):
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET matched_source=? WHERE id=1",
+                   ('int old(int x) {\n    int y;\n    y = x + 60;\n    return y;\n}',))
+    seen = []
+    def attempt(agent, proj, a, b, source, **kwargs):
+        seen.append(source)
+        return 'miss', 'score 1'
+    monkeypatch.setattr(pair.twins, '_attempt_twin', attempt)
+    sm.run(pair.twins, 'destination', Job())
+    assert 2 < len(seen) <= 10
+    first = list(seen)
+    sm.run(pair.twins, 'destination', Job())
+    assert seen == first
+    with pair.store.tx() as db:
+        db.execute("UPDATE context_versions SET header='typedef int s32;' WHERE project_id=2")
+    sm.run(pair.twins, 'destination', Job())
+    assert len(seen) > len(first)
+    assert pair._function('new', 'destination')['status'] == 'open'
+
+
+def test_symbol_changes_invalidate_cached_compiles(pair, monkeypatch):
+    seen = []
+    monkeypatch.setattr(pair.twins, '_attempt_twin', lambda *args, **kwargs: (seen.append(1) or 'miss', 'score 20'))
+    sm.run(pair.twins, 'destination', Job())
+    sm.run(pair.twins, 'destination', Job())
+    assert len(seen) == 2
+    with pair.store.tx() as db:
+        db.execute("INSERT INTO symbols(project_id,name,address) VALUES(2,'global',1234)")
+    sm.run(pair.twins, 'destination', Job())
+    assert len(seen) == 4
+
+
+def test_resume_cursor_survives_restart_and_avoids_starving_later_functions(pair, monkeypatch):
+    with pair.store.tx() as db:
+        db.execute("INSERT INTO functions(id,project_id,name,size,n_insns,target,relocs,vram,unit,status) "
+                   "SELECT 3,project_id,'later',size,n_insns,target,relocs,vram+32,unit,status FROM functions WHERE id=2")
+    monkeypatch.setattr(sm, 'MAX_ATTEMPTS', 1)
+    seen = []
+    def attempt(agent, proj, a, b, source, **kwargs):
+        seen.append(b['id'])
+        return 'miss', 'score 20'
+    monkeypatch.setattr(pair.twins, '_attempt_twin', attempt)
+    for _ in range(4):
+        sm.run(pair.twins, 'destination', Job())
+    assert seen == [2, 2, 3, 3]
+    assert pair.store.one('SELECT function_id FROM reuse_cursors WHERE project_id=2')['function_id'] == 3
+
+
+def test_regional_map_uses_only_current_verified_unambiguous_pairs(pair):
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET status='matched',matched_source='int new(int x) { return x+61; }' WHERE id=2")
+        db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,source_function_id,outcome,created_at) "
+                   "VALUES(2,2,1,1,'match',0)")
+    assert sm.regional_names(pair.twins, pair._project('destination'), pair._project('source')) == {'old': 'new'}
+    with pair.store.tx() as db:
+        db.execute("INSERT INTO functions(id,project_id,name,size,n_insns,target,relocs,vram,unit,status,matched_source) "
+                   "SELECT 3,project_id,'conflict',size,n_insns,target,relocs,vram+32,unit,status,matched_source FROM functions WHERE id=2")
+        db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,source_function_id,outcome,created_at) "
+                   "VALUES(2,3,1,1,'match',0)")
+    assert sm.regional_names(pair.twins, pair._project('destination'), pair._project('source')) == {}
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET status='open' WHERE id=3")
+    assert sm.regional_names(pair.twins, pair._project('destination'), pair._project('source')) == {'old': 'new'}
+
+
+def test_donor_flags_are_trials_not_silent_configuration_changes(pair, monkeypatch):
+    cfg = json.loads(pair._project('destination')['config'])
+    cfg['compiler']['flags'] = ['-O0']
+    with pair.store.tx() as db:
+        db.execute('UPDATE projects SET config=? WHERE id=2', (json.dumps(cfg),))
+    monkeypatch.setattr(sm.toolchains, 'installed', lambda tc: True)
+    monkeypatch.setattr(pair.twins, '_attempt_twin', lambda *args, **kwargs: ('miss', 'score 20'))
+    seen = []
+    def judge(proj, fn, tc, flags, source):
+        assert pair.store.one('SELECT 1 FROM claims WHERE function_id=?', fn['id'])
+        seen.append((tc, flags))
+        return True, None, ''
+    monkeypatch.setattr(pair, '_judge_with', judge)
+    job = Job()
+    assert sm.run(pair.twins, 'destination', job) == 0
+    assert seen == [('gcc-2.7.2-kmc', ['-O2'])]
+    assert job.cross_matched == 0 and job.cross_tried == 3
+    assert pair.cfg(pair._project('destination'))['compiler']['flags'] == ['-O0']
+    assert pair.store.one('SELECT text FROM notes WHERE function_id=2')['text'].startswith('byte match with')
+    assert not pair.store.one('SELECT 1 FROM claims WHERE function_id=2')
+    sm.run(pair.twins, 'destination', Job())
+    assert len(seen) == 1
+
+
+def test_compiler_trial_releases_claim_on_failure_and_never_installs(pair, monkeypatch):
+    def failed(*args):
+        raise sm.toolchains.ToolchainError('missing runtime')
+    monkeypatch.setattr(pair, '_judge_with', failed)
+    agent, _ = pair.local_agent('autopilot')
+    outcome, _ = sm.compiler_trial(pair, agent, pair._project('destination'), pair._function('new', 'destination'),
+                                   'int new(void) { return 1; }', {'toolchain': 'gcc-2.7.2-kmc'})
+    assert outcome == 'skip'
+    assert not pair.store.one('SELECT 1 FROM claims WHERE function_id=2')
+
+
+def test_explicit_memory_offsets_can_be_repaired_but_not_registers():
+    a = {'target': (0x8c820010).to_bytes(4, 'big') + code(60)[4:], 'relocs': '[]'}
+    b = {'target': (0x8c820014).to_bytes(4, 'big') + code(60)[4:], 'relocs': '[]'}
+    assert sm.literal_variants('return *(int *)(p + 16);', a, b, True) == ['return *(int *)(p + 20);']
+    b['target'] = (0x8ca20014).to_bytes(4, 'big') + code(60)[4:]
+    assert sm.literal_variants('return *(int *)(p + 16);', a, b, True) == []
+
+
+def test_learned_names_enable_candidates_with_different_relocation_layouts(pair, monkeypatch):
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET matched_source='int old(int x) { return donor_helper(x)+60; }', "
+                   "relocs='[[0,5,2147491840]]' WHERE id=1")
+        for fid, pid, name in [(3, 1, 'donor_helper'), (4, 2, 'recipient_helper')]:
+            db.execute("INSERT INTO functions(id,project_id,name,size,n_insns,target,relocs,vram,unit,status,matched_source) "
+                       "VALUES(?,?,?,?,?,?,?,?,?,?,?)", (fid,pid,name,32,8,code(90),'[]',0x80002000,'','matched',
+                                                        'int '+name+'(int x) { return x+90; }'))
+        db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,source_function_id,outcome,created_at) "
+                   "VALUES(2,4,1,3,'match',0)")
+    seen = []
+    monkeypatch.setattr(pair.twins, '_attempt_twin', lambda agent, proj, a, b, source, **kw:
+                        (seen.append(source) or 'miss', 'score 20'))
+    sm.run(pair.twins, 'destination', Job())
+    assert any('recipient_helper(x)' in source for source in seen)
+    assert all('donor_helper(x)' not in source for source in seen)
+    assert pair._function('new', 'destination')['status'] == 'open'
+
+
+def test_reopened_function_is_rejudged_even_with_a_cached_acceptance(pair, monkeypatch):
+    seen = []
+    def attempt(agent, proj, a, b, source, **kwargs):
+        seen.append(source)
+        with pair.store.tx() as db:
+            db.execute("UPDATE functions SET status='matched',matched_source=? WHERE id=?", (source,b['id']))
+        return 'match', ''
+    monkeypatch.setattr(pair.twins, '_attempt_twin', attempt)
+    assert sm.run(pair.twins, 'destination', Job()) == 1
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET status='open' WHERE id=2")
+    assert sm.run(pair.twins, 'destination', Job()) == 1
+    assert len(seen) == 2
+
+
+def test_repairs_wait_until_easy_transfers_have_been_tried(pair, monkeypatch):
+    source = 'int old(int x) {\n    int y;\n    y = x + 60;\n    return y;\n}'
+    with pair.store.tx() as db:
+        db.execute('UPDATE functions SET matched_source=? WHERE id=1', (source,))
+        db.execute("INSERT INTO functions(id,project_id,name,size,n_insns,target,relocs,vram,unit,status) "
+                   "SELECT 3,project_id,'later',size,n_insns,target,relocs,vram+32,unit,status FROM functions WHERE id=2")
+    seen = []
+    monkeypatch.setattr(pair.twins, '_attempt_twin', lambda agent, proj, a, b, source, **kw:
+                        (seen.append((b['id'],source)) or 'miss', 'score 1'))
+    sm.run(pair.twins, 'destination', Job())
+    assert [fid for fid, _ in seen[:4]] == [2, 2, 3, 3]
+    assert len(seen) > 4
+
+
+def test_trial_cache_and_resume_work_with_a_new_network_instance(pair, monkeypatch, tmp_path):
+    monkeypatch.setattr(sm, 'MAX_ATTEMPTS', 1)
+    seen = []
+    def attempt(agent, proj, a, b, source, **kwargs):
+        seen.append(source)
+        return 'miss', 'score 20'
+    monkeypatch.setattr(pair.twins, '_attempt_twin', attempt)
+    sm.run(pair.twins, 'destination', Job())
+    restarted = RomNetwork(pair.store.path, tmp_path)
+    monkeypatch.setattr(restarted, 'is_rom', lambda p: True)
+    monkeypatch.setattr(restarted, 'fork_slug', lambda s: None)
+    monkeypatch.setattr(restarted.twins, '_attempt_twin', attempt)
+    sm.run(restarted.twins, 'destination', Job())
+    assert len(seen) == 2 and '+ 61' in seen[1]
+
+
+def test_repair_generator_preserves_string_and_comment_contents(monkeypatch):
+    source = 'int f(void) {\n    char *s = "(int)x"; /* x++ */\n    return 0;\n}'
+    monkeypatch.setattr(sm.permuter, 'mutate', lambda text, rng: text.replace('(int)x', 'x'))
+    assert sm.repair_variants(source) == []

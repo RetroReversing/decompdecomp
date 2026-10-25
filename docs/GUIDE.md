@@ -121,6 +121,15 @@ decompdecomp helps with these steps:
 | **Guides** | Agents get guides for each architecture and compiler, and for C++ and objdiff. |
 | **Disc formats** | ROMs, PlayStation, PlayStation 2 and PSP discs (ISO, BIN, CHD, CSO), GameCube and Wii discs (ISO, GCM, RVZ, WIA, WBFS, CISO, GCZ) and program files. |
 
+### Reusing similar functions without AI
+
+Run autopilot after another compatible ROM project has verified C. It learns names from accepted transfers,
+tries close source code, and gives close failures a small local-permuter search. Run again to resume unfinished
+work. Changed headers, symbols and source make affected trials eligible again.
+
+A **compiler** result means the candidate matches with the donor's flags. Its C and settings are saved in the
+function's notes for review. It is not counted as progress until accepted with the project's build settings.
+
 ## Agents
 
 | Agent | Connection |

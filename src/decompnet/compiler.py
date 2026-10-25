@@ -7,6 +7,7 @@ every match is produced here, on the coordinator, with the project's pinned tool
 from __future__ import annotations
 
 import contextvars
+import importlib
 import os
 import re
 import shutil
@@ -78,6 +79,7 @@ class CompilerConfig:
     include_dirs: tuple[str, ...] = ()  # absolute paths of extra (static) header dirs
     runtime32: str | None = None  # 32-bit x86 C runtime for old i386 compiler binaries (see toolchains)
     wsl: bool = False  # a Linux toolchain on Windows: runs inside WSL 2, `cmd` holds WSL paths (see wsl.py)
+    intrinsics: str = ""  # module selected by the pinned toolchain, never by submitted source
     prelude: str = ""  # the toolchain's prelude (Toolchain.prelude)
     cplusplus: bool = False  # it compiles C++ too: what doesn't compile as C is tried as C++ (Toolchain.cplusplus)
 
@@ -207,7 +209,8 @@ _CPP = re.compile(r"::|\bclass\b|\btemplate\b|\bnew\b|\bdelete\b|\bvirtual\b|\bo
 
 def _compile_as(cfg: CompilerConfig, work: Path, root: str, source: str, ext: str) -> CompileResult:
     name = f"func.{ext}"
-    (work / name).write_text(cfg.prelude + f'#include "context.h"\n#line 1 "{name}"\n' + source + "\n",
+    intrinsics = importlib.import_module(cfg.intrinsics).header() if cfg.intrinsics else ""
+    (work / name).write_text(cfg.prelude + intrinsics + f'#include "context.h"\n#line 1 "{name}"\n' + source + "\n",
                              encoding="utf-8", newline="\n")
     subst = {"{src}": f"{root}/{name}", "{obj}": f"{root}/func.o", "{include}": f"{root}/include"}
     argv = [subst.get(a, a) for a in cfg.cmd]

@@ -45,3 +45,15 @@ def test_owning_code_segment_precedes_other_overlays(tmp_path):
     proj = {'root': str(tmp_path)}
     assert Core.reader(obj, proj, {'rom_offset': 4})(100, 4) == b'BBBB'
     assert Core.reader(obj, proj)(100, 4) == b'AAAA'
+
+
+def test_thin_function_row_recovers_its_physical_offset(tmp_path):
+    class Store:
+        def one(self, sql, pid, name):
+            assert pid == 1 and name == 'function_b'
+            return {'rom_offset': 4}
+    class Fake:
+        store = Store()
+        _rom = lambda self, proj: (b'AAAABBBB', [Segment('a', 0, 4, 100), Segment('b', 4, 8, 100)])
+        cfg = lambda self, proj: {'rom': {'sha1': 'original'}}
+    assert Core.reader(Fake(), {'id': 1, 'root': str(tmp_path)}, {'name': 'function_b'})(100, 4) == b'BBBB'
