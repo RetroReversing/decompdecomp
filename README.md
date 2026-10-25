@@ -123,6 +123,14 @@ Repeated constants are tried individually (up to four occurrences), with small c
 combinations capped at eight proposals. Comments, strings, symbol addresses and suffixes are preserved;
 register/control-flow changes, signed expressions and implicit type/array-stride changes are left alone.
 
+Saved candidates can also get a local MIPS signature/argument repair when their only non-relocated
+instruction differences move ordinary integer/pointer arguments to later registers. The repair can insert an
+unused parameter before a live incoming argument, or forward untouched incoming registers through a small
+single-call wrapper. Only the candidate's declarations change; conflicting shared prototypes fail compilation.
+Floats, aggregate/variadic parameters, stack arguments and complex wrappers are left alone. These shared rules
+can help any compatible MIPS ROM game; they are not specific to a title, and other processors/object projects
+need their own calling-convention and source-context support.
+
 When eligible near misses exist, similarity transfers use at most three quarters of the remaining search budget;
 the rest is reserved for repairs. The transfer cursor is retained so the next pass continues through the queue.
 
