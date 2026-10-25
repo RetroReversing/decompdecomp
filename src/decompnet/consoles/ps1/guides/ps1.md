@@ -29,3 +29,19 @@ aside as assembly. So is a BIOS call stub (`li t2, 0xB0; jr t2; li t1, n`).
 
 Typical patterns: `jtbl_` jump tables in .rodata for dense switches; overlays loaded at the same address (each a
 segment of its own); `D_800xxxxx` data and `func_800xxxxx` names for what nobody named yet.
+
+## Fixed GTE intrinsics
+
+GCC 2.6.3, 2.7.2 and 2.8.1 PS1 builds supply a small trusted GTE prelude. Use named C calls such as
+`gte_ldv0(p)`, `gte_rtps()` and `gte_stsxy(out)`: submitted inline assembly and arbitrary instruction words
+remain forbidden. The supported subset includes the rotation/translation matrix setters, selected vector
+and matrix-column transfers, screen/depth/flag outputs, RTPS/RTPT, rotation, clipping, depth averaging and
+square commands. Unsupported operations still need an implementation; their presence does not prove that
+the original function was handwritten assembly. Check the available definitions in `consoles/ps1/gte.py`.
+The `_b` command forms omit the two leading wait nops; `_wait` supplies one. These retain period SDK scheduling
+conventions, and each C candidate must still match every linked byte.
+
+Old SDK reference objects may contain DMPSX command placeholders instead of final GTE instructions. Expand
+only recognised named operations when preparing local reference objects; never count a masked object shape
+as a C match. Whole-source-file context is useful for declarations and identity, but extracted C must pass
+the same judge with the actual function's compiler settings and original overlay data.

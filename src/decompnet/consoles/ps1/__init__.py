@@ -141,13 +141,13 @@ class PlayStation(Console):
         # passes its arguments in a0-a3, never a number in t1
         if {w & 0xFFFF for w in words if w & 0xFFFF0000 == LI_T2} & BIOS_TABLES and JR_T2 in words:
             return "calls the BIOS through its A0/B0/C0 table with the function's number in t1: a stub written in assembly"
-        # Matrix-register transfers have fixed compiler-provided intrinsics. Other GTE operations still
-        # need explicit support; their presence is not proof that the original source was handwritten asm.
+        # Recognised fixed intrinsics are ordinary C callers. Unknown GTE commands still need support.
+        from .gte import supported
+
         all_words = [int.from_bytes(code[at:at + 4], "little") for at in range(0, len(code) - 3, 4)]
-        gte = [w for w in all_words if w >> 26 == 0x12 or w >> 26 in (0x32, 0x3A)]
-        matrix_only = bool(gte) and all(w >> 26 == 0x12 and (w >> 21) & 31 == 6 and (w >> 11) & 31 <= 7
-                                       for w in gte)
-        return mips.asm_reason(code, False, cop2="" if matrix_only else "unsupported GTE operations")
+        gte = [w for w in all_words if w >> 26 in (0x12, 0x32, 0x3A)]
+        known = bool(gte) and all(supported(w) for w in gte)
+        return mips.asm_reason(code, False, cop2="" if known else "unsupported GTE operations")
 
 
 def _place_text(config: Path, program: bytes, log=print) -> None:
