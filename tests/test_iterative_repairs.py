@@ -97,14 +97,56 @@ def test_wave_quota_resumes_and_claims_are_skipped(pair, monkeypatch):
     calls = []
     monkeypatch.setattr(pair, 'try_quietly', lambda a,p,f,s: calls.append(s) or dict(matched=False,score=20))
     job = Job()
-    free_candidates.budget(job, attempts=4)
+    free_candidates.budget(job, attempts=1)
     search.run(pair.twins, 'destination', job)
     assert calls == ['seed'] and job.reuse_attempts == 1
     job = Job()
-    free_candidates.budget(job, attempts=4)
+    free_candidates.budget(job, attempts=1)
     search.run(pair.twins, 'destination', job)
     assert calls == ['seed', 'seedx']
     with pair.store.tx() as db:
         db.execute('INSERT INTO claims VALUES(2,1,0,99999999999)')
     search.run(pair.twins, 'destination', Job())
     assert calls == ['seed', 'seedx']
+
+
+def test_rotation_survives_new_jobs(pair, monkeypatch):
+    from decompnet.app import address_repairs, free_candidates, similar_matches
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET best_source='seed',best_score=20,n_insns=8 WHERE id=2")
+        db.execute("INSERT INTO functions(id,project_id,name,target,relocs,status,vram,size,n_insns,best_source,best_score) "
+                   "SELECT 3,project_id,'later',target,relocs,status,vram+32,size,n_insns,best_source,best_score FROM functions WHERE id=2")
+    monkeypatch.setattr(address_repairs, 'variants', lambda s,*a: [s+'x'])
+    monkeypatch.setattr(similar_matches, 'repair_variants', lambda *a: [])
+    visited = []
+    monkeypatch.setattr(pair, 'try_quietly', lambda a,p,f,s: visited.append(f['id']) or dict(matched=False,score=20))
+    for _ in range(3):
+        job = Job()
+        free_candidates.budget(job, attempts=1)
+        search.run(pair.twins, 'destination', job)
+    assert visited == [2, 3, 2]
+
+
+def test_optional_phase_disabled_and_independent_of_exhausted_normal_budget(pair, monkeypatch):
+    from decompnet.app import free_candidates
+    parent = Job()
+    free_candidates.budget(parent, attempts=1)
+    parent.reuse_attempts = 1
+    called = []
+    def run(twins, slug, job):
+        assert job.stop is parent.stop
+        assert job.reuse_attempts == 0 and job.reuse_limit == 7
+        assert job.reuse_deadline > __import__('time').monotonic()
+        job.reuse_attempts = 2
+        called.append(job)
+        return 0
+    monkeypatch.setattr(search, 'run', run)
+    assert search.optional_phase(pair.twins, 'destination', parent) == 0
+    assert not called
+    pair.cascades.configure(False, iterative_enabled=True, iterative_attempts=7)
+    search.optional_phase(pair.twins, 'destination', parent)
+    assert len(called) == 1 and parent.reuse_attempts == 1
+    assert pair.store.one('SELECT attempts FROM iterative_runs')['attempts'] == 2
+    parent.stop.set()
+    search.optional_phase(pair.twins, 'destination', parent)
+    assert len(called) == 1

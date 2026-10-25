@@ -105,8 +105,9 @@ symbolic-high/numeric-low address pairs. Dynamic addends, ambiguous mappings and
 still need deeper analysis. Candidate-local padding repair now handles simple struct definitions in the
 candidate itself, with bounded proposals from aligned load/store offsets. Shared-header layout reconstruction,
 complex/nested types and field reordering remain planned.
-Saved near misses now have a persistent three-round, width-three repair search, sharing the wave budget and
-caching failed compilations. It retains improving/equal-score candidates and chains local repairs. This uses
+Saved near misses now have a persistent three-round, width-three repair search, disabled by default with a separate
+configurable budget after normal autopilot, a persistent round-robin cursor, and cached failed compilations.
+It retains improving/equal-score candidates and chains local repairs. This uses
 the same MIPS ROM feedback; object-mode and other-processor support await the context/readers described below.
 Tiny MIPS templates and explicitly imported SDK C go through the same judge. Verified regional pairs can teach
 explicit pointer-offset edits; reconstructing named struct layouts and shared types remains planned. New verified

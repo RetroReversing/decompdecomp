@@ -80,8 +80,7 @@ def run(twins, slug, job):
     agent, _ = net.local_agent('autopilot')
     cfg = net.cfg(proj)
     prints = twins.prints(proj)
-    from . import iterative_repairs
-    matched = iterative_repairs.run(twins, slug, job)
+    matched = 0
     sdk_maps = {}
     by_fingerprint = {}
     function_names = {r['vram']: r['name'] for r in net.store.all('SELECT vram,name FROM functions WHERE project_id=?', proj['id'])}

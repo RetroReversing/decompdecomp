@@ -538,6 +538,8 @@ class Twins:
                 db.execute('INSERT INTO reuse_runs(project_id,attempts,matched,bytes,seconds,created_at) VALUES(?,?,?,?,?,?)',
                            (proj['id'], job.reuse_attempts, job.reuse_matched,
                             job.reuse_bytes, time.monotonic() - started, time.time()))
+            from .iterative_repairs import optional_phase
+            job.matched += optional_phase(self, slug, job)
             self.reuse_names(slug, job)
             from .libultra import name_functions
             name_functions(self.net, slug, job)

@@ -19,14 +19,19 @@ class Cascade:
         self.net = net
         self.enabled = False
         self.seconds, self.attempts = 120, 128
+        self.iterative_enabled = False
+        self.iterative_seconds, self.iterative_attempts = 120, 128
         self.pending = set()
         self.paused = set()
         self.lock = threading.Lock()
         self.running = False
         self.active = None
 
-    def configure(self, enabled, seconds=120, attempts=128):
+    def configure(self, enabled, seconds=120, attempts=128, iterative_enabled=False, iterative_seconds=120, iterative_attempts=128):
         with self.lock:
+            self.iterative_enabled = bool(iterative_enabled)
+            self.iterative_seconds = max(1, min(600, int(iterative_seconds)))
+            self.iterative_attempts = max(1, min(1024, int(iterative_attempts)))
             self.enabled = bool(enabled)
             self.seconds = max(1, min(600, int(seconds)))
             self.attempts = max(1, min(1024, int(attempts)))

@@ -38,7 +38,7 @@ def advance(state, evaluate, variants, stopped):
 
 
 def run(twins, slug, job):
-    """Use at most a quarter of this wave for saved near misses, leaving room for transfers/templates."""
+    """Use a separate phase budget and resume after the last visited function."""
     from . import address_repairs, free_candidates, similar_matches
 
     net = twins.net
@@ -47,10 +47,7 @@ def run(twins, slug, job):
     if not net.is_rom(proj) or proj['arch'] != 'mips' or net.fork_slug(slug) or slug in net.links:
         return 0
     free_candidates.budget(job)
-    if not hasattr(job, 'repair_limit'):
-        job.repair_limit = job.reuse_attempts + max(0, (job.reuse_limit - job.reuse_attempts) // 4)
-        job.repair_deadline = time.monotonic() + max(0, job.reuse_deadline - time.monotonic()) / 4
-    limit, deadline = job.repair_limit, job.repair_deadline
+    limit, deadline = job.reuse_limit, job.reuse_deadline
     agent, _ = net.local_agent('autopilot')
     cfg = net.cfg(proj)
     symbols = [(r['name'], r['address']) for r in net.store.all(
@@ -59,10 +56,15 @@ def run(twins, slug, job):
     matched = 0
     rows = net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open' AND best_source IS NOT NULL "
                          "AND best_score>0 AND best_score<=?*MAX(1,n_insns) "
-                         "ORDER BY best_score*1.0/MAX(1,n_insns),size,id", proj['id'], 100 - similar_matches.REPAIR_PERCENT)
+                         "ORDER BY id", proj['id'], 100 - similar_matches.REPAIR_PERCENT)
+    cursor = net.store.one('SELECT function_id FROM repair_cursors WHERE project_id=?', proj['id'])
+    last = cursor['function_id'] if cursor else 0
+    rows.sort(key=lambda fn: (fn['id'] <= last, fn['id']))
     for fn in rows:
         if free_candidates.exhausted(job) or job.reuse_attempts >= limit or time.monotonic() >= deadline:
             break
+        with net.store.tx() as db:
+            db.execute('INSERT OR REPLACE INTO repair_cursors VALUES(?,?)', (proj['id'], fn['id']))
         if net.store.one('SELECT 1 FROM claims WHERE function_id=?', fn['id']):
             continue
         header = net._context(proj['id'], fn['unit'])['header']
@@ -117,4 +119,28 @@ def run(twins, slug, job):
             net.add_note(agent, slug, 'Autopilot matched with iterative local repairs', fn['name'])
         with net.store.tx() as db:
             db.execute('INSERT OR REPLACE INTO repair_frontiers VALUES(?,?,?)', (fn['id'], context, json.dumps(state)))
+    return matched
+
+
+def optional_phase(twins, slug, parent):
+    """Opt-in after normal autopilot; background cascades keep their original budget and behaviour."""
+    from . import free_candidates
+    from .twins import Job
+
+    config = twins.net.cascades
+    if not config.iterative_enabled or parent.stop.is_set():
+        return 0
+    phase = Job(stop=parent.stop)
+    free_candidates.budget(phase, config.iterative_seconds, config.iterative_attempts)
+    started = time.monotonic()
+    matched = run(twins, slug, phase)
+    net = twins.net
+    proj = net.project_row(slug)
+    with net.store.tx() as db:
+        db.execute('INSERT INTO iterative_runs(project_id,attempts,matched,bytes,seconds,created_at) VALUES(?,?,?,?,?,?)',
+                   (proj['id'], phase.reuse_attempts, phase.reuse_matched, phase.reuse_bytes,
+                    time.monotonic() - started, time.time()))
+    agent, _ = net.local_agent('autopilot')
+    net.add_note(agent, slug, f'Iterative search: {matched} matches, {phase.reuse_bytes} bytes, '
+                 f'{phase.reuse_attempts} attempts (separate budget).')
     return matched
