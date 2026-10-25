@@ -10,6 +10,7 @@ the modules in routes/, one per part of the app; what they share beyond that is 
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import threading
@@ -80,6 +81,9 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     def consoles_start() -> None:  # what each console does for its projects at start (Console.on_start)
         for row in net.store.all("SELECT slug, config FROM projects"):
             try:
+                cfg = json.loads(row["config"])
+                if cfg.get("kind") == "fork" and not cfg.get("platform"):
+                    row = net.forks.get(row["slug"])[0]  # recover metadata missing from older public imports
                 if net.is_rom(row):
                     net.rangechecks.reopen(row["slug"])
                 net.console(row).on_start(net, row["slug"], log=jobs.logger.info)
@@ -115,7 +119,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         except NetworkError:
             return ListToolsResult(tools=[])
         slug = manager.project_of(agent.id)
-        keep = set(tools.tool_names(bool(slug and net.fork_slug(slug))))
+        keep = set(tools.project_tools(net, slug))
         return ListToolsResult(tools=[t for t in everything if t.name in keep])
 
     mcp._lowlevel_server.add_request_handler("tools/list", PaginatedRequestParams, scoped_tools)

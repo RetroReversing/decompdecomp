@@ -1,6 +1,7 @@
 """The system's own file chooser, for paths the page can't learn: the window shows files' contents to the page, never
 where they are, so "Open a saved project" asked the user to type two paths. The app runs this file with the
-system's python3, like the window (gtkwindow.py); it prints the chosen path, or nothing when the user cancels.
+system's Python on Linux, or the app's Python on macOS and Windows; it prints the chosen path, or nothing when
+the user cancels.
 
     python3 picker.py folder|file <title>
 """

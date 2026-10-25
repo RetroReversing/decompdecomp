@@ -1,4 +1,4 @@
-"""Add decompdecomp to the Linux apps menu, or the Windows Start menu and desktop, opening its own window.
+"""Add decompdecomp to the Linux apps menu, macOS Finder, or Windows Start menu and desktop.
 
 The entry is named like the .deb's and the .rpm's (decompdecomp.desktop), so a desktop shows one decompdecomp even
 when a package is installed too: the user's own entry takes the place of the system's. The entry older versions made
@@ -74,7 +74,7 @@ def install_launcher() -> str:
         executable.chmod(0o755)
         with (bundle / "Info.plist").open("wb") as stream:
             plistlib.dump({"CFBundleName": "decompdecomp", "CFBundleDisplayName": "decompdecomp",
-                          "CFBundleIdentifier": "com.retroreversing.decompdecomp", "CFBundlePackageType": "APPL",
+                          "CFBundleIdentifier": "com.ndelic.decompdecomp", "CFBundlePackageType": "APPL",
                           "CFBundleExecutable": "decompdecomp", "LSMinimumSystemVersion": "12.0",
                           "NSHighResolutionCapable": True}, stream)
         return f"added decompdecomp to Finder ({bundle.parent})"

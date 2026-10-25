@@ -160,6 +160,7 @@ def runtime_error(tid: str) -> str | None:
         return None
     if _intel_mac_runtime_ready():
         return None
+    _intel_mac_runtime_ready.cache_clear()  # a newly installed Rosetta runtime works on the next compile
     return (f"{tid} uses Intel macOS binaries and needs Rosetta 2 on Apple Silicon. "
             "Run `softwareupdate --install-rosetta` in Terminal, accept Apple's license if you agree, then try again.")
 
@@ -213,7 +214,17 @@ def _deb_data(deb: Path, out: Path) -> Path:
     raise ToolchainError(f"{deb.name} has no data.tar")
 
 
-def _extract(archive: Path, dest: Path, subdir: str | None) -> None:
+def _extract(archive: Path, dest: Path, subdir: str | None, keep: dict[str, str] | None = None) -> None:
+    """Unpack an archive (or its `subdir`) into `dest`. `keep`: {path in it: where it goes in dest}, and nothing else:
+    a compiler's archive is often a whole install (its IDE, libraries, the C runtime's sources: 700 MB for Visual C++
+    2010) of which a build needs the compiler and headers. Two paths may go to one folder: they're merged."""
+    prefix = f"{subdir.strip('/')}/" if subdir else ""
+    wanted = None if keep is None else [prefix + k.strip("/") for k in keep]
+
+    def take(name: str) -> bool:
+        name = name.rstrip("/")
+        return wanted is None or any(name == w or name.startswith(w + "/") for w in wanted)
+
     with tempfile.TemporaryDirectory(dir=dest.parent) as tmp:
         if archive.name.endswith(".deb"):
             with tempfile.TemporaryDirectory(dir=dest.parent) as raw:
@@ -224,6 +235,8 @@ def _extract(archive: Path, dest: Path, subdir: str | None) -> None:
 
             with zipfile.ZipFile(archive) as z:
                 for info in z.infolist():
+                    if not take(info.filename):
+                        continue
                     target = (Path(tmp) / info.filename).resolve()
                     if Path(tmp).resolve() not in target.parents and target != Path(tmp).resolve():
                         raise ToolchainError(f"refusing to extract {info.filename} outside the toolchain folder")
@@ -248,11 +261,20 @@ def _extract(archive: Path, dest: Path, subdir: str | None) -> None:
             # gz/xz in pure Python, so this works on Windows and macOS too. The "data" filter refuses
             # absolute paths, links out of the tree and device files, and drops setuid bits.
             with tarfile.open(archive) as t:
-                t.extractall(tmp, filter="data")
+                t.extractall(tmp, members=[m for m in t.getmembers() if take(m.name)], filter="data")
         src = Path(tmp) / subdir if subdir else Path(tmp)
-        if not src.is_dir():
+        if not src.is_dir() and keep is None:  # (with `keep`, the first path it doesn't have is named)
             raise ToolchainError(f"archive {archive.name} has no {subdir}/")
-        for item in src.iterdir():
+        for path, to in (keep or {}).items():
+            item, target = src / path, dest / to
+            if item.is_dir():
+                shutil.copytree(item, target, dirs_exist_ok=True)
+            elif item.is_file():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, target)
+            else:
+                raise ToolchainError(f"archive {archive.name} has no {path}")
+        for item in src.iterdir() if keep is None else ():
             target = dest / item.name
             if target.exists():
                 shutil.rmtree(target) if target.is_dir() and not target.is_symlink() else target.unlink()
@@ -330,7 +352,7 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
             else:
                 into = dest / part.get("into", "")  # a pack of several versions: each in its own folder
                 into.mkdir(parents=True, exist_ok=True)
-                _extract(archive, into, part.get("subdir"))
+                _extract(archive, into, part.get("subdir"), part.get("keep"))
                 if part.get("executable"):  # archives that don't record the executable bit
                     for f in dest.rglob("*"):
                         if f.is_file():
@@ -388,6 +410,9 @@ def _build_mips_binutils(archive: Path, dest: Path, subdir: str | None, log) -> 
                    "ranlib": "binutils/ranlib", "strip": "binutils/strip-new", "readelf": "binutils/readelf"}
         for name, binary in outputs.items():
             target = dest / ("mips-ps2-decompals-" + name)
+            if not (build / binary).is_file():
+                raise ToolchainError(f"The pinned MIPS binutils build did not produce {name} ({binary}). "
+                                     "Check Xcode Command Line Tools and try again.")
             shutil.copy2(build / binary, target)
             target.chmod(0o755)
 
@@ -553,6 +578,8 @@ def _build_psx_gcc_263(archive: Path, dest: Path, part: dict, log) -> None:
         outputs = {"cpp": "cpp", "cc1": "cc1", "gcc": "xgcc", "cc1plus": "cc1plus", "g++": "g++"}
         for name, binary in outputs.items():
             target = dest / name
+            if not (build / binary).is_file():
+                raise ToolchainError(f"The pinned PS1 GCC build did not produce {name} ({binary}).")
             shutil.copy2(build / binary, target)
             target.chmod(0o755)
 

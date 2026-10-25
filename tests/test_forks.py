@@ -79,8 +79,10 @@ def test_splat_generated_target_uses_original_rom_versions(tmp_path, monkeypatch
     with pytest.raises(NetworkError, match=r"empty \(0 bytes\)"):
         engine._match_version(SimpleNamespace(), fp, cfg, game, log=lambda *_: None)
     game.write_bytes(b"wrong edition")
-    with pytest.raises(NetworkError, match="supported by this project"):
+    with pytest.raises(NetworkError, match="supported by this project") as error:
         engine._match_version(SimpleNamespace(), fp, cfg, game, log=lambda *_: None)
+    assert hashlib.sha1(game.read_bytes()).hexdigest() in str(error.value)
+    assert "Big-endian conversion: not attempted" in str(error.value)
 
 
 @pytest.mark.parametrize("fmt", ["v64", "n64"])
@@ -146,7 +148,7 @@ def fork(tmp_path_factory):
     slug = net.forks.clone(str(upstream), name="Demo Quest decomp", platform="n64", log=lambda *_: None)
     need = net.forks.needs(slug)
     assert need["kind"] == "manifest" and need["path"] == "baserom.z64"
-    with pytest.raises(NetworkError, match="sha1"):
+    with pytest.raises(NetworkError, match="Expected SHA-1:"):
         net.forks.setup(slug, b"\0" * 1024, "nope.z64", log=lambda *_: None)
     m = net.forks.setup(slug, ROM.read_bytes(), "demo.z64", log=lambda *_: None)
     assert m["total_functions"] == 13
@@ -320,6 +322,33 @@ def test_csource_finds_definitions_and_stubs():
     assert csource.get(src, "C::m").startswith("void C::m")
     assert csource.get(src, "missing") is None
     assert "return 1" in csource.replace(src, "g", "int g(void) { return 1; }")
+
+
+def test_a_cpp_constructor_or_destructor_is_found_as_the_function_it_stands_for():
+    """A PC game's function written as a class named after it: its constructor was found, its destructor wasn't (an
+    agent's func_004D9DD0::~func_004D9DD0 was refused: "send the complete definition of _func_004D9DD0"). C files
+    (every other console's) find what they found before."""
+    from decompnet.app.forkengine import ForkEngine
+
+    names = ForkEngine._names({"symbol": "_func_004D9DD0"}, {"name": "_func_004D9DD0"})
+    dtor = "struct func_004D9DD0 { ~func_004D9DD0(); };\nfunc_004D9DD0::~func_004D9DD0() {\n    func_005F10E0();\n}\n"
+    assert ForkEngine._find(None, dtor, names)[0] == "func_004D9DD0::~func_004D9DD0"
+    ctor = "func_004D9DD0::func_004D9DD0(int x) {\n}\n"
+    assert ForkEngine._find(None, ctor, names)[1] == (0, len(ctor))
+    # a function with a C++ name (a fork's) is found by it, not by a destructor of the same plain name
+    names = ForkEngine._names({"symbol": "??0Foo@@QAE@XZ", "demangled": "Foo::Foo(void)"}, {"name": "??0Foo@@QAE@XZ"})
+    assert not any("~" in n for n in names)
+    assert ForkEngine._find(None, "Foo::~Foo() {\n}\n", names) == (None, None)
+    # C: a definition, not a call or a prototype, and nothing of C reads as a destructor
+    c = "int g(void);\nint f(int a) {\n    return ~g() + a;\n}\n"
+    names = ForkEngine._names({"symbol": "f"}, {"name": "f"})
+    assert names == ["f", "f::~f"] and ForkEngine._find(None, c, names) == ("f", (13, len(c)))
+    assert csource.find(c, "g") is None
+    # the one constructor or destructor a source defines names an unnamed PC function (ForkEngine._attempt)
+    assert csource.structor("struct CFoo { CFoo(); ~CFoo(); };\nCFoo::~CFoo() {\n}\n") == "CFoo::~CFoo"
+    assert csource.structor("A::CFoo::CFoo(int x) : y(x) {\n}\n") == "A::CFoo::CFoo"
+    assert csource.structor("CFoo::CFoo() {}\nCFoo::~CFoo() {}\n") is None  # two: which one is the function?
+    assert csource.structor("void CFoo::Update() {}\nCFoo::CFoo();\n" + c) is None
 
 
 def test_clone_rejects_odd_sources(tmp_path):

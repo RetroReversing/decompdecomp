@@ -31,9 +31,30 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
 
 ## RetroReversing fork
 
-This fork of [NDelic's decompdecomp](https://github.com/n-delic/decompdecomp) adds a native macOS app.
+This fork of [NDelic's decompdecomp](https://github.com/n-delic/decompdecomp) adds project import, ROM handling and matching features. Native macOS support is now upstream.
 The original decomp.wtf and decompdecomp credits and licenses are preserved. Report fork issues to
 [RetroReversing/decompdecomp](https://github.com/RetroReversing/decompdecomp/issues).
+
+## Autopilot on imported projects
+
+Autopilot can try machine drafts in imported projects with writable C files and a supported draft decompiler.
+For source-less units with decompdecomp's verified Splat references, it creates separate C candidate files and
+checks that the project's own build can compile them before enabling attempts. It preserves existing source,
+Makefiles, compiler settings and the assembly used for the linked baseline. Unsupported builds report what
+blocked preparation; zero attempts are not described as a completed search with no matches. Drafts still pass
+the same compiler and objdiff judge as agent submissions. A matching candidate is not a full linked-ROM rebuild.
+
+## ROM library
+
+Set **Settings → ROM library** to the folder containing your extracted game files. When an imported project
+needs its game, decompdecomp searches that folder recursively for the project's expected SHA-1 and fills in a
+matching path. N64 .z64, .v64 and .n64 byte orders are recognized regardless of filename. Confirm ownership and
+click **Use path** to continue. The search does not unpack archives or start a build.
+
+If setup fails after accepting your ROM, reopen the project or retry: its verified copy is detected first and
+**Retry setup** reuses it without opening the file chooser. Projects without a declared SHA-1 still need manual
+selection. Clear the folder setting to disable library searches. On POSIX systems, hashes are cached in memory until files change
+or the app restarts. Windows rehashes files because timestamps may not reliably reflect overwrites; original files are never moved by the search.
 
 ## Install
 
@@ -41,7 +62,7 @@ decompdecomp runs on **Linux and Windows 10/11** on x86-64, and **macOS 12+** on
 the free compilers and keeps decompdecomp up to date:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/RetroReversing/decompdecomp/macos-support/site/public/install.sh | bash -s -- --source branch:macos-support
+curl -fsSL https://raw.githubusercontent.com/RetroReversing/decompdecomp/main/site/public/install.sh | bash -s -- --source branch:main
 ```
 
 Upstream Linux packages remain available from the [releases](https://github.com/n-delic/decompdecomp/releases):
@@ -94,7 +115,7 @@ The source installer is another option. It creates a launcher in `~/Applications
 an external uv installation. To install from a checkout:
 
 ```sh
-git clone --branch macos-support https://github.com/RetroReversing/decompdecomp.git
+git clone --branch main https://github.com/RetroReversing/decompdecomp.git
 cd decompdecomp
 bash site/public/install.sh
 ```
@@ -107,7 +128,7 @@ build PS1 GCC 2.6.3 from pinned source on first use. The ready-made 2.7.2 and 2.
 Apple Silicon. Finder launches preserve the PATH
 from installation so your installed Node and helper CLIs remain available; rerun `decomp shortcut` after
 changing their locations. This source install has no signed DMG.
-Installs from `macos-support` track that branch in this fork when checking for updates.
+Installs from `main` track that branch in this fork when checking for updates.
 
 **Apple Silicon:** the app, WebKit window and modern tools run natively. The pinned N64 KMC-compatible
 GCC 2.7.2 and binutils 2.6 archives contain Intel programs, so install Apple's Rosetta runtime before setup:
@@ -254,10 +275,11 @@ game's code is its rights holder's: keep it to yourself.
 | Nintendo 64 | Recommended |
 | PlayStation (PS1) | Beta |
 | PlayStation 2 | Beta |
+| PSP | Beta |
 | GameCube, Wii | Beta |
 | Windows PC games | Beta |
 | Nintendo DS | Beta |
-| Game Boy Advance, 3DS, PSP, Switch, Xbox, Xbox 360 | Community decomps only |
+| Game Boy Advance, 3DS, Switch, Xbox, Xbox 360 | Community decomps only |
 
 1.0.3 rewrote most of the app, so every platform needs testing again, Nintendo 64 too. Try it on a game you own and
 [tell us how it went](https://github.com/n-delic/decompdecomp/issues): what worked, what didn't, what was confusing. Reports are how a platform goes

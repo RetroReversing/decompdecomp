@@ -254,7 +254,8 @@ function renderAutopilot(ov) {
     if (twinsDone) parts.push(`${twinsDone.toLocaleString()} from identical code`);
     if (tw && tw.asm) parts.push(`${tw.asm.toLocaleString()} copies of assembly set aside (not for agents)`);
     if (ap && ap.tried) parts.push(`${ap.tried.toLocaleString()} machine drafts tried${ap.near ? `, ${ap.near} more 90%+ there` : ""}`);
-    $("apSub").textContent = (parts.length ? parts.join(" · ") + ". " : "") + (ap && ap.no_drafts ? "" : "Run it again after agents add types and names: drafts get better.") + perm;
+    if (ap && ap.no_drafts && !ap.tried) $("apTitle").textContent = "Autopilot could not try machine drafts";
+    $("apSub").textContent = (parts.length ? parts.join(" · ") + ". " : "") + (ap && ap.no_drafts ? ap.no_drafts : "Run it again after agents add types and names: drafts get better.") + perm;
     $("apBtn").textContent = "Run again";
   } else {
     $("apTitle").textContent = "Free matches first";
@@ -306,7 +307,7 @@ function renderSource(ov) {
     const rb = ov.rebuild;
     $("srcText").innerHTML = ov.origin === "scratch"
       ? `This project <b>is</b> the source tree: a ${ov.layout || "decomp"} project that rebuilds your game on every build. Every match is committed to git in the project folder.`
-        + (rb ? `<p class="small ${rb.identical ? "ok" : "warn-text"}">${rb.identical ? "✓ The rebuilt game is your copy, byte for byte" + (/padding/.test(rb.detail) ? " (up to the padding at its end: your copy is trimmed)." : ".")
+        + (rb ? `<p class="small ${rb.identical ? "ok" : "warn-text"}">${rb.identical ? `✓ ${esc(rb.what || "The rebuilt game")} is your copy, byte for byte` + (/padding/.test(rb.detail) ? " (up to the padding at its end: your copy is trimmed)." : ".")
           : `The rebuilt game isn't your copy byte for byte yet: ${esc(rb.detail)}. Decompiling works anyway: every function is compared with your copy's own code.`}</p>` : "")
       : `This project <b>is</b> the source tree${ov.repo_url ? ` (a fork of <a class="link" href="${esc(ov.repo_url)}" target="_blank" rel="noopener">${esc(ov.repo_url.replace(/^https?:\/\//, ""))}</a>)` : ""}. Every match is committed to the <code>decomp-wtf</code> branch, ready to send upstream.`;
     if ($("srcState")._working) return;
@@ -320,7 +321,7 @@ function renderSource(ov) {
       try {
         const { job } = await api("/api/fork/rom-check", { method: "POST", body: { slug: S.slug } });
         const r = await followJob(job, log);
-        toast(r.identical ? "The rebuilt game is your copy, byte for byte." : `Not identical yet: ${esc(r.detail)}`, r.identical ? "match" : "");
+        toast(r.identical ? `${r.what || "The rebuilt game"} is your copy, byte for byte.` : `Not identical yet: ${esc(r.detail)}`, r.identical ? "match" : "");
         S.ov = await api(`/api/project?slug=${S.slug}`);
         panel._working = false;
         if (panel === $("srcState")) renderSource(S.ov);
@@ -369,11 +370,21 @@ async function exportNow() {
 }
 
 /* ------------------------------------------------------------------ project settings */
+function projectCompilerFacts(ov) {
+  const c = ov.project_compiler;
+  if (ov.kind !== "fork" || !c) return [];
+  return [c.name ? ["Compiler (declared)", c.name] : null,
+    c.command ? ["Compiler command (declared)", c.command] : null,
+    ...(c.flags || []).map(f => [f.variable + " (declared)", f.value]),
+    c.overrides?.length ? ["Per-file flags (declared)", c.overrides.map(f => `${f.pattern}: ${f.variable} ${f.operator} ${f.value}`).join("; ")] : null,
+    c.sources?.length ? ["Compiler settings read from", c.sources.join(", ") + ". " + c.note] : null].filter(Boolean);
+}
+
 async function renderProjectSettings() {
   const ov = S.ov;
   if (!ov) return;
   const fork = ov.kind === "fork";
-  $("reimportGame").hidden = fork;
+  $("reimportGame").hidden = fork && !ov.reimports;  // (a PC project analyses its program again)
   // a fork's build sets its compilers, except where each source file has one (DS): then the same panel, with the
   // project's flags its build's and nothing for the ROM engine's survey to check
   $("compilerPanel").hidden = !(ov.compilers || []).length;
@@ -392,6 +403,7 @@ async function renderProjectSettings() {
   }
   const facts = [["Platform", ov.platform_name], ["Game", ov.rom?.title || ov.title], [fork ? "Version" : "Game code", ov.rom?.game_code || ov.version],
     !fork && ov.rom?.region ? ["Region", ov.rom.region] : null, fork ? ["Layout", ov.origin === "scratch" ? (ov.layout || "decomp") + " (from scratch)" : ov.fork_kind] : ["Compiler", `${ov.compiler.name} ${ov.compiler.flags.join(" ")}`],
+    ...projectCompilerFacts(ov),
     fork && ov.repo_url ? ["Repository", ov.repo_url.replace(/^https?:\/\//, "")] : null,
     ["Functions", `${ov.functions.toLocaleString()} (${bytes(ov.bytes || 0)} of code)`], ["Folder", ov.folder]].filter(Boolean);
   $("projFacts").innerHTML = facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v || "—")}</dd></div>`).join("");
@@ -587,7 +599,7 @@ function renderCompilerAnswer(a) {
   const sv = a.survey || {};
   const checks = (a.checks || []).slice(-20).reverse();
   setHtml($("compilerEvidence"), `<p class="small">The app works out which compiler built each part by itself: it tries agents' C for functions that don't match yet with the other compilers the game uses (${
-      sv.state === "running" ? `running now: ${plural(sv.running_tried || 0, "function")} tried` : sv.t ? `last run ${since(sv.t)}: ${plural(sv.tried || 0, "function")} tried, ${sv.confirmed || 0} matched with another compiler` : a.mips ? "not run yet: it runs once the game uses two compilers" : "it reads MIPS code only"}),
+      sv.state === "running" ? `running now: ${plural(sv.running_tried || 0, a.unit || "function")} tried` : sv.t ? `last run ${since(sv.t)}: ${plural(sv.tried || 0, a.unit || "function")} tried, ${sv.confirmed || 0} matched with another compiler` : a.mips ? "not run yet: it runs once the game uses two compilers" : "it reads MIPS code only"}),
       and it tests each part on the functions next to it before a part counts. A part applies by itself only when you let proven changes apply.</p>
     ${a.elsewhere.length ? `<p class="col-title">Code that looks like another compiler's</p><ol class="parts">${a.elsewhere.map((r) => `<li><code>${hexShort(r.start)}–${hexShort(r.end)}</code><span class="grow">${esc(r.compiler)}</span><span class="muted small">${plural(r.functions, "function")}${r.confirmed ? `, ${r.confirmed} proven` : ""}</span></li>`).join("")}</ol>` : ""}
     ${checks.length ? `<p class="col-title">Checks</p><ol class="parts">${checks.map((c) => `<li><span class="part-state ${esc(c.status)}">${(PART_STATE[c.status] || PART_STATE[""])[0]}</span><span class="grow small">${c.audit ? "part" : "suggested"} ${c.ranges.map(([s, e]) => `${hexShort(s)}–${hexShort(e)}`).join(", ")} · ${esc(c.compiler)}${c.said ? `<br><span class="muted">${esc(c.said)}</span>` : ""}</span></li>`).join("")}</ol>` : ""}
