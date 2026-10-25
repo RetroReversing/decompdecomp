@@ -257,9 +257,16 @@ def test_ps1_mac_archives_are_native_arm64_only(tid, monkeypatch):
     assert tc.parts_for("linux-x86_64")[0]["url"].endswith("-psx.tar.gz")
 
 
-def test_early_ps1_compiler_does_not_claim_a_missing_mac_build():
-    assert not toolchains.get("gcc-2.6.3-psx").parts_for("macos-arm64")
-    assert not toolchains.get("gcc-2.6.3-psx").parts_for("macos-x86_64")
+@pytest.mark.parametrize("cpu", ["arm64", "x86_64"])
+def test_early_ps1_compiler_builds_natively_on_macs(cpu, monkeypatch):
+    monkeypatch.setattr(toolchains.wsl, "wanted", lambda: False)
+    monkeypatch.setattr(toolchains, "current_platform", lambda: "macos-" + cpu)
+    tc = toolchains.get("gcc-2.6.3-psx")
+    assert tc.supported and not tc.proprietary
+    parts = tc.parts_for()
+    assert len(parts) == 1 and parts[0]["build"] == "psx-gcc-2.6.3"
+    assert all(len(parts[0][key]) == 64 for key in ("sha256", "patches_sha256", "config_guess_sha256", "config_sub_sha256"))
+    assert tc.parts_for("linux-x86_64")[0]["url"].endswith("gcc-2.6.3-psx.tar.gz")
 
 
 @pytest.mark.parametrize("host,expected", [("darwin", "/Applications/Compiler App/python3.12"), ("linux", "python3")])
@@ -277,7 +284,7 @@ def test_ps1_assembler_uses_app_python_on_mac_only(host, expected, tmp_path, mon
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="native macOS PS1 compilers")
-@pytest.mark.parametrize("tid", ["gcc-2.7.2-psx", "gcc-2.8.1-psx"])
+@pytest.mark.parametrize("tid", ["gcc-2.6.3-psx", "gcc-2.7.2-psx", "gcc-2.8.1-psx"])
 def test_native_ps1_compiler_produces_little_endian_mips(tid, tmp_path):
     from io import BytesIO
 

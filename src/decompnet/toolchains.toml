@@ -63,11 +63,22 @@ name = "GCC 2.6.3 for PlayStation + maspsx (ASPSX 2.34)"
 platform = "PS1"
 arch = "mipsel"
 license = "GPL-2.0"
-source = "decompals/old-gcc 0.17 (gcc-2.6.3-psx)"
+source = "GNU GCC 2.6.3 (Slackware 2.2.0); PS1 patches from decompals/old-gcc 0.17"
 description = "GCC 2.6.3 with the PlayStation patches, the compiler of PSY-Q 3.5 and 3.6 (1995-1996); its assembly goes through maspsx, which does what Sony's assembler ASPSX 2.34 did, then GNU as."
 requires = ["maspsx", "binutils-mips"]
 cmd = ["/bin/sh", "-c", 'tc=$1 mas=$2 bin=$3 aspsx=$4 src=$5 obj=$6 py=$7; shift 7; g=-G0; for a; do case $a in -G*) g=$a;; esac; done; "$tc/gcc" -B"$tc/" -S "$@" "$src" -o "$obj.s" && "$py" -E -s "$mas/maspsx.py" --force-stdin --expand-div --use-comm-section --aspsx-version=$aspsx $g < "$obj.s" > "$obj.m.s" && "$bin/mips-ps2-decompals-as" -EL -march=r3000 -mtune=r3000 -no-pad-sections -O1 -G0 -o "$obj" "$obj.m.s"', "psyq", "{tc}", "{tc:maspsx}", "{tc:binutils-mips}", "2.34", "{src}", "{obj}", "{python}", "-I{include}", "{flags}"]
 flags = ["-O2", "-G8"]
+[["gcc-2.6.3-psx".parts]]
+url = "https://mirrors.slackware.com/slackware/slackware-2.2.0/source/d/gcc/gcc-2.6.3.tar.gz"
+sha256 = "66529b6ced4ccc580ec365809c1abed856d948283deff656801dec14f47d081a"
+platforms = ["macos-arm64", "macos-x86_64"]
+build = "psx-gcc-2.6.3"
+patches_url = "https://codeload.github.com/decompals/old-gcc/tar.gz/cf70ec58bce58128732062bc9930045c82904cbb"
+patches_sha256 = "94a2522a7ec72024040ca30f75e847240f1bae1aca18bfcc1e87ead882a086fb"
+config_guess_url = "https://raw.githubusercontent.com/gcc-mirror/gcc/74af13c174714dd3b9f1ded4b39955f003c16361/config.guess"
+config_guess_sha256 = "7d1e3c79b86de601c3a0457855ab854dffd15163f53c91edac54a7be2e9c931b"
+config_sub_url = "https://raw.githubusercontent.com/gcc-mirror/gcc/6fad101f3063d722e3348d07dc93cf737f8709e4/config.sub"
+config_sub_sha256 = "71b8d73e46e0c31b1dc91ba5306f5ef0af009273b3bb283f31d8dad69666fa9e"
 [["gcc-2.6.3-psx".parts]]
 url = "https://github.com/decompals/old-gcc/releases/download/0.17/gcc-2.6.3-psx.tar.gz"
 sha256 = "01e6e8c4933414ea3f8d8e3bc766a1f5fafd4fc0110e0b75d1f691bd791989b1"
