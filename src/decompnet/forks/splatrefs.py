@@ -97,9 +97,13 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
     units = []
     for source in sorted(source_dir.rglob('*.c')):
         relative = source.relative_to(root)
-        base = build_dir / (str(relative) + '.o')
-        object_name = base.relative_to(root).as_posix()
-        if base.is_file() and object_name in mapped_text:
+        candidates = [build_dir / (str(relative) + '.o'), build_dir / relative.with_suffix('.o')]
+        linked = [p for p in candidates if p.is_file() and p.relative_to(root).as_posix() in mapped_text]
+        if len(linked) > 1:
+            raise ForkError(f'ambiguous linked objects for {relative}; configure objdiff manually')
+        if linked:
+            base = linked[0]
+            object_name = base.relative_to(root).as_posix()
             if base.stat().st_mtime_ns > elf.stat().st_mtime_ns:
                 raise ForkError(f'{object_name} changed after the verified ELF was linked; rebuild the project')
             units.append((source, base))
@@ -148,6 +152,11 @@ def plan(root: Path, config: dict) -> list[dict]:
     segments = config.get('segments', [])
     if not isinstance(segments, list):
         raise ForkError("automatic objdiff setup needs a list of explicit splat segments")
+    # Overlay imports must use complete-image verification, regardless of earlier subsegment kinds.
+    if any(isinstance(segment, dict) and segment.get('type') == 'code'
+           and any(key in segment for key in ('exclusive_ram_id', 'compressed', 'decompressor'))
+           for segment in segments):
+        raise ForkError("automatic objdiff setup cannot yet verify compressed or overlay code segments")
     for segment in segments:
         if not isinstance(segment, dict):
             if isinstance(segment, list) and segment and isinstance(segment[0], int) and (

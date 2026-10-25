@@ -194,6 +194,15 @@ class Console:
         """What the game file is: {"platform", "id", "title", "sha1"}, the sha1 of what decides which game it is."""
         raise RomError(f"{self.name} projects can't be made from scratch")
 
+    def project_build_command(self, project, command: list[str]) -> list[str]:
+        """Point a public build at an installed tool when this console knows its compiler declaration."""
+        return command
+
+    def project_tool_paths(self, project) -> list[Path]:
+        """Installed tools available only to this project's build process (never the user's global PATH)."""
+        paths = arch.get(self.arch).build_tool_paths
+        return paths(project) if paths else []
+
     def tool_args(self) -> list[str]:
         """The arguments that point the project's configure step at this computer's pinned tools."""
         return []

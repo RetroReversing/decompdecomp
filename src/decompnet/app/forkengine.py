@@ -25,7 +25,7 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 from .. import arch, consoles, similarity, toolchains
-from ..forks import csource, datadiff, drafts, dtksplits, ghidra, objdiff
+from ..forks import compiler_info, csource, datadiff, drafts, dtksplits, ghidra, objdiff
 from ..forks.objdiff import ObjdiffError
 from ..forks.project import EDITABLE, GAME, PROGRAM, SCOPES, STATE, ForkError, ForkProject
 from ..hostenv import NO_WINDOW
@@ -555,7 +555,12 @@ class ForkEngine:
         proj = self.net._project(slug)
         if not self.is_fork(proj):
             raise NetworkError(f"{slug} isn't a fork")
-        return proj, ForkProject(Path(proj["root"])), json.loads(proj["config"])
+        fp, cfg = ForkProject(Path(proj["root"])), json.loads(proj["config"])
+        if not cfg.get("platform") and (platform := fp.detect_platform()):
+            cfg["platform"] = platform
+            self._save_cfg(proj, cfg)
+            proj = self.net._project(slug)
+        return proj, fp, cfg
 
     def _save_cfg(self, proj, cfg: dict) -> None:
         with self.net.store.tx() as db:
@@ -605,7 +610,7 @@ class ForkEngine:
         kind = fp.kind()
         versions = fp.versions()
         version = version if version in versions else (versions[0] if versions else version)
-        cfg = {"kind": "fork", "repo_url": url, "platform": platform, "version": version, "fork_kind": kind,
+        cfg = {"kind": "fork", "repo_url": url, "platform": platform or fp.detect_platform(), "version": version, "fork_kind": kind,
                "ready": False, "legal": {"basis": "personal-copy", "license": "the project's own license"}}
         self._register(slug, name or url.rstrip("/").split("/")[-1], f"fork of {url}", dest, cfg, f"cloned {url}")
         log(f"cloned into {dest} ({kind} project)")
@@ -665,7 +670,7 @@ class ForkEngine:
                     cfg = {"kind": "fork", "origin": "local", "repo_url": str(root), "platform": "",
                            "version": next(iter(info["versions"]), None), "fork_kind": info["kind"], "ready": False,
                            "legal": {"basis": "personal-copy", "license": "the project's own license"}}
-                    cfg["platform"] = (project.manifest or {}).get("platform") or ""
+                    cfg["platform"] = project.detect_platform()
                     self._register(slug, root.name, f"local checkout at {root}", root, cfg, "imported local checkout")
                     log(f"Imported {root.name}; open it to check its setup and measure progress.")
                 imported.append({"path": str(root), "slug": slug, "existing": False})
@@ -746,7 +751,7 @@ class ForkEngine:
                     self._save_cfg(proj, cfg)
                 except (OSError, ForkError):
                     pass
-            dest = fp.place_game(Path(game), filename or Path(game).name, cfg.get("version"), move=move)
+            dest = fp.place_game(Path(game), filename or Path(game).name, cfg.get("version"), move=move, log=log)
             log(f"your copy of the game is at {dest.relative_to(fp.root)}")
         if not fp.needs(cfg.get("version"))["auto"]:
             raise NetworkError("this project has its own setup: follow its README, then click Check again")
@@ -758,23 +763,19 @@ class ForkEngine:
         which ones the project has, instead of failing deep in the build."""
         originals = fp.splat_baseroms() if fp.kind() == "splat" else {}
         if originals:
-            from ..consoles.n64.rom import z64_file_sha1
+            from ..consoles.n64.rom import file_hashes
 
+            hashes = file_hashes(game)
             if game.stat().st_size == 0:
-                raise NetworkError("that ROM file is empty (0 bytes). Select a complete copy of the game.")
-            normalized = z64_file_sha1(game)
-            if normalized:
-                digest, byte_order = normalized
-            else:
-                raw = hashlib.sha1()
-                with game.open("rb") as stream:
-                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                        raw.update(chunk)
-                digest, byte_order = raw.hexdigest(), None
+                raise NetworkError("That ROM file is empty (0 bytes). Select a complete copy of the game.\n"
+                                   + hashes.describe())
+            digest = hashes.normalized_sha1 or hashes.source_sha1
+            byte_order = hashes.byte_order
             version = next((v for v, sha1 in originals.items() if sha1 == digest), None)
             if version is None:
                 raise NetworkError("that ROM's SHA-1 doesn't match an original ROM supported by this project: "
-                                   + ", ".join(f"{v}: {sha1}" for v, sha1 in originals.items()))
+                                   + ", ".join(f"{v}: {sha1}" for v, sha1 in originals.items())
+                                   + "\n" + hashes.describe())
             if byte_order in ("n64", "v64"):
                 log(f"your {byte_order} ROM matches after conversion to z64 byte order")
             if version != cfg.get("version"):
@@ -3241,6 +3242,7 @@ class ForkEngine:
             **consoles.get(cfg.get("platform")).project_facts(),
             "repo_url": cfg.get("repo_url"), "fork_kind": cfg.get("fork_kind"), "version": cfg.get("version"),
             "origin": cfg.get("origin"), "compiler_name": cfg.get("compiler"),
+            "project_compiler": compiler_info.describe(fp, cfg.get("version")),
             "versions": fp.versions(), "ready": bool(cfg.get("ready")), "needs": need,
             "rom": {"game_code": cfg.get("version") or "", "region": consoles.name(cfg.get("platform")),
                     "title": proj["name"]},

@@ -32,7 +32,7 @@ from pathlib import Path
 
 from decompnet.hostenv import NO_WINDOW, console_python
 
-from .. import toolchains
+from .. import consoles, toolchains
 from ..limits import capped, killed_for_memory
 from ..network import NetworkError
 from . import objdiff
@@ -187,6 +187,26 @@ class ForkProject:
 
     def versions(self) -> list[str]:
         return sorted(p.parent.name for p in self.root.glob("config/*/config.yml"))
+
+    def detect_platform(self) -> str:
+        """Read the console declared by a public project's manifest or Splat config without running its code."""
+        if value := (self.manifest or {}).get("platform"):
+            return value
+        path = self._splat_yaml()
+        if path is None:
+            return ""
+        import yaml
+
+        try:
+            config = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, yaml.YAMLError):
+            return ""
+        options = config.get("options") if isinstance(config, dict) else None
+        value = options.get("platform") if isinstance(options, dict) else None
+        if not isinstance(value, str):
+            return ""
+        console = consoles.get(value.strip().lower())
+        return console.id if console.id in {c.id for c in consoles.CONSOLES} else ""
 
     def _splat_yaml(self) -> Path | None:
         for p in sorted(self.root.glob("*.yaml")) + sorted(self.root.glob("config/*.yaml")) + sorted(self.root.glob("config/**/*.yaml")):
@@ -350,27 +370,35 @@ class ForkProject:
 
     # ------------------------------------------------------------------ setup
 
-    def place_game(self, src: Path, filename: str, version: str | None = None, move: bool = False) -> Path:
+    def place_game(self, src: Path, filename: str, version: str | None = None, move: bool = False, log=None) -> Path:
         """Put the user's game file where the project expects it, checking its sha1 when the project has one.
         Works from a file on disk, so multi-gigabyte discs are never read into memory."""
         need = self.needs(version)
         if not need["path"]:
             raise ForkError("decompdecomp doesn't know where this project expects the game; follow its README")
         src = Path(src)
-        if need.get("sha1") and _sha1(src) != need["sha1"]:
-            if need["path"].endswith(".z64"):
-                from ..consoles.n64.rom import copy_z64_file, z64_file_sha1
+        supplied_sha1 = _sha1(src) if need.get("sha1") or need["path"].endswith(".z64") else None
+        details = f"Supplied file SHA-1: {supplied_sha1}"
+        normalized_sha1 = None
+        if need["path"].endswith(".z64"):
+            from ..consoles.n64.rom import copy_z64_file, file_hashes
 
-                normalized = z64_file_sha1(src)
-                if normalized and normalized[0] == need["sha1"]:
+            hashes = file_hashes(src, supplied_sha1)
+            details, normalized_sha1 = hashes.describe(), hashes.normalized_sha1
+            if log:
+                log(details)
+        if need.get("sha1") and supplied_sha1 != need["sha1"]:
+            if need["path"].endswith(".z64"):
+                if normalized_sha1 == need["sha1"]:
                     dest = self.root / need["path"]
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     copy_z64_file(src, dest)
                     return dest
             inner = self._from_disc(src.read_bytes(), Path(need["path"]).name) if src.stat().st_size < 1 << 30 else None
             if inner is None or hashlib.sha1(inner).hexdigest() != need["sha1"]:
-                raise ForkError("that file isn't the version this project decompiles (its sha1 doesn't match the "
-                                "project's); check the README for the exact version")
+                raise ForkError("That file does not match the version this project expects.\n"
+                                f"Expected SHA-1: {need['sha1']}\n{details}\n"
+                                "Check the project's README for the required region and revision.")
             dest = self.root / need["path"]
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(inner)
@@ -444,8 +472,11 @@ class ForkProject:
         if self._docker_only_macos() and Path(cmd[0]).name in ("make", "gmake"):
             self._prepare_docker(log)
             cmd = self._docker_command(["make", *cmd[1:]])
+        else:
+            cmd = consoles.get(self.detect_platform()).project_build_command(self, cmd)
         env = dict(os.environ)
-        env["PATH"] = os.pathsep.join([*(str(d) for d in _tool_dirs()), env.get("PATH", "")])
+        project_tools = consoles.get(self.detect_platform()).project_tool_paths(self)
+        env["PATH"] = os.pathsep.join([*(str(d) for d in [*_tool_dirs(), *project_tools]), env.get("PATH", "")])
         # found on that PATH (decompdecomp's own ninja): Linux looks a command up there itself, Windows only in this
         # process's PATH, where decompdecomp's environment isn't when it's installed
         executable = sys.executable if cmd[0] in ("python", "python3") else shutil.which(cmd[0], path=env["PATH"]) or cmd[0]
