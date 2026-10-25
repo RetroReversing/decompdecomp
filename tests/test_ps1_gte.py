@@ -23,7 +23,9 @@ def test_matrix_transfers_are_not_automatically_set_aside():
     code = struct.pack('<III', ctc2, 0x03E00008, 0)
     assert get('ps').asm_reason(code) is None
     command = struct.pack('<III', 0x4A180001, 0x03E00008, 0)
-    assert 'GTE' in get('ps').asm_reason(command)
+    assert get('ps').asm_reason(command) is None
+    unknown = struct.pack('<III', 0x4A000000, 0x03E00008, 0)
+    assert 'GTE' in get('ps').asm_reason(unknown)
 
 
 @pytest.mark.parametrize('toolchain', ['gcc-2.6.3-psx', 'gcc-2.7.2-psx', 'gcc-2.8.1-psx'])
@@ -37,3 +39,18 @@ def test_intrinsics_compile_as_gte_register_transfers(tmp_path, toolchain):
     words = struct.unpack('<' + 'I' * (len(fn.code) // 4), fn.code)
     controls = [(w >> 11) & 31 for w in words if w >> 26 == 0x12 and (w >> 21) & 31 == 6]
     assert controls == list(range(8))
+
+
+@pytest.mark.parametrize('toolchain', ['gcc-2.6.3-psx', 'gcc-2.7.2-psx', 'gcc-2.8.1-psx'])
+def test_gte_commands_and_vector_transfers(tmp_path, toolchain):
+    if toolchains.installed(toolchain) is None:
+        pytest.skip('needs installed PS1 GCC')
+    cfg = compiler_config(tmp_path, {'compiler': {'toolchain': toolchain, 'flags': ['-O2', '-G0']}})
+    result = compile_source(cfg, '', 'void f(void *p) { gte_ldv0(p); gte_rtps(); gte_stsxy(p); gte_stflg(p); }')
+    assert result.ok, result.log
+    fn = extract_function(result.obj, 'f')
+    words = struct.unpack('<' + 'I' * (len(fn.code) // 4), fn.code)
+    assert 0x4A180001 in words
+    assert any(w >> 26 == 0x32 and (w >> 16) & 31 == 0 for w in words)
+    assert any(w >> 26 == 0x3A and (w >> 16) & 31 == 14 for w in words)
+    assert get('ps').asm_reason(fn.code) is None
