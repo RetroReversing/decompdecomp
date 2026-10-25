@@ -2382,7 +2382,7 @@ class ForkEngine:
         key = self._draft_key(cfg, unit)
         if fn["seed"] is not None and fn["seed_key"] == key:
             return fn["seed"] or None
-        hint = (unit.scratch or {}).get("compiler", "") or json.dumps(fp.needs(cfg.get("version")))
+        hint = (unit.scratch or {}).get("compiler", "") or compiler_info.describe(fp, cfg.get("version")).get("name", "")
         meta = self._meta(fn)
         try:
             text = drafts.draft(fp.root, cfg.get("platform") or "", unit.name, meta.get("symbol") or fn["name"],
@@ -3086,13 +3086,10 @@ class ForkEngine:
     # ------------------------------------------------------------------ autopilot
 
     def autopilot_prepare(self, slug: str) -> list[int]:
-        """The open functions autopilot tries in a game started from scratch, smallest first. Raises NetworkError
+        """The open functions autopilot tries in a ready project, smallest first. Raises NetworkError
         when it can't run here. A console with drafts of its own (Console.own_drafts: PC) needs no m2c: its exact
         drafts come from the code, its others from Ghidra when it's installed."""
         proj, fp, cfg = self.get(slug)
-        if cfg.get("origin") != "scratch":
-            raise NetworkError("autopilot works on games started from scratch: a public decomp's headers don't have "
-                               "what machine drafts need, and its easy functions are done already")
         if not cfg.get("ready"):
             raise NetworkError("finish setting the project up first")
         console = consoles.get(cfg.get("platform"))
@@ -3101,7 +3098,19 @@ class ForkEngine:
                 self._commit(proj, fp, rel, "Add the types machine drafts use\n\nWritten by decompdecomp's autopilot.")
         elif not drafts.supported(cfg.get("platform") or "") or toolchains.installed("m2c") is None:
             raise NetworkError("autopilot needs m2c, the draft decompiler: install it in Setup")
-        elif drafts.add_m2c_macros(fp.root / "include" / "common.h"):  # projects made before autopilot ran on them
+        if cfg.get("origin") != "scratch":
+            from ..forks.scaffold import prepare
+
+            with self._tree(proj).exclusive(), self._build_locks[proj["id"]]:
+                made = prepare(fp)
+            if made:
+                self.sync(slug)
+            rows = self.net.store.all("SELECT id FROM functions WHERE project_id=? AND status='open' ORDER BY n_insns, id",
+                                      proj["id"])
+            if not rows:
+                raise NetworkError("No writable C candidates are available. This imported project's build needs C scaffolding before Autopilot can try drafts.")
+            return [r["id"] for r in rows]
+        if not console.own_drafts and drafts.add_m2c_macros(fp.root / "include" / "common.h"):  # projects made before autopilot ran on them
             self._commit(proj, fp, "include/common.h", "Add the macros machine drafts use\n\nWritten by decompdecomp's autopilot.")
         rows = self.net.store.all("SELECT id FROM functions WHERE project_id=? AND status='open' ORDER BY n_insns, id",
                                   proj["id"])
@@ -3142,7 +3151,7 @@ class ForkEngine:
             if (made := self._compilable(proj, fp, cfg, fn, unit)) is not None:
                 yield made
             return
-        hint = (unit.scratch or {}).get("compiler", "") or json.dumps(fp.needs(cfg.get("version")))
+        hint = (unit.scratch or {}).get("compiler", "") or compiler_info.describe(fp, cfg.get("version")).get("name", "")
         text = drafts.draft(fp.root, cfg.get("platform") or "", unit.name, meta.get("symbol") or fn["name"],
                             unit.source, compiler_hint=hint, valid=True)
         _, span = self._find(text, self._names(meta, fn)) if text else (None, None)
