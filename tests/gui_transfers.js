@@ -1,0 +1,26 @@
+"use strict";
+const fs = require("fs"), path = require("path"), vm = require("vm"), assert = require("assert");
+const elements = new Map();
+const get = id => {
+  if (!elements.has(id)) elements.set(id, { value: id === "crossGameFilter" ? "matches" : "", hidden: false, innerHTML: "", textContent: "" });
+  return elements.get(id);
+};
+const ctx = { $: get, esc: s => String(s).replaceAll("<", "&lt;"), cFunctions: () => 0 };
+vm.createContext(ctx);
+const source = fs.readFileSync(path.join(__dirname, "../src/decompnet/app/static/js/steering.js"), "utf8");
+vm.runInContext(source.slice(source.indexOf("function renderAutopilot("), source.indexOf("async function renderSdkSelection(")), ctx);
+const good = { target: "target_ok", source: "donor", game: "Demo", outcome: "match", reason: "" };
+const miss = { target: "target_miss", source: "candidate", game: "Demo", outcome: "miss", reason: "similar code (93%); transfer; score 430" };
+ctx.renderAutopilot({ kind: "rom", matched: 0, cross_game: { counts: { match: 1, miss: 40 }, recent: [miss], matches: [good] } });
+assert.match(get("crossGameRecent").innerHTML, /Verified byte match/);
+assert.doesNotMatch(get("crossGameRecent").innerHTML, /target_miss/);
+get("crossGameFilter").value = "all";
+get("crossGameFilter").onchange();
+assert.match(get("crossGameRecent").innerHTML, /Not matched/);
+assert.match(get("crossGameRecent").innerHTML, /Assembly similarity: 93%/);
+assert.match(get("crossGameRecent").innerHTML, /Mismatch score: 430 \(0 = exact\)/);
+assert.doesNotMatch(get("crossGameRecent").innerHTML, /; transfer;/);
+ctx.renderAutopilot({ kind: "rom", matched: 0, cross_game: { counts: { match: 1 }, recent: [], matches: [good] } });
+assert.equal(get("crossGameFilter").value, "all");
+assert.match(get("crossGameRecent").innerHTML, /No recent transfer attempts/);
+console.log("Transfer filters and labels passed");

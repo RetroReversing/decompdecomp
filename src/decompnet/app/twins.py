@@ -786,9 +786,15 @@ class Twins:
             "FROM cross_game_attempts a JOIN functions f ON f.id=a.function_id "
             "JOIN functions s ON s.id=a.source_function_id JOIN projects p ON p.id=a.source_project_id "
             "WHERE a.project_id=? ORDER BY a.id DESC LIMIT 30", proj["id"])
+        matches = self.net.store.all(
+            "SELECT a.outcome,a.reason,a.created_at,f.name AS target,s.name AS source,p.name AS game "
+            "FROM cross_game_attempts a JOIN functions f ON f.id=a.function_id "
+            "JOIN functions s ON s.id=a.source_function_id JOIN projects p ON p.id=a.source_project_id "
+            "WHERE a.project_id=? AND a.outcome='match' ORDER BY a.id DESC LIMIT 30", proj["id"])
         counts = self.net.store.all("SELECT outcome,COUNT(*) AS n FROM cross_game_attempts WHERE project_id=? "
                                     "GROUP BY outcome", proj["id"])
-        return {"counts": {r["outcome"]: r["n"] for r in counts}, "recent": [dict(r) for r in rows]}
+        return {"counts": {r["outcome"]: r["n"] for r in counts}, "recent": [dict(r) for r in rows],
+                "matches": [dict(r) for r in matches]}
 
     def suggestions(self, slug: str, function: str, limit: int = 5) -> list[dict]:
         """Read-only cross-game and local SDK name hints. Similar code is a lead, never a verified match."""

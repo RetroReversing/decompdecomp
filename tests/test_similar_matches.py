@@ -405,3 +405,13 @@ def test_address_and_literal_repairs_reach_judge_as_one_candidate(pair, monkeypa
     assert sm.run(pair.twins, 'destination', Job()) == 1
     assert any('destination + 61' in s for s in seen)
     assert pair.store.one("SELECT 1 FROM cross_game_attempts WHERE outcome='match' AND reason LIKE '%; repair;%'")
+
+
+def test_successful_transfers_remain_available_after_many_recent_misses(pair):
+    with pair.store.tx() as db:
+        for index in range(36):
+            db.execute('INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,source_function_id,outcome,reason,created_at) VALUES(2,2,1,1,?,?,?)',
+                       ('match' if index == 0 else 'miss', 'score 0' if index == 0 else 'score 430', index))
+    result = pair.twins.cross_game_results('destination')
+    assert all(r['outcome'] == 'miss' for r in result['recent'])
+    assert len(result['matches']) == 1 and result['matches'][0]['outcome'] == 'match'

@@ -223,13 +223,27 @@ function renderAutopilot(ov) {
   const cross = ov.cross_game || { counts: {}, recent: [] };
   const count = cross.counts.match || 0, tried = Object.values(cross.counts).reduce((a, b) => a + b, 0);
   $("crossGamePanel").hidden = ov.kind === "fork" || count === 0;
-  $("crossGameSummary").textContent = `${count} verified matches from other games · ${tried} transfer attempts. Exact and similar candidates are compiled and checked against this game's bytes. Only verified matches count.`;
+  $("crossGameSummary").textContent = `${count} verified matches · ${tried} attempts. A verified match reproduces this game's bytes exactly. Assembly similarity is only a search hint.`;
   if (ov.free_search && ov.free_search.seconds > 0) {
     const r = ov.free_search;
-    $("crossGameSummary").textContent += ` Last free search: ${r.matched} matches, ${r.bytes} verified bytes, ${r.attempts} attempts in ${r.seconds.toFixed(1)} seconds (${Math.round(r.bytes * 60 / r.seconds)} bytes/minute of elapsed time).`;
+    $("crossGameSummary").textContent += ` Last free pass: ${r.matched} matches from ${r.attempts} checks.`;
   }
-  $("crossGameRecent").innerHTML = cross.recent.slice(0, 12).map((r) =>
-    `<li><b>${esc(r.target)}</b> from ${esc(r.source)} in ${esc(r.game)} · ${esc(r.outcome)}${r.reason ? ` · ${esc(r.reason)}` : ""}</li>`).join("") || `<li class="muted small">No cross-game transfers yet. Run autopilot after another game has matched functions.</li>`;
+  const renderTransfers = () => {
+    const successes = $("crossGameFilter").value !== "all";
+    const rows = successes ? (cross.matches || cross.recent.filter(r => r.outcome === "match")) : cross.recent;
+    $("crossGameRecent").innerHTML = rows.slice(0, 12).map((r) => {
+      const matched = r.outcome === "match";
+      const status = matched ? "Verified byte match" : r.outcome === "miss" ? "Not matched" : r.outcome === "skip" ? "Skipped" : r.outcome === "asm" ? "Assembly only" : r.outcome;
+      const similarity = (r.reason || "").match(/similar code \((\d+)%\)/);
+      const score = (r.reason || "").match(/score\s+(\d+)/);
+      const detail = [similarity ? `Assembly similarity: ${similarity[1]}%` : "", !matched && score ? `Mismatch score: ${score[1]} (0 = exact)` : ""].filter(Boolean).join(" · ");
+      return `<li><div class="row"><b>${esc(r.target)}</b><span class="badge ${matched ? "matched" : ""}">${esc(status)}</span></div>
+        <div class="muted small">Candidate source: ${esc(r.game)} → ${esc(r.source)}</div>
+        ${detail ? `<div class="muted small">${esc(detail)}</div>` : ""}</li>`;
+    }).join("") || `<li class="muted small">${successes ? "No verified transfers to show." : "No recent transfer attempts."}</li>`;
+  };
+  $("crossGameFilter").onchange = renderTransfers;
+  renderTransfers();
   const box = $("autopilot"), ap = ov.autopilot, tw = ov.twins, pm = ov.permuter;
   const canRun = (ov.kind !== "fork" || ov.ready) && cFunctions(ov) - ov.matched > 0;
   box.hidden = !ap && !canRun && !tw && !pm;
