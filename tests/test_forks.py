@@ -873,6 +873,20 @@ def test_a_sync_with_nothing_new_leaves_the_functions_alone(fork):
     assert net.store.conn.total_changes - before < functions
 
 
+def test_splat_runs_tool_setup_and_extraction_before_build(tmp_path):
+    if shutil.which('make') is None:
+        pytest.skip('needs make')
+    (tmp_path / 'game.yaml').write_text('options:\n  target_path: game.z64\nsegments: []\n')
+    (tmp_path / 'Makefile').write_text(
+        '.DEFAULT_GOAL := all\n'
+        'setup:\n\t@echo setup >> order.txt\n'
+        'extract:\n\t@test -f order.txt\n\t@touch game.ld\n\t@echo extract >> order.txt\n'
+        'all:\n\t@test -f game.ld\n\t@echo build >> order.txt\n')
+    for command in ForkProject(tmp_path).setup_commands():
+        subprocess.run(command, cwd=tmp_path, check=True, capture_output=True, timeout=15)
+    assert (tmp_path / 'order.txt').read_text().splitlines() == ['setup', 'extract', 'build']
+
+
 def test_direct_splat_version_follows_rom_on_import_and_retry(tmp_path, monkeypatch):
     from decompnet.app.forkengine import ForkEngine
 
