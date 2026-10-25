@@ -95,6 +95,8 @@ cross-game transfer, suggest nearby code and names, and can index names and fing
 SDK object archives. The archive's source is never bundled; a signature is a hint until compiled C passes the judge.
 
 Similar-code autopilot attempts are bounded and use the unchanged compiler/link judge on MIPS ROM projects.
+They learn unambiguous symbol correspondences, try local-permuter repairs and proven donor flags, and persist
+trial results and a resume cursor. Compiler-flag hits are saved as evidence for review, not silently applied.
 Project-mode support is planned: align target-object relocations and adapt file-local declarations before trying
 similar C through objdiff. Other processors need an instruction reader for this search.
 

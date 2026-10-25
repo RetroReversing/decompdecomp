@@ -47,13 +47,25 @@ the same compiler and objdiff judge as agent submissions. A matching candidate i
 ## Free attempts from similar code
 
 After exact transfers, autopilot tries closely similar verified C from your other imported MIPS ROM projects.
-It adapts symbol names and can test small integer-literal differences suggested by the instructions. Every
-candidate must still compile and link to the destination's exact bytes. No AI model or API tokens are used.
+It learns symbol correspondences from accepted transfers and can reuse them when relocation layouts differ.
+Conflicting correspondences are discarded. Small integer and explicit memory-offset edits come from aligned
+instructions. Close misses get up to eight deterministic local-permuter variants, such as casts, signedness and
+statement order. Every accepted candidate must compile and link to the destination's exact bytes. No AI tokens
+are used.
 
-The pass tries up to three candidates per function, at most 128 compiles, and stops starting work after two
-minutes. Use **Run again** to continue; failed candidates are cached for 24 hours. See **Matches from other games**
-for accepted matches and failed attempts labelled "similar code". Similarity percentages describe the candidate
-search, not verified progress. Compiler settings must agree, and relocation layouts must line up.
+Compatible transfers run first, then broader mappings and flag trials, then repairs of the closest failures.
+Each stage tries up to three donors per function. All stages share a 128-compile budget and stop starting work
+after two minutes.
+Use **Run again** to resume, including after restarting the app. Completed trials are remembered; changes to
+candidate C, headers, symbol addresses, relevant mappings, targets or compiler settings make them eligible again.
+Newly accepted transfers can help later candidates in the same pass.
+
+It also tests a donor's proven flags when they differ, using the same already-installed toolchain. A byte match
+under those flags appears as a **compiler** result with the candidate C saved in the function's notes. Review the
+compiler settings before accepting it: these trials do not change settings or count as matched progress.
+
+See **Matches from other games** for results labelled transfer, repair or compiler. Similarity percentages
+rank candidates; they are not verified progress. A running compile can finish after the two-minute limit.
 
 This pass supports N64, PS1, PS2 and PSP ROM projects. Imported repository projects still use exact transfers;
 adapting similar functions across their source files and object relocations is planned.

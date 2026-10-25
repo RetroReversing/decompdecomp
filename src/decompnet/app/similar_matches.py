@@ -7,11 +7,14 @@ edits; they never change the target or count as evidence of a match on their own
 
 from __future__ import annotations
 
+import hashlib
 import json
+import random
 import re
 import time
 
-from .. import similarity
+from .. import permuter, similarity, toolchains
+from ..network import NetworkError
 from ..project import compiler_for
 
 MIN_BYTES, MAX_BYTES = 32, 3200
@@ -20,11 +23,15 @@ MAX_CANDIDATES = 3
 MAX_POOL = 400
 MAX_ATTEMPTS = 128
 MAX_SECONDS = 120
+MAX_REPAIRS = 8
+REPAIR_SCORE = 8
+MUTATION_DRAWS = 48
 # Consume comments, strings and identifiers whole, so edits never touch a symbol's address or documentation.
 TOKENS = re.compile(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
                     r'[A-Za-z_]\w*|(?<![\w.])(?:0[xX][0-9a-fA-F]+|[0-9]+)(?:[uUlL]*)(?![\w.])', re.S)
 INTEGER = re.compile(r'(0[xX][0-9a-fA-F]+|[0-9]+)([uUlL]*)\Z')
-IMMEDIATE_OPS = {8, 9, 10, 11, 12, 13, 14}  # arithmetic/logical immediates, never branches or memory offsets
+# Arithmetic/logical immediates and explicit load/store offsets; never branches.
+IMMEDIATE_OPS = {8, 9, 10, 11, 12, 13, 14, 32, 33, 35, 36, 37, 40, 41, 43}
 UNSIGNED_OPS = {12, 13, 14}
 
 
@@ -89,6 +96,85 @@ def _mnemonics(net, proj, fn) -> list[str]:
     return similarity.mips_mnemonics(*args) if cpu is None else similarity.mips_mnemonics(*args, cpu)
 
 
+def repair_variants(source: str) -> list[str]:
+    """A reproducible small sample of the existing local permuter; never a new AI request."""
+    rng = random.Random(hashlib.sha256(source.encode()).digest())
+    seen, result = {source}, []
+    def protected(text):
+        return [m.group() for m in TOKENS.finditer(text) if m.group().startswith(('/*', '//', '"', "'"))]
+    original = protected(source)
+    for _ in range(MUTATION_DRAWS):
+        variant = permuter.mutate(source, rng)
+        if variant and variant not in seen and protected(variant) == original:
+            seen.add(variant)
+            result.append(variant)
+            if len(result) == MAX_REPAIRS:
+                break
+    return result
+
+
+def regional_names(twins, proj, other) -> dict[str, str]:
+    """Learn names only from accepted transfers still matched on both sides; discard conflicting evidence.
+
+    A function pair proves its own names. Aligned relocation layouts additionally suggest data/callee names.
+    These remain proposals: even a learned name must survive the destination's ordinary byte judge.
+    """
+    from .twins import rom_renames
+
+    net = twins.net
+    left, right = twins.prints(other), twins.prints(proj)
+    syms_a, syms_b = net.symbols(other['id']), net.symbols(proj['id'])
+    votes = {}
+    rows = net.store.all("SELECT DISTINCT source_function_id,function_id FROM cross_game_attempts "
+                         "WHERE project_id=? AND source_project_id=? AND outcome='match'", proj['id'], other['id'])
+    for row in rows:
+        a = net.store.one("SELECT * FROM functions WHERE id=? AND status='matched'", row['source_function_id'])
+        b = net.store.one("SELECT * FROM functions WHERE id=? AND status='matched'", row['function_id'])
+        if not a or not b or a['project_id'] != other['id'] or b['project_id'] != proj['id']:
+            continue
+        names = {a['name']: b['name']}
+        if a['id'] in left and b['id'] in right and (
+                [(o, t) for o, t, _ in relocations(a)] == [(o, t) for o, t, _ in relocations(b)]):
+            names.update(rom_renames(syms_a, a['matched_source'] or '', left[a['id']], right[b['id']],
+                                     a['name'], b['name'], syms_b) or {})
+        for old, new in names.items():
+            votes.setdefault(old, set()).add(new)
+    names = {old: next(iter(values)) for old, values in votes.items() if len(values) == 1}
+    # Many-to-one evidence is ambiguous too (identical wrappers are common).
+    return {old: new for old, new in names.items() if list(names.values()).count(new) == 1}
+
+
+def trial_key(source, header, compiler, fn, names) -> str:
+    """Header/type, symbol, target and compiler changes invalidate failed work immediately."""
+    payload = [source, header, compiler, (fn['target'] or b'').hex(), fn['relocs'], fn['vram'], names]
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def compiler_trial(net, agent, proj, fn, candidate, settings):
+    """Test donor flags without changing build settings or misreporting them as accepted project progress."""
+    now = time.time()
+    with net.store.tx() as db:
+        net._expire_claims(db)
+        current = db.execute('SELECT status FROM functions WHERE id=?', (fn['id'],)).fetchone()
+        if not current or current['status'] != 'open' or db.execute(
+                'SELECT 1 FROM claims WHERE function_id=?', (fn['id'],)).fetchone():
+            return 'skip', 'function is busy or no longer open'
+        db.execute('INSERT INTO claims VALUES(?,?,?,?)', (fn['id'], agent.id, now, now + 300))
+    try:
+        ok, diff, problem = net._judge_with(proj, fn, settings['toolchain'], settings.get('flags', []), candidate)
+        label = settings['toolchain'] + ' ' + ' '.join(settings.get('flags', []))
+        if ok:
+            reason = 'byte match with ' + label + '; review compiler settings before accepting'
+            net.add_note(agent, proj['slug'], reason + '\nCandidate C:\n' + candidate, fn['name'])
+            return 'compiler', reason
+        return 'miss', label + ': ' + (f'score {diff.score}' if diff else (problem or 'did not build')[-160:])
+    except (NetworkError, toolchains.ToolchainError) as error:
+        return 'skip', str(error)[:160]
+    finally:
+        with net.store.tx() as db:
+            db.execute('DELETE FROM claims WHERE function_id=? AND agent_id=?', (fn['id'], agent.id))
+
+
 def run(twins, slug: str, job) -> int:
     """Try a few close candidates per function after exact transfers, with a pass-wide time/compile budget."""
     from .twins import _declared, apply, rom_renames
@@ -111,11 +197,65 @@ def run(twins, slug: str, job) -> int:
     agent, _ = net.local_agent('autopilot')
     mine = twins.prints(proj)
     syms_b = net.symbols(proj['id'])
+    symbol_state = [(r['name'], r['address']) for r in net.store.all(
+        'SELECT name,address FROM symbols WHERE project_id=? ORDER BY name', proj['id'])]
     source_cache, ops_cache = {}, {}
+    maps = {pid: regional_names(twins, proj, other) for pid, other in others.items()}
+    saved = net.store.one('SELECT function_id FROM reuse_cursors WHERE project_id=?', proj['id'])
+    cursor = saved['function_id'] if saved else 0
+    def resume(fid):
+        with net.store.tx() as db:
+            db.execute('INSERT OR REPLACE INTO reuse_cursors VALUES(?,?)', (proj['id'], fid))
     attempted = matched = 0
-    for b in net.store.all('SELECT * FROM functions WHERE project_id=? AND status=\'open\' ORDER BY id', proj['id']):
+    repairs = {}
+
+    def exhausted():
+        return job.stop.is_set() or attempted >= MAX_ATTEMPTS or time.monotonic() >= deadline
+
+    def attempt(a, b, other, score, candidate, settings, kind, names, header):
+        nonlocal attempted, matched
+        current = net.store.one('SELECT status FROM functions WHERE id=?', b['id'])
+        if not current or current['status'] != 'open':
+            return 'skip', ''
+        signature = trial_key(candidate, header, settings, b, [names, symbol_state])
+        previous = net.store.one("SELECT * FROM reuse_trials WHERE function_id=? AND signature=? AND outcome!='match'",
+                                 b['id'], signature)
+        if previous:
+            return previous['outcome'], previous['reason']
+        if exhausted():
+            return 'skip', ''
+        job.cross_candidates += 1
+        job.cross_tried += 1
+        attempted += 1
+        if kind == 'compiler':
+            outcome, why = compiler_trial(net, agent, proj, b, candidate, settings)
+        else:
+            outcome, why = twins._attempt_twin(agent, proj, a, b, candidate,
+                origin=f" in {other['name']}", similar=True)
+        reason = f'similar code ({score:.0%}); {kind}; ' + (why or outcome)
+        with net.store.tx() as db:
+            db.execute('INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,'
+                       'source_function_id,outcome,reason,created_at) VALUES(?,?,?,?,?,?,?)',
+                       (proj['id'], b['id'], other['id'], a['id'], outcome, reason, time.time()))
+            if outcome != 'skip':
+                db.execute('INSERT OR REPLACE INTO reuse_trials VALUES(?,?,?,?)',
+                           (b['id'], signature, outcome, why or ''))
+        if outcome == 'match':
+            matched += 1
+            job.cross_matched += 1
+            maps[other['id']] = regional_names(twins, proj, other)
+        return outcome, why
+
+    targets = net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open' ORDER BY id", proj['id'])
+    # Preserve the cheap aligned-transfer search before widening to learned mappings or different flags.
+    # A signed cursor encodes which phase to resume without storing any game source in the queue.
+    work = [(phase, b) for phase in (0, 1) for b in targets]
+    position = (int(cursor < 0), abs(cursor))
+    work.sort(key=lambda item: ((item[0], item[1]['id']) < position, item[0], item[1]['id']))
+    for phase, b in work:
         if job.stop.is_set() or attempted >= MAX_ATTEMPTS or time.monotonic() >= deadline:
-            break
+            return matched
+        resume(-b['id'] if phase else b['id'])
         pb = mine.get(b['id'])
         if pb is None or pb.asm or not MIN_BYTES <= pb.size <= MAX_BYTES:
             continue
@@ -125,13 +265,16 @@ def run(twins, slug: str, job) -> int:
             'SELECT f.*,i.compiler,i.fingerprint FROM cross_game_index i '
             'JOIN functions f ON f.id=i.function_id AND f.status=\'matched\' '
             'JOIN projects p ON p.id=i.project_id WHERE i.project_id!=? AND p.arch=? AND p.big_endian=? '
-            'AND i.compiler=? AND i.size BETWEEN ? AND ? AND i.fingerprint!=? '
+            'AND i.size BETWEEN ? AND ? AND (i.fingerprint!=? OR i.compiler!=?) '
             'ORDER BY ABS(i.size-?),i.function_id LIMIT ?',
-            proj['id'], proj['arch'], proj['big_endian'], twins._compiler_key(compiler_for(cfg, b['vram'])),
-            max(MIN_BYTES, int(pb.size * .9)), min(MAX_BYTES, int(pb.size / .9)), pb.key, pb.size, MAX_POOL)
+            proj['id'], proj['arch'], proj['big_endian'],
+            max(MIN_BYTES, int(pb.size * .9)), min(MAX_BYTES, int(pb.size / .9)), pb.key, twins._compiler_key(compiler_for(cfg, b['vram'])), pb.size, MAX_POOL)
         layout = [(o, t) for o, t, _ in relocations(b)]
         rows = [a for a in rows if a['project_id'] in others and a['matched_source']
-                and [(o, t) for o, t, _ in relocations(a)] == layout]
+                and ([(o, t) for o, t, _ in relocations(a)] == layout or maps[a['project_id']])
+                and json.loads(a['compiler']).get('toolchain') == compiler_for(cfg, b['vram']).get('toolchain')]
+        own_key = twins._compiler_key(compiler_for(cfg, b['vram']))
+        rows = [a for a in rows if ([(o, t) for o, t, _ in relocations(a)] != layout or a['compiler'] != own_key) == bool(phase)]
         if not rows:
             continue
         ops = _mnemonics(net, proj, b)
@@ -140,7 +283,9 @@ def run(twins, slug: str, job) -> int:
                 ops_cache[a['id']] = _mnemonics(net, others[a['project_id']], a)
         by_id = {str(a['id']): a for a in rows}
         ranked = similarity.rank(ops, {key: ops_cache[a['id']] for key, a in by_id.items()},
-                                 top=MAX_CANDIDATES, floor=MIN_SIMILARITY)
+                                 top=MAX_POOL, floor=MIN_SIMILARITY)
+        ranked.sort(key=lambda item: ([(o, t) for o, t, _ in relocations(by_id[item[0]])] != layout, -item[1]))
+        ranked = ranked[:MAX_CANDIDATES]
         for key, score in ranked:
             a = by_id[key]
             other = others[a['project_id']]
@@ -151,39 +296,48 @@ def run(twins, slug: str, job) -> int:
             pa = prints.get(a['id'])
             if pa is None:
                 continue
-            names = rom_renames(syms_a, a['matched_source'], pa, pb, a['name'], b['name'], syms_b)
+            learned = maps[other['id']]
+            aligned = [(o, t) for o, t, _ in relocations(a)] == layout
+            local = rom_renames(syms_a, a['matched_source'], pa, pb, a['name'], b['name'], syms_b) if aligned else {}
+            names = None if local is None else {**learned, **local, a['name']: b['name']}
             if names is None:
                 continue
+            words = set(re.findall(r'\b[A-Za-z_]\w*\b', a['matched_source']))
+            names = {old: new for old, new in names.items() if old in words}
             header_b = net._context(proj['id'], b['unit'])['header']
             prelude = _declared(header_a, header_b, names, a['name'])
             source = apply(a['matched_source'], names)
-            for variant in [source, *literal_variants(source, a, b, bool(proj['big_endian']))]:
-                if job.stop.is_set() or attempted >= MAX_ATTEMPTS or time.monotonic() >= deadline:
+            own = compiler_for(cfg, b['vram'])
+            donor = json.loads(a['compiler'])
+            variants = [(v, own, 'transfer') for v in
+                        [source, *literal_variants(source, a, b, bool(proj['big_endian']))]]
+            # Only a compiler already installed and proven on the donor; no downloads or flag brute force.
+            if (donor.get('flags', []) != own.get('flags', []) and donor.get('toolchain')
+                    and not donor.get('cmd') and not own.get('cmd') and toolchains.installed(donor['toolchain'])):
+                variants.append((source, donor, 'compiler'))
+            for variant, settings, kind in variants:
+                if exhausted():
                     return matched
-                current = net.store.one('SELECT status FROM functions WHERE id=?', b['id'])
-                if current is None or current['status'] != 'open':
-                    break
                 candidate = prelude + variant
-                if twins._missed(b['id'], candidate):
-                    continue
-                job.cross_candidates += 1
-                job.cross_tried += 1
-                attempted += 1
-                outcome, why = twins._attempt_twin(agent, proj, a, b, candidate,
-                    origin=f" in {other['name']}", similar=True)
-                reason = f'similar code ({score:.0%}); ' + (why or outcome)
-                with net.store.tx() as db:
-                    db.execute('INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,'
-                               'source_function_id,outcome,reason,created_at) VALUES(?,?,?,?,?,?,?)',
-                               (proj['id'], b['id'], other['id'], a['id'], outcome, reason, time.time()))
-                    if outcome == 'miss':
-                        db.execute('INSERT OR REPLACE INTO twin_misses(function_id,source_hash,project_id,at,why) '
-                                   'VALUES(?,?,?,?,?)',
-                                   (b['id'], twins._miss_key(candidate), proj['id'], time.time(), reason))
+                outcome, why = attempt(a, b, other, score, candidate, settings, kind, names, header_b)
+                # Easy transfers get the first pass through the budget. Then repair the closest compiled misses.
+                close = re.fullmatch(r'score (\d+)', why or '')
+                if kind == 'transfer' and outcome == 'miss' and close and int(close[1]) <= REPAIR_SCORE:
+                    pair = (a['id'], b['id'])
+                    if pair not in repairs or int(close[1]) < repairs[pair][0]:
+                        repairs[pair] = (int(close[1]), a, b, other, score, prelude, variant, settings, names, header_b)
                 if outcome == 'match':
-                    matched += 1
-                    job.cross_matched += 1
                     break
             if net.store.one('SELECT status FROM functions WHERE id=?', b['id'])['status'] == 'matched':
                 break
+    # Cached trials regenerate this deterministic queue, so a later pass resumes even after an app restart.
+    for _, a, b, other, score, prelude, source, settings, names, header in sorted(repairs.values(), key=lambda r: r[0]):
+        for variant in repair_variants(source):
+            if exhausted():
+                resume(0)
+                return matched
+            outcome, _ = attempt(a, b, other, score, prelude + variant, settings, 'repair', names, header)
+            if outcome == 'match':
+                break
+    resume(0)
     return matched
