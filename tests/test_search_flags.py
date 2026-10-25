@@ -86,7 +86,8 @@ def test_the_survey_retries_old_misses_with_debug_flags(tmp_path, monkeypatch, d
     assert len(judged) == before
 
 
-def test_installed_compiler_comparison_is_local_and_report_only(tmp_path, monkeypatch):
+@pytest.mark.parametrize("function", ["", "f"])
+def test_installed_compiler_comparison_is_local_and_report_only(tmp_path, monkeypatch, function):
     from decompnet import toolchains
 
     net = RomNetwork(tmp_path / "decomp.db", tmp_path)
@@ -107,12 +108,33 @@ def test_installed_compiler_comparison_is_local_and_report_only(tmp_path, monkey
 
     def judge(proj, fn, tc, flags, candidate):
         judged.append(tc)
-        return tc == "gcc-2.8.0-psx", None, ""
+        return True, None, ""
 
     monkeypatch.setattr(net, "_judge_with", judge)
     monkeypatch.setattr(net, "_suggest_from_map", lambda *a: pytest.fail("comparison must not apply suggestions"))
-    result = net.survey_compilers("demo", all_installed=True)
+    result = net.survey_compilers("demo", all_installed=True, function=function)
     assert result["confirmed"] == 1
-    assert result["matches"][str(0x80010000)][0] == "gcc-2.8.0-psx"
+    matches = result["matches"][str(0x80010000)]
+    assert {m[0] for m in matches} == {"gcc-2.7.2-psx", "gcc-2.8.0-psx"}
+    assert len(matches) > (6 if function else 1)
+    assert len(matches) == len(judged)  # no early exit, including when current settings match
     assert set(judged) <= {"gcc-2.7.2-psx", "gcc-2.8.0-psx"}
     assert json.loads(net._project("demo")["config"]) == cfg
+    if function:
+        assert result["comparison"]["improved"] is True
+        assert result["comparison"]["best"] == 100
+        monkeypatch.setattr(net, "_judge_with", lambda *a: (False, SimpleNamespace(percent=80.0), ""))
+        messages = []
+        missed = net.survey_compilers("demo", all_installed=True, function=function, log=messages.append)
+        assert missed["comparison"]["improved"] is False
+        assert missed["comparison"]["best"] == 80.0
+        assert not any("400" in line for line in messages)
+
+        score_lines = [line for line in messages if " · " in line]
+        assert len(score_lines) == missed["comparison"]["tested"]
+        assert all("80.00%" in line for line in score_lines)
+        monkeypatch.setattr(net, "_judge_with", lambda *a: (False, None, "compile error"))
+        messages.clear()
+        failed = net.survey_compilers("demo", all_installed=True, function=function, log=messages.append)
+        assert failed["comparison"]["best"] is None
+        assert any("could not compile or compare" in line for line in messages)

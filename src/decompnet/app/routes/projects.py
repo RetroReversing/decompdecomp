@@ -109,7 +109,7 @@ def register(app: App) -> None:
             if net.fork_slug(slug):
                 raise NetworkError("This comparison currently needs a ROM-mode project.")
             return {"job": jobs.start("installed compilers", lambda log: net.survey_compilers(
-                slug, log=log, all_installed=True))}
+                slug, log=log, all_installed=True, function=data.get("function", "")))}
         return net.compiler_answer(slug, check_now=request.method == "POST")
 
     def p_open(slug, request, data):
