@@ -70,7 +70,9 @@ async function refreshFn(first) {
     }
     $("fnName").textContent = d.name;
     $("fnNaming").hidden = d.named == null;
-    $("fnNaming").textContent = d.naming?.method === "exact_cross_game"
+    $("fnNaming").textContent = d.naming?.method === "sdk_signature"
+      ? `Name inferred from local libultra signatures · ${d.naming.source_corpora?.length || 0} archive(s)`
+      : d.naming?.method === "exact_cross_game"
       ? `Name inferred from ${d.naming.source_project} · exact code match`
       : d.renamed ? `Renamed from ${d.naming.original_name}` : d.named ? "Named function" : "Generated name";
     fnBadge(d);
