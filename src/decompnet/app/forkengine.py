@@ -1087,6 +1087,8 @@ class ForkEngine:
             self.net._event(db, proj["id"], None, "sync", f"{float(m.get('matched_code_percent', 0)):.2f}% of code matches")
         log(f"{m.get('matched_functions', 0)}/{m.get('total_functions', 0)} functions match, "
             f"{float(m.get('matched_code_percent', 0)):.2f}% of code")
+        from ..forks.linkedimages import populations
+        cfg["progress_populations"] = populations(fp.root, rep, set(aside))
         cfg["measures"] = m
         cfg["uncovered"] = self._count_uncovered(rep)
         # what the project's set-aside list names, whatever its scope: the Settings panel's choice says how many
@@ -3747,6 +3749,7 @@ class ForkEngine:
             "matched_bytes": agg["matched_bytes"] or 0, "set_aside": agg["set_aside"] or 0,
             "set_aside_bytes": agg["set_aside_bytes"] or 0, "attempts": agg["attempts"] or 0,
             "context_version": 0, "folder": proj["root"], "room": self.net._room_info(slug),
+            "progress_populations": cfg.get("progress_populations", []),
             "measures": m, "uncovered": self.uncovered(slug) if cfg.get("ready") and fp.linkable() else None,
             "rebuild": (fp.manifest or {}).get("rebuild") if cfg.get("origin") == "scratch" else None,
             "reimports": cfg.get("origin") == "scratch" and consoles.get(cfg.get("platform")).reimports,
