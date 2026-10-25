@@ -458,7 +458,7 @@ class ForkProject:
         if kind == "splat":
             make = (self.root / "Makefile").read_text(errors="replace", encoding="utf-8")
             chosen = [f"VERSION={version}"] if version and self.splat_baseroms() else []
-            steps = [["make", *chosen, t] for t in ("setup", "extract") if re.search(rf"^{t}\s*:", make, re.M)][:1]
+            steps = [["make", *chosen, t] for t in ("setup", "extract") if re.search(rf"^{t}\s*:", make, re.M)]
             jobs = min(os.cpu_count() or 4, 4) if self._docker_only_macos() else os.cpu_count() or 4
             return steps + [["make", *chosen, f"-j{jobs}"]]
         if kind == "objdiff":
