@@ -105,7 +105,7 @@ async function main() {
       assert.equal(log.bar.removed, true, marker);
       if (buttonId) assert.equal(button.disabled, false, marker);
       if (outcome !== "done") assert.equal(log.error, outcome === "start-error" ? "Cannot start" : outcome === "cancelled" ? "Cancelled." : "Build failed", marker);
-      if (outcome === "job-error" || outcome === "cancelled") assert.equal(log.textContent, "Building", marker);
+      if (outcome === "job-error" || outcome === "cancelled") assert.equal(log.textContent, (outcome === "cancelled" ? "Cancelled." : "Build failed") + "\n\nBuilding", marker);
       if (outcome === "done") {
         assert.equal(log.error || "", "", marker);
         assert.equal(log._workStatus.dataset.state, "done");
@@ -113,7 +113,7 @@ async function main() {
         assert.notEqual(log._workStatus.textContent, "Finished.", marker);
       } else {
         assert.equal(log._workStatus.dataset.state, "error");
-        assert.equal(log._workStatus.textContent, log.error);
+        assert.equal(log._workStatus.textContent, "Stopped");
       }
     }
   }
@@ -188,6 +188,22 @@ async function main() {
   assert.equal(status.dataset.state, "running");
   finish();
   assert.equal(status.textContent, "Retry finished.");
+  // A setup failure keeps one raw log, a concise summary, and a clipboard button.
+  const copyTest = setup(...cases[0]);
+  const raw = "mips-linux-gnu-cpp: missing\nmake: *** Error 127";
+  copyTest.log.textContent = raw;
+  let copied = null;
+  copyTest.ctx.copyText = async (text) => { copied = text; return true; };
+  copyTest.ctx.showJobError(copyTest.log, "setup step failed: make\nMissing preprocessor.\n\nBuild output:\n" + raw);
+  assert.equal(copyTest.log._errorBox.textContent, "setup step failed: make");
+  assert.equal(copyTest.log.textContent.split("mips-linux-gnu-cpp: missing").length - 1, 1);
+  const toolbar = copyTest.log._copyToolbar;
+  await toolbar.children[1].onclick();
+  assert.equal(copied, copyTest.log.textContent);
+  assert.ok(copied.includes("Missing preprocessor."));
+  copyTest.ctx.showJobError(copyTest.log, "");
+  assert.equal(toolbar.hidden, true);
+  assert.equal(copyTest.log.textContent, "");
   // A range-only compiler setting remains immediate and has no progress bar.
   const range = setup(...cases[9], "0x1000-0x2000");
   const running = range.ctx.run();
