@@ -690,3 +690,7 @@ The answer goes here: build it, build part of it, or not, and why.
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
 
+
+Compiler comparison applies a function's settings through a scoped compiler/link attempt, so an unrelated
+background autopilot claim does not block it and a nonmatching result does not retain a new claim. A function
+already being worked on is rejected before its settings change.
