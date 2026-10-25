@@ -16,9 +16,10 @@ def variants(source, report, target, big, known_symbols):
     These are candidate-local hypotheses: never rename the project's symbols or change shared declarations.
     """
     from .addend_repairs import variants as addend_variants
+    from .global_addresses import normalize
     from .layout_repairs import variants as layout_variants
     from .similar_matches import INTEGER, TOKENS, literal_variants
-
+    report = normalize(report)
     votes = defaultdict(set)
     halves = defaultdict(set)
     for _, wanted, compiled in report.get('rows', []):
