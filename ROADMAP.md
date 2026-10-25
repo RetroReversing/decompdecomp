@@ -646,9 +646,3 @@ The answer goes here: build it, build part of it, or not, and why.
 - **Polish in the drafts.** Methods of known classes are drafted as `Class::method` in the brief; the polishing pass
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
-- Native macOS builds for PS1 GCC 2.5.7, EGCS 2.91.66 and GCC 2.95.2. GCC 2.5.7 still needs its old host varargs
-  code ported to modern Darwin; the newer GCC builds have no verified native Mac recipe.
-- PS1 CodeWarrior and SGI/RISCompiler-derived support: these need their own PS1 compilation and object pipeline;
-  having their compilers for another console does not provide PS1 support.
-- macOS signed/notarized distribution and a menu bar tray icon.
-- macOS memory, CPU and file-size caps for compiler processes (Linux currently uses systemd scopes).

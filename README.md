@@ -35,6 +35,15 @@ This fork of [NDelic's decompdecomp](https://github.com/n-delic/decompdecomp) ad
 The original decomp.wtf and decompdecomp credits and licenses are preserved. Report fork issues to
 [RetroReversing/decompdecomp](https://github.com/RetroReversing/decompdecomp/issues).
 
+## Autopilot on imported projects
+
+Autopilot can try machine drafts in imported projects with writable C files and a supported draft decompiler.
+For source-less units with decompdecomp's verified Splat references, it creates separate C candidate files and
+checks that the project's own build can compile them before enabling attempts. It preserves existing source,
+Makefiles, compiler settings and the assembly used for the linked baseline. Unsupported builds report what
+blocked preparation; zero attempts are not described as a completed search with no matches. Drafts still pass
+the same compiler and objdiff judge as agent submissions. A matching candidate is not a full linked-ROM rebuild.
+
 ## ROM library
 
 Set **Settings → ROM library** to the folder containing your extracted game files. When an imported project
@@ -383,3 +392,5 @@ export with an explanation until they have a verified cartridge reconstruction.
 
 An identical rebuild can still contain assembly and binary fallbacks. Check the reported number of functions
 selected as C separately; an identical cartridge does not mean that every function has been decompiled.
+
+For imported overlays missing their original strings or tables, see [supplemental original overlay data](docs/OVERLAY_DATA.md).
