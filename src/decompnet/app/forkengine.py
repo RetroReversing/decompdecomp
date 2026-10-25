@@ -3720,6 +3720,8 @@ class ForkEngine:
     # ------------------------------------------------------------------ for the GUI
 
     def overview(self, slug: str) -> dict:
+        from .libultra import report as libultra_report
+
         proj, fp, cfg = self.get(slug)
         if cfg.get("ready"):
             self._preflight_once(slug)
@@ -3733,6 +3735,7 @@ class ForkEngine:
             "repo_url": cfg.get("repo_url"), "fork_kind": cfg.get("fork_kind"), "version": cfg.get("version"),
             "origin": cfg.get("origin"), "compiler_name": cfg.get("compiler"),
             "project_compiler": compiler_info.describe(fp, cfg.get("version")),
+            "libultra": libultra_report(self.net, proj),
             "versions": fp.versions(), "ready": bool(cfg.get("ready")), "needs": need,
             "rom": {"game_code": cfg.get("version") or "", "region": consoles.name(cfg.get("platform")),
                     "title": proj["name"]},
