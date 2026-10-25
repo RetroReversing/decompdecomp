@@ -194,6 +194,13 @@ class Console:
         """What the game file is: {"platform", "id", "title", "sha1"}, the sha1 of what decides which game it is."""
         raise RomError(f"{self.name} projects can't be made from scratch")
 
+    def library_sha1(self, path: Path) -> str:
+        """Hash a library file in the byte order expected by this console's public projects."""
+        import hashlib
+
+        with path.open("rb") as stream:
+            return hashlib.file_digest(stream, "sha1").hexdigest()
+
     def project_build_command(self, project, command: list[str]) -> list[str]:
         """Point a public build at an installed tool when this console knows its compiler declaration."""
         return command
