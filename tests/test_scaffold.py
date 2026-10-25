@@ -29,6 +29,9 @@ def test_scaffold_probes_real_object_rule_and_preserves_reference(tmp_path, monk
     monkeypatch.setattr(fp, 'build_unit', build)
     assert prepare(fp) == ['src/decompdecomp/demo.c']
     assert prepare(fp) == []
+    entry = json.loads((tmp_path / 'objdiff.json').read_text())['units'][0]
+    assert entry['base_path'] == 'build/src/decompdecomp/demo.c.o'
+    assert entry['metadata']['draft_assembly'] == '.decomp-wtf/objdiff-references/asm/demo.s'
     unit = fp.units()[0]
     assert unit.target.read_bytes() == b'verified reference'
     assert unit.base.read_bytes() == b'compiled empty candidate'

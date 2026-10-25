@@ -54,9 +54,9 @@ def prepare(project, log=print) -> list[str]:
             source.parent.mkdir(parents=True, exist_ok=True)
             source.write_text(HEADER, encoding='utf-8')
             made.append(source)
-            entry['metadata'] = {**entry.get('metadata', {}), 'source_path': str(source.relative_to(project.root)),
-                                 'autopilot_scaffold': True, 'draft_assembly': str(assembly.relative_to(project.root))}
-            entry['base_path'] = 'build/' + str(source.relative_to(project.root)) + '.o'
+            entry['metadata'] = {**entry.get('metadata', {}), 'source_path': source.relative_to(project.root).as_posix(),
+                                 'autopilot_scaffold': True, 'draft_assembly': assembly.relative_to(project.root).as_posix()}
+            entry['base_path'] = 'build/' + source.relative_to(project.root).as_posix() + '.o'
             unit = project._units_of({'units': [entry]})[0]
             log(f'Preparing C candidate: {source.relative_to(project.root)}')
             ok, output = project.build_unit(unit)
@@ -69,6 +69,6 @@ def prepare(project, log=print) -> list[str]:
         (project.root / 'objdiff.json').write_bytes(original)
         for source in made:
             source.unlink(missing_ok=True)
-            (project.root / ('build/' + str(source.relative_to(project.root)) + '.o')).unlink(missing_ok=True)
+            (project.root / ('build/' + source.relative_to(project.root).as_posix() + '.o')).unlink(missing_ok=True)
         raise
     return sources
