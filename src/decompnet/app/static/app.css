@@ -1032,3 +1032,11 @@ details.more[open] > summary::before { content: "− "; }
 .compiler-table td { overflow-wrap: anywhere; }
 .compiler-table th:first-child, .compiler-table td:first-child { white-space: nowrap; }
 #compilerImprovements { display: grid; gap: 10px; min-width: 0; }
+
+/* Disjoint linked-image populations, including overlays that share RAM addresses. */
+.image-coverage-note { padding: 12px 16px; margin: 0; }
+.image-coverage-table { overflow-x: auto; }
+.image-coverage-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.image-coverage-table th, .image-coverage-table td { text-align: left; padding: 8px 16px; }
+.image-coverage-table th { color: var(--muted); font-weight: 500; }
+.image-coverage-table td { border-top: 1px solid var(--line-soft); white-space: nowrap; }

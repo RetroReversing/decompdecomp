@@ -101,7 +101,10 @@ def report(project: Path, out: Path) -> dict:
     compile yet, or that the project's default build never compiles). Those units are measured from the game's
     object alone, as not matched yet, the way the projects' own report scripts do it."""
     cfg = json.loads((project / "objdiff.json").read_text(encoding="utf-8"))
-    missing = [u for u in cfg.get("units", []) if u.get("base_path") and not (project / u["base_path"]).is_file()]
+    from .linkedimages import stale
+    guards = {}
+    missing = [u for u in cfg.get("units", []) if u.get("base_path") and
+               (not (project / u["base_path"]).is_file() or stale(project, u, guards))]
     if not missing:
         _run(["report", "generate", "-p", str(project), "-o", str(out)], cwd=project, timeout=1800)
         return _exclude_stubs(project, cfg, json.loads(out.read_text(encoding="utf-8")))

@@ -37,6 +37,19 @@ This fork of [NDelic's decompdecomp](https://github.com/n-delic/decompdecomp) ad
 The original decomp.wtf and decompdecomp credits and licenses are preserved. Report fork issues to
 [RetroReversing/decompdecomp](https://github.com/RetroReversing/decompdecomp/issues).
 
+## Independently linked code images
+
+Projects with compressed game code or overlays can export their verified linked functions through
+`decompnet.forks.linkedimages.export`. These are normal objdiff units: original-image bytes form immutable
+references, and only source-backed, relocated bodies that pass the project's image gates become candidates.
+Assembly passthrough functions remain in the denominator without counting as recovered C. Source checksums
+invalidate stale candidates. Population identifiers distinguish overlays even when their RAM addresses overlap.
+
+The overview shows code-byte-weighted totals and a breakdown by image. This covers known function extents;
+data and unidentified regions are excluded. These special image snapshots are read-only in the app: change their
+sources through the project's promotion/build workflow and use **Check again**. Ordinary object units keep their
+existing agent workflow. See [the export contract](docs/linked-image-progress.md).
+
 ## Autopilot on imported projects
 
 Autopilot can try machine drafts in imported projects with writable C files and a supported draft decompiler.

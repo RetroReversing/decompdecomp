@@ -53,6 +53,12 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Progress bars for foreground jobs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Rooms: decompile together | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
+Linked-image exports: progress, maps, disassembly and Check again work through objdiff. Agent edits,
+autopilot, permuting, polishing, joins/splits and compiler changes for these **read-only snapshot units: —**.
+They require a project adapter that preserves whole-program compilation and promotion locks while rebuilding
+individual drafts. Ordinary source-object units retain the table's existing behavior. The first exporter is MIPS;
+other processors need their own linked-object writer.
+
 Where to start on a gap:
 - **PowerPC (GameCube, Wii) and x86 (PC)**: class recovery and the compiler map work on a project's objects in fork
   mode, not on a ROM; the readers are the part to write (CodeWarrior's vtable pointer is often not at offset 0). x86
