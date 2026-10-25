@@ -68,6 +68,9 @@ Settings lets you disable automatic reuse and adjust its time and compile limits
 existing exact-transfer phase, then shares the additional budget between templates, libraries and similarity repairs.
 The last search reports verified bytes, attempts and bytes per minute of elapsed time, not CPU time.
 
+When eligible near misses exist, similarity transfers use at most three quarters of the remaining search budget;
+the rest is reserved for repairs. The transfer cursor is retained so the next pass continues through the queue.
+
 Use **Run again** to resume, including after restarting the app. Completed trials are remembered; changes to
 candidate C, headers, symbol addresses, relevant mappings, targets or compiler settings make them eligible again.
 A running compile or analysis step can finish after the time limit; no new candidate starts once it is reached.

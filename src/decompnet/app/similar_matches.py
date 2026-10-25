@@ -290,6 +290,15 @@ def run(twins, slug: str, job) -> int:
             maps[other['id']] = regional_names(twins, proj, other)
         return outcome, why
 
+    # Keep a quarter of the remaining budget for close misses. Previously a large transfer queue could
+    # consume every pass, leaving hundreds of eligible cached misses with no repair attempts at all.
+    transfer_deadline = time.monotonic() + max(0, deadline - time.monotonic()) * .75
+    transfer_limit = job.reuse_attempts + max(1, int((job.reuse_limit - job.reuse_attempts) * .75))
+    incomplete = False
+
+    def transfers_exhausted():
+        return bool(repairs) and (job.reuse_attempts >= transfer_limit or time.monotonic() >= transfer_deadline)
+
     targets = net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open' ORDER BY id", proj['id'])
     # Preserve the cheap aligned-transfer search before widening to learned mappings or different flags.
     # A signed cursor encodes which phase to resume without storing any game source in the queue.
@@ -299,6 +308,9 @@ def run(twins, slug: str, job) -> int:
     for phase, b in work:
         if job.stop.is_set() or job.reuse_attempts >= job.reuse_limit or time.monotonic() >= deadline:
             return matched
+        if transfers_exhausted():
+            incomplete = True
+            break
         resume(-b['id'] if phase else b['id'])
         pb = mine.get(b['id'])
         if pb is None or pb.asm or not MIN_BYTES <= pb.size <= MAX_BYTES:
@@ -363,6 +375,9 @@ def run(twins, slug: str, job) -> int:
             for variant, settings, kind in variants:
                 if exhausted():
                     return matched
+                if transfers_exhausted():
+                    incomplete = True
+                    break
                 candidate = prelude + variant
                 outcome, why = attempt(a, b, other, score, candidate, settings, kind, names, header_b)
                 # Easy transfers get the first pass through the budget. Then repair the closest compiled misses.
@@ -374,12 +389,17 @@ def run(twins, slug: str, job) -> int:
                         repairs[pair] = (int(close[1]), a, b, other, score, prelude, variant, settings, names, header_b, dict(feedback))
                 if outcome == 'match':
                     break
+            if incomplete:
+                break
             if net.store.one('SELECT status FROM functions WHERE id=?', b['id'])['status'] == 'matched':
                 break
+        if incomplete:
+            break
     # Cached trials regenerate this deterministic queue, so a later pass resumes even after an app restart.
     for _, a, b, other, score, prelude, source, settings, names, header, report in sorted(repairs.values(), key=lambda r: r[0]):
         if exhausted():
-            resume(0)
+            if not incomplete:
+                resume(0)
             return matched
         if net.store.one('SELECT status FROM functions WHERE id=?', b['id'])['status'] != 'open':
             continue
@@ -392,10 +412,12 @@ def run(twins, slug: str, job) -> int:
         variants = [*guided, *(simple[:MAX_REPAIRS // 2] if deep else simple), *deep]
         for variant in list(dict.fromkeys(variants))[:MAX_REPAIRS]:
             if exhausted():
-                resume(0)
+                if not incomplete:
+                    resume(0)
                 return matched
             outcome, _ = attempt(a, b, other, score, prelude + variant, settings, 'repair', names, header)
             if outcome == 'match':
                 break
-    resume(0)
+    if not incomplete:
+        resume(0)
     return matched

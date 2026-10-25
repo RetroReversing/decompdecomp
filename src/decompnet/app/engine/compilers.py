@@ -170,11 +170,13 @@ class CompilerMixin:
         return state
 
     def survey_compilers(self, slug: str, log=lambda line: None, limit: int = 400, state: dict | None = None,
-                         all_installed: bool = False) -> dict:
+                         all_installed: bool = False, function: str = "") -> dict:
         """The judge's part of the compiler map. Agents' C for functions that don't match yet, built with each other
         compiler the project uses: C that matches the game with another compiler (and not with today's) confirms that
         compiler for its function. Contradicted functions first, then the closest attempts; C already tried is
         skipped. Then each run of the map with confirmations becomes a suggestion, checked like an agent's."""
+        if not isinstance(function, str):
+            raise NetworkError("Choose a function by name.")
         self._rom_only(slug, "the compiler survey")
         proj = self._project(slug)
         if self.compiler_map(proj) is None:
@@ -191,16 +193,32 @@ class CompilerMixin:
                                  and not toolchains.runtime_error(c.id)} | set(candidates))
             candidates = [(tc, flags) for tc, flags in candidates if toolchains.installed(tc)
                           and toolchains.get(tc).supported and not toolchains.runtime_error(tc)]
-            log(f"Testing {len(candidates)} compiler/flag profiles on up to {limit} existing unmatched C attempts.")
+            if not function:
+                log(f"Testing {len(candidates)} compiler/flag profiles on up to {limit} existing unmatched C attempts.")
         # Debug line labels can change old GCC assemblers' delay-slot scheduling even at the same -O level.
         candidates = sorted({(tc, tuple(variant)) for tc, flags in candidates
                              for variant in self.debug_flag_variants(tc, list(flags))})
+        if function:
+            if not all_installed:
+                raise NetworkError("Single-function comparison needs installed-compiler mode.")
+            candidates = sorted({(tc, tuple(debug)) for tc, flags in candidates
+                                 for variant in self.flag_variants(tc, list(flags))
+                                 for debug in self.debug_flag_variants(tc, variant)})
         old = cfg.get("compiler_survey") or {}
         tried, confirmed = ({}, {}) if all_installed else (dict(old.get("tried", {})), dict(old.get("confirmed", {})))
         rows = self.store.all("SELECT * FROM functions WHERE project_id=? AND status NOT IN ('matched', 'asm') AND n_insns>=?",
                               proj["id"], self.SURVEY_MIN_INSNS)
+        if function:
+            fn = self._function(function, slug)
+            if fn["status"] in ("matched", "asm"):
+                raise NetworkError("Choose an unmatched function to compare compilers.")
+            if not self._source_of(fn):
+                raise NetworkError("This function has no C attempt yet. Create a draft or attempt first.")
+            rows = [fn]  # Explicit checks include short functions; matches alone do not identify their compiler.
+            log(f"{function}: testing all {len(candidates)} supported compiler/flag combinations (not an exhaustive search of every possible flag).")
         rows.sort(key=lambda f: (f["vram"] not in cmap.contradicted, f["best_score"] if f["best_score"] is not None else 1 << 30))
         state = state if state is not None else {}
+        comparison = None
         n = found = 0
         for fn in rows:
             if n >= limit:
@@ -214,6 +232,41 @@ class CompilerMixin:
             n += 1
             own = compiler_for(cfg, fn["vram"])
             today = (own["toolchain"], tuple(own["flags"]))
+            if all_installed:
+                matches = []
+                baseline = (max(0.0, 100 * (1 - fn["best_score"] / max(1, fn["n_insns"] * 100)))
+                            if fn["best_score"] is not None else None)
+                best = None
+                best_profile = None
+                for index, (tc, flags) in enumerate(candidates, 1):
+                    ok, diff, _ = self._judge_with(proj, fn, tc, list(flags), source)
+                    percent = 100.0 if ok else diff.percent if diff is not None else None
+                    if percent is not None and (best is None or percent > best):
+                        best, best_profile = percent, [tc, list(flags)]
+                    if function:
+                        score_text = f"{percent:.2f}%" if percent is not None else "could not compile or compare"
+                        log(f"{index}/{len(candidates)} · {self._short((tc, flags))}: {score_text}"
+                            + (" — exact match" if ok else "")
+                            + (" (current settings)" if (tc, flags) == today else ""))
+                    if ok:
+                        matches.append([tc, list(flags)])
+                        log(f"{fn['name']}: MATCH {self._short((tc, flags))}"
+                            + (" (current settings)" if (tc, flags) == today else ""))
+                    if function and index % 10 == 0:
+                        log(f"{index}/{len(candidates)} combinations tested; {len(matches)} exact matches.")
+                if function:
+                    comparison = {"before": baseline, "best": best, "profile": best_profile,
+                                  "tested": len(candidates), "exact_matches": len(matches),
+                                  "improved": best is not None and (baseline is None or best > baseline + 0.001)}
+                if matches:
+                    confirmed[str(fn["vram"])] = matches
+                    found += 1
+                elif function:
+                    log(f"{fn['name']}: no exact matches among the tested combinations.")
+                state.update(tried=n, confirmed=found)
+                if n % 25 == 0:
+                    log(f"{n} functions tried, {found} with exact matches")
+                continue
             for tc, flags in candidates:
                 if (tc, flags) == today or not self._judge_with(proj, fn, tc, list(flags), source)[0]:
                     continue
@@ -229,10 +282,10 @@ class CompilerMixin:
                 log(f"{n} functions tried, {found} confirmed")
         if all_installed:
             # An explicit comparison is a report, even when automatic compiler changes are enabled.
-            log(f"Finished: {n} functions tested; {found} match another compiler/flag profile. Project settings unchanged.")
+            log(f"Finished: {n} functions tested; {found} have exact matches. Project settings unchanged.")
             if not n:
                 log("No eligible unmatched C attempts yet. Run the free matching pass or agents first.")
-            return {"tried": n, "confirmed": found, "matches": confirmed}
+            return {"tried": n, "confirmed": found, "matches": confirmed, "comparison": comparison}
         self._update_cfg(slug, lambda c: c.__setitem__("compiler_survey", {"tried": tried, "confirmed": confirmed,
                                                                            "t": time.time()}))
         suggested = self._suggest_from_map(proj, confirmed)

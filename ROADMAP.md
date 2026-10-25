@@ -665,4 +665,3 @@ The answer goes here: build it, build part of it, or not, and why.
   commands on the original three PS1 GCC toolchains. Known operations no longer imply handwritten assembly.
   Submitted assembly stays rejected; other GTE operations and additional compiler registrations remain work.
 
-Imported-to-ROM reuse: the free cross-game pass also tries verified C definitions from imported projects against identical ROM function fingerprints. Architecture and byte order must agree; candidates are renamed and recompiled by the destination judge, with provenance and failed attempts recorded. Donor headers are not copied; dependency-heavy functions may need an agent.

@@ -63,12 +63,19 @@ async function refreshFn(first) {
     $("fnAddr").textContent = S.ov.kind === "fork"
       ? `${d.unit} · ${d.insns} instructions${d.match_percent != null ? ` · ${d.match_percent >= 100 ? "100" : (Math.floor(d.match_percent * 10) / 10).toFixed(1)}% now` : ""}`
       : `${hex8(d.vram)} · ROM 0x${d.rom_offset.toString(16).toUpperCase()} · ${d.insns} instructions`;
+    if ($("fnName").textContent !== d.name) {
+      $("fnCompilerSummary").hidden = true;
+      $("fnCompilerLog").textContent = "";
+      $("fnCompilerLog").hidden = true;
+    }
     $("fnName").textContent = d.name;
     $("fnNaming").hidden = d.named == null;
     $("fnNaming").textContent = d.naming?.method === "exact_cross_game"
       ? `Name inferred from ${d.naming.source_project} · exact code match`
       : d.renamed ? `Renamed from ${d.naming.original_name}` : d.named ? "Named function" : "Generated name";
     fnBadge(d);
+    $("fnCompilerTest").hidden = S.ov.kind === "fork" || d.status !== "open" || !S.ov.compilers?.length;
+
     $("fnSetAside").hidden = d.status !== "open";
     $("fnSetAside").onclick = async () => {
       const why = prompt(`Why does no C make ${d.name}? (optional: agents and you read it on its page)`, "hand-written assembly");
@@ -408,3 +415,27 @@ function renderProgress() {
   svg.innerHTML = `<path class="area" d="${line}V44H0Z"/><path class="line" d="${line}"/>`;
 }
 
+
+$("fnTestCompilers").onclick = async () => {
+  const button = $("fnTestCompilers"), log = $("fnCompilerLog");
+  const slug = S.slug, name = S.fn;
+  log.hidden = false;
+  const summary = $("fnCompilerSummary");
+  summary.hidden = false;
+  summary.textContent = "Comparing installed compilers and flag variants…";
+  delete summary.dataset.improved;
+  const finish = beginWork(summary, `Testing compilers for ${name}`, [button], "Comparison complete.");
+  showJobError(log, "");
+  try {
+    const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, function: name } });
+    const result = await followJob(job, log);
+    if (S.fn !== name || S.slug !== slug) return;
+    const c = result.comparison;
+    if (!c || c.best == null) summary.textContent = "No usable compiled results. See comparison details for errors.";
+    else {
+      const before = c.before == null ? "no previous score" : `${c.before.toFixed(2)}%`;
+      summary.dataset.improved = String(c.improved);
+      summary.textContent = `${c.improved ? "Better settings found" : "No improvement found"}: ${before} → ${c.best.toFixed(2)}% best tested. ${c.tested} combinations tested; ${c.exact_matches} exact matches. Compiler settings and saved progress are unchanged.`;
+    }
+  } catch (e) { summary.textContent = e.message; showJobError(log, e.message); } finally { finish(); }
+};
