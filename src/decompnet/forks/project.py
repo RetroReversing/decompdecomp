@@ -19,6 +19,7 @@ import functools
 import hashlib
 import json
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -245,7 +246,7 @@ class ForkProject:
         return f"decompdecomp-project-{digest.hexdigest()[:16]}"
 
     def _docker_command(self, command: list[str]) -> list[str]:
-        arch = ["--platform", "linux/amd64"] if os.uname().machine == "arm64" else []
+        arch = ["--platform", "linux/amd64"] if platform.machine() == "arm64" else []
         return ["docker", "run", "--rm", *arch, "--volume", f"{self.root.resolve()}:/project",
                 "--workdir", "/project", "--entrypoint", "/bin/sh", self._docker_image(), "-c",
                 shlex.join(command)]
@@ -263,7 +264,7 @@ class ForkProject:
             image = self._docker_image()
             ok, _ = self.run(["docker", "image", "inspect", image], log=lambda *_: None, timeout=15)
             if not ok:
-                arch = ["--platform", "linux/amd64"] if os.uname().machine == "arm64" else []
+                arch = ["--platform", "linux/amd64"] if platform.machine() == "arm64" else []
                 log("building the project's Docker image with its MIPS toolchain")
                 ok, tail = self.run(["docker", "build", *arch, "--tag", image, "."], log=log, timeout=3600)
                 if not ok:

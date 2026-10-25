@@ -127,9 +127,10 @@ def test_macos_docker_only_project_routes_make_through_container(tmp_path, monke
 
     monkeypatch.setattr(project_module.subprocess, "Popen", lambda cmd, **kwargs: seen.append(cmd) or Process())
     assert fp.run(["make", "VERSION=pal", "-j4"])[0]
-    assert Path(seen[0][0]).name == "docker" and seen[0][1:3] == ["run", "--rm"]
-    assert seen[0][-2:] == ["-c", "make VERSION=pal -j4"]
-    assert seen[0][seen[0].index("--entrypoint") + 1] == "/bin/sh"
+    docker = seen[0][next(i for i, part in enumerate(seen[0]) if Path(part).stem == "docker"):]
+    assert docker[1:3] == ["run", "--rm"]
+    assert docker[-2:] == ["-c", "make VERSION=pal -j4"]
+    assert docker[docker.index("--entrypoint") + 1] == "/bin/sh"
 
 
 @pytest.fixture(scope="module")
