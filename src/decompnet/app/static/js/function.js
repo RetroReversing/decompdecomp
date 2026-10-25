@@ -69,6 +69,10 @@ async function refreshFn(first) {
       $("fnCompilerLog").hidden = true;
     }
     $("fnName").textContent = d.name;
+    $("fnNaming").hidden = d.named == null;
+    $("fnNaming").textContent = d.naming?.method === "exact_cross_game"
+      ? `Name inferred from ${d.naming.source_project} · exact code match`
+      : d.renamed ? `Renamed from ${d.naming.original_name}` : d.named ? "Named function" : "Generated name";
     fnBadge(d);
     $("fnCompilerTest").hidden = S.ov.kind === "fork" || d.status !== "open" || !S.ov.compilers?.length;
 

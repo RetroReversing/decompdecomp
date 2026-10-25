@@ -222,7 +222,7 @@ async function togglePrio(name, on) {
 function renderAutopilot(ov) {
   const cross = ov.cross_game || { counts: {}, recent: [] };
   const count = cross.counts.match || 0, tried = Object.values(cross.counts).reduce((a, b) => a + b, 0);
-  $("crossGamePanel").hidden = ov.kind === "fork";
+  $("crossGamePanel").hidden = ov.kind === "fork" || count === 0;
   $("crossGameSummary").textContent = `${count} verified matches from other games · ${tried} transfer attempts. Exact and similar candidates are compiled and checked against this game's bytes. Only verified matches count.`;
   if (ov.free_search && ov.free_search.seconds > 0) {
     const r = ov.free_search;

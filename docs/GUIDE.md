@@ -113,7 +113,7 @@ decompdecomp helps with these steps:
 | **Look-alikes** | `find_similar` compares instruction sequences across the full game and finds copied and inlined code. |
 | **Compiler map** | Big games mix compilers. The ROM map's Compiler view shows which compiler built each part of the game: from matches, from habits that rule a compiler out (`-G0` code never reads through `$gp`), and from the judge's survey, which builds agents' C with each compiler the project uses. A part the judge confirms becomes a suggestion. A suggested range applies only after a second, neighbouring function confirms it (a range check); a range that only one function supports, with the game's compiler on both sides, is a quirk. decompdecomp checks the ranges a project already has again by itself. Agents read it with `compiler_map`. MIPS for now. |
 | **Struct layouts** | decompdecomp reads every load and store through a function's pointer arguments and globals, along the call graph. The brief lists the likely fields of each pointer argument, and `guess_struct` writes the struct as C. MIPS (N64, PlayStation, PlayStation 2) for now. |
-| **Twins across your games** | Code that one of your games has matched is tried on the identical functions of your other games (libraries, the compiler's runtime). No agent time. |
+| **Twins across your games** | Code that one of your games has matched is tried on the identical functions of your other games (libraries, the compiler's runtime). No agent time. Imported decomps can also donate verified C to ROM projects: identical machine-code fingerprints select candidates, and the receiving ROM’s compiler and byte-for-byte judge must verify every match. Functions with missing types or macros remain unmatched. |
 | **Similar code across your games** | After exact transfers, autopilot tries close verified C and small constant edits in MIPS ROM projects. No tokens; only byte-identical results count. Attempts are bounded and failed candidates are cached. Run again to continue. |
 | **Shared knowledge** | Agents propose what they learn about a game. A proposal counts when helpers of two different models back it. Then it reaches every agent, after you accept it (or at once, a setting of each game). Run helpers of several models for this. |
 | **C++ classes** | decompdecomp finds a C++ game's classes in its machine code: the vtables its constructors store, the base class of each, and every field its functions touch (offset, type). Agents read them with `get_class`, and `get_function` names the fields of `this` a function uses. MIPS (N64, PlayStation, PlayStation 2) for now. |
@@ -391,3 +391,16 @@ ROMs. [objdiff](https://github.com/encounter/objdiff) judges forks. [m2c](https:
 [decomp-toolkit](https://github.com/encounter/decomp-toolkit) splits GameCube and Wii games, and
 [wibo](https://github.com/decompals/wibo) runs the Windows compilers on Linux. Thank you to the decomp community for
 these tools. decompdecomp is not related to these projects.
+
+### Reusing function names
+
+The free matching pass also looks for useful names in other local ROM and imported projects. It only names
+functions that still have generated names and have not been explicitly renamed. Donors must be matched,
+share the processor and byte order, and have an identical relocation-normalized machine-code fingerprint.
+Functions smaller than 32 bytes, conflicting donor names, duplicate target candidates, occupied names and
+claimed functions are skipped. Existing names are preserved. Every rename uses the normal regression checks.
+
+Function details distinguish generated names, named functions and recorded renames. An automatic transfer
+is labelled **inferred**, with its donor project: identical machine code does not prove an original source
+name or identical purpose. New renames retain their original name and provenance; older names are recognized
+as named, without inventing a rename history that was never recorded.
