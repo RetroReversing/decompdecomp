@@ -404,3 +404,20 @@ Function details distinguish generated names, named functions and recorded renam
 is labelled **inferred**, with its donor project: identical machine code does not prove an original source
 name or identical purpose. New renames retain their original name and provenance; older names are recognized
 as named, without inventing a rename history that was never recorded.
+
+### Detecting libultra and naming library routines
+
+Nintendo 64 ROM projects show **Libultra (header)** in project settings. This decodes the SDK declaration
+at ROM offset `0x0C`; it does not establish the version of every linked library object.
+
+In **Local SDK signatures**, index your own `.a` or `.o` files with a corpus label such as
+`libultra 2.0I / libgultra_rom.a`. Keep releases and IDO/GCC, debug and retail variants separate.
+Settings list the strongest exact fingerprint matches and the fingerprints specific to a release
+**among the archives you indexed**. Missing variants, shared objects and developer modifications can
+prevent an exact version determination. A leading candidate is evidence, not a confirmed version.
+
+The free pass also names generated, unclaimed functions when a signature at least 32 bytes long has one
+name across the indexed library variants and one target in the game. Compiler builtin names such as `memcpy` are excluded because the spelling can change compilation.
+Name collisions and explicit prior renames are preserved. The normal checked rename operation verifies existing matched C before saving.
+Function naming metadata and notes retain the source corpora and fingerprint. Naming a routine does not
+increase the decompilation match count. No library archive or source is bundled or downloaded.

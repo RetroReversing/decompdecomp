@@ -539,6 +539,8 @@ class Twins:
                            (proj['id'], job.reuse_attempts, job.reuse_matched,
                             job.reuse_bytes, time.monotonic() - started, time.time()))
             self.reuse_names(slug, job)
+            from .libultra import name_functions
+            name_functions(self.net, slug, job)
             self.update_boosts(self.net.project_row(slug))
         finally:
             job.ordered.set()
@@ -834,12 +836,12 @@ class Twins:
 
     def import_sdk_objects(self, path: Path, corpus: str) -> int:
         """Index only signatures and names from a user-selected local ELF object or ar archive."""
-        if not path.is_file() or path.suffix not in (".o", ".a"):
+        if not path.is_file() or path.suffix.lower() not in (".o", ".a"):
             raise NetworkError("Choose a local .o or .a SDK object file")
         if path.stat().st_size > 100 * 1024 * 1024:
             raise NetworkError("SDK object archive is larger than 100 MB")
         data = path.read_bytes()
-        members = [data] if path.suffix == ".o" else _ar_members(data)
+        members = [data] if path.suffix.lower() == ".o" else _ar_members(data)
         signatures = []
         for member in members:
             try:
