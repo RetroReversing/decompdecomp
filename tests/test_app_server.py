@@ -762,3 +762,15 @@ def test_iterative_settings_opt_in_and_separate_limits(app):
     assert net.cascades.attempts == 128 and net.cascades.seconds == 120
     client.post('/api/settings', json={'iterative_enabled': False}, headers={'X-Decomp': '1'})
     assert not net.cascades.iterative_enabled
+
+
+def test_sdk_inventory_is_global_and_selection_is_a_guarded_project_setting(app, monkeypatch):
+    client, net, _ = app
+    from decompnet.app import sdk_library
+    monkeypatch.setattr(sdk_library, 'state', lambda net, slug=None: {'folders': [], 'libraries': [], 'selection': None})
+    assert client.get('/api/sdk-library').json()['folders'] == []
+    assert client.post('/api/sdk-library', json={'folders': []}).status_code == 403
+    selected = []
+    monkeypatch.setattr(sdk_library, 'choose', lambda net, slug, selection: selected.append((slug, selection)))
+    response = client.post('/api/sdk-library', json={'slug': 'example', 'selection': []}, headers={'X-Decomp': '1'})
+    assert response.status_code == 200 and selected == [('example', [])]

@@ -753,6 +753,13 @@ class ForkEngine:
                     pass
             dest = fp.place_game(Path(game), filename or Path(game).name, cfg.get("version"), move=move, log=log)
             log(f"your copy of the game is at {dest.relative_to(fp.root)}")
+        if game is None and fp.kind() == "splat" and cfg.get("version") is None:
+            # Older imports may already have accepted a non-default edition without saving its version.
+            # Recover only an unambiguous existing ROM; _match_version rechecks its actual hash.
+            existing = [fp.root / f"baserom.{v}.z64" for v in fp.splat_baseroms()
+                        if (fp.root / f"baserom.{v}.z64").is_file()]
+            if len(existing) == 1:
+                self._match_version(proj, fp, cfg, existing[0], log)
         if not fp.needs(cfg.get("version"))["auto"]:
             raise NetworkError("this project has its own setup: follow its README, then click Check again")
         fp.setup(cfg.get("version"), log=log)
@@ -1080,6 +1087,8 @@ class ForkEngine:
             self.net._event(db, proj["id"], None, "sync", f"{float(m.get('matched_code_percent', 0)):.2f}% of code matches")
         log(f"{m.get('matched_functions', 0)}/{m.get('total_functions', 0)} functions match, "
             f"{float(m.get('matched_code_percent', 0)):.2f}% of code")
+        from ..forks.linkedimages import populations
+        cfg["progress_populations"] = populations(fp.root, rep, set(aside))
         cfg["measures"] = m
         cfg["uncovered"] = self._count_uncovered(rep)
         # what the project's set-aside list names, whatever its scope: the Settings panel's choice says how many
@@ -3713,6 +3722,8 @@ class ForkEngine:
     # ------------------------------------------------------------------ for the GUI
 
     def overview(self, slug: str) -> dict:
+        from .libultra import report as libultra_report
+
         proj, fp, cfg = self.get(slug)
         if cfg.get("ready"):
             self._preflight_once(slug)
@@ -3726,6 +3737,7 @@ class ForkEngine:
             "repo_url": cfg.get("repo_url"), "fork_kind": cfg.get("fork_kind"), "version": cfg.get("version"),
             "origin": cfg.get("origin"), "compiler_name": cfg.get("compiler"),
             "project_compiler": compiler_info.describe(fp, cfg.get("version")),
+            "libultra": libultra_report(self.net, proj),
             "versions": fp.versions(), "ready": bool(cfg.get("ready")), "needs": need,
             "rom": {"game_code": cfg.get("version") or "", "region": consoles.name(cfg.get("platform")),
                     "title": proj["name"]},
@@ -3737,6 +3749,7 @@ class ForkEngine:
             "matched_bytes": agg["matched_bytes"] or 0, "set_aside": agg["set_aside"] or 0,
             "set_aside_bytes": agg["set_aside_bytes"] or 0, "attempts": agg["attempts"] or 0,
             "context_version": 0, "folder": proj["root"], "room": self.net._room_info(slug),
+            "progress_populations": cfg.get("progress_populations", []),
             "measures": m, "uncovered": self.uncovered(slug) if cfg.get("ready") and fp.linkable() else None,
             "rebuild": (fp.manifest or {}).get("rebuild") if cfg.get("origin") == "scratch" else None,
             "reimports": cfg.get("origin") == "scratch" and consoles.get(cfg.get("platform")).reimports,

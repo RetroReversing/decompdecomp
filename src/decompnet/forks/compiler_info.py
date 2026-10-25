@@ -33,10 +33,16 @@ def describe(project, version: str | None = None) -> dict:
             sources.append(name)
             break
     depth = 0
+    declarations, conditional_commands = [], []
     for line in re.sub(r"\\\r?\n", " ", text).splitlines():
-        if line.startswith("\t"):  # a recipe, not a variable declaration
+        if line.startswith("\t") and not (depth and _ASSIGN.match(line)):  # allow indented conditional declarations
             continue
         line = line.split("#", 1)[0].strip()
+        assignment = _ASSIGN.match(line)
+        if assignment:
+            declarations.append(assignment[3])
+            if depth and assignment[1] == "CC":
+                conditional_commands.append(assignment[3])
         if re.match(r"if(?:eq|neq|def|ndef)\b", line):
             depth += 1
         elif line == "endif":
@@ -65,8 +71,10 @@ def describe(project, version: str | None = None) -> dict:
 
     command = expand(variables.get("CC", ""))
     name = ""
-    if "ido" in command.lower():
-        versions = set(re.findall(r"ido[-_/](\d+\.\d+)", text, re.I))
+    declared_commands = [command, *(expand(c) for c in conditional_commands)]
+    if any("ido" in c.lower() for c in declared_commands):
+        versions = set(re.findall(r"ido(?:[-_]?(?:static[-_]?)?recomp)?(?:/build)?[-_/]?(\d+\.\d+)",
+                                  "\n".join(declarations), re.I))
         name = "IDO" + (" " + next(iter(versions)) if len(versions) == 1 else "")
     elif re.search(r"(?:^|[/\s-])(?:gcc|g\+\+)(?:$|[-\s])", command):
         name = "GCC"

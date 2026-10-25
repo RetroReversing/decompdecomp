@@ -57,6 +57,7 @@ const old = Array.from({ length: 60 }, (_, i) => ({ id: i + 1, kind: "match", de
 let liveB = [];
 answers["/api/state"] = () => ({ version: "test", settings: {}, agents: [], toolchains: [] });
 answers["/api/projects"] = () => [];
+answers["/api/sdk-library"] = () => ({ folders: [], libraries: [], selection: null });
 answers["/api/agents/detected"] = () => [];
 answers["/api/mapcolumns"] = () => ({ keys: ["vram", "cc", "ccx"], rows: [] });
 answers["/api/knowledge"] = () => ({ auto: false, items: [] });

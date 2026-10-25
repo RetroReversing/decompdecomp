@@ -135,6 +135,27 @@ async function showSettingsPage() {
   wireCopies($("setComputer"));
   $("themeSeg").querySelectorAll("[data-theme]").forEach((b) => { b.onclick = () => { setTheme(b.dataset.theme); $("themeSeg").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); }; });
   const save = (body, msg) => api("/api/settings", { method: "POST", body }).then((s) => { S.st.settings = s; toast(msg); }).catch((e) => toast(esc(e.message), "err"));
+  const showSdkInventory = async () => {
+    const data = await api("/api/sdk-library");
+    $("sdkFolders").value = data.folders.join("\n");
+    $("sdkInventory").textContent = `${data.libraries.length} indexed libraries available to all projects. Each game's Settings can override automatic selection.`;
+  };
+  await showSdkInventory();
+  $("sdkFolderPick").onclick = async () => {
+    try {
+      const { path } = await api("/api/pick", { method: "POST", body: { kind: "folder", title: "Local SDK library folder" } });
+      if (path) $("sdkFolders").value = [$("sdkFolders").value.trim(), path].filter(Boolean).join("\n");
+    } catch (e) { toast(esc(e.message), "err"); }
+  };
+  $("sdkFolderScan").onclick = async () => {
+    const log = $("sdkFolderLog"), button = $("sdkFolderScan");
+    const finish = beginWork(log, "Scanning local SDK folders", [button], "SDK folders indexed.");
+    try {
+      const { job } = await api("/api/sdk-library", { method: "POST", body: { folders: $("sdkFolders").value.split("\n").map(p => p.trim()).filter(Boolean) } });
+      await followJob(job, log);
+      await showSdkInventory();
+    } catch (e) { showJobError(log, e.message); } finally { finish(); }
+  };
   $("romLibrary").value = st.settings.rom_library || "";
   $("romLibrarySave").onclick = () => save({ rom_library: $("romLibrary").value.trim() }, "ROM library saved.");
   $("romLibraryPick").onclick = async () => {

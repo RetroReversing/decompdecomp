@@ -11,6 +11,7 @@ from pathlib import Path
 
 from ..network import NetworkError
 from .function_names import record, state
+from .sdk_library import allowed
 
 _VERSION = re.compile(r"\blib(?:g)?ultra\s+(2\.0[A-L])\b", re.I)
 log = logging.getLogger("decompdecomp")
@@ -23,15 +24,39 @@ BUILTIN_NAMES = frozenset("memcpy memmove memset memcmp memchr strlen strchr str
 
 def report(net, proj):
     cfg = net.cfg(proj)
-    if cfg.get("platform", "n64") != "n64" or not net.is_rom(proj) or net.fork_slug(proj["slug"]):
+    if cfg.get("platform", "n64") != "n64":
+        return None
+    fork = net.fork_slug(proj["slug"])
+    if fork:
+        _, fp, _ = net.forks.get(proj["slug"])
+        # Use the same selected original input as setup, including versioned splat and manifests.
+        original = fp.needs(cfg.get("version")).get("path")
+        path = None
+        if isinstance(original, str) and original:
+            try:
+                path = (fp.root / original).resolve()
+                path.relative_to(fp.root.resolve())
+            except ValueError:
+                path = None
+    elif net.is_rom(proj):
+        try:
+            path = Path(proj["root"]) / cfg["rom"]["file"]
+        except KeyError:
+            return None
+    else:
         return None
     try:
-        with (Path(proj["root"]) / cfg["rom"]["file"]).open("rb") as stream:
+        if path is None:
+            raise FileNotFoundError("No original ROM configured")
+        with path.open("rb") as stream:
             header = stream.read(16)
-    except (OSError, KeyError):
+    except OSError:
+        header = b""
+    valid = len(header) >= 16 and header[:4] == bytes.fromhex("80371240")
+    if not valid and not fork:
         return None
-    if len(header) < 16 or header[:4] != bytes.fromhex("80371240"):
-        return None
+    if not valid:
+        header = bytes(16)  # imported target objects can still supply library signature evidence
     raw = header[12:16]
     value, letter = header[14], header[15]
     version = f"{value // 10}.{value % 10}{chr(letter)}" if value and 65 <= letter <= 90 else None
@@ -41,6 +66,8 @@ def report(net, proj):
     names = defaultdict(set)
     versions = defaultdict(set)
     for row in net.store.all("SELECT corpus,name,fingerprint FROM sdk_signatures WHERE arch='mips' AND big_endian=1"):
+        if not allowed(net, proj, row["corpus"]):
+            continue
         match = _VERSION.search(row["corpus"])
         if not match or row["fingerprint"] not in keys:
             continue
@@ -52,7 +79,7 @@ def report(net, proj):
                    "functions": sum(keys[k] for k in ks), "names": len(names[c])}
                   for c, ks in corpora.items()]
     candidates.sort(key=lambda r: (-r["fingerprints"], r["corpus"]))
-    return {"header_version": version, "header_raw": raw.hex(), "header_offset": "0x0C",
+    return {"header_version": version, "header_raw": raw.hex() if valid else None, "header_offset": "0x0C",
             "signature_candidates": candidates,
             "note": "Header declaration; signature counts are supporting evidence, not proof of one SDK revision."}
 
@@ -67,7 +94,7 @@ def name_functions(net, slug, job=None):
         return 0
     donors = defaultdict(lambda: defaultdict(set))
     for r in net.store.all("SELECT corpus,name,fingerprint,size FROM sdk_signatures WHERE arch='mips' AND big_endian=1"):
-        if _VERSION.search(r["corpus"]) and r["size"] >= MIN_BYTES and re.fullmatch(r"[A-Za-z_]\w*", r["name"]):
+        if allowed(net, proj, r["corpus"]) and _VERSION.search(r["corpus"]) and r["size"] >= MIN_BYTES and re.fullmatch(r"[A-Za-z_]\w*", r["name"]):
             donors[r["fingerprint"]][r["name"]].add(r["corpus"])
     prints = net.twins.prints(proj)
     rows = net.store.all("SELECT * FROM functions WHERE project_id=?", proj["id"])

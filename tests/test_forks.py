@@ -871,3 +871,56 @@ def test_a_sync_with_nothing_new_leaves_the_functions_alone(fork):
     net.forks.sync(slug, log=lambda *_: None)
     functions = net.store.one("SELECT COUNT(*) n FROM functions")["n"]
     assert net.store.conn.total_changes - before < functions
+
+
+def test_splat_runs_tool_setup_and_extraction_before_build(tmp_path):
+    if shutil.which('make') is None:
+        pytest.skip('needs make')
+    (tmp_path / 'game.yaml').write_text('options:\n  target_path: game.z64\nsegments: []\n')
+    (tmp_path / 'Makefile').write_text(
+        '.DEFAULT_GOAL := all\n'
+        'setup:\n\t@echo setup >> order.txt\n'
+        'extract:\n\t@test -f order.txt\n\t@touch game.ld\n\t@echo extract >> order.txt\n'
+        'all:\n\t@test -f game.ld\n\t@echo build >> order.txt\n')
+    for command in ForkProject(tmp_path).setup_commands():
+        subprocess.run(command, cwd=tmp_path, check=True, capture_output=True, timeout=15)
+    assert (tmp_path / 'order.txt').read_text().splitlines() == ['setup', 'extract', 'build']
+
+
+def test_direct_splat_version_follows_rom_on_import_and_retry(tmp_path, monkeypatch):
+    from decompnet.app.forkengine import ForkEngine
+
+    (tmp_path / "Makefile").write_text('BASENAME := game\nVERSION := us\nextract:\n\tpython -m splat split $(BASENAME).$(VERSION).yaml\n')
+    data = {v: b'\x80\x37\x12\x40' + v.encode() * 32 for v in ('eu', 'us')}
+    for v, rom in data.items():
+        (tmp_path / f'game.{v}.yaml').write_text(
+            f'sha1: {hashlib.sha1(rom).hexdigest()}\noptions:\n  base_path: .\n'
+            f'  target_path: baserom.{v}.z64\nsegments: []\n')
+    fp = ForkProject(tmp_path)
+    assert fp.splat_default_version() == 'us'  # Alphabetically first YAML is EU.
+    assert fp.needs()['path'] == 'baserom.us.z64'
+    cfg = {}
+    engine = object.__new__(ForkEngine)
+    monkeypatch.setattr(ForkEngine, '_save_cfg', lambda *_: None)
+    game = tmp_path / 'upload.z64'
+    game.write_bytes(data['eu'])
+    engine._match_version(SimpleNamespace(), fp, cfg, game, log=lambda *_: None)
+    assert cfg['version'] == 'eu'
+    assert fp.place_game(game, game.name, cfg['version']).name == 'baserom.eu.z64'
+    assert fp.setup_commands('eu')[0] == ['make', 'VERSION=eu', 'extract']
+    assert fp.setup_commands('eu')[1][1] == 'VERSION=eu'
+
+    # An existing import from the old app has the right ROM, but no saved version.
+    cfg.clear()
+    monkeypatch.setattr(ForkEngine, 'get', lambda *_: (SimpleNamespace(), fp, cfg))
+    calls = []
+    monkeypatch.setattr(ForkProject, 'setup', lambda _self, v, **_: calls.append(v))
+    monkeypatch.setattr(ForkEngine, 'check', lambda *_ , **__: {'ready': True})
+    assert engine.setup('example', None, log=lambda *_: None)['ready']
+    assert calls == ['eu']
+    assert cfg['version'] == 'eu'
+
+    # A template that points outside the checkout is not inferred as a supported ROM edition.
+    p = tmp_path / 'game.eu.yaml'
+    p.write_text(p.read_text().replace('base_path: .', 'base_path: ..'))
+    assert 'eu' not in fp.splat_baseroms()

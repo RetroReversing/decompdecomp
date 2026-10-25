@@ -223,13 +223,33 @@ function renderAutopilot(ov) {
   const cross = ov.cross_game || { counts: {}, recent: [] };
   const count = cross.counts.match || 0, tried = Object.values(cross.counts).reduce((a, b) => a + b, 0);
   $("crossGamePanel").hidden = ov.kind === "fork" || count === 0;
-  $("crossGameSummary").textContent = `${count} verified matches from other games · ${tried} transfer attempts. Exact and similar candidates are compiled and checked against this game's bytes. Only verified matches count.`;
+  $("crossGameSummary").textContent = `${count} verified matches · ${tried} attempts. A verified match reproduces this game's bytes exactly. Assembly similarity is only a search hint.`;
   if (ov.free_search && ov.free_search.seconds > 0) {
     const r = ov.free_search;
-    $("crossGameSummary").textContent += ` Last free search: ${r.matched} matches, ${r.bytes} verified bytes, ${r.attempts} attempts in ${r.seconds.toFixed(1)} seconds (${Math.round(r.bytes * 60 / r.seconds)} bytes/minute of elapsed time).`;
+    $("crossGameSummary").textContent += ` Last free pass: ${r.matched} matches from ${r.attempts} checks.`;
   }
-  $("crossGameRecent").innerHTML = cross.recent.slice(0, 12).map((r) =>
-    `<li><b>${esc(r.target)}</b> from ${esc(r.source)} in ${esc(r.game)} · ${esc(r.outcome)}${r.reason ? ` · ${esc(r.reason)}` : ""}</li>`).join("") || `<li class="muted small">No cross-game transfers yet. Run autopilot after another game has matched functions.</li>`;
+  const renderTransfers = () => {
+    const successes = $("crossGameFilter").value !== "all";
+    const rows = successes ? (cross.matches || cross.recent.filter(r => r.outcome === "match")) : cross.recent;
+    $("crossGameRecent").innerHTML = rows.slice(0, 12).map((r) => {
+      const matched = r.outcome === "match";
+      const status = matched ? "Verified byte match" : r.outcome === "miss" ? "Not matched" : r.outcome === "skip" ? "Skipped" : r.outcome === "asm" ? "Assembly only" : r.outcome;
+      const similarity = (r.reason || "").match(/similar code \((\d+)%\)/);
+      const score = (r.reason || "").match(/score\s+(\d+)/);
+      const detail = [similarity ? `Assembly similarity: ${similarity[1]}%` : "", !matched && score ? `Mismatch score: ${score[1]} (0 = exact)` : ""].filter(Boolean).join(" · ");
+      const targetLink = `<button class="fn" type="button" data-transfer-function="${esc(r.target)}" data-slug="${esc(ov.slug)}" title="Open target function"><b>${esc(r.target)}</b></button>`;
+      const sourceLink = r.source_slug ? `<button class="fn" type="button" data-transfer-function="${esc(r.source)}" data-slug="${esc(r.source_slug)}" title="Open original function in ${esc(r.game)}">${esc(r.source)}</button>` : esc(r.source);
+      return `<li><div class="row">${targetLink}<span class="badge ${matched ? "matched" : ""}">${esc(status)}</span></div>
+        <div class="muted small">Candidate source: ${esc(r.game)} → ${sourceLink}</div>
+        ${detail ? `<div class="muted small">${esc(detail)}</div>` : ""}</li>`;
+    }).join("") || `<li class="muted small">${successes ? "No verified transfers to show." : "No recent transfer attempts."}</li>`;
+  };
+  $("crossGameRecent").onclick = e => {
+    const button = e.target.closest("button[data-transfer-function]");
+    if (button) openNoted(button.dataset.slug, button.dataset.transferFunction);
+  };
+  $("crossGameFilter").onchange = renderTransfers;
+  renderTransfers();
   const box = $("autopilot"), ap = ov.autopilot, tw = ov.twins, pm = ov.permuter;
   const canRun = (ov.kind !== "fork" || ov.ready) && cFunctions(ov) - ov.matched > 0;
   box.hidden = !ap && !canRun && !tw && !pm;
@@ -280,6 +300,28 @@ function renderAutopilot(ov) {
   };
 }
 
+async function renderSdkSelection() {
+  const data = await api(`/api/sdk-library?slug=${encodeURIComponent(S.slug)}`);
+  $("sdkMode").value = data.selection === null ? "auto" : "manual";
+  const detected = data.libraries.filter(r => r.detected);
+  $("sdkDetected").textContent = detected.length
+    ? `${detected.length} local libraries share exact function signatures with this game.`
+    : "No library signatures detected yet. Add folders in global Settings or build the imported project's target objects first.";
+  $("sdkChoices").innerHTML = data.libraries.map(r => `<label class="check"><input type="checkbox" data-sdk-corpus="${esc(r.corpus)}" ${r.enabled ? "checked" : ""}><span>${esc(r.corpus.split(" / sha256:")[0])} · ${r.detected} fingerprints</span></label>`).join("");
+  const toggle = () => { $("sdkChoices").hidden = $("sdkMode").value === "auto"; };
+  $("sdkMode").onchange = toggle; toggle();
+}
+$("sdkSelectionSave").onclick = async () => {
+  const log = $("sdkSelectionLog"), button = $("sdkSelectionSave");
+  const finish = beginWork(log, "Saving this game's libraries", [button], "Library selection saved.");
+  try {
+    const selection = $("sdkMode").value === "auto" ? null : Array.from($("sdkChoices").querySelectorAll("input:checked"), e => e.dataset.sdkCorpus);
+    await api("/api/sdk-library", { method: "POST", body: { slug: S.slug, selection } });
+    S.ov = await api(`/api/project?slug=${encodeURIComponent(S.slug)}`);
+    await renderProjectSettings();
+  } catch (e) { showJobError(log, e.message); } finally { finish(); }
+};
+
 $("sdkImport").onclick = async () => {
   const button = $("sdkImport"), log = $("sdkLog");
   showJobError(log, "");
@@ -289,6 +331,7 @@ $("sdkImport").onclick = async () => {
       slug: S.slug, path: $("sdkPath").value, corpus: $("sdkCorpus").value,
       source_path: $("sdkSourcePath").value, header_path: $("sdkHeaderPath").value } });
     log.hidden = false;
+    await renderSdkSelection();
     log.textContent = `${result.signatures} signatures and ${result.sources || 0} C definitions indexed from ${result.corpus}.`;
   } catch (e) { showJobError(log, e.message); } finally { finish(); }
 };
@@ -411,6 +454,7 @@ async function renderProjectSettings() {
     renderCompilerWaiting(ov);
     loadCompilerAnswer();
   }
+  await renderSdkSelection();
   const facts = [["Platform", ov.platform_name], ["Game", ov.rom?.title || ov.title], [fork ? "Version" : "Game code", ov.rom?.game_code || ov.version],
     !fork && ov.rom?.region ? ["Region", ov.rom.region] : null, fork ? ["Layout", ov.origin === "scratch" ? (ov.layout || "decomp") + " (from scratch)" : ov.fork_kind] : ["Compiler", `${ov.compiler.name} ${ov.compiler.flags.join(" ")}`],
     ...projectCompilerFacts(ov),

@@ -228,6 +228,31 @@ class ForkProject:
         if not makefile.is_file():
             return {}
         make = makefile.read_text(errors="replace", encoding="utf-8")
+        # Direct versioned splits must select the same edition for placement and Make.
+        # Require the build's explicit template, not just similarly named YAML files.
+        basename = re.search(r"^BASENAME\s*[:?]?=\s*([A-Za-z0-9_-]+)\s*$", make, re.M)
+        if basename and "$(BASENAME).$(VERSION).yaml" in make:
+            import yaml
+
+            originals = {}
+            for path in sorted(self.root.glob(basename.group(1) + ".*.yaml")):
+                version = path.name[len(basename.group(1)) + 1:-5]
+                if not re.fullmatch(r"[A-Za-z0-9._-]+", version):
+                    continue
+                try:
+                    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError, yaml.YAMLError):
+                    continue
+                if not isinstance(config, dict) or not isinstance(config.get("options"), dict):
+                    continue
+                options = config["options"]
+                digest = config.get("sha1", options.get("sha1"))
+                if (options.get("target_path") == f"baserom.{version}.z64"
+                        and options.get("base_path", ".") == "."
+                        and isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{40}", digest)):
+                    originals[version] = digest.lower()
+            if originals:
+                return originals
         if not (re.search(r"^BASEROM\s*[:?+]?=\s*baserom\.\$\(VERSION\)\.z64\s*$", make, re.M) and
                 re.search(r"^DECOMPRESSED_BASEROM\s*[:?+]?=\s*decompressed\.\$\(VERSION\)\.z64\s*$", make, re.M)):
             return {}
@@ -246,7 +271,7 @@ class ForkProject:
         if not versions:
             return None
         make = (self.root / "Makefile").read_text(errors="replace", encoding="utf-8")
-        match = re.search(r"^VERSION\s*\?=\s*([A-Za-z0-9._-]+)", make, re.M)
+        match = re.search(r"^VERSION\s*[:?]?=\s*([A-Za-z0-9._-]+)", make, re.M)
         return match.group(1) if match and match.group(1) in versions else next(iter(versions))
 
     def _docker_only_macos(self) -> bool:
@@ -347,7 +372,7 @@ class ForkProject:
                         "rom_versions": [{"version": v, "sha1": digest} for v, digest in originals.items()],
                         "help": "Supply an original cartridge ROM in .z64, .v64 or .n64 byte order. Its normalized "
                                 "SHA-1 selects the build version; decompdecomp saves a .z64 copy for the project. "
-                                "The splat YAML's SHA-1 is for a decompressed file the build generates later."
+                                "The selected version is passed to extraction and subsequent builds."
                                 + docker_help}
             y = self._splat_yaml().read_text(errors="replace", encoding="utf-8")
             target = re.search(r"^\s*target_path:\s*['\"]?([^'\"\n#]+)", y, re.M)
@@ -458,7 +483,7 @@ class ForkProject:
         if kind == "splat":
             make = (self.root / "Makefile").read_text(errors="replace", encoding="utf-8")
             chosen = [f"VERSION={version}"] if version and self.splat_baseroms() else []
-            steps = [["make", *chosen, t] for t in ("setup", "extract") if re.search(rf"^{t}\s*:", make, re.M)][:1]
+            steps = [["make", *chosen, t] for t in ("setup", "extract") if re.search(rf"^{t}\s*:", make, re.M)]
             jobs = min(os.cpu_count() or 4, 4) if self._docker_only_macos() else os.cpu_count() or 4
             return steps + [["make", *chosen, f"-j{jobs}"]]
         if kind == "objdiff":
@@ -739,7 +764,10 @@ class ForkProject:
         return objdiff.report(self.root, self.root / STATE / "report.json")
 
     def diff(self, unit: Unit, symbol: str) -> objdiff.FunctionDiff:
-        return objdiff.diff(unit.target, unit.base, symbol, cwd=self.root, options=self.diff_options(unit),
+        from .linkedimages import stale
+        entry = next((u for u in self.objdiff_config().get("units", []) if u.get("name") == unit.name), {})
+        base = None if stale(self.root, entry, {}) else unit.base
+        return objdiff.diff(unit.target, base, symbol, cwd=self.root, options=self.diff_options(unit),
                             project=self.root if unit.mappings else None, unit=unit.name)
 
     # ------------------------------------------------------------------ linking (dtk-template projects)
