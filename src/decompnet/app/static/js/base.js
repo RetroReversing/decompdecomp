@@ -339,3 +339,8 @@ function leaveProject() {
   clearInterval(teamTimer);
 }
 
+
+function compilerRankedTable(rows) {
+  if (!rows.length) return "";
+  return `<div class="compiler-table"><table><thead><tr><th>Match</th><th>Compiler</th><th>Flags</th><th>Result</th></tr></thead><tbody>${rows.map((r) => `<tr><td><b>${r.percent == null ? "—" : `${r.percent.toFixed(2)}%`}</b></td><td>${esc(r.toolchain)}</td><td class="mono">${esc(r.flags.join(" "))}</td><td>${r.exact ? "Exact match" : r.percent == null ? "Could not compile or compare" : "Partial match"}${r.current ? " · current settings" : ""}</td></tr>`).join("")}</tbody></table></div>`;
+}

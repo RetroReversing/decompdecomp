@@ -54,6 +54,9 @@ def register(app: App) -> None:
         return out
 
     def p_compiler(slug, request, data):
+        if data.get("function"):
+            return net.apply_function_compiler(slug, str(data["function"]), str(data.get("toolchain", "")),
+                                               data.get("flags") or [])
         if net.fork_slug(slug) and "auto" not in data:  # its source files each have a compiler (DS)
             tc = str(data.get("toolchain", ""))
             if not str(data.get("ranges") or "").strip():  # the whole game: every file, one at a time

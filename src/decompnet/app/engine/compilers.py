@@ -219,6 +219,7 @@ class CompilerMixin:
         rows.sort(key=lambda f: (f["vram"] not in cmap.contradicted, f["best_score"] if f["best_score"] is not None else 1 << 30))
         state = state if state is not None else {}
         comparison = None
+        improvements = []
         n = found = 0
         for fn in rows:
             if n >= limit:
@@ -238,9 +239,13 @@ class CompilerMixin:
                             if fn["best_score"] is not None else None)
                 best = None
                 best_profile = None
+                ranked = []
                 for index, (tc, flags) in enumerate(candidates, 1):
                     ok, diff, _ = self._judge_with(proj, fn, tc, list(flags), source)
                     percent = 100.0 if ok else diff.percent if diff is not None else None
+                    if function:
+                        ranked.append({"toolchain": tc, "flags": list(flags), "percent": percent,
+                                       "exact": ok, "current": (tc, flags) == today})
                     if percent is not None and (best is None or percent > best):
                         best, best_profile = percent, [tc, list(flags)]
                     if function:
@@ -254,10 +259,15 @@ class CompilerMixin:
                             + (" (current settings)" if (tc, flags) == today else ""))
                     if function and index % 10 == 0:
                         log(f"{index}/{len(candidates)} combinations tested; {len(matches)} exact matches.")
+                improved = best is not None and (baseline is None or best > baseline + 0.001)
+                if improved:
+                    improvements.append({"function": fn["name"], "before": baseline, "best": best,
+                                         "profile": best_profile})
                 if function:
+                    ranked.sort(key=lambda r: (r["percent"] is None, -(r["percent"] or 0), r["toolchain"], r["flags"]))
                     comparison = {"before": baseline, "best": best, "profile": best_profile,
                                   "tested": len(candidates), "exact_matches": len(matches),
-                                  "improved": best is not None and (baseline is None or best > baseline + 0.001)}
+                                  "improved": improved, "ranked": ranked}
                 if matches:
                     confirmed[str(fn["vram"])] = matches
                     found += 1
@@ -285,7 +295,8 @@ class CompilerMixin:
             log(f"Finished: {n} functions tested; {found} have exact matches. Project settings unchanged.")
             if not n:
                 log("No eligible unmatched C attempts yet. Run the free matching pass or agents first.")
-            return {"tried": n, "confirmed": found, "matches": confirmed, "comparison": comparison}
+            return {"tried": n, "confirmed": found, "matches": confirmed, "comparison": comparison,
+                    "improvements": sorted(improvements, key=lambda r: -r["best"])}
         self._update_cfg(slug, lambda c: c.__setitem__("compiler_survey", {"tried": tried, "confirmed": confirmed,
                                                                            "t": time.time()}))
         suggested = self._suggest_from_map(proj, confirmed)
@@ -637,6 +648,24 @@ class CompilerMixin:
         self._update_cfg(slug, lambda cfg: next(s for s in cfg["suggestions"] if s["id"] == sid).__setitem__(
             "status", "applied" if apply else "dismissed"))
 
+    def apply_function_compiler(self, slug: str, function: str, toolchain: str, flags: list[str]) -> dict:
+        """Revalidate an improved comparison, apply only its function's range, then record its C normally."""
+        self._rom_only(slug, "applying function compiler settings")
+        proj = self._project(slug)
+        fn = self._function(function, slug)
+        if fn["status"] in ("matched", "asm"):
+            raise NetworkError("This function is no longer unmatched. Run a fresh comparison.")
+        source = self._source_of(fn)
+        if not source:
+            raise NetworkError("This function has no C attempt to apply. Run a fresh comparison.")
+        ok, diff, _ = self._judge_with(proj, fn, toolchain, flags, source)
+        if diff is None or (not ok and fn["best_score"] is not None and diff.score >= fn["best_score"]):
+            raise NetworkError("These settings no longer improve this function. Run a fresh comparison.")
+        self.set_compiler_ranges(slug, [[fn["vram"], fn["vram"] + fn["size"]]], toolchain, flags)
+        agent, _ = self.local_agent("autopilot")
+        self.attempt(agent, function, source, project=slug)
+        return {"said": f"Compiler settings applied to {function} only."}
+
     def set_compiler_ranges(self, slug: str, ranges: list[list[int]], toolchain: str | None,
                             flags: list[str] | None = None, reopen: bool = False) -> None:
         """Address ranges built by another compiler than the rest of the game (replacing ranges they overlap), or
@@ -654,7 +683,13 @@ class CompilerMixin:
         before = self.cfg(self._project(slug)).get("compiler_ranges", [])
 
         def change(cfg):
-            keep = [r for r in cfg.get("compiler_ranges", []) if all(r["end"] <= a or r["start"] >= b for a, b in ranges)]
+            keep = []
+            for r in cfg.get("compiler_ranges", []):
+                pieces = [(r["start"], r["end"])]
+                for a, b in ranges:
+                    pieces = [(x, y) for start, end in pieces
+                              for x, y in ((start, min(end, a)), (max(start, b), end)) if x < y]
+                keep.extend(dict(r, start=a, end=b) for a, b in pieces)
             if toolchain:
                 keep += [{"start": a, "end": b, "toolchain": toolchain, "flags": flags} for a, b in ranges]
             cfg["compiler_ranges"] = sorted(keep, key=lambda r: r["start"])

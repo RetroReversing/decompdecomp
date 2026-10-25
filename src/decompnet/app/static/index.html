@@ -374,6 +374,7 @@
           <div id="installedCompilerTest">
             <button class="ghost" type="button" id="testInstalledCompilers">Test installed compilers</button>
             <p class="small muted">Compare up to 400 existing unmatched C attempts locally. No AI tokens, downloads or changes to your compiler settings. Tests default and current flags, with debug variants; not every possible flag combination.</p>
+            <div id="compilerImprovements"></div>
             <pre class="joblog" id="installedCompilerLog" aria-label="Compiler comparison results" aria-live="off" hidden></pre>
           </div>
           <details class="more" id="compilerHow">
@@ -511,6 +512,8 @@
         <button class="ghost small-btn" id="fnTestCompilers" type="button">Test installed compilers &amp; flags</button>
         <p class="small muted">Tests this function’s saved C attempt locally with every installed compiler and supported flag-search variant. No AI tokens; settings stay unchanged. This is not every possible compiler option.</p>
         <p class="compiler-result" id="fnCompilerSummary" role="status" hidden></p>
+        <div id="fnCompilerRanked"></div>
+        <button class="primary small-btn" id="fnApplyCompiler" type="button" hidden>Apply these settings to this function</button>
         <details class="more"><summary>Comparison details</summary><pre class="joblog" id="fnCompilerLog" hidden></pre></details>
       </div>
       <div class="fn-tabs">
