@@ -61,6 +61,7 @@ class GuiMixin:
                            k: getattr(twins, k) for k in ("state", "pairs", "tried", "matched", "asm",
                                                         "cross_candidates", "cross_tried", "cross_matched")},
                        "cross_game": self.twins.cross_game_results(slug),
+                       "free_search": dict(self.store.one('SELECT * FROM reuse_runs WHERE project_id=? ORDER BY id DESC LIMIT 1', proj['id']) or {}),
                        "helper_matches": helpers,
                        "readable": self.readability.counts(proj)["readable"],
                        "spend": cfg.get("spend"), "instructions": cfg.get("instructions") or "",

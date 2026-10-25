@@ -528,9 +528,16 @@ class Twins:
             self.run(slug, job)
             job.state = "running"  # run() finishes its local pass; cross-project work is still cancellable
             job.matched += self.across_games(slug, job)
-            from . import similar_matches
+            from . import free_candidates, similar_matches
 
+            free_candidates.budget(job, self.net.cascades.seconds, self.net.cascades.attempts)
+            started = time.monotonic()
+            job.matched += free_candidates.run(self, slug, job)
             job.matched += similar_matches.run(self, slug, job)
+            with self.net.store.tx() as db:
+                db.execute('INSERT INTO reuse_runs(project_id,attempts,matched,bytes,seconds,created_at) VALUES(?,?,?,?,?,?)',
+                           (proj['id'], job.reuse_attempts, job.reuse_matched,
+                            job.reuse_bytes, time.monotonic() - started, time.time()))
             self.update_boosts(self.net.project_row(slug))
         finally:
             job.ordered.set()
@@ -613,6 +620,8 @@ class Twins:
         fork = bool(self.net.fork_slug(slug))
         if not (fork or self.net.is_rom(proj)) or slug in self.net.links:
             return 0
+        from .free_candidates import exhausted
+        bounded = job is not None and hasattr(job, 'reuse_limit')
         cfg = self.net.cfg(proj)
         mine = self.prints(proj)
         wanted: dict[str, list[int]] = defaultdict(list)
@@ -626,6 +635,8 @@ class Twins:
             "SELECT * FROM projects WHERE id != ? AND arch=? AND big_endian=?",
             proj["id"], proj["arch"], proj["big_endian"]) if self.net.is_rom(p)] if not fork else []
         for other in others:
+            if bounded and exhausted(job):
+                return 0
             self.index_project(other)
         agent, _ = self.net.local_agent("autopilot")
         matched = 0
@@ -664,6 +675,8 @@ class Twins:
             if pa is None:
                 continue
             for b_id in wanted.get(a["fingerprint"], []):
+                if bounded and exhausted(job):
+                    return matched
                 b = self.net.store.one("SELECT * FROM functions WHERE id=? AND status='open'", b_id)
                 if b is None or self._compiler_key(compiler_for(cfg, b["vram"])) != a["compiler"]:
                     continue
@@ -679,6 +692,8 @@ class Twins:
                     continue
                 if job is not None:
                     job.cross_tried += 1
+                if bounded:
+                    job.reuse_attempts += 1
                 outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}")
                 with self.net.store.tx() as db:
                     db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,"
@@ -688,6 +703,9 @@ class Twins:
                         db.execute("INSERT OR REPLACE INTO twin_misses(function_id, source_hash, project_id, at, why) "
                                    "VALUES(?,?,?,?,?)", (b_id, self._miss_key(source), proj["id"], time.time(), why))
                 if outcome == "match":
+                    if bounded:
+                        job.reuse_matched += 1
+                        job.reuse_bytes += b["size"]
                     matched += 1
                     if job is not None:
                         job.cross_matched += 1
@@ -908,7 +926,7 @@ class Twins:
         return (res.get("text") or "").splitlines()[0][:WHY_CHARS] if res.get("text") else f"score {res.get('score')}"
 
     def _attempt_twin(self, agent, proj, a, b, source: str, origin: str = "", theirs: bool = False,
-                      similar: bool = False) -> tuple[str, str]:
+                      similar: bool = False, feedback: dict | None = None) -> tuple[str, str]:
         """match | miss | skip for a's code made into b's (`source`). `theirs`: a is another project's, so the tries
         that take more from a's file (its types, includes, declarations) don't apply: twin_source took its
         declarations already."""
@@ -949,6 +967,8 @@ class Twins:
         except NetworkError as e:
             log.info("twins: %s from %s: %s", b["name"], a["name"], str(e)[:WHY_CHARS])
             return "skip", ""
+        if feedback is not None:
+            feedback.update(res)
         return ("match", "") if res.get("matched") else ("miss", self._why(res))
 
     def run(self, slug: str, job: Job | None = None, only: set[int] | None = None, workers: int = 3) -> Job:
