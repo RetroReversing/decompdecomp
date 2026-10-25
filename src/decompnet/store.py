@@ -51,6 +51,10 @@ CREATE TABLE IF NOT EXISTS waits(
 CREATE TABLE IF NOT EXISTS twin_misses(
   function_id INTEGER NOT NULL, source_hash TEXT NOT NULL, project_id INTEGER, at REAL, why TEXT,
   PRIMARY KEY(function_id, source_hash));
+CREATE TABLE IF NOT EXISTS reuse_trials(
+  function_id INTEGER NOT NULL, signature TEXT NOT NULL, outcome TEXT NOT NULL, reason TEXT NOT NULL,
+  PRIMARY KEY(function_id, signature));
+CREATE TABLE IF NOT EXISTS reuse_cursors(project_id INTEGER PRIMARY KEY, function_id INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS cross_game_index(
   function_id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL, fingerprint TEXT NOT NULL,
   compiler TEXT NOT NULL, size INTEGER NOT NULL, matched_at REAL NOT NULL);
