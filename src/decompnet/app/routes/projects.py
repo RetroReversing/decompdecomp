@@ -105,11 +105,6 @@ def register(app: App) -> None:
     def p_compilermap(slug, request, data):
         """The compiler answer (GET): which compiler built the game, and its parts; the app checks by itself when the
         answer is old. POST: check again now (the survey and the applied ranges)."""
-        if request.method == "POST" and "claim_id" in data:
-            cid = data["claim_id"]
-            if not isinstance(cid, int) or isinstance(cid, bool):
-                raise NetworkError("Choose a valid compiler claim to check.")
-            return {"job": jobs.start("compiler claim", lambda log: net.recheck_compiler_claim(slug, cid, log=log))}
         if request.method == "POST" and data.get("all_installed"):
             if net.fork_slug(slug):
                 raise NetworkError("This comparison currently needs a ROM-mode project.")

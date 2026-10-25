@@ -116,25 +116,3 @@ def test_installed_compiler_comparison_is_local_and_report_only(tmp_path, monkey
     assert result["matches"][str(0x80010000)][0] == "gcc-2.8.0-psx"
     assert set(judged) <= {"gcc-2.7.2-psx", "gcc-2.8.0-psx"}
     assert json.loads(net._project("demo")["config"]) == cfg
-
-
-def test_manual_claim_check_targets_only_the_selected_claim(tmp_path, monkeypatch):
-    net = RomNetwork(tmp_path / "decomp.db", tmp_path)
-    cfg = {"kind": "rom", "platform": "ps", "range_checks": [
-        {"id": 1, "status": "waiting"}, {"id": 2, "status": "waiting"}]}
-    with net.store.tx() as db:
-        db.execute("INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)",
-                   ("demo", "Demo", str(tmp_path), json.dumps(cfg)))
-    calls = []
-
-    def recheck(slug, cid, background=True):
-        calls.append((slug, cid, background))
-        net._update_cfg(slug, lambda c: c["range_checks"][1].update(status="confirmed", said="Neighbours agree"))
-
-    monkeypatch.setattr(net.rangechecks, "recheck", recheck)
-    result = net.recheck_compiler_claim("demo", 2, log=lambda *_: None)
-    assert calls == [("demo", 2, False)]
-    assert result == {"id": 2, "status": "confirmed"}
-    assert net.cfg(net._project("demo"))["range_checks"][0]["status"] == "waiting"
-    with pytest.raises(Exception, match="no longer exists"):
-        net.recheck_compiler_claim("demo", 999)

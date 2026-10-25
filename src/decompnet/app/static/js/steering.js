@@ -598,8 +598,7 @@ function renderCompilerAnswer(a) {
   setHtml($("compilerParts"), parts.length ? `<ol class="parts">${parts.map((p) => {
     const [word, why] = PART_STATE[p.check] || PART_STATE[""];
     return `<li><code>${hexShort(p.start)}–${hexShort(p.end)}</code><span class="grow">${esc(p.compiler)} <span class="flags mono">${esc(p.flags)}</span></span>
-      ${p.file ? `<span class="muted small mono">${esc(p.file)}</span>` : ""}<span class="part-state ${esc(p.check || "none")}" title="${esc(p.said || why)}">${word}</span>
-      ${p.check === "waiting" && p.check_id != null ? `<button class="ghost small-btn" type="button" data-check-claim="${p.check_id}">Check now</button>` : ""}
+      ${p.file ? `<span class="muted small mono">${esc(p.file)}</span>` : ""}<span class="part-state ${esc(p.check || "none")}" title="${esc(p.said || why)}">${word}</span>${p.check === "waiting" && p.said ? `<span class="small muted">${esc(p.said)}</span>` : ""}
       <button class="ghost small-btn" type="button" data-unrange="${hexShort(p.start)}-${hex8(p.end)}" aria-label="Build ${hexShort(p.start)} to ${hexShort(p.end)} with ${esc(a.compiler)} again" title="Build this part with ${esc(a.compiler)} again">Remove</button></li>`;
   }).join("")}</ol>` : "");
   const sv = a.survey || {};
@@ -608,7 +607,7 @@ function renderCompilerAnswer(a) {
       sv.state === "running" ? `running now: ${plural(sv.running_tried || 0, a.unit || "function")} tried` : sv.t ? `last run ${since(sv.t)}: ${plural(sv.tried || 0, a.unit || "function")} tried, ${sv.confirmed || 0} matched with another compiler` : a.mips ? "not run yet: it runs once the game uses two compilers" : "it reads MIPS code only"}),
       and it tests each part on the functions next to it before a part counts. A part applies by itself only when you let proven changes apply.</p>
     ${a.elsewhere.length ? `<p class="col-title">Code that looks like another compiler's</p><ol class="parts">${a.elsewhere.map((r) => `<li><code>${hexShort(r.start)}–${hexShort(r.end)}</code><span class="grow">${esc(r.compiler)}</span><span class="muted small">${plural(r.functions, "function")}${r.confirmed ? `, ${r.confirmed} proven` : ""}</span></li>`).join("")}</ol>` : ""}
-    ${checks.length ? `<p class="col-title">Checks</p><ol class="parts">${checks.map((c) => `<li><span class="part-state ${esc(c.status)}">${(PART_STATE[c.status] || PART_STATE[""])[0]}</span><span class="grow small">${c.status === "waiting" ? `<button class="ghost small-btn" type="button" data-check-claim="${c.id}">Check now</button>` : ""}${c.audit ? "part" : "suggested"} ${c.ranges.map(([s, e]) => `${hexShort(s)}–${hexShort(e)}`).join(", ")} · ${esc(c.compiler)}${c.said ? `<br><span class="muted">${esc(c.said)}</span>` : ""}</span></li>`).join("")}</ol>` : ""}
+    ${checks.length ? `<p class="col-title">Checks</p><ol class="parts">${checks.map((c) => `<li><span class="part-state ${esc(c.status)}">${(PART_STATE[c.status] || PART_STATE[""])[0]}</span><span class="grow small">${c.audit ? "part" : "suggested"} ${c.ranges.map(([s, e]) => `${hexShort(s)}–${hexShort(e)}`).join(", ")} · ${esc(c.compiler)}${c.said ? `<br><span class="muted">${esc(c.said)}</span>` : ""}</span></li>`).join("")}</ol>` : ""}
     <div class="row"><button class="ghost small-btn" type="button" id="checkNow"${a.checking ? " disabled" : ""}>${a.checking ? "Checking…" : "Check again now"}</button></div>`);
   $("checkNow").onclick = async () => {
     try { renderCompilerAnswer(await api("/api/compilermap", { method: "POST", body: { slug: S.slug } })); } catch (e) { return toast(esc(e.message), "err"); }
@@ -644,18 +643,3 @@ $("testInstalledCompilers").onclick = async () => {
     await followJob(job, log);
   } catch (e) { showJobError(log, e.message); } finally { finish(); }
 };
-
-// Delegate claim buttons without replacing the compiler-parts handler for removing a range.
-document.addEventListener("click", async (e) => {
-  const button = e.target.closest("button[data-check-claim]");
-  if (!button) return;
-  const log = $("compilerClaimLog");
-  log.hidden = false;
-  const finish = beginWork(log, "Checking compiler claim", [button], "Claim check finished.");
-  showJobError(log, "");
-  try {
-    const { job } = await api("/api/compilermap", { method: "POST", body: { slug: S.slug, claim_id: Number(button.dataset.checkClaim) } });
-    await followJob(job, log);
-    await loadCompilerAnswer();
-  } catch (err) { showJobError(log, err.message); } finally { finish(); }
-});

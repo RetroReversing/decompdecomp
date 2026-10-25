@@ -397,14 +397,19 @@ class CompilerMixin:
             if ranges and (check_now or any((((r["start"], r["end"]),), r["toolchain"]) not in audited for r in ranges)):
                 self.rangechecks.audit(proj)
                 cfg = self.cfg(self._project(slug))
-        checks = cfg.get("range_checks", [])
+        checks = [dict(c) for c in cfg.get("range_checks", [])]
+        if any(c["status"] == "waiting" for c in checks):
+            rows = self.rangechecks._rows(proj)
+            for c in checks:
+                if c["status"] == "waiting":
+                    c["said"] = self.rangechecks.waiting_reason(c, rows)
         audits = {tuple(map(tuple, c["spans"])): c for c in checks if c.get("audit")}
         parts = []
         for r in ranges:
             c = audits.get(((r["start"], r["end"]),)) or {}
             parts.append({"start": r["start"], "end": r["end"], "compiler": consoles.compiler_name(r["toolchain"]),
                           "flags": " ".join(r["flags"]),
-                          "check_id": c.get("id"), "check": c.get("status", ""), "said": c.get("said", "")})
+                          "check": c.get("status", ""), "said": c.get("said", "")})
         elsewhere = sorted((r for r in (cmap.runs if cmap else []) if r.differs()), key=lambda r: -r.functions)
         # the compiler's name and its flags apart: "built with KMC GCC 2.7.2" reads at a glance, the flags are details
         return {"compiler": consoles.compiler_name(main[0]), "flags": " ".join(main[1]), "parts": parts, "mips": cmap is not None,
@@ -417,22 +422,6 @@ class CompilerMixin:
                            "running_tried": state.get("tried", 0), "t": (cfg.get("compiler_survey") or {}).get("t")},
                 "checks": [{"id": c["id"], "audit": bool(c.get("audit")), "status": c["status"], "said": c.get("said") or "",
                             "ranges": c["spans"], "compiler": self._short((c["toolchain"], tuple(c["flags"])))} for c in checks]}
-
-    def recheck_compiler_claim(self, slug: str, cid: int, log=print) -> dict:
-        """Explicitly retry one claim, without starting the whole compiler survey."""
-        self._rom_only(slug, "the compiler claim check")
-        checks = self.cfg(self._project(slug)).get("range_checks", [])
-        claim = next((c for c in checks if c["id"] == cid), None)
-        if claim is None:
-            raise NetworkError("That compiler claim no longer exists. Refresh the project's Settings.")
-        if claim["status"] not in ("waiting", "checking"):
-            log(f"Claim #{cid} is already {claim['status']}.")
-            return {"id": cid, "status": claim["status"]}
-        log(f"Checking compiler claim #{cid} against its neighbouring functions locally.")
-        self.rangechecks.recheck(slug, cid, background=False)
-        claim = next(c for c in self.cfg(self._project(slug)).get("range_checks", []) if c["id"] == cid)
-        log(f"Claim #{cid}: {claim['status']}. {claim.get('said', '')}")
-        return {"id": cid, "status": claim["status"]}
 
     def install_compilers(self, slug: str, accept_license: bool, retest: bool = True, log=print) -> dict:
         """Every compiler of the project's console the app installs and this computer lacks (a proprietary one only
