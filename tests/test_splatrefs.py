@@ -173,18 +173,22 @@ def test_paths_cannot_escape_the_checkout_through_symlinks(tmp_path):
 
 
 @pytest.mark.skipif(toolchains.installed('binutils-mips') is None, reason='needs pinned MIPS binutils')
-def test_verified_full_rebuild_snapshots_linked_overlay_objects(tmp_path):
+@pytest.mark.parametrize('object_suffix', ['.c.o', '.o'])
+def test_verified_full_rebuild_snapshots_linked_overlay_objects(tmp_path, object_suffix):
     cfg = synthetic_project(tmp_path, 'n64')
+    object_path = 'build/src/demo' + object_suffix
     tools = toolchains.require('binutils-mips')
     assembler = str(tools / 'mips-ps2-decompals-as')
     linker = str(tools / 'mips-ps2-decompals-ld')
     objcopy = str(tools / 'mips-ps2-decompals-objcopy')
-    splatrefs.run([assembler, *consoles.get('n64').as_flags, '-o', 'build/src/demo.c.o', 'original.s'], tmp_path, print)
+    splatrefs.run([assembler, *consoles.get('n64').as_flags, '-o', object_path, 'original.s'], tmp_path, print)
     splatrefs.run([linker, '-EB', '-Ttext', '0x0', '-Map', 'build/program.map', '-e', 'demo_func',
-                   '-o', 'build/program.elf', 'build/src/demo.c.o'], tmp_path, print)
+                   '-o', 'build/program.elf', object_path], tmp_path, print)
     splatrefs.run([objcopy, '-O', 'binary', 'build/program.elf', 'baserom.z64'], tmp_path, print)
     cfg['sha1'] = hashlib.sha1((tmp_path / 'baserom.z64').read_bytes()).hexdigest()
-    cfg['segments'][0]['exclusive_ram_id'] = 'overlay'
+    cfg['segments'].insert(0, {'type': 'code', 'start': 0, 'vram': 0,
+                               'subsegments': [[0, 'textbin', 'microcode']]})
+    cfg['segments'][1]['exclusive_ram_id'] = 'overlay'
     assert splatrefs.generate(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, consoles.get('n64'))
     objdiff = json.loads((tmp_path / 'objdiff.json').read_text())
     assert len(objdiff['units']) == 1
