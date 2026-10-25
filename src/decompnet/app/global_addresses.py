@@ -96,3 +96,36 @@ def normalize(report):
         extra.extend([('i', 'lui $at, %hi(' + a[1] + ')', 'lui $at, %hi(' + b[1] + ')'),
                       ('i', a[2], b[2])])
     return {**report, 'rows': [r for i, r in enumerate(rows) if i not in remove] + extra}
+
+
+def alias_variant(source, report):
+    """Match address-valued C identifiers even when disassembly labels another symbol plus an offset."""
+    from collections import defaultdict
+
+    from .similar_matches import TOKENS
+
+    votes, halves = defaultdict(set), defaultdict(set)
+    for _, wanted, compiled in report.get('rows', []):
+        a, b = EXPR.search(wanted), EXPR.search(compiled)
+        av, bv = expression(wanted), expression(compiled)
+        if not a or not b or not av or not bv or a[1] != b[1]:
+            continue
+        if EXPR.sub('%address', wanted) != EXPR.sub('%address', compiled):
+            continue
+        old, new = (bv[1] + bv[2]) & 0xffffffff, (av[1] + av[2]) & 0xffffffff
+        votes[old].add(new)
+        halves[old, new].add(a[1])
+    addresses = {old: next(iter(values)) for old, values in votes.items()
+                 if len(values) == 1 and old not in values and old >= 0x10000000
+                 and next(iter(values)) >= 0x10000000
+                 and halves[old, next(iter(values))] == {'hi', 'lo'}}
+    if len(addresses) > 2:
+        return None
+    def replace(token):
+        name = token.group()
+        m = AUTO_NAME.fullmatch(name)
+        if m and int(m[1], 16) in addresses:
+            return name.rsplit('_', 1)[0] + '_' + format(addresses[int(m[1], 16)], '08X')
+        return name
+    result = TOKENS.sub(replace, source)
+    return result if result != source else None

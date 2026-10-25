@@ -82,7 +82,8 @@ The last search reports verified bytes, attempts and bytes per minute of elapsed
 
 Global-address repairs also track symbolic MIPS upper halves through straight-line instructions to later
 load/store offsets. Register clobbers, branches, calls and unknown instructions stop tracking; conflicting
-consumers are rejected. Reconstructed addresses only propose local C edits and still require exact verification.
+consumers are rejected. Full-address comparison also resolves C identifiers whose address is shown as another symbol plus an offset
+in disassembly. Reconstructed addresses only propose local C edits and still require exact verification.
 
 When eligible near misses exist, similarity transfers use at most three quarters of the remaining search budget;
 the rest is reserved for repairs. The transfer cursor is retained so the next pass continues through the queue.

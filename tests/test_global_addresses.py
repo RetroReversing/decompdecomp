@@ -57,3 +57,34 @@ def test_fully_symbolic_pairs_keep_their_original_base_labels():
     r={'rows':[('i','lui $v0, %hi(D_80000000)','lui $v0, %hi(D_80010000)'),
                ('i','lw $a0, %lo(D_80000020)($v0)','lw $a0, %lo(D_80010030)($v0)')]}
     assert normalize(r) == r
+
+
+def test_full_address_alias_updates_local_declaration_and_uses():
+    from decompnet.app.global_addresses import alias_variant
+    r={'rows':[('i','lui $v0, %hi(D_80000000+48)','lui $v0, %hi(D_80000000+16)'),
+               ('i','lw $a0, %lo(D_80000000+48)($v0)','lw $a0, %lo(D_80000000+16)($v0)')]}
+    source='extern int D_80000010; return D_80000010; /* D_80000010 */'
+    assert alias_variant(source,r) == 'extern int D_80000030; return D_80000030; /* D_80000010 */'
+    r['rows'].pop()
+    assert alias_variant(source,r) is None
+
+
+def test_equivalent_address_labels_do_not_create_repairs():
+    from decompnet.app.global_addresses import alias_variant
+    r={'rows':[('i','lui $v0, %hi(D_80000010)','lui $v0, %hi(D_80000000+16)'),
+               ('i','lw $a0, %lo(D_80000010)($v0)','lw $a0, %lo(D_80000000+16)($v0)')]}
+    assert alias_variant('D_80000010',r) is None
+
+
+def test_alias_conflicts_are_not_guessed():
+    from decompnet.app.global_addresses import alias_variant
+    rows=[]
+    for new in (32,48):
+        rows += [('i',f'lui $v0, %hi(D_80000000+{new})','lui $v0, %hi(D_80000000+16)'),
+                 ('i',f'lw $a0, %lo(D_80000000+{new})($v0)','lw $a0, %lo(D_80000000+16)($v0)')]
+    assert alias_variant('D_80000010',{'rows':rows}) is None
+
+
+def test_reconstructed_memory_address_rewrites_exact_address_symbol():
+    assert variants('extern int D_80000010; return D_80000010;',report(),{},True,set()) == [
+        'extern int D_80000018; return D_80000018;']

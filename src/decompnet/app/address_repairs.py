@@ -16,7 +16,7 @@ def variants(source, report, target, big, known_symbols):
     These are candidate-local hypotheses: never rename the project's symbols or change shared declarations.
     """
     from .addend_repairs import variants as addend_variants
-    from .global_addresses import normalize
+    from .global_addresses import alias_variant, normalize
     from .layout_repairs import variants as layout_variants
     from .similar_matches import INTEGER, TOKENS, literal_variants
     report = normalize(report)
@@ -55,7 +55,8 @@ def variants(source, report, target, big, known_symbols):
                 return hex(next(iter(targets))) + number[2]
         return text
     renamed = TOKENS.sub(replace, source)
-    result = ([renamed] if renamed != source else []) + addends
+    alias = alias_variant(source, report)
+    result = ([renamed] if renamed != source else []) + addends + ([alias] if alias else [])
     if renamed != source:
         result.extend(addend_variants(renamed, report))
     if report.get('candidate_target'):
