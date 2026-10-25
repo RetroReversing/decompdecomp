@@ -117,6 +117,12 @@ from two independently verified function pairs; conflicts, reopened functions an
 the evidence. Each proposed transfer still goes through the exact compiler/link judge. Old saved candidates
 can recover provenance only when recorded donor history reproduces their adapted C exactly.
 
+Saved candidates also get bounded constant-only repairs when no address correction is proposed. Aligned
+MIPS immediate and fixed-shift differences can guide literal, explicit multiply/divide and shift edits.
+Repeated constants are tried individually (up to four occurrences), with small consistent group edits and
+combinations capped at eight proposals. Comments, strings, symbol addresses and suffixes are preserved;
+register/control-flow changes, signed expressions and implicit type/array-stride changes are left alone.
+
 When eligible near misses exist, similarity transfers use at most three quarters of the remaining search budget;
 the rest is reserved for repairs. The transfer cursor is retained so the next pass continues through the queue.
 

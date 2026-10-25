@@ -128,6 +128,10 @@ Saved repair candidates retain donor provenance, including conservative exact-re
 older saved transfers. Verified repair pairs feed regional symbol learning; new data/callee bindings require
 two independent pairs. Mappings can repair other saved candidates and stale/ambiguous evidence is excluded.
 These mappings share the MIPS ROM pipeline; object mode still needs its per-file context and relocation work.
+Saved MIPS candidates now get direct constant repairs without first needing an address change. Fixed shifts,
+explicit multiply/divide factors and bounded repeated-literal edits share the normal judge and search budget.
+Signed expression reconstruction, implicit pointer/array strides, variable shifts and other processors' readers
+remain planned; object mode still needs per-file source adaptation.
 Tiny MIPS templates and explicitly imported SDK C go through the same judge. Verified regional pairs can teach
 explicit pointer-offset edits; reconstructing named struct layouts and shared types remains planned. New verified
 matches trigger a bounded, configurable automatic cascade. Project-mode support for these additions is planned:
