@@ -115,6 +115,10 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
         raise ForkError("existing automatic reference files were retained; restore their objdiff.json or set up manually")
     version = config_path.name.removeprefix('decompressed.').removesuffix('.yaml')
     make_args = [f'VERSION={version}'] if version != config_path.stem else []
+    selected = next((v for v, path in project._splat_version_configs().items()
+                     if path.resolve() == config_path.resolve()), None)
+    if selected:
+        make_args = [f'VERSION={selected}']
     with tempfile.TemporaryDirectory(prefix='reference-stage-', dir=parent) as temporary:
         work = Path(temporary)
         entries = []
@@ -293,7 +297,8 @@ def generate(project, config_path: Path, config: dict, console, log=print) -> bo
     try:
         units = plan(root, config)
     except ForkError as error:
-        if "compressed or overlay code segments" not in str(error):
+        if ("compressed or overlay code segments" not in str(error)
+                and "subsegment 'pad'" not in str(error)):
             raise
         return verified_rebuild(project, config_path, config, image_path, sha1.lower(), log)
     configured_elf = inside(root, options.get('elf_path', 'build/project.elf'))

@@ -239,3 +239,41 @@ def test_assembly_units_are_visible_without_counting_original_assembly_as_c(tmp_
     assert entry['name'] == 'asm/demo'
     assert 'base_path' not in entry and 'metadata' not in entry
     assert (tmp_path / entry['target_path']).is_file()
+
+
+def test_verified_rebuild_retains_nested_config_version(tmp_path, monkeypatch):
+    cfg = config(tmp_path)
+    data = b'full original cartridge'
+    image = tmp_path/'baserom.jp.z64'
+    image.write_bytes(data)
+    elf = tmp_path/'build/demo.elf'
+    elf.write_bytes(b'linked ELF read by mocked objcopy')
+    (tmp_path/'build/demo.map').write_text(' .text 0x80000400 0x10 build/src/demo.o\n')
+    bindir = tmp_path/'tools'
+    bindir.mkdir()
+    (bindir/'mips-ps2-decompals-objcopy').touch()
+    monkeypatch.setattr(toolchains, 'require', lambda _: bindir)
+    monkeypatch.setattr(splatrefs, 'run', lambda cmd, *a, **kw: __import__('pathlib').Path(cmd[-1]).write_bytes(data))
+    project = ForkProject(tmp_path)
+    selected = tmp_path/'config/jp/demo.jp.yaml'
+    monkeypatch.setattr(project, '_splat_version_configs', lambda: {'jp':selected})
+    assert splatrefs.verified_rebuild(project, selected, cfg, image, hashlib.sha1(data).hexdigest(), lambda *_: None)
+    assert json.loads((tmp_path/'objdiff.json').read_text())['custom_args'] == ['VERSION=jp']
+
+
+def test_padding_fallback_still_requires_a_byte_exact_full_rebuild(tmp_path, monkeypatch):
+    cfg = config(tmp_path)
+    image = tmp_path/'baserom.z64'
+    image.write_bytes(b'original cartridge')
+    cfg.update(sha1=hashlib.sha1(image.read_bytes()).hexdigest())
+    cfg['options']['target_path'] = 'baserom.z64'
+    cfg['segments'][0]['subsegments'].insert(1, [8, 'pad'])
+    (tmp_path/'build/demo.elf').write_bytes(b'nonmatching ELF')
+    bindir = tmp_path/'tools'
+    bindir.mkdir()
+    (bindir/'mips-ps2-decompals-objcopy').touch()
+    monkeypatch.setattr(toolchains, 'require', lambda _: bindir)
+    monkeypatch.setattr(splatrefs, 'run', lambda cmd, *a, **kw: __import__('pathlib').Path(cmd[-1]).write_bytes(b'wrong'))
+    with pytest.raises(ForkError, match='complete binary matches'):
+        splatrefs.generate(ForkProject(tmp_path), tmp_path/'demo.yaml', cfg, consoles.get('n64'))
+    assert not (tmp_path/'objdiff.json').exists()
