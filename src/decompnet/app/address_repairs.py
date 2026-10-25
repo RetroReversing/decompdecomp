@@ -18,6 +18,7 @@ def variants(source, report, target, big, known_symbols):
     from .addend_repairs import variants as addend_variants
     from .global_addresses import alias_variant, normalize
     from .layout_repairs import variants as layout_variants
+    from .pointer_steps import variants as step_variants
     from .similar_matches import INTEGER, TOKENS, literal_variants
     report = normalize(report)
     votes = defaultdict(set)
@@ -66,4 +67,7 @@ def variants(source, report, target, big, known_symbols):
     layouts = layout_variants(source, report, target, big)
     for variant in list(result):
         layouts.extend(layout_variants(variant, report, target, big))
-    return list(dict.fromkeys(result + layouts))[:8]
+    steps = step_variants(source, report, target, big)
+    for variant in list(result):
+        steps.extend(step_variants(variant, report, target, big))
+    return list(dict.fromkeys(result + steps + layouts))[:8]

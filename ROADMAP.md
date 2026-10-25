@@ -681,3 +681,9 @@ The answer goes here: build it, build part of it, or not, and why.
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
 
+
+Candidate-local pointer steps can use an agreed MIPS stride change evidenced by both forward and backward
+increments. A source-local struct pointer must have both a standalone increment and a one-element addition;
+proposals use explicit byte steps while preserving shared headers. Other instruction changes, relocations,
+stack/global-base adjustments and ambiguous strides do not establish this evidence. Every proposal uses the
+ordinary compiler/link judge within the existing repair budget.
