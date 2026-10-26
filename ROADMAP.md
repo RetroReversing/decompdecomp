@@ -718,3 +718,21 @@ adaptive routing. Configured queues do not batch unfiltered neighbours.
   exchanges by session, with paged access and reported token usage. API requests capture
   the actual trimmed context. CLI internal system prompts, hidden reasoning, shell
   output and provider compaction remain outside the app's observable interface.
+
+### Targeted draft repairs (done)
+
+Autopilot's Run again and the background permuter try a separate deterministic pass before the random
+permuter's 94% cutoff: conditional results rewritten as early returns, removal of trailing literal call
+arguments, and combined byte-pointer/integer-address operand ordering. Each round rotates through at most
+20 unclaimed drafts of at most 400 instructions, with at most 32 compiler attempts / 20 seconds (an in-flight
+compile still finishes), independently of random turns. Only the ordinary exact judge saves a match.
+The expression/call rules reach ROM and imported-project mode on every processor. Integer address casts
+are restricted to known 32-bit processors; 64-bit/unknown pointer-width reconstruction remains planned.
+ROM trials cache source/target/header/configuration; imported build flags are owned by the external build,
+so their trials cache only within a permuter session or one Run again. This is a small hypothesis pass,
+not general C/C++ parsing: complex control flow, macros in the body and side-effecting extra arguments
+remain with agents/the random permuter. No full-permuter installation is needed for this phase.
+
+Follow-up evidence: two additional historical near misses matched after only changing a local's integer
+width/signedness, under the same saved header/compiler. The random permuter already supports these mutations;
+a load/store-guided shortlist could prioritize them and avoid spending a random turn finding the same edits.
