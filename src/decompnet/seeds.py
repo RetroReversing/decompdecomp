@@ -356,6 +356,10 @@ def run_m2c(asm_text: str, name: str, target: str, context_header: str = "", dat
     """Run m2c for one function with an explicit target triple (e.g. ppc-mwcc-c++)."""
     if not available():
         return None
+    if target.startswith('mips-'):
+        from .arch.mips import abi_register_names
+
+        asm_text = abi_register_names(asm_text)
     if target.startswith("gba"):  # a public GBA decomp (pret style): function macros, pre-UAL load mnemonics
         asm_text = re.sub(r"^\s*(?:non_word_aligned_)?thumb_func_start\s+(\w+)", r"glabel \1", asm_text, flags=re.M)
         asm_text = re.sub(r"^\s*arm_func_start\s+(\w+)", r"glabel \1", asm_text, flags=re.M)

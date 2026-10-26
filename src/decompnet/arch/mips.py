@@ -21,6 +21,22 @@ import struct
 
 import capstone
 
+
+def abi_register_names(text: str) -> str:
+    """m2c recognises ABI names such as $ra; numeric GPRs otherwise look like indirect jumps."""
+    names = ('zero at v0 v1 a0 a1 a2 a3 t0 t1 t2 t3 t4 t5 t6 t7 '
+             's0 s1 s2 s3 s4 s5 s6 s7 t8 t9 k0 k1 gp sp fp ra').split()
+    lines = []
+    for line in text.splitlines(keepends=True):
+        code, marker, comment = line.partition('#')
+        if re.match(r'^\s*[a-z][a-z0-9.]*\s+', code):
+            control = bool(re.match(r'^\s*(?:d?m[ft]c0|[cm][ft]c[12])\s+', code))
+            comma = code.find(',') if control else len(code)
+            code = re.sub(r'\$(\d+)\b', lambda m, comma=comma: '$' + names[int(m[1])]
+                          if int(m[1]) < 32 and m.start() < comma else m[0], code)
+        lines.append(code + marker + comment)
+    return ''.join(lines)
+
 # an instruction word's fields: opcode (6 bits), rs, rt, rd (5 bits each), then SPECIAL's function (6 bits)
 OPCODE_SHIFT, RS_SHIFT, RT_SHIFT, RD_SHIFT = 26, 21, 16, 11
 REGISTER_BITS, FUNCT_BITS = 0x1F, 0x3F

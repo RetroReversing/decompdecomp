@@ -96,6 +96,11 @@ decompdecomp helps with these steps:
 - It shows the agent the data of a file that is almost complete, next to the original data.
 - It links a complete file automatically. It keeps the change only if the checksum of the game stays correct.
 
+Imported projects with verified assembly references can also use Autopilot: it first probes C candidate
+files with the project's own compiler. It prepares up to 32 new units per run; **Run again** prepares the next
+batch. The original assembly remains the linked baseline until the project integrates the recovered C.
+An unsupported C build rule still needs project-specific setup.
+
 ## Features
 
 | Feature | Description |
