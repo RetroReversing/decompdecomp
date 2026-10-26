@@ -76,3 +76,50 @@ def test_settings_overview_includes_declared_compiler_without_building(tmp_path)
     assert overview["project_compiler"]["name"] == "IDO 5.3"
     assert overview["project_compiler"]["overrides"][0]["value"] == "-O3"
     assert overview["compiler"]["toolchain"] == "project"  # the build remains responsible for compiler choice
+
+
+def test_conditional_ido_paths_agree_without_guessing_selected_command(tmp_path):
+    project = fixture(tmp_path)
+    (tmp_path/'Makefile').write_text('''TOOLS_DIR = tools
+# old ido-7.1 is not evidence
+ifeq ($(USE_QEMU_IRIX),1)
+	CC := $(QEMU_IRIX) -L $(TOOLS_DIR)/ido5.3_compiler $(TOOLS_DIR)/ido5.3_compiler/usr/bin/cc
+else
+	CC := $(TOOLS_DIR)/ido-static-recomp/build/5.3/out/cc
+endif
+''')
+    assert describe(project)['name'] == 'IDO 5.3'
+    assert describe(project)['command'] == ''
+    with (tmp_path/'Makefile').open('a') as stream:
+        stream.write('OTHER_COMPILER = ido-7.1/cc\n')
+    assert describe(project)['name'] == 'IDO'
+
+
+def test_imported_n64_settings_include_header_and_target_signature_evidence(tmp_path, monkeypatch):
+    from decompnet.app.twins import Print
+    root = tmp_path/'checkout'; root.mkdir(); fixture(root)
+    (root/'decompressed.pal.z64').write_bytes(bytes.fromhex('80371240') + bytes(8) + bytes.fromhex('00001446'))
+    net = RomNetwork(tmp_path/'app.db', tmp_path/'workspace')
+    net.forks._register('demo', 'Demo', '', root,
+                        {'kind': 'fork', 'platform': 'n64', 'ready': False}, 'test')
+    monkeypatch.setattr(net.twins, 'prints', lambda proj: {1: Print('sdk-key', [], 64)})
+    with net.store.tx() as db:
+        db.execute("INSERT INTO sdk_signatures(corpus,arch,big_endian,name,fingerprint,size) VALUES('libultra 2.0F / local','mips',1,'osHelper','sdk-key',64)")
+    info = net.forks.overview('demo')['libultra']
+    assert info['header_version'] == '2.0F'
+    assert info['signature_candidates'][0]['fingerprints'] == 1
+    (root/'decompressed.pal.z64').unlink()
+    assert net.forks.overview('demo')['libultra']['header_version'] is None
+
+
+def test_imported_libultra_reads_selected_original_instead_of_generated_target(tmp_path, monkeypatch):
+    root = tmp_path/'checkout'; root.mkdir(); fixture(root)
+    net = RomNetwork(tmp_path/'app.db', tmp_path/'workspace')
+    net.forks._register('demo', 'Demo', '', root,
+                        {'kind': 'fork', 'platform': 'n64', 'version': 'jp', 'ready': False}, 'test')
+    from decompnet.forks.project import ForkProject
+    monkeypatch.setattr(ForkProject, 'needs', lambda self, version=None: {'path': 'baserom.' + version + '.z64'})
+    monkeypatch.setattr(net.twins, 'prints', lambda proj: {})
+    (root/'baserom.jp.z64').write_bytes(bytes.fromhex('80371240') + bytes(8) + bytes.fromhex('00001446'))
+    (root/'decompressed.pal.z64').write_bytes(bytes.fromhex('80371240') + bytes(8) + bytes.fromhex('00001449'))
+    assert net.forks.overview('demo')['libultra']['header_version'] == '2.0F'

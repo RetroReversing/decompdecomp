@@ -94,6 +94,9 @@ async function showSettingsPage() {
     <label class="check"><input type="checkbox" id="reuseAuto" ${st.settings.reuse_auto !== false ? "checked" : ""}><span>Automatically try new matches in other compatible projects (no AI calls).</span></label>
     <label class="field"><span>Free matching: seconds per search wave</span><input id="reuseSeconds" type="number" min="1" max="600" value="${st.settings.reuse_seconds || 120}"></label>
     <label class="field"><span>Free matching: compile attempts per search wave</span><input id="reuseAttempts" type="number" min="1" max="1024" value="${st.settings.reuse_attempts || 128}"></label>
+    <label class="check"><input type="checkbox" id="iterativeEnabled" ${st.settings.iterative_enabled ? "checked" : ""}><span>After normal autopilot, run deeper iterative repairs (experimental, no AI calls). Uses its own extra budget; background reuse is unchanged.</span></label>
+    <label class="field"><span>Iterative repairs: additional seconds per pass</span><input id="iterativeSeconds" type="number" min="1" max="600" value="${st.settings.iterative_seconds || 120}"></label>
+    <label class="field"><span>Iterative repairs: additional compile attempts per pass</span><input id="iterativeAttempts" type="number" min="1" max="1024" value="${st.settings.iterative_attempts || 128}"></label>
     <label class="check"><input type="checkbox" id="autopilotSet" ${st.settings.autopilot !== false ? "checked" : ""}><span><b>Autopilot after each import</b>: try every function's machine draft first, so free matches cost no agent time.</span></label>`;
   const theme = savedTheme();
   $("setComputer").innerHTML = `
@@ -132,6 +135,27 @@ async function showSettingsPage() {
   wireCopies($("setComputer"));
   $("themeSeg").querySelectorAll("[data-theme]").forEach((b) => { b.onclick = () => { setTheme(b.dataset.theme); $("themeSeg").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); }; });
   const save = (body, msg) => api("/api/settings", { method: "POST", body }).then((s) => { S.st.settings = s; toast(msg); }).catch((e) => toast(esc(e.message), "err"));
+  const showSdkInventory = async () => {
+    const data = await api("/api/sdk-library");
+    $("sdkFolders").value = data.folders.join("\n");
+    $("sdkInventory").textContent = `${data.libraries.length} indexed libraries available to all projects. Each game's Settings can override automatic selection.`;
+  };
+  await showSdkInventory();
+  $("sdkFolderPick").onclick = async () => {
+    try {
+      const { path } = await api("/api/pick", { method: "POST", body: { kind: "folder", title: "Local SDK library folder" } });
+      if (path) $("sdkFolders").value = [$("sdkFolders").value.trim(), path].filter(Boolean).join("\n");
+    } catch (e) { toast(esc(e.message), "err"); }
+  };
+  $("sdkFolderScan").onclick = async () => {
+    const log = $("sdkFolderLog"), button = $("sdkFolderScan");
+    const finish = beginWork(log, "Scanning local SDK folders", [button], "SDK folders indexed.");
+    try {
+      const { job } = await api("/api/sdk-library", { method: "POST", body: { folders: $("sdkFolders").value.split("\n").map(p => p.trim()).filter(Boolean) } });
+      await followJob(job, log);
+      await showSdkInventory();
+    } catch (e) { showJobError(log, e.message); } finally { finish(); }
+  };
   $("romLibrary").value = st.settings.rom_library || "";
   $("romLibrarySave").onclick = () => save({ rom_library: $("romLibrary").value.trim() }, "ROM library saved.");
   $("romLibraryPick").onclick = async () => {
@@ -143,6 +167,9 @@ async function showSettingsPage() {
   $("perSession").onchange = () => save({ per_session: Number($("perSession").value) }, "Saved.");
   $("autopilotSet").onchange = () => save({ autopilot: $("autopilotSet").checked }, "Saved.");
   $("reuseAuto").onchange = () => save({ reuse_auto: $("reuseAuto").checked }, "Saved.");
+  $("iterativeEnabled").onchange = () => save({ iterative_enabled: $("iterativeEnabled").checked }, "Saved.");
+  $("iterativeSeconds").onchange = () => save({ iterative_seconds: Number($("iterativeSeconds").value) || 120 }, "Saved.");
+  $("iterativeAttempts").onchange = () => save({ iterative_attempts: Number($("iterativeAttempts").value) || 128 }, "Saved.");
   $("reuseSeconds").onchange = () => save({ reuse_seconds: Number($("reuseSeconds").value) || 120 }, "Saved.");
   $("reuseAttempts").onchange = () => save({ reuse_attempts: Number($("reuseAttempts").value) || 128 }, "Saved.");
   $("budgetSet").onchange = () => save({ budget_usd: Number($("budgetSet").value) || 0 }, "Budget saved.");

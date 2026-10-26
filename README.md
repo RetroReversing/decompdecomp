@@ -53,11 +53,38 @@ release ordering; claim ownership and the worker's own recent-release cooldown s
 claim one function at a time so neighbouring batches cannot bypass the filter. The percentage filter also applies to named function requests. The same settings work across consoles, ROM and project mode, and team rooms with
 an updated host. Polishing uses its separate queue.
 
+
+For local library research, see [Comparing local SDK libraries and source](docs/local-sdk-comparisons.md).
+
 ## RetroReversing fork
 
 This fork of [NDelic's decompdecomp](https://github.com/n-delic/decompdecomp) adds project import, ROM handling and matching features. Native macOS support is now upstream.
 The original decomp.wtf and decompdecomp credits and licenses are preserved. Report fork issues to
 [RetroReversing/decompdecomp](https://github.com/RetroReversing/decompdecomp/issues).
+
+## Independently linked code images
+
+Projects with compressed game code or overlays can export their verified linked functions through
+`decompnet.forks.linkedimages.export`. These are normal objdiff units: original-image bytes form immutable
+references, and only source-backed, relocated bodies that pass the project's image gates become candidates.
+Assembly passthrough functions remain in the denominator without counting as recovered C. Source checksums
+invalidate stale candidates. Population identifiers distinguish overlays even when their RAM addresses overlap.
+
+The overview shows code-byte-weighted totals and a breakdown by image. This covers known function extents;
+data and unidentified regions are excluded. These special image snapshots are read-only in the app: change their
+sources through the project's promotion/build workflow and use **Check again**. Ordinary object units keep their
+existing agent workflow. See [the export contract](docs/linked-image-progress.md).
+
+## Imported project builds
+
+Builds use an existing `.venv` or `venv` in the project for its Python tools and dependencies. The app does not
+install those dependencies into its own runtime. Failed builds retain the first diagnostic even when later
+warnings or extraction progress would otherwise hide it.
+
+Automatic references can cover shared source directories and per-segment overlay directories. When a source
+rebuild is incomplete, references are derived independently from the pinned original image: each resolved code
+and data section must match its original bytes before any configuration is published. Candidate objects never
+supply reference bytes. Function matches remain separate from a successful whole-game rebuild.
 
 ## Autopilot on imported projects
 
@@ -83,6 +110,8 @@ Every accepted candidate must compile and link to the destination's exact bytes.
   before a used field, based on aligned memory operands. These proposals support simple scalar/pointer fields
   and common fixed-width aliases; packed types, bitfields, unions and ambiguous offsets are skipped. Shared
   headers are never rewritten. Ambiguous mappings, dynamic indices and unproven strides are skipped.
+  Numeric ID macros used once to index an explicit 32-bit table can be corrected from aligned word offsets;
+  ambiguous declarations, macro uses and relocations are skipped.
   Saved best attempts get the same address checks before wider donor searches; probe feedback and failed edits
   are cached and share the ordinary search budget. These edits affect only candidate C; shared symbols and types stay unchanged. An already-installed decomp-permuter
   supplies a small additional batch when time remains.
@@ -90,7 +119,9 @@ Every accepted candidate must compile and link to the destination's exact bytes.
   mappings need two independent matching pairs and no conflicting evidence. Named struct definitions are not rewritten.
 - **Tiny functions:** constants, arithmetic, getters, setters and simple forwarding wrappers can be proposed
   without another project containing matched C.
-- **Local libraries:** in the SDK panel, supply an object archive and optionally its C source file/folder and a
+- **Local libraries:** add SDK archive folders once in global **Settings → Local SDK libraries**. Each game
+  detects matching signatures automatically; its Settings can select libraries explicitly, including disabling all.
+  For advanced source matching, in the project SDK panel, supply an object archive and optionally its C source file/folder and a
   self-contained declarations header. Matching fingerprints select C to try with the project's compiler.
   Sources stay local; nothing is downloaded or built by an SDK's scripts. Import with the compiler settings you
   intend to use; reimport after changing them. Ambiguous definitions are excluded.
@@ -101,6 +132,40 @@ Settings lets you disable automatic reuse and adjust its time and compile limits
 128 attempts). A whole automatic wave shares one budget, including exact transfers. Manual autopilot keeps its
 existing exact-transfer phase, then shares the additional budget between templates, libraries and similarity repairs.
 The last search reports verified bytes, attempts and bytes per minute of elapsed time, not CPU time.
+
+In Settings, optionally enable **deeper iterative repairs** after normal autopilot. This experimental phase is
+**off by default**, with its own additional 120-second / 128-attempt budget (both adjustable). Normal matching
+finishes first and keeps its full allowance; automatic background reuse does not start this extra phase.
+Iterative repairs try up to three edit rounds and keep the best three improving/equal-score alternatives.
+Each function gets at most eight new compilations per pass. A persistent round-robin cursor continues with the
+next function on the next pass, instead of repeatedly prioritising the closest candidates. Unfinished frontiers
+survive restarts. The phase records its own results and adds a summary note; only exact judge matches count.
+
+
+Global-address repairs also track symbolic MIPS upper halves through straight-line instructions to later
+load/store offsets. Register clobbers, branches, calls and unknown instructions stop tracking; conflicting
+consumers are rejected. Full-address comparison also resolves C identifiers whose address is shown as another symbol plus an offset
+in disassembly. Reconstructed addresses only propose local C edits and still require exact verification.
+
+Repairs retain the original donor when the candidate's provenance is known. Successful repairs can then
+teach symbol mappings for other candidates from that same donor. New data/callee mappings need agreement
+from two independently verified function pairs; conflicts, reopened functions and changed donor code invalidate
+the evidence. Each proposed transfer still goes through the exact compiler/link judge. Old saved candidates
+can recover provenance only when recorded donor history reproduces their adapted C exactly.
+
+Saved candidates also get bounded constant-only repairs when no address correction is proposed. Aligned
+MIPS immediate and fixed-shift differences can guide literal, explicit multiply/divide and shift edits.
+Repeated constants are tried individually (up to four occurrences), with small consistent group edits and
+combinations capped at eight proposals. Comments, strings, symbol addresses and suffixes are preserved;
+register/control-flow changes, signed expressions and implicit type/array-stride changes are left alone.
+
+Saved candidates can also get a local MIPS signature/argument repair when their only non-relocated
+instruction differences move ordinary integer/pointer arguments to later registers. The repair can insert an
+unused parameter before a live incoming argument, or forward untouched incoming registers through a small
+single-call wrapper. Only the candidate's declarations change; conflicting shared prototypes fail compilation.
+Floats, aggregate/variadic parameters, stack arguments and complex wrappers are left alone. These shared rules
+can help any compatible MIPS ROM game; they are not specific to a title, and other processors/object projects
+need their own calling-convention and source-context support.
 
 When eligible near misses exist, similarity transfers use at most three quarters of the remaining search budget;
 the rest is reserved for repairs. The transfer cursor is retained so the next pass continues through the queue.
@@ -466,3 +531,7 @@ An identical rebuild can still contain assembly and binary fallbacks. Check the 
 selected as C separately; an identical cartridge does not mean that every function has been decompiled.
 
 For imported overlays missing their original strings or tables, see [supplemental original overlay data](docs/OVERLAY_DATA.md).
+
+Verified full-image imports include linked assembly routines as target-only units: assembly bytes never count
+as recovered C. Assembly wrappers containing whole binary programs are not treated as single functions; an
+explicit coverage notice identifies their exclusion from function progress.

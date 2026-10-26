@@ -24,6 +24,23 @@ def register(app: App) -> None:
     net, mcp, manager, jobs = app.net, app.mcp, app.manager, app.jobs
     settings, guard, body, call, fail = app.settings, app.guard, app.body, app.call, app.fail
 
+    @mcp.custom_route("/api/sdk-library", methods=["GET", "POST"])
+    async def api_sdk_library(request: Request) -> Response:
+        from .. import sdk_library
+        if (bad := guard(request, write=request.method == "POST")):
+            return bad
+        try:
+            if request.method == "GET":
+                return JSONResponse(await call(lambda: sdk_library.state(net, request.query_params.get('slug'))))
+            data = await body(request)
+            if data.get('slug'):
+                await call(lambda: sdk_library.choose(net, str(data['slug']), data.get('selection')))
+                return JSONResponse(await call(lambda: sdk_library.state(net, str(data['slug']))))
+            folders = data.get('folders', [])
+            return JSONResponse({'job': jobs.start('sdk-library', lambda log: sdk_library.scan(net, folders, log))})
+        except (NetworkError, ValueError, OSError) as e:
+            return fail(e)
+
     @mcp.custom_route("/api/toolchain", methods=["POST"])
     async def api_toolchain(request: Request) -> Response:
         if (bad := guard(request, write=True)):
@@ -168,14 +185,17 @@ def register(app: App) -> None:
             settings.data["autopilot"] = bool(data["autopilot"])
         if "budget_usd" in data:
             settings.data["budget_usd"] = max(0.0, float(data["budget_usd"] or 0))
+        if 'iterative_enabled' in data:
+            settings.data['iterative_enabled'] = bool(data['iterative_enabled'])
         if 'reuse_auto' in data:
             settings.data['reuse_auto'] = bool(data['reuse_auto'])
-        for key, maximum in [('reuse_seconds', 600), ('reuse_attempts', 1024)]:
+        for key, maximum in [('reuse_seconds', 600), ('reuse_attempts', 1024), ('iterative_seconds', 600), ('iterative_attempts', 1024)]:
             if key in data:
                 settings.data[key] = max(1, min(maximum, int(data[key])))
-        if any(key in data for key in ('reuse_auto', 'reuse_seconds', 'reuse_attempts')):
+        if any(key in data for key in ('reuse_auto', 'reuse_seconds', 'reuse_attempts', 'iterative_enabled', 'iterative_seconds', 'iterative_attempts')):
             net.cascades.configure(settings.data.get('reuse_auto', True), settings.data.get('reuse_seconds', 120),
-                                   settings.data.get('reuse_attempts', 128))
+                                   settings.data.get('reuse_attempts', 128), settings.data.get('iterative_enabled', False),
+                                   settings.data.get('iterative_seconds', 120), settings.data.get('iterative_attempts', 128))
         if "auto_update" in data:
             settings.data["auto_update"] = bool(data["auto_update"])
         if "check_updates" in data:

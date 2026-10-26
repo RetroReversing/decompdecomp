@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -122,6 +123,8 @@ def synthetic_project(root, platform):
     splatrefs.run([assembler, *console.as_flags, '-o', 'build/src/demo.o', 'candidate.s'], root, print)
     (root / 'include').mkdir()
     (root / 'include/macro.inc').write_text('.macro glabel name\n.global \\name\n.type \\name,@function\n\\name:\n.endm\n.macro endlabel name\n.size \\name,.-\\name\n.endm\n.macro nonmatching name,size=1\n.endm\n')
+    (root / 'include/ld_symbols.h').write_text('#define ORIGINAL_HEADER 1\n')
+    cfg['options']['ld_symbol_header_path'] = 'include/ld_symbols.h'
     cfg['segments'][0]['subsegments'] = [[0, 'c', 'demo']]
     cfg['sha1'] = hashlib.sha1(image).hexdigest()
     cfg['options'].update(basename='demo', target_path='baserom.z64', base_path='.', o_as_suffix=True,
@@ -199,15 +202,18 @@ def test_verified_full_rebuild_snapshots_linked_overlay_objects(tmp_path, object
 
 
 @pytest.mark.skipif(toolchains.installed('binutils-mips') is None, reason='needs pinned MIPS binutils')
-def test_overlay_snapshot_rejects_unverified_elf(tmp_path):
+def test_overlay_references_verify_code_even_when_untracked_trailer_differs(tmp_path):
     cfg = synthetic_project(tmp_path, 'n64')
     cfg['segments'][0]['exclusive_ram_id'] = 'overlay'
-    altered = (tmp_path / 'baserom.z64').read_bytes() + b'not rebuilt'
+    original_code = (tmp_path / 'baserom.z64').read_bytes()
+    altered = original_code + b'not rebuilt'
     (tmp_path / 'baserom.z64').write_bytes(altered)
     cfg['sha1'] = hashlib.sha1(altered).hexdigest()
-    with pytest.raises(ForkError):
-        splatrefs.generate(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, consoles.get('n64'))
-    assert not (tmp_path / 'objdiff.json').exists()
+    assert splatrefs.generate(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, consoles.get('n64'))
+    unit = json.loads((tmp_path / 'objdiff.json').read_text())['units'][0]
+    with (tmp_path / unit['target_path']).open('rb') as stream:
+        assert ELFFile(stream).get_section_by_name('.text').data() == original_code
+    assert (tmp_path / unit['target_path']).read_bytes() != (tmp_path / unit['base_path']).read_bytes()
 
 
 def test_an_unsupported_console_leaves_generation_to_manual_setup(tmp_path):
@@ -239,3 +245,206 @@ def test_assembly_units_are_visible_without_counting_original_assembly_as_c(tmp_
     assert entry['name'] == 'asm/demo'
     assert 'base_path' not in entry and 'metadata' not in entry
     assert (tmp_path / entry['target_path']).is_file()
+
+
+@pytest.mark.parametrize('root_elf', [False, True])
+def test_verified_rebuild_retains_nested_config_version(tmp_path, monkeypatch, root_elf):
+    cfg = config(tmp_path)
+    data = b'full original cartridge'
+    image = tmp_path/'baserom.jp.z64'
+    image.write_bytes(data)
+    elf = tmp_path / ('demo.elf' if root_elf else 'build/demo.elf')
+    if root_elf:
+        cfg['options']['elf_path'] = 'demo.elf'
+    mapping = elf.with_suffix('.map')
+    elf.write_bytes(b'linked ELF read by mocked objcopy')
+    mapping.write_text(' .text 0x80000400 0x10 build/src/demo.o\n')
+    (tmp_path/'asm').mkdir()
+    (tmp_path/'build/asm').mkdir()
+    (tmp_path/'src/demo.s').write_text('assembly alternative for the same linked C object')
+    (tmp_path/'asm/start.s').write_text('glabel boot\n  jr $ra\n  nop\n')
+    (tmp_path/'build/asm/start.o').write_bytes(b'linked original assembly object')
+    (tmp_path/'asm/microcode.s').write_text('.incbin "program.bin"\n')
+    (tmp_path/'build/asm/microcode.o').write_bytes(b'whole program blob')
+    with mapping.open('a') as f:
+        f.write(' .text 0x80000410 0x8 build/asm/start.o\n .text 0x80000418 0x80 build/asm/microcode.o\n')
+    (tmp_path/'shared').mkdir()
+    (tmp_path/'shared/common.c').write_text('int shared(void) { return 1; }')
+    (tmp_path/'build/shared').mkdir()
+    (tmp_path/'build/shared/common.c.o').write_bytes(b'linked shared source object')
+    with mapping.open('a') as f:
+        f.write(' .text 0x80000500 0x10 build/shared/common.c.o\n')
+    elf.touch()
+
+    bindir = tmp_path/'tools'
+    bindir.mkdir()
+    (bindir/'mips-ps2-decompals-objcopy').touch()
+    monkeypatch.setattr(toolchains, 'require', lambda _: bindir)
+    def objcopy(cmd, *args, **kwargs):
+        # The root ELF needs cartridge FF-fill before its full-image hash can pass.
+        Path(cmd[-1]).write_bytes(data if not root_elf or '--gap-fill' in cmd else b'wrong fill')
+    monkeypatch.setattr(splatrefs, 'run', objcopy)
+    project = ForkProject(tmp_path)
+    selected = tmp_path/'config/jp/demo.jp.yaml'
+    monkeypatch.setattr(project, '_splat_version_configs', lambda: {'jp':selected})
+    assert splatrefs.verified_rebuild(project, selected, cfg, image, hashlib.sha1(data).hexdigest(), lambda *_: None)
+    result = json.loads((tmp_path/'objdiff.json').read_text())
+    assert result['custom_args'] == ['VERSION=jp']
+    asm = next(u for u in result['units'] if u['name'] == 'asm/start')
+    assert 'base_path' not in asm and 'source_path' not in asm['metadata']
+    assert asm['metadata']['assembly_source'] == 'asm/start.s'
+    for unit in result['units']:
+        for key in ('name', 'base_path', 'target_path'):
+            assert '\\' not in unit.get(key, '')
+        for value in unit.get('metadata', {}).values():
+            assert '\\' not in value
+    assert len(result['units']) == 3
+    shared = next(u for u in result['units'] if u['name'] == 'shared/common')
+    assert shared['metadata']['source_path'] == 'shared/common.c'
+    assert shared['base_path'] == 'build/shared/common.c.o'
+    assert '1 linked binary assembly' in result['coverage_notes'][0]
+
+
+def test_padding_fallback_rejects_an_unreadable_build(tmp_path, monkeypatch):
+    cfg = config(tmp_path)
+    image = tmp_path/'baserom.z64'
+    image.write_bytes(b'original cartridge')
+    cfg.update(sha1=hashlib.sha1(image.read_bytes()).hexdigest())
+    cfg['options']['target_path'] = 'baserom.z64'
+    cfg['segments'][0]['subsegments'].insert(1, [8, 'pad'])
+    (tmp_path/'build/demo.elf').write_bytes(b'nonmatching ELF')
+    bindir = tmp_path/'tools'
+    bindir.mkdir()
+    (bindir/'mips-ps2-decompals-objcopy').touch()
+    monkeypatch.setattr(toolchains, 'require', lambda _: bindir)
+    monkeypatch.setattr(splatrefs, 'run', lambda cmd, *a, **kw: __import__('pathlib').Path(cmd[-1]).write_bytes(b'wrong'))
+    with pytest.raises(ForkError, match='readable linked ELF'):
+        splatrefs.generate(ForkProject(tmp_path), tmp_path/'demo.yaml', cfg, consoles.get('n64'))
+    assert not (tmp_path/'objdiff.json').exists()
+
+
+@pytest.mark.skipif(toolchains.installed('binutils-mips') is None, reason='needs pinned MIPS binutils')
+@pytest.mark.parametrize('overlay', [False, True])
+def test_incomplete_rebuild_still_gets_only_original_verified_reference_bytes(tmp_path, overlay):
+    cfg = synthetic_project(tmp_path, 'n64')
+    if overlay:
+        cfg['segments'][0]['exclusive_ram_id'] = 'bank'
+    console = consoles.get('n64')
+    tools = toolchains.require('binutils-mips')
+    linker = tools / ('mips-ps2-decompals-ld.exe' if (tools / 'mips-ps2-decompals-ld.exe').exists()
+                       else 'mips-ps2-decompals-ld')
+    splatrefs.run([str(linker), '-EB', '-Ttext', '0x80000400', '-e', 'demo_func', '-o',
+                  'build/program.elf', 'build/src/demo.o'], tmp_path, lambda *_: None)
+    (tmp_path / 'build/program.z64').write_bytes(b'incomplete source rebuild')
+    assert splatrefs.generate(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, console, log=lambda *_: None)
+    unit = json.loads((tmp_path / 'objdiff.json').read_text())['units'][0]
+    with (tmp_path / unit['target_path']).open('rb') as stream:
+        target = ELFFile(stream).get_section_by_name('.text').data()
+    with (tmp_path / unit['base_path']).open('rb') as stream:
+        candidate = ELFFile(stream).get_section_by_name('.text').data()
+    assert target == (tmp_path / 'baserom.z64').read_bytes()
+    assert target != candidate
+
+
+def test_original_reference_labels_reject_conflicting_addresses(tmp_path):
+    (tmp_path / 'asm').mkdir()
+    (tmp_path / 'asm/a.s').write_text('glabel same\n/* 0 80000400 00000000 */ nop\n')
+    (tmp_path / 'asm/b.s').write_text('glabel same\n/* 0 80000500 00000000 */ nop\n')
+    with pytest.raises(ForkError, match='ambiguous'):
+        splatrefs.reference_symbols(tmp_path)
+
+
+def test_plan_resolves_segment_directory_before_finding_candidates(tmp_path):
+    cfg = config(tmp_path)
+    (tmp_path / 'src/overlay').mkdir()
+    (tmp_path / 'build/src/overlay').mkdir()
+    (tmp_path / 'src/demo.c').rename(tmp_path / 'src/overlay/demo.c')
+    (tmp_path / 'build/src/demo.o').rename(tmp_path / 'build/src/overlay/demo.o')
+    cfg['segments'][0]['dir'] = 'overlay'
+    unit = splatrefs.plan(tmp_path, cfg)[0]
+    assert unit['name'] == 'overlay/demo'
+    assert unit['source'] == tmp_path / 'src/overlay/demo.c'
+    assert unit['base'] == tmp_path / 'build/src/overlay/demo.o'
+
+
+@pytest.mark.skipif(toolchains.installed('binutils-mips') is None, reason='needs pinned MIPS binutils')
+def test_suffixed_original_address_is_resolved_and_byte_checked(tmp_path):
+    import struct
+    work = tmp_path / 'work'
+    (work / 'asm').mkdir(parents=True)
+    (work / 'asm/demo.s').write_text('.set noreorder\n.text\n.globl entry\n'
+                                   'entry:\nlui $a0,%hi(D_80000502_bank)\njr $ra\n'
+                                   'addiu $a0,$a0,%lo(D_80000502_bank)\n')
+    directory = toolchains.require('binutils-mips')
+    suffix = '.exe' if (directory / 'mips-ps2-decompals-as.exe').exists() else ''
+    assembler, linker = (str(directory / ('mips-ps2-decompals-' + name + suffix)) for name in ['as', 'ld'])
+    image = struct.pack('>IIII', 0x3C048000, 0x03E00008, 0x24840502, 0)
+    unit = {'name': 'demo', 'vram': 0x80000400, 'delta': -0x80000400}
+    target = splatrefs.assemble(tmp_path, work, unit, {'D_80000502_bank': 0x80000512}, image, assembler, linker, ('-EB',), lambda *_: None)
+    assert target.is_file()
+
+
+def test_explicit_version_selects_config_without_original_rom_mapping(tmp_path, monkeypatch):
+    for version in ('us', 'jp'):
+        (tmp_path / f'demo.{version}.yaml').write_text('options: {platform: n64}\nsegments: []\n')
+    project = ForkProject(tmp_path)
+    monkeypatch.setattr(project, '_splat_yaml', lambda: tmp_path / 'demo.us.yaml')
+    monkeypatch.setattr(project, '_splat_version_configs', lambda: {})
+    seen = []
+    monkeypatch.setattr(consoles, 'get', lambda _: SimpleNamespace(
+        generate_objdiff=lambda _p, path, _cfg, **kw: seen.append(path) or True))
+    assert project.generate_objdiff('jp')
+    assert seen == [tmp_path / 'demo.jp.yaml']
+
+
+def test_plan_keeps_explicit_data_addresses_without_relying_on_comments(tmp_path):
+    cfg = config(tmp_path)
+    cfg['segments'][0]['subsegments'].append([8, '.data', 'demo'])
+    cfg['segments'][0]['subsegments'][1]['name'] = 'demo'
+    unit = splatrefs.plan(tmp_path, cfg)[0]
+    assert unit['sections'] == {'.data': 0x80000408, '.bss': 0x80000410}
+
+
+@pytest.mark.skipif(toolchains.installed('binutils-mips') is None, reason='needs pinned MIPS binutils')
+def test_reference_data_without_address_comments_requires_an_explicit_map(tmp_path):
+    import struct
+    work = tmp_path / 'work'
+    (work / 'asm/data').mkdir(parents=True)
+    (work / 'asm/demo.s').write_text('.set noreorder\n.text\njr $ra\nnop\n')
+    (work / 'asm/data/demo.data.s').write_text('.data\n.word 0x12345678\n')
+    directory = toolchains.require('binutils-mips')
+    suffix = '.exe' if (directory / 'mips-ps2-decompals-as.exe').exists() else ''
+    assembler, linker = (str(directory / ('mips-ps2-decompals-' + name + suffix)) for name in ['as', 'ld'])
+    image = struct.pack('>8I', 0x03E00008, 0, 0, 0, 0x12345678, 0, 0, 0)
+    unit = {'name': 'demo', 'vram': 0x80000400, 'delta': -0x80000400}
+    with pytest.raises(ForkError, match='original address'):
+        splatrefs.assemble(tmp_path, work, unit, {}, image, assembler, linker, ('-EB',), lambda *_: None)
+    unit['sections'] = {'.data': 0x80000410}
+    assert splatrefs.assemble(tmp_path, work, unit, {}, image, assembler, linker, ('-EB',), lambda *_: None).exists()
+
+
+def test_plan_skips_explicitly_empty_code_without_hiding_other_units(tmp_path):
+    cfg = config(tmp_path)
+    cfg['segments'][0]['subsegments'] = [[0, 'c', 'demo'], [0, 'data', 'demo'], [8, 'asm', 'real']]
+    units = splatrefs.plan(tmp_path, cfg)
+    assert [unit['name'] for unit in units] == ['real']
+
+
+@pytest.mark.parametrize('verified', [False, True])
+@pytest.mark.parametrize('make', ['make', 'gmake'])
+def test_checksum_failure_can_finish_only_with_verified_references(tmp_path, monkeypatch, verified, make):
+    project = ForkProject(tmp_path)
+    monkeypatch.setattr(project, 'unpack_disc', lambda *a, **k: None)
+    monkeypatch.setattr(project, 'setup_commands', lambda *a: [[make]])
+    monkeypatch.setattr(project, 'run', lambda *a, **k: (False, 'sha1sum: computed checksum did NOT match'))
+    def generate(**kwargs):
+        if not verified:
+            raise ForkError('reference bytes differ')
+        (tmp_path / 'objdiff.json').write_text('{"units": []}')
+    monkeypatch.setattr(project, 'generate_objdiff', generate)
+    if verified:
+        project.setup(log=lambda *_: None)
+    else:
+        with pytest.raises(ForkError, match='computed checksum did NOT match'):
+            project.setup(log=lambda *_: None)
+        assert not (tmp_path / 'objdiff.json').exists()

@@ -39,17 +39,55 @@ def relocations(fn) -> list[tuple[int, int, int]]:
     return sorted(tuple(int(v) for v in r[:3]) for r in json.loads(fn['relocs'] or '[]') if len(r) >= 3)
 
 
+def _table_macro_edits(source, changes):
+    """Recognise one-use IDs in explicitly declared 32-bit tables, never general scaled arithmetic."""
+    from ..forks.csource import _blank
+
+    if not changes:
+        return {}
+    clean = _blank(source)
+    tables = set(re.findall(
+        r"\bextern\s+(?:char\s*\*\s*\*\s*|(?:int|unsigned\s+int|u32|s32|uint32_t|int32_t)\s+\*\s*)(\w+)\s*;",
+        clean))
+    tables.update(re.findall(
+        r"\bextern\s+(?:int|unsigned\s+int|u32|s32|uint32_t|int32_t)\s+(\w+)\s*\[\s*\]\s*;",
+        clean))
+    definitions = list(re.finditer(
+        r"^[ \t]*#define[ \t]+([A-Za-z_]\w*)[ \t]+(0[xX][0-9a-fA-F]+|[0-9]+)([uUlL]*)[ \t]*$",
+        clean, re.M))
+    result = {}
+    for old, new in changes.items():
+        if old % 4 or new % 4:
+            continue
+        candidates = [m for m in definitions if int(m[2], 0 if m[2].lower().startswith('0x') else 10) == old // 4]
+        if len(candidates) != 1:
+            continue
+        definition = candidates[0]
+        name = definition[1]
+        # Redefinitions and uses in control flow or other expressions make the scale ambiguous.
+        uses = [m for m in re.finditer(r'\b' + re.escape(name) + r'\b', clean)
+                if not definition.start() <= m.start() < definition.end()]
+        if len(uses) != 1:
+            continue
+        indexed = any(re.search(r'\b' + re.escape(table) + r'\s*\[\s*' + re.escape(name) + r'\s*\]', clean)
+                      for table in tables)
+        if indexed:
+            result[definition.start(2)] = (definition.end(2), str(new // 4))
+    return result
+
+
 def literal_variants(source: str, a, b, big: bool) -> list[str]:
     """Try at most two unambiguous literal substitutions supported by aligned immediate instructions.
 
-    Only singleton, nonnegative C literals are changed. Repeated numbers, signed expressions, split address
-    constants and changed instruction layouts need more context than this small search can establish.
+    Only singleton, nonnegative C literals or one-use IDs in explicit 32-bit tables are changed.
+    Repeated numbers, signed expressions, split address constants and changed instruction layouts need
+    more context than this small search can establish.
     """
     left, right = a['target'] or b'', b['target'] or b''
     if len(left) != len(right) or len(left) % 4:
         return []
     relocated = {off for off, _, _ in relocations(a)} | {off for off, _, _ in relocations(b)}
-    changes = {}
+    changes, offset_ops = {}, {}
     order = 'big' if big else 'little'
     for off in range(0, len(left), 4):
         x, y = int.from_bytes(left[off:off + 4], order), int.from_bytes(right[off:off + 4], order)
@@ -64,6 +102,7 @@ def literal_variants(source: str, a, b, big: bool) -> list[str]:
         if old in changes and changes[old] != new:
             return []
         changes[old] = new
+        offset_ops.setdefault(old, set()).add(op)
     if not changes or len(changes) > 2:
         return []
     occurrences = {}
@@ -80,6 +119,9 @@ def literal_variants(source: str, a, b, big: bool) -> list[str]:
         if source[:token.start()].rstrip().endswith('-'):
             continue
         replacements[token.start()] = (token.end(), str(new) + suffix)
+    scaled = {old: new for old, new in changes.items()
+              if offset_ops[old] <= {35, 43} and not occurrences.get(old)}
+    replacements.update(_table_macro_edits(source, scaled))
     if not replacements:
         return []
     result = source
@@ -152,6 +194,7 @@ def regional_names(twins, proj, other) -> dict[str, str]:
     A function pair proves its own names. Aligned relocation layouts additionally suggest data/callee names.
     These remain proposals: even a learned name must survive the destination's ordinary byte judge.
     """
+    from . import repair_mappings
     from .twins import rom_renames
 
     net = twins.net
@@ -160,19 +203,31 @@ def regional_names(twins, proj, other) -> dict[str, str]:
     votes = {}
     rows = net.store.all("SELECT DISTINCT source_function_id,function_id FROM cross_game_attempts "
                          "WHERE project_id=? AND source_project_id=? AND outcome='match'", proj['id'], other['id'])
+    old_pairs = {(r['source_function_id'], r['function_id']) for r in rows}
+    rows = [*rows, *repair_mappings.pairs(net, proj, other)]
+    support = {}
+    functions = set()
     for row in rows:
         a = net.store.one("SELECT * FROM functions WHERE id=? AND status='matched'", row['source_function_id'])
         b = net.store.one("SELECT * FROM functions WHERE id=? AND status='matched'", row['function_id'])
         if not a or not b or a['project_id'] != other['id'] or b['project_id'] != proj['id']:
             continue
+        functions.add((a['name'], b['name']))
         names = {a['name']: b['name']}
         if a['id'] in left and b['id'] in right and (
                 [(o, t) for o, t, _ in relocations(a)] == [(o, t) for o, t, _ in relocations(b)]):
-            names.update(rom_renames(syms_a, a['matched_source'] or '', left[a['id']], right[b['id']],
+            source_symbols = syms_a if (a['id'], b['id']) in old_pairs else repair_mappings.source_symbols(syms_a, a['matched_source'] or '')
+            names.update(rom_renames(source_symbols, a['matched_source'] or '', left[a['id']], right[b['id']],
                                      a['name'], b['name'], syms_b) or {})
         for old, new in names.items():
             votes.setdefault(old, set()).add(new)
-    names = {old: next(iter(values)) for old, values in votes.items() if len(values) == 1}
+            support.setdefault((old,new), set()).add((a['id'],b['id']))
+    def supported(old, new):
+        evidence = support[old,new]
+        return ((old,new) in functions or bool(evidence & old_pairs) or
+                (len({a for a,b in evidence}) >= 2 and len({b for a,b in evidence}) >= 2))
+    names = {old: next(iter(values)) for old, values in votes.items() if len(values) == 1
+             and supported(old, next(iter(values)))}
     # Many-to-one evidence is ambiguous too (identical wrappers are common).
     return {old: new for old, new in names.items() if list(names.values()).count(new) == 1}
 
@@ -273,7 +328,7 @@ def run(twins, slug: str, job) -> int:
             outcome, why = compiler_trial(net, agent, proj, b, candidate, settings)
         else:
             outcome, why = twins._attempt_twin(agent, proj, a, b, candidate,
-                origin=f" in {other['name']}", similar=True, feedback=feedback)
+                origin=f" in {other['name']}", similar=True, feedback=feedback, mapping=names)
         reason = f'similar code ({score:.0%}); {kind}; ' + (why or outcome)
         with net.store.tx() as db:
             db.execute('INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,'

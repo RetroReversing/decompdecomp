@@ -57,7 +57,7 @@ function setup(file, marker, end, logId, buttonId, ranges = "") {
     dialog: () => box, id: "test", proprietary: false, confirm: () => true, Blob, location: {},
     esc: String, plural: () => "files", toast() {}, loadNav() {}, closeDialog() {}, rerender() {}, check() {},
     fields: () => ({}), joinProblem: () => "", exportOpen: () => true, cmdBox: () => "", wireCopies() {},
-    renderHost() {}, renderTools() {}, renderStats() {}, renderSource() {}, renderProjectSettings() {},
+    renderSdkSelection: async () => {}, renderHost() {}, renderTools() {}, renderStats() {}, renderSource() {}, renderProjectSettings() {},
     showAgentsPage() {}, loadState: async () => {}, refreshMap: async () => {},
     sleep: async () => {},
     api(url) {

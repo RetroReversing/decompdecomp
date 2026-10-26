@@ -16,9 +16,13 @@ def variants(source, report, target, big, known_symbols):
     These are candidate-local hypotheses: never rename the project's symbols or change shared declarations.
     """
     from .addend_repairs import variants as addend_variants
+    from .argument_repairs import variants as argument_variants
+    from .constant_repairs import variants as constant_variants
+    from .global_addresses import alias_variant, normalize
     from .layout_repairs import variants as layout_variants
+    from .pointer_steps import variants as step_variants
     from .similar_matches import INTEGER, TOKENS, literal_variants
-
+    report = normalize(report)
     votes = defaultdict(set)
     halves = defaultdict(set)
     for _, wanted, compiled in report.get('rows', []):
@@ -54,14 +58,23 @@ def variants(source, report, target, big, known_symbols):
                 return hex(next(iter(targets))) + number[2]
         return text
     renamed = TOKENS.sub(replace, source)
-    result = ([renamed] if renamed != source else []) + addends
+    alias = alias_variant(source, report)
+    result = ([renamed] if renamed != source else []) + addends + ([alias] if alias else [])
     if renamed != source:
         result.extend(addend_variants(renamed, report))
     if report.get('candidate_target'):
         candidate = {'target': bytes.fromhex(report['candidate_target']), 'relocs': report.get('candidate_relocs', '[]')}
         for variant in list(result):
             result.extend(literal_variants(variant, candidate, target, big))
+            result.extend(constant_variants(variant, candidate, target, big))
+        if not result:
+            result.extend(constant_variants(source, candidate, target, big))
+    for variant in list(result) or [source]:
+        result.extend(argument_variants(variant, report, target, big))
     layouts = layout_variants(source, report, target, big)
     for variant in list(result):
         layouts.extend(layout_variants(variant, report, target, big))
-    return list(dict.fromkeys(result + layouts))[:8]
+    steps = step_variants(source, report, target, big)
+    for variant in list(result):
+        steps.extend(step_variants(variant, report, target, big))
+    return list(dict.fromkeys(result + steps + layouts))[:8]
