@@ -202,3 +202,10 @@ def test_transfer_results_filter_successes_and_explain_mismatch_scores():
         pytest.skip('needs node to run GUI scripts')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_transfers.js'))], check=True,
                    capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_transcript_full_text_usage_and_session_paging():
+    if NODE is None:
+        pytest.skip('needs node to run the transcript UI')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_transcripts.js'))], check=True,
+                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)

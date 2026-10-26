@@ -108,7 +108,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     manager.options_now = options_now
     manager.resume()  # helpers that were working when the app last stopped carry on (their records say which)
 
-    mcp = tools.build_mcp(net, agent_of)
+    mcp = tools.build_mcp(net, agent_of, observe=manager.record_agent)
 
     # Each helper sees only the work tools for its project's kind (fewer tool definitions in every request, nothing
     # it shouldn't call).
@@ -123,7 +123,9 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
             return ListToolsResult(tools=[])
         slug = manager.project_of(agent.id)
         keep = set(tools.project_tools(net, slug))
-        return ListToolsResult(tools=[t for t in everything if t.name in keep])
+        selected = [t for t in everything if t.name in keep]
+        manager.record_agent(agent, slug, 'tool_definitions', [t.model_dump(mode='json') for t in selected])
+        return ListToolsResult(tools=selected)
 
     mcp._lowlevel_server.add_request_handler("tools/list", PaginatedRequestParams, scoped_tools)
 

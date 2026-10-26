@@ -697,3 +697,10 @@ The answer goes here: build it, build part of it, or not, and why.
 - **Polish in the drafts.** Methods of known classes are drafted as `Class::method` in the brief; the polishing pass
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
+
+### Local agent transcripts
+
+- Helpers on all consoles and both project modes keep full app prompts and app tool
+  exchanges by session, with paged access and reported token usage. API requests capture
+  the actual trimmed context. CLI internal system prompts, hidden reasoning, shell
+  output and provider compaction remain outside the app's observable interface.

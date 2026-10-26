@@ -96,6 +96,9 @@ class Api(Agent):
         schema = api_tool_schemas(fork=bool(net.fork_slug(s.slug)), names=tools.project_tools(net, s.slug))
         messages = [{"role": "system", "content": tools.INSTRUCTIONS},
                     {"role": "user", "content": manager.prompt(s)}]
+        if s.record:
+            s.record('prompt', messages)
+            s.record('tool_definitions', schema)
         count = int(s.options.get("per_session", PER_SESSION))
         used_tool, start, done = False, len(messages), 0
         with httpx.Client(timeout=httpx.Timeout(API_TIMEOUT, connect=API_CONNECT_TIMEOUT)) as client:
@@ -110,6 +113,8 @@ class Api(Agent):
                     request = {"model": model, "messages": messages, "tools": schema, "tool_choice": "auto"}
                     if s.options.get("effort"):
                         request["reasoning_effort"] = s.options["effort"]
+                    if s.record:
+                        s.record('api_request', request)
                     r = client.post(f"{base}/chat/completions", headers=headers, json=request)
                     if r.status_code == 200 or not _too_long(r):
                         break
@@ -139,7 +144,7 @@ class Api(Agent):
                 if isinstance(reply.get("usage"), dict):
                     manager.account(s, api_usage(reply["usage"]))
                 if msg.get("reasoning_content"):
-                    s.push("think", msg["reasoning_content"][:REASONING_SHOWN])
+                    s.push("think", msg["reasoning_content"])
                 if msg.get("content"):
                     s.push("text", msg["content"])
                 calls = msg.get("tool_calls") or []
@@ -165,7 +170,11 @@ class Api(Agent):
                     used_tool = True
                     s.usage["tool_calls"] += 1
                     s.push("tool", f"{name}({args_brief(args)})")
+                    if s.record:
+                        s.record('tool_request', {'name': name, 'arguments': args})
                     result = tools.call(net, agent, s.slug, name, args)
+                    if s.record:
+                        s.record('tool_response', {'name': name, 'content': result})
                     messages.append({"role": "tool", "tool_call_id": c["id"], "content": result})
                     finishing |= name in FINISHING
                 # Done with what it held (in a room the host holds the claim: nothing here says when): what led up
