@@ -1230,7 +1230,7 @@ class Manager:
             return True
         everything = " ".join([*said, *errors])
         if refused:
-            raise Fatal(refused)  # every retry would meet it the same way
+            raise Fatal(refused + " Review the agent settings and resolve this error before restarting.")  # every retry would meet it the same way
         if LIMIT.search(everything):
             s.limited = True  # whatever the exit code: Claude Code says so in an ordinary result
             s.limit_until = limit_reset(everything)

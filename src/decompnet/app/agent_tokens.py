@@ -77,13 +77,21 @@ def brief(net, text, slug=None):
         lines = m[1].splitlines()
         return '```asm\n'+'\n'.join(lines[:24])+('\n… use get_assembly for later lines.' if len(lines)>24 else '')+'\n```'
     text = re.sub(r'```asm\n(.*?)\n```', assembly, text, flags=re.S)
+    # Keep compiler facts, declarations, candidate C and user instructions. Supporting evidence is
+    # available through get_function without loading it for every claim (ROM and imported projects).
+    optional = ('Notes from previous agents on this function', 'Notes', 'Where it lives',
+                'Other games and local SDK signatures', 'Looks like', 'Likely struct layouts')
+    text = re.sub(r'^### ([^\n]+)\n(.*?)(?=^#{2,3} )',
+                  lambda m: ('### '+m[1]+'\nSupporting details: get_function(function).\n'
+                             if any(m[1].startswith(title) for title in optional) else m[0]),
+                  text, flags=re.M | re.S)
     # A batch can contain more than one claimed function. Resolve each stored name from its brief header.
     for name in re.findall(r'^## CLAIMED: (.+?)(?:  \([^\n]*\))?$', text, re.M):
         if slug and name.startswith(slug + '/'):
             name = name[len(slug)+1:]
         try:
             fn = net._function(name.strip(), slug)
-            text += history(net, fn)
+            text += f"\n{fn['name']}: supporting attempt history is available through get_function(function).\n"
         except NetworkError:
             pass
     return text

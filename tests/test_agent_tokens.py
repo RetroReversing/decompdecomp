@@ -79,7 +79,7 @@ def test_claim_brief_pages_assembly_and_preserves_candidate_and_history(tmp_path
     net._record(fn,a,30,'int f(){return 1;}',1)
     text='## CLAIMED: game/f\n```asm\n'+'\n'.join(f'line{i}' for i in range(200))+'\n```\n### Best attempt\nint f(){return 1;}'
     out=agent_tokens.brief(net,text,'game')
-    assert len(out)<len(text) and 'line199' not in out and 'int f(){return 1;}' in out and 'Recent history' in out
+    assert len(out)<len(text) and 'line199' not in out and 'int f(){return 1;}' in out and 'supporting attempt history' in out
 
 
 def test_new_tools_and_paging_are_exposed_to_mcp_and_api(tmp_path):
@@ -131,3 +131,29 @@ def test_short_tool_descriptions_keep_extended_help(tmp_path):
     definition=next(t for t in anyio.run(mcp.list_tools) if t.name=='compile_and_diff')
     extended=tools.guide_text('tool:compile_and_diff')
     assert len(definition.description)<len(extended) and 'Forks:' in extended
+
+
+def test_claim_defers_supporting_sections_but_full_read_keeps_them(tmp_path, monkeypatch):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    text='## CLAIMED: game/f\n### Notes\nlong previous investigation\n### Current source\n```c\nint f(){return 7;}\n```\n### Compiler\nkeep flags\n'
+    out=agent_tokens.brief(net,text,'game')
+    assert 'long previous investigation' not in out
+    assert 'return 7' in out and 'keep flags' in out and 'get_function' in out
+    net._record(net._function('f','game'),a,4,'int f(){return 7;}',1)
+    monkeypatch.setattr(net, 'get_function', lambda *args: text)
+    assert 'long previous investigation' in tools.call(net,a,'game','get_function',{'function':'f'})
+    assert 'Recent history' in tools.call(net,a,'game','get_function',{'function':'f'})
+
+
+def test_patch_prompt_reuses_revisions_and_prefers_small_edits():
+    for prompt in (tools.WORK_PROMPT, tools.FORK_PROMPT):
+        assert 'Prefer compile_patch for small edits' in prompt
+        assert 'Do not fetch get_candidate after a successful patch' in prompt
+
+
+def test_codex_invalid_effort_is_fatal_but_transient_errors_are_not():
+    from decompnet.agents.codex import CODEX
+    assert CODEX.fatal('{"code":"unsupported_value","param":"reasoning.effort"}')
+    assert CODEX.fatal("Unsupported value: minimal is not supported with this model. Supported reasoning effort values are low and high")
+    assert not CODEX.fatal('connection reset; retry later')
+    assert not CODEX.fatal('rate limit exceeded')

@@ -449,3 +449,11 @@ recorded automatic repair/reuse trials. Historical scores can reflect different 
 The model-cost panel separates reported uncached input, cache reads, cache writes and output. These are token
 categories, not interchangeable prices. Older records without a breakdown say it is unavailable. Providers'
 reported dollar amounts remain separate; no cost estimate is inferred from total tokens alone.
+
+
+Small agent edits use `compile_patch`: fetch the candidate once, then retain the edited C and
+reuse the revision returned by each compile. Fetch again only if the revision is stale or the
+agent lost the source. Full submissions remain available for rewrites. Claims keep candidate C,
+compiler facts and declarations; supporting notes, similarity details, layouts and attempt history
+are available through `get_function` when needed. Codex errors rejecting a reasoning effort pause
+the helper immediately; change the model or effort before restarting it.
