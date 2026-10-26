@@ -789,3 +789,28 @@ def test_an_api_helper_asks_its_model_for_the_effort_it_was_given(tmp_path, monk
         s.stop = Quick()
         m._run(s)
         assert sent[-1].get("reasoning_effort") == effort  # none at all without one: the model's default
+
+
+def test_worker_selection_is_editable_and_restored_without_changing_other_workers(tmp_path, quiet):
+    net = _game(tmp_path)
+    m = agents.Manager(net, tmp_path, URL)
+    (a,) = m.start("claude", "game", options={"model": "opus", "selection": {"strategy": "hardest"}})
+    (b,) = m.start("codex", "game", options={"selection": {"strategy": "untried"}})
+    m.set_selection(a, {"strategy": "closest", "match_below": 85})
+    assert m.sessions[a].snapshot()["selection"] == {"strategy": "closest", "match_below": 85.0}
+    assert net.selection("game", m.sessions[b].agent_name)["strategy"] == "untried"
+    later = agents.Manager(net, tmp_path, URL)
+    assert later.sessions[a].options["selection"] == {"strategy": "closest", "match_below": 85.0}
+    assert later.sessions[b].options["selection"]["strategy"] == "untried"
+
+
+def test_empty_filtered_queue_pauses_before_spending_on_a_session(tmp_path, monkeypatch):
+    _no_agent_settings(monkeypatch)
+    net = _game(tmp_path)
+    m = agents.Manager(net, tmp_path, URL)
+    s = m._record("game", "claude", "claude-1", "Claude", {"selection": {"match_below": 0}})
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET best_score=1")
+    m._run(s)
+    assert s.state == "paused" and "below 0%" in s.why
+    assert s.runs == 0

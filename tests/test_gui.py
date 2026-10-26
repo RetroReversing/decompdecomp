@@ -197,11 +197,20 @@ def test_grouped_name_hints_and_rename_refresh():
                    capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
 
 
+def test_work_selection_keeps_zero_and_blank_distinct_and_validates_the_threshold(gui):
+    assert gui["checks"]["selection"] == [
+        {"strategy": "hardest", "match_below": 80}, {"strategy": "untried", "match_below": None}, True, True]
+
+
 def test_transfer_results_filter_successes_and_explain_mismatch_scores():
     if NODE is None:
         pytest.skip('needs node to run GUI scripts')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_transfers.js'))], check=True,
                    capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_work_selection_attempt_cap_is_optional_and_requires_whole_number(gui):
+    assert gui["checks"]["selectionCap"] == [{"strategy": "hardest", "match_below": None, "max_tries": 12}, True, True]
 
 
 def test_local_importer_groups_searches_and_preserves_filtered_selection():

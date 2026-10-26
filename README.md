@@ -29,6 +29,31 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
   stand-in for a model that hands in the demo's own C; the app compiles and judges every function for real.</sub>
 </p>
 
+## Choose work per agent
+
+In **Start agents → Work selection**, choose a queue for the workers you are starting. Launch an expensive
+model with **Largest first**, then start a cheaper model with **Untried first** or **Easiest first**. You can also
+choose **Closest to matching**, **Finish source files**, or **Random**. **Automatic** keeps the existing adaptive
+scheduler and model routing.
+
+**Only functions below match %** restricts automatic claims to functions whose best recorded match percentage is
+strictly below the threshold, plus functions with no scored attempt. For example, 80 includes unscored functions
+and those below 80%, but excludes one at exactly 80%. This is the app's comparison score, not an estimate of work
+remaining. **Untried first** means no compile attempts, and moves tried functions back rather than excluding them.
+
+**Max tries per function** caps that worker's recorded candidate submissions on each function. Compile errors
+count; the counter persists across sessions and restarts. At the limit, the best candidate and notes stay saved,
+and the function is released for another worker. Raising the limit permits more attempts; blank means unlimited.
+The final allowed attempt can still match. Compiler comparisons and flag searches are separate diagnostic work,
+not candidate submissions covered by this cap.
+
+Each worker's card in **Agents** has **Work selection** to change it independently. The setting survives sessions
+and restarts and applies after the current claim finishes. Explicit strategies override adaptive routing and
+release ordering; claim ownership and the worker's own recent-release cooldown still apply. Configured queues
+claim one function at a time so neighbouring batches cannot bypass the filter. The percentage filter also applies to named function requests. The same settings work across consoles, ROM and project mode, and team rooms with
+an updated host. Polishing uses its separate queue.
+
+
 For local library research, see [Comparing local SDK libraries and source](docs/local-sdk-comparisons.md).
 
 ## RetroReversing fork

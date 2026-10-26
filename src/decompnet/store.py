@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS functions(
   matched_source TEXT, matched_agent_id INTEGER, matched_at REAL,
   attempts INTEGER NOT NULL DEFAULT 0, abandons INTEGER NOT NULL DEFAULT 0,
   UNIQUE(project_id, name));
+CREATE TABLE IF NOT EXISTS agent_selection(
+  project TEXT NOT NULL, agent TEXT NOT NULL, policy TEXT NOT NULL, PRIMARY KEY(project, agent));
 CREATE TABLE IF NOT EXISTS claims(
   function_id INTEGER PRIMARY KEY, agent_id INTEGER NOT NULL, claimed_at REAL, expires_at REAL);
 CREATE TABLE IF NOT EXISTS attempts(
@@ -38,6 +40,7 @@ CREATE TABLE IF NOT EXISTS events(
   id INTEGER PRIMARY KEY, project_id INTEGER, agent_id INTEGER, kind TEXT, detail TEXT, created_at REAL);
 CREATE INDEX IF NOT EXISTS idx_functions_status ON functions(project_id, status, n_insns);
 CREATE INDEX IF NOT EXISTS idx_attempts_fn ON attempts(function_id);
+CREATE INDEX IF NOT EXISTS idx_attempts_worker ON attempts(function_id,agent_id);
 CREATE INDEX IF NOT EXISTS idx_events_time ON events(created_at);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS symbols(
