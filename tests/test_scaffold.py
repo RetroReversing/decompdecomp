@@ -120,7 +120,10 @@ def test_rebuilt_targets_use_original_assembly_for_candidates_and_drafts(tmp_pat
         unit.base.write_bytes(b'empty compiled candidate')
         return True, 'ok'
     monkeypatch.setattr(fp, 'build_unit', build)
-    assert prepare(fp) == ['src/decompdecomp/asm/demo.c']
+    made = prepare(fp)
+    assert len(made) == 1
+    assert made[0].startswith('src/decompdecomp/candidates/demo_')
+    assert fp.safe_path(made[0], write=True).is_file()
     assert find_asm(tmp_path, 'edition/asm/demo', 'demo', None) == assembly
     assert (ref / 'demo.s.o').read_bytes() == b'verified linked reference'
     assert assembly.read_text().startswith('glabel demo')

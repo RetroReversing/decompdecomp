@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 
 from .. import seeds
-from .project import STATE, ForkError
+from .project import FORBIDDEN_PARTS, STATE, ForkError
 
 HEADER = '''/* C candidates for an undecompiled unit. The original ROM/assembly remains the linked baseline. */
 typedef signed char s8;
@@ -58,9 +59,15 @@ def prepare(project, log=print, *, limit: int = 32) -> list[str]:
                 assembly = refs / 'asm' / relative.with_suffix('.s')
             if not assembly.is_file():
                 continue
-            source = project.root / 'src' / 'decompdecomp' / relative.with_suffix('.c')
+            candidate = relative.with_suffix('.c')
+            if set(candidate.parts) & FORBIDDEN_PARTS:
+                # References mirror build/asm paths; C candidates must pass the same write gate as agents.
+                identity = hashlib.sha256(relative.as_posix().encode()).hexdigest()[:12]
+                candidate = Path('candidates') / f'{relative.stem}_{identity}.c'
+            source = project.root / 'src' / 'decompdecomp' / candidate
             if project.root.resolve() not in source.resolve().parents:
                 raise ForkError('The candidate source path leaves this checkout; no files were changed')
+            project.safe_path(source.relative_to(project.root).as_posix(), write=True)
             if source.exists():
                 raise ForkError(f'{source.relative_to(project.root)} already exists; it was retained')
             source.parent.mkdir(parents=True, exist_ok=True)
