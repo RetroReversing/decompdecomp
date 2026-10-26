@@ -818,3 +818,17 @@ def test_transcript_route_requires_window_auth_and_checks_project(app):
     assert result.status_code == 200
     assert result.json()['events'][0]['text'] == 'The full initial prompt'
     assert client.get(url.replace('trace-demo', 'other')).status_code == 400
+
+
+def test_agent_rename_route_keeps_identity_and_checks_input(app):
+    client, net, manager = app
+    session = manager._record('game', 'codex', 'rename-test', 'Original', {})
+    response = client.post('/api/agents/rename', headers={'X-Decomp': '1'},
+                           json={'id': session.id, 'label': 'SDK hunter'})
+    assert response.status_code == 200 and response.json()['label'] == 'SDK hunter'
+    assert session.agent_name == 'rename-test'
+    invalid = client.post('/api/agents/rename', headers={'X-Decomp': '1'},
+                          json={'id': session.id, 'label': ''})
+    assert invalid.status_code == 400
+    assert session.label == 'SDK hunter'
+    assert client.post('/api/agents/rename', json={'id': session.id, 'label': 'No header'}).status_code == 403

@@ -449,3 +449,17 @@ recorded automatic repair/reuse trials. Historical scores can reflect different 
 The model-cost panel separates reported uncached input, cache reads, cache writes and output. These are token
 categories, not interchangeable prices. Older records without a breakdown say it is unavailable. Providers'
 reported dollar amounts remain separate; no cost estimate is inferred from total tokens alone.
+
+### Agent names, history and estimated costs
+
+Use **Rename** on an agent card to give it a display name. Its internal identity, claims and
+credited work stay unchanged, and the name survives app restarts. **Add agents** creates fresh
+identities with fresh counts; **Start again** resumes a stopped agent and keeps its history.
+Removing a card preserves historical project and model totals.
+
+Codex cards can show **API-equivalent** dollars and dollars per match, calculated from separately
+recorded input, cached-input and output tokens. These estimates use Standard API rates checked
+on 26 October 2026 ([OpenAI pricing](https://developers.openai.com/api/docs/pricing), with older
+models' model pages). They are not subscription charges or additional money owed. Cache-write,
+long-context, Fast-mode and regional premiums are excluded. Unknown models or incomplete legacy
+token breakdowns have no estimate; reported provider charges remain separate.

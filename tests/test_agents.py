@@ -322,10 +322,11 @@ def test_helpers_are_records_that_outlive_the_app(tmp_path, quiet):
     assert later.sessions[sid].state == "starting" and later.sessions[other].state == "stopped"
     later.stop(sid)
     assert later.sessions[sid].why == "stopped by you"
-    assert later.start("claude", "game", 1, {"model": "opus"}) == [sid]  # its name and record back: no climbing
-    assert net.store.one("SELECT COUNT(*) AS n FROM helpers")["n"] == 2
+    fresh = later.start("claude", "game", 1, {"model": "opus"})[0]
+    assert fresh != sid  # Add creates a new identity; Start again resumes a record.
+    assert net.store.one("SELECT COUNT(*) AS n FROM helpers")["n"] == 3
     later.remove(other)
-    assert other not in later.sessions and net.store.one("SELECT COUNT(*) AS n FROM helpers")["n"] == 1
+    assert other not in later.sessions and net.store.one("SELECT COUNT(*) AS n FROM helpers")["n"] == 2
 
 
 def test_an_api_helper_starts_again_with_its_endpoints_key(tmp_path, quiet):
@@ -846,3 +847,64 @@ def test_model_costs_separate_cached_and_uncached_tokens(tmp_path, quiet):
                    "cache_read_tokens,cache_write_tokens,output_tokens,tokens) VALUES(1,'game','api','local','a',0,100,900,20,50,1070)")
     row = m.costs('game')[0]
     assert [row[k] for k in ('input_tokens','cache_read_tokens','cache_write_tokens','output_tokens','tokens')] == [100,900,20,50,1070]
+
+
+def test_removed_helper_identity_and_statistics_are_not_reused(tmp_path, quiet):
+    net = _game(tmp_path)
+    manager = agents.Manager(net, tmp_path, URL)
+    old = manager.start('codex', 'game', options={'model': 'gpt-6-luna'})[0]
+    original = manager.sessions[old]
+    token = net.register_agent(original.agent_name)
+    agent = net.authenticate(token)
+    net.store.conn.execute("INSERT INTO helper_sessions(helper_id,project,kind,model,agent,started_at) VALUES(?,?,?,?,?,0)",
+                         (old, 'game', 'codex', 'gpt-6-luna', original.agent_name))
+    manager.remove(old)
+    new = manager.start('codex', 'game', options={'model': 'gpt-6-luna'})[0]
+    assert new != old
+    assert manager.sessions[new].agent_name != agent.name
+    assert manager.sessions[new].tokens == 0
+
+
+def test_helper_rename_persists_without_changing_identity(tmp_path, quiet):
+    net = _game(tmp_path)
+    manager = agents.Manager(net, tmp_path, URL)
+    sid = manager.start('codex', 'game')[0]
+    original = manager.sessions[sid].agent_name
+    assert manager.rename(sid, '  Library hunter  ') == 'Library hunter'
+    assert manager.sessions[sid].agent_name == original
+    restored = agents.Manager(net, tmp_path, URL)
+    assert restored.sessions[sid].label == 'Library hunter'
+    for invalid in ['', 'x' * 81, 'bad\nname', None]:
+        with pytest.raises(ValueError):
+            manager.rename(sid, invalid)
+    with pytest.raises(ValueError, match='no longer exists'):
+        manager.rename('missing', 'Name')
+
+
+def test_codex_api_equivalent_uses_separate_token_rates():
+    from decompnet.agents.codex import CODEX
+    usage = {'input': 1_000_000, 'cache_read': 2_000_000, 'output': 100_000, 'tokens': 3_100_000}
+    assert CODEX.estimate_cost('gpt-6-luna#high', usage) == pytest.approx(.17)
+    assert CODEX.estimate_cost('unknown', usage) is None
+    assert CODEX.estimate_cost('gpt-6-luna', {'tokens': 100}) is None
+    assert CODEX.estimate_cost('gpt-6-luna', {}) is None
+
+
+def test_helper_cost_estimate_survives_restart_without_double_counting(tmp_path, quiet):
+    net = _game(tmp_path)
+    manager = agents.Manager(net, tmp_path, URL)
+    sid = manager.start('codex', 'game', options={'model': 'gpt-6-luna'})[0]
+    s = manager.sessions[sid]
+    agent = net.authenticate(net.register_agent(s.agent_name))
+    row = manager._session_begin(s)
+    manager.account(s, {'input': 1_000_000, 'cache_read': 2_000_000, 'output': 100_000})
+    assert manager.snapshot()[0]['estimated_cost'] == pytest.approx(.17)
+    manager._session_end(s, row, agent, 0, 'done')
+    assert manager.snapshot()[0]['estimated_cost'] == pytest.approx(.17)
+    empty = manager._session_begin(s)
+    manager._session_end(s, empty, agent, 0, 'failed before usage')
+    restored = agents.Manager(net, tmp_path, URL)
+    assert restored.snapshot()[0]['estimated_cost'] == pytest.approx(.17)
+    # A legacy record with uncategorized usage must not look cheaper than it was.
+    restored.sessions[sid].tokens += 50
+    assert restored.snapshot()[0]['estimated_cost'] is None

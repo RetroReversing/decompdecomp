@@ -126,6 +126,10 @@ class Agent:
                 "install": self.install_text(), "recommended": self.recommended, "uses_endpoints": self.uses_endpoints,
                 "takes_effort": self.takes_effort, "efforts": list(self.efforts)}
 
+    def estimate_cost(self, model: str, usage: dict) -> float | None:
+        """API-equivalent USD, when this provider has known rates and a complete usage breakdown."""
+        return None
+
     def investigation_command(self, exe: str, prompt: str) -> list[str] | None:
         """Interactive repository work, with the CLI's normal permissions; None when unsupported."""
         return None

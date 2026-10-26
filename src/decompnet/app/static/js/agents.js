@@ -130,7 +130,7 @@ function renderSessions(sessions) {
       s.usd ? money(s.usd) : s.tokens ? `${(s.tokens / 1000).toFixed(0)}k tokens` : "", s.runs ? plural(s.runs, "session") : "",
       s.restarts ? `started again ${plural(s.restarts, "time")}` : "", live && s.started_at ? `since ${hhmm(s.started_at)}` : ""].filter(Boolean);
     const todo = s.todo ? `${sentence(s.todo.replace(/\.$/, ""))}.${s.state === "paused" ? " Then press Start again." : ""}` : "";
-    return `${head}<div class="session${rowTint(s.agent)}" data-state="${esc(s.state)}"><div class="session-top"><span class="dot ${dot}"></span><b title="${esc(s.agent)}">${esc(s.label)}</b>
+    return `${head}<div class="session${rowTint(s.agent)}" data-state="${esc(s.state)}"><div class="session-top"><span class="dot ${dot}"></span><b title="${esc(s.agent)}">${esc(s.label)}</b><button class="link-btn" data-rename="${id}" type="button" aria-label="Rename ${esc(s.label)}">Rename</button>
         ${live ? `<button class="ghost" data-stop="${id}" type="button">Stop</button>`
           : `<button class="ghost" data-again="${id}" type="button">Start again</button><button class="ghost" data-remove="${id}" type="button">Remove</button>`}</div>
       <span class="state ${s.state === "paused" ? "err" : ""}">${helperState(s, claim)}</span>
@@ -138,6 +138,7 @@ function renderSessions(sessions) {
       ${s.last_message ? `<details class="agent-message"><summary>Latest update</summary><q class="said">${esc(s.last_message)}</q></details>` : ""}
       ${agentMetrics(s, b)}
       <span class="facts-line">${facts.join(" · ")}</span>
+      ${s.estimated_cost != null ? `<span class="small muted" title="Standard API rates checked 26 Oct 2026, using recorded input, cached input and output. Excludes cache-write, long-context, fast-mode and regional premiums. This is not your subscription bill.">≈ ${money(s.estimated_cost)} API-equivalent${b?.matched ? ` · ≈ ${money(s.estimated_cost / b.matched)} / match` : ""}</span>` : ""}
       <button class="link-btn" data-queue="${id}" type="button">Work settings · ${s.per_session || 8} functions/session${s.task === "readable" ? "" : ` · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}`}</button>
       <button class="link-btn" data-log="${id}" type="button" aria-pressed="${S.logFor === s.id}">${S.logFor === s.id ? "Back to everything" : "What it said and did"}</button></div>`;
   }).join("");
@@ -165,6 +166,20 @@ function renderSessions(sessions) {
         closeDialog();
         toast("Work selection saved. The current function stays with its agent.", "match");
         renderSessions(S.sessions || []);
+      } catch (e) { toast(esc(e.message), "err"); }
+    };
+  }; });
+  box.querySelectorAll("[data-rename]").forEach((b) => { b.onclick = () => {
+    const s = sessions.find((x) => x.id === b.dataset.rename);
+    const panel = dialog("Rename agent", `<label class="field"><span>Agent name</span><input data-agent-label maxlength="80" value="${esc(s.label)}"></label><p class="small muted">Changes its display name. Its work, settings and history stay with this agent.</p><button class="primary" data-save-name>Save</button><button class="ghost" data-cancel-name>Cancel</button>`);
+    panel.querySelector("[data-cancel-name]").onclick = closeDialog;
+    const input = panel.querySelector("[data-agent-label]");
+    input.focus(); input.select();
+    panel.querySelector("[data-save-name]").onclick = async () => {
+      try {
+        const result = await api("/api/agents/rename", { method: "POST", body: { id: s.id, label: input.value } });
+        s.label = result.label;
+        closeDialog(); renderSessions(S.sessions || []);
       } catch (e) { toast(esc(e.message), "err"); }
     };
   }; });
