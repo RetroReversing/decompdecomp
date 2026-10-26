@@ -161,5 +161,5 @@ def test_polishing_stats_count_only_accepted_functions_per_agent_and_project(tmp
                                             (matcher, "claim", "pending", 1)):
             net._event(db, project, agent.id, kind, detail)
     board = net.stats("first")["agents"]
-    assert board == [{"agent": "polisher", "compiles": 0, "matched": 0, "polished": 1, "last": None}]
+    assert board == [{"agent": "polisher", "compiles": 0, "matched": 0, "polished": 1, "last": None, "improved": 0}]
     assert net.stats("second")["agents"][0]["polished"] == 1

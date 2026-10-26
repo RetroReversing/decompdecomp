@@ -249,7 +249,7 @@ const settle = async () => { for (let i = 0; i < SETTLE_TICKS; i++) await tick()
       sources: ["Makefile"], note: "Declared settings"
     }}), projectCompilerFacts({kind: "rom"}), projectCompilerFacts({kind: "fork"})],
     helperResults: [helperResults({polished: 2, matched: 9}, "readable"), helperResults(undefined, "readable"),
-                    helperResults({polished: 2, matched: 9}, "")],
+                    helperResults({polished: 2, matched: 9, improved: 4}, "")],
     systemThemes: ["", "?system-theme=light", "?system-theme=dark", "?system-theme=invalid"].map((search) => {
       location.search = search;
       return systemTheme();
