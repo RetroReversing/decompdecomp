@@ -959,3 +959,51 @@ def test_nested_splat_editions_use_rom_hash_for_build_and_reference_config(tmp_p
     bad = tmp_path/'config/jp/demo.jp.yaml'
     bad.write_text(bad.read_text().replace('../..','../../..'))
     assert 'jp' not in fp.splat_baseroms()
+
+
+@needs_tools
+def test_whole_image_rejects_a_function_match_that_changes_other_data(fork):
+    """A function can match while its new globals change the linked image."""
+    import sys
+
+    net, slug, agent = fork
+    _, fp, _ = net.forks.get(slug)
+    unit = next(u for u in fp.units() if u.source == "src/game.c")
+    assert not unit.complete
+    source = fp.root / unit.source
+    before = source.read_text()
+    manifest_path = fp.root / ".decomp.wtf.json"
+    manifest = manifest_path.read_text()
+    from elftools.elf.elffile import ELFFile
+
+    with unit.base.open("rb") as stream:
+        elf = ELFFile(stream)
+        material = b"".join(elf.get_section_by_name(n).data() for n in (".text", ".data", ".rodata")
+                            if elf.get_section_by_name(n))
+        bss = elf.get_section_by_name(".bss")
+        common = sum(s["st_size"] for s in elf.get_section_by_name(".symtab").iter_symbols()
+                     if s["st_shndx"] == "SHN_COMMON")
+        material += (int(bss["sh_size"] if bss else 0) + common).to_bytes(4, "big")
+    expected = hashlib.sha1(material).hexdigest()
+    command = [sys.executable, "-c", "from pathlib import Path; from elftools.elf.elffile import ELFFile; "
+               f"f=open({str(unit.base)!r}, 'rb'); e=ELFFile(f); "
+               "data=b''.join(e.get_section_by_name(n).data() for n in ('.text','.data','.rodata') "
+               "if e.get_section_by_name(n)); b=e.get_section_by_name('.bss'); "
+               "common=sum(s['st_size'] for s in e.get_section_by_name('.symtab').iter_symbols() "
+               "if s['st_shndx']=='SHN_COMMON'); "
+               "Path('build/image.bin').write_bytes(data+(int(b['sh_size'] if b else 0)+common).to_bytes(4,'big'))"]
+    fp.update_manifest(game={"path": "baserom.z64", "sha1": expected},
+                       verify_image={"path": "build/image.bin", "commands": [command]})
+    try:
+        assert fp.verify()[0]
+        result = net.forks.attempt(agent, slug, "clamp_s32", _ref("clamp_s32"),
+                                   prelude="int extra_image_data;\n")
+        assert not result["matched"] and "no longer builds byte for byte" in result["text"]
+        assert source.read_text() == before
+        assert fp.verify()[0]
+        result = net.forks.attempt(agent, slug, "clamp_s32",
+                                   "s32 clamp_s32(s32 v, s32 lo, s32 hi) { return v; }")
+        assert not result["matched"] and "no longer builds byte for byte" in result["text"]
+        assert source.read_text() == before and fp.verify()[0]
+    finally:
+        manifest_path.write_text(manifest)

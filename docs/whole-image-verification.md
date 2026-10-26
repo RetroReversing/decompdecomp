@@ -1,0 +1,36 @@
+# Protect a verified project image
+
+A function-level objdiff match can still change the whole image: its replacement
+may lose alignment padding, introduce duplicate globals, or move other code.
+For projects that already rebuild exactly from their current C and assembly,
+add an explicit `verify_image` to `.decomp.wtf.json`:
+
+```json
+{
+  "game": {
+    "path": "baserom.z64",
+    "sha1": "the original image's 40 hexadecimal SHA-1 digits"
+  },
+  "verify_image": {
+    "path": "build/game.z64",
+    "commands": [["make", "-j3"]]
+  }
+}
+```
+
+Use the project's actual output and exact build arguments. Compressed-code
+projects must include their recompression and final cartridge build commands.
+The output must be inside the project and separate from the original image.
+Every command must succeed, and decompdecomp independently hashes the output
+against `game.sha1`; a stale matching output cannot excuse a failed command.
+
+The check protects partially decompiled units too. Function attempts, compiler
+and flag searches, source edits and shared-header edits preserve the verified
+image. A function-level match that fails the whole-image check is rejected;
+the previous source is restored and the previous image rebuilt. Existing
+configure.py/ninja projects retain their checksum-target verification.
+
+This is opt-in because unfinished source builds may legitimately fail their
+whole-image checksum. Enable it only after verifying the complete build. It
+checks the selected image; it does not imply that every function is recovered C
+or cover additional executables that the configured output does not contain.
