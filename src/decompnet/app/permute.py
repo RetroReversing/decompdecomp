@@ -256,7 +256,7 @@ class Permuter:
                 break
             with self.net.store.tx() as db:
                 db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (key, str(fn['id'])))
-            candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'])
+            candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '')
             if not candidates or not self._hold(agent, fn, count_turn=False):
                 continue
             st.holding(fn['name'], True)
@@ -276,7 +276,7 @@ class Permuter:
                     if st.stop.is_set() or attempts >= 32 or time.monotonic() >= deadline:
                         break
                     digest = hashlib.sha256((context + candidate).encode()).hexdigest()
-                    trial = f"draft-repair-v2:{fn['id']}:{digest}"
+                    trial = f"draft-repair-v3:{fn['id']}:{digest}"
                     if self.net.store.one("SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?", fn['id'], trial):
                         continue
                     attempts += 1

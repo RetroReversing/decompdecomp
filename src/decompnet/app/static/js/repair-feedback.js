@@ -12,7 +12,7 @@ $("repairExamples").onclick = async () => {
     <div class="transcript-controls"><label><input type="checkbox" data-all> Across all projects</label>
     <label><input type="checkbox" data-comparable checked> Only with a failed candidate</label>
     <select data-category aria-label="Repair category"><option value="">All categories</option></select>
-    <select data-status aria-label="Review state"><option value="">All review states</option></select>
+    <select data-status aria-label="Review state"><option value="new" selected>New (not yet reviewed)</option><option value="">All review states</option></select>
     <button data-refresh type="button">Refresh</button><button data-close type="button">Close</button></div>
     <p data-count></p><div data-list></div><button data-more hidden type="button">Older examples</button>
     <p class="muted small">Full examples include source and available headers. Summaries omit these and the code diff; review notes may still quote code.
@@ -23,15 +23,14 @@ $("repairExamples").onclick = async () => {
   const get = (selector) => dialog.querySelector(selector);
   const list = get('[data-list]'), category = get('[data-category]'), status = get('[data-status]'), all = get('[data-all]');
   const comparable = get('[data-comparable]');
-  comparable.checked = true;
+  comparable.checked = true; status.value = 'new';
   let before = 0, investigation;
   const investigationConfig = () => investigation ||= api('/api/repair-examples/investigate');
   const scope = () => `slug=${encodeURIComponent(slug)}&all=${all.checked ? 1 : 0}`;
   const filters = () => `${scope()}&comparable=${comparable.checked ? 1 : 0}&category=${encodeURIComponent(category.value)}&status=${encodeURIComponent(status.value)}`;
   const controls = [category, status, all, comparable, get('[data-refresh]'), get('[data-more]')];
   function options(select, values) {
-    if (select.options.length > 1) return;
-    for (const value of values) { const option = document.createElement('option'); option.value = value; option.textContent = value.replaceAll('_', ' '); select.append(option); }
+    for (const value of values) { if (Array.from(select.options).some((option) => option.value === value)) continue; const option = document.createElement('option'); option.value = value; option.textContent = value.replaceAll('_', ' '); select.append(option); }
   }
   function card(row, states, categories) {
     const details = document.createElement('details'), summary = document.createElement('summary');

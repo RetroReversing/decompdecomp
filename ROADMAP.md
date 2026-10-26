@@ -755,3 +755,26 @@ helpers; follow/stop it there, and it may continue when the app closes. Proposed
 The handoff reaches every game architecture and both modes. Other CLI/API providers can use copy/export;
 managed in-app repository investigation and additional providers remain future work. Native launch adapters
 cover macOS Terminal, Windows console and common Linux terminals; no terminal means an actionable export fallback.
+
+### Repairs from captured match evidence
+
+The bounded saved-draft pass reuses m2c's existing refinement on MIPS drafts (including assembly-guided
+argument forwarding), keeping its macro typedef block out of type rewriting. It also tries a small mask-to-cast
+rewrite, caching a pointer global before an aliasing store in a local block, numeric address casts of explicit
+symbol addresses/declared arrays on known 32-bit processors, and removing one trailing identifier argument.
+Function-like macros are excluded from call-argument edits. Each is a hypothesis checked by the existing exact
+judge; no sampled explanation is executed as a rule. The existing budgets, claims, fairness and size limit remain.
+Expression rules share both project modes and all architectures they can represent; existing MIPS refinement
+remains processor-specific, while 64-bit/unknown address widths skip the numeric-address candidate.
+
+In a private audit of 51 captured matches from two regions of a MIPS game, all 51 winning sources reproduced;
+48 had failed predecessors. On reopened historical failures in copied projects, the unchanged targeted pass
+recovered 1 match / 536 bytes in 82 compiles (~11 seconds); the enhanced pass recovered 20 / 6,264 bytes in 47
+compiles (~14 seconds). The extra 19 were 14 saved drafts using existing refinement and 5 new expression/argument
+repairs. This measures reproducibility and future agent-call avoidance, not new progress in a live project.
+Remaining evidence includes 13 regional/donor corrections, 15 coupled scheduling/layout/reconstruction cases,
+and 3 first-try successes without a failed source. Broader stack-layout and pointer-expression temporaries need
+further isolated proofs rather than automatically applying an agent's whole before/after diff.
+
+The repair-example panel opens on New (not yet reviewed); choose All review states to revisit earlier audits.
+Saving a review removes that example from the default queue while retaining its evidence and review notes.

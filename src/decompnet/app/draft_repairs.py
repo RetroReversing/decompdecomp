@@ -6,14 +6,16 @@ one. Work is restricted to the requested definition; strings, comments and prepr
 
 import re
 
+from .. import m2cfix, seeds
 from ..forks.csource import _blank, find
+from . import expression_repairs
 
 LIMIT = 8
 _IDENT = r'[A-Za-z_]\w*'
 _MEMBER = rf'{_IDENT}(?:\s*(?:->|\.)\s*{_IDENT})*'
 
 
-def variants(source: str, name: str, arch: str) -> list[str]:
+def variants(source: str, name: str, arch: str, asm: str = '') -> list[str]:
     span = find(source, name)
     if span is None:
         return []
@@ -28,6 +30,14 @@ def variants(source: str, name: str, arch: str) -> list[str]:
     body = body[:-1]
     offset = opening + 1
     proposals = []
+    # Fresh m2c drafts already get this alternative in autopilot. Saved/transferred drafts need the
+    # same chance, with their macro typedef block kept out of the refinement's type substitutions.
+    if arch == 'mips' and ('M2C_FIELD(' in source or 'M2C_UNK' in source):
+        plain = re.sub(r'#ifndef M2C_DEFINES.*?#endif\n?', '', source, flags=re.S)
+        refined = m2cfix.refine_draft(plain, name, asm)
+        if refined and refined != plain:
+            proposals.append(seeds.M2C_MACROS + refined)
+    proposals += expression_repairs.variants(source, name, arch)
 
     def add(a, b, text):
         candidate = source[:a] + text + source[b:]
@@ -54,10 +64,11 @@ def variants(source: str, name: str, arch: str) -> list[str]:
         for m in address.finditer(body):
             add(offset + m.start(), offset + m.end(), f'({m["i"]} + (int){source[offset + m.start("p"):offset + m.end("p")]})')
 
-    # Try dropping a trailing literal from a call, not an arbitrary expression with side effects. Walk
+    # Try dropping a trailing literal or identifier from a call, not an arbitrary expression with side effects. Walk
     # balanced parentheses so nested calls/commas are not confused with the outer argument boundary.
+    macros = set(re.findall(r'^\s*#\s*define\s+(\w+)\(', clean, re.M))
     for m in re.finditer(rf'\b({_IDENT})\s*\(', body):
-        if m[1] in {'if', 'while', 'for', 'switch', 'sizeof', '_Alignof'}:
+        if m[1] in {'if', 'while', 'for', 'switch', 'sizeof', '_Alignof'} | macros:
             continue
         depth, commas, close = 1, [], None
         for pos in range(m.end(), len(body)):
@@ -71,7 +82,7 @@ def variants(source: str, name: str, arch: str) -> list[str]:
         if close is None or not commas:
             continue
         tail = body[commas[-1] + 1:close].strip()
-        if re.fullmatch(r'(?:0[xX][0-9a-fA-F]+|[0-9]+)[uUlL]*', tail):
+        if re.fullmatch(rf'(?:0[xX][0-9a-fA-F]+[uUlL]*|[0-9]+[uUlL]*|{_IDENT})', tail):
             add(offset + commas[-1], offset + close, '')
         if len(proposals) >= LIMIT:
             break
