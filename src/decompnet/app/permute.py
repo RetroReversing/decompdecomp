@@ -53,6 +53,7 @@ READ_BYTES = 1 << 16
 MAX_SEED = 2**31  # seeds of the generator's runs: the same function and turn write the same variants
 REWRITE_MISSES = 200  # simple rewrites in a row that change nothing: none applies to the C
 MAX_INSNS = 400  # bigger near misses are left to agents: one variant takes too long to judge
+REPAIR_MAX_INSNS = 1024  # deterministic hypotheses keep their own 32-attempt / 20-second cap
 IDLE_SECONDS = 180  # with no near misses, how long until the permuter looks again
 IDLE_LOOKS = 20  # looks in a row with nothing to do (an hour) and it's done until agents start again
 HOLD_SPARE_SECONDS = 120  # a turn's hold on a function lasts this much longer than the turn, in case it runs over
@@ -246,7 +247,7 @@ class Permuter:
         todo = self.net.store.all(
             "SELECT * FROM functions WHERE project_id=? AND status='open' AND best_source IS NOT NULL "
             "AND best_score>0 AND n_insns<=? AND id NOT IN (SELECT function_id FROM claims) "
-            "ORDER BY (id<=?), id LIMIT ?", proj['id'], MAX_INSNS, cursor, CANDIDATES)
+            "ORDER BY (id<=?), id LIMIT ?", proj['id'], REPAIR_MAX_INSNS, cursor, CANDIDATES)
         deadline, attempts = time.monotonic() + 20, 0
         fork = self.net.fork_slug(proj['slug'])
         symbols = [tuple(row) for row in self.net.store.all(
@@ -276,7 +277,7 @@ class Permuter:
                     if st.stop.is_set() or attempts >= 32 or time.monotonic() >= deadline:
                         break
                     digest = hashlib.sha256((context + candidate).encode()).hexdigest()
-                    trial = f"draft-repair-v3:{fn['id']}:{digest}"
+                    trial = f"draft-repair-v4:{fn['id']}:{digest}"
                     if self.net.store.one("SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?", fn['id'], trial):
                         continue
                     attempts += 1
