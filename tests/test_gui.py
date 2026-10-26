@@ -209,3 +209,10 @@ def test_transcript_full_text_usage_and_session_paging():
         pytest.skip('needs node to run the transcript UI')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_transcripts.js'))], check=True,
                    capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_local_importer_groups_searches_and_preserves_filtered_selection():
+    if NODE is None:
+        pytest.skip('needs node to run GUI scripts')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_local_import.js'))], check=True,
+                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)

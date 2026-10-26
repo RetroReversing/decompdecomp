@@ -101,6 +101,10 @@ ROM projects now keep an indexed library of verified functions from the user's o
 cross-game transfer, suggest nearby code and names, and can index names and fingerprints from user-selected local
 SDK object archives. Global SDK folders are scanned once for every project, with unchanged-file caching and
 per-project automatic or explicit library selection. Imported project target objects supply detection evidence too.
+SDK identities now have a separate badge in function lists. Automatic claims and small-function batches leave
+identified SDK code until after game code, across ROM and imported projects; explicit claims and user stars
+still take precedence. Identification uses recorded provenance or unambiguous full-size archive signatures,
+without changing project settings or awarding matching C.
 Removing a managed folder removes its indexed references, while manual imports are preserved. The archive's source is never bundled; a signature is a hint until compiled C passes the judge.
 
 Similar-code autopilot attempts are bounded and use the unchanged compiler/link judge on MIPS ROM projects.

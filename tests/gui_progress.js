@@ -52,7 +52,7 @@ function setup(file, marker, end, logId, buttonId, ranges = "") {
     $: get, document: { createElement: element },
     S: { slug: "test", ov: { kind: "fork" } }, info: {}, box, body: box, n: get("compilerNotice"), log, inst: button,
     b: Object.assign(button, { dataset: { inst: "test" } }), a: { id: "test", name: "Test" }, ROOM_PORT: 6481,
-    results: get("localResults"), scan: { folder: "/synthetic/collection" },
+    results: get("localResults"), scan: { folder: "/synthetic/collection", projects: [] }, picked: new Set(), renderList() {},
     selected: () => [{ path: "/synthetic/collection/project" }], renderLocalProjects() {}, update() {},
     dialog: () => box, id: "test", proprietary: false, confirm: () => true, Blob, location: {},
     esc: String, plural: () => "files", toast() {}, loadNav() {}, closeDialog() {}, rerender() {}, check() {},

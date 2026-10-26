@@ -382,6 +382,12 @@ function searchFunctions(fns, q, fork) {
   return found.length || fork ? found : fns.filter(inUnit);
 }
 
+function sdkBadge(f) {
+  if (!f.sdk) return "";
+  const hint = "Identified from SDK signatures: " + f.sdk.corpora.join("; ") + ". Agents try game code first; this is not a verified C match.";
+  return ` <span class="sdk-badge" title="${esc(hint)}">SDK library</span>`;
+}
+
 function renderList() {
   if (!S.map.length || S.tab !== "functions") return;
   const counts = { all: S.map.length, open: 0, working: 0, tried: 0, matched: 0, asm: 0, polished: 0, first: 0 };
@@ -408,7 +414,7 @@ function renderList() {
     const on = starred(f), open = st !== "matched" && st !== "asm";
     const starCell = !star ? "" : `<td class="star-col">${open || on ? `<button type="button" class="star-btn${on ? " on" : ""}" data-star="${esc(f.name)}" aria-pressed="${on}" aria-label="${on ? "Agents take it first: click to stop" : "Agents take it first"}" title="${on ? "Agents take it first (click to stop)" : "Agents take it first"}">${on ? "★" : "☆"}</button>` : ""}</td>`;
     return `<tr data-fn="${esc(f.name)}" class="${S.fn === f.name ? "sel" : ""}" tabindex="0">${starCell}<td class="mono dim">${fork ? esc(f.unit || "") : hex8(f.vram)}</td>
-      <td class="mono name">${esc(f.name)}</td><td class="r mono">${f.insns.toLocaleString()}</td><td class="r mono">${best}</td>
+      <td class="mono name">${esc(f.name)}${sdkBadge(f)}</td><td class="r mono">${f.insns.toLocaleString()}</td><td class="r mono">${best}</td>
       <td class="r mono">${f.attempts || `<span class="dim">0</span>`}</td><td>${status}</td></tr>`;
   }).join("") || `<tr class="none"><td colspan="7">${L.filter === "first" && !q ? "No function is starred. ☆ one and agents take it before the others." : `No function matches${q ? ` “${esc(L.q)}”` : ""}.`}</td></tr>`;
   $("fnShown").textContent = rows.length > L.limit ? `${L.limit.toLocaleString()} of ${rows.length.toLocaleString()} shown` : plural(rows.length, "function");
