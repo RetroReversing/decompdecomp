@@ -116,6 +116,7 @@ class JudgeMixin:
             try:
                 one = self.forks.one_definition(fork, source, name, [n for n in names if n != name]) if fork else source
                 res = self.attempt(agent, name, one, project)
+                res["text"] += self.attempt_limit_note(agent, name, project)
             except NetworkError as e:
                 res = {"text": f"❌ {e}", "matched": False}
             matched += bool(res.get("matched"))

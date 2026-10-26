@@ -222,6 +222,13 @@ const settle = async () => { for (let i = 0; i < SETTLE_TICKS; i++) await tick()
       h[0] ^= 1;
       return { good: good && [good.platform, good.code, good.title], broken: identifyHead(h, file), said: notSupported(h, file) };
     })(),
+    // Optional attempt caps must stay integers, and blank must stay unlimited.
+    selectionCap: (() => {
+      const box = (tries) => ({querySelector: (sel) => ({value: sel === "[data-selection-below]" ? "" : sel === "[data-selection-tries]" ? tries : "hardest"})});
+      let rejected = false;
+      try { readSelection(box("1.5")); } catch (_) { rejected = true; }
+      return [readSelection(box("12")), rejected, selectionFields({max_tries: 12}).includes('value="12"')];
+    })(),
     // the launcher keeps the last effort picked: Claude Code's xhigh isn't one opencode offers
     selection: (() => {
       const box = (raw, strategy) => ({querySelector: (sel) => ({value: sel === "[data-selection-below]" ? raw : sel === "[data-selection-tries]" ? "" : strategy})});

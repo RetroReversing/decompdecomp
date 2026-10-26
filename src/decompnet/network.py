@@ -12,9 +12,11 @@ import hashlib
 import json
 import re
 import secrets
+import threading
 import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -380,6 +382,7 @@ class Network:
     def __init__(self, db_path: str | Path, claim_ttl: int = CLAIM_TTL):
         self.store = Store(db_path)
         self.claim_ttl = claim_ttl
+        self._attempt_locks: dict[tuple[int, int], threading.RLock] = {}
         self._pool = ThreadPoolExecutor(max_workers=8)
         # (agent id, function id) -> its last compile's diff rows and their legend, for last_diff
         self._last_diffs: dict[tuple[int, int], tuple[list, str]] = {}
@@ -699,6 +702,16 @@ class Network:
         used = self.store.one("SELECT COUNT(*) AS n FROM attempts WHERE function_id=? AND agent_id=?",
                               fn["id"], agent.id)["n"] if limit is not None else 0
         return limit, used
+
+    @contextmanager
+    def attempt_turn(self, agent: Agent, fn):
+        # A CLI can submit parallel tool calls: serialize this worker's candidates so two submissions cannot
+        # both spend the last allowed try. Never hold the database write lock while compiling.
+        with self.store.lock:
+            lock = self._attempt_locks.setdefault((agent.id, fn["id"]), threading.RLock())
+        with lock:
+            self.check_attempt_limit(agent, fn)
+            yield
 
     def check_attempt_limit(self, agent: Agent, fn) -> None:
         """Candidate submissions (including compile errors) count across sessions, per worker and function."""
@@ -1070,10 +1083,23 @@ class Network:
 
     # --------------------------------------------------------- compile & diff
 
+    def attempt_limit_note(self, agent: Agent, function: str, project: str | None) -> str:
+        fn = self._function(function, project)
+        limit, used = self.attempt_limit(agent, fn)
+        if fn["status"] == "open" and limit is not None and used >= limit:
+            return (f"\nMax tries reached ({used}/{limit}); this function is released and your best attempt is saved. "
+                    "Call claim_function for the next function.")
+        return ""
+
     def compile_and_diff(self, agent: Agent, function: str, source: str, project: str | None = None) -> str:
-        return self.attempt(agent, function, source, project)["text"]
+        text = self.attempt(agent, function, source, project)["text"]
+        return text + self.attempt_limit_note(agent, function, project)
 
     def attempt(self, agent: Agent, function: str, source: str, project: str | None = None) -> dict:
+        with self.attempt_turn(agent, self._function(function, project)):
+            return self._attempt_unlimited(agent, function, source, project)
+
+    def _attempt_unlimited(self, agent: Agent, function: str, source: str, project: str | None = None) -> dict:
         """Compile, score and record one attempt. Returns {"text", "score", "matched"} (score None: didn't compile)."""
         fn = self._function(function, project)
         proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])

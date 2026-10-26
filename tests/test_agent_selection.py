@@ -110,6 +110,7 @@ def test_try_cap_releases_at_boundary_and_is_independent_per_worker(net):
     net._record(fn, a, 400, 'improved C', 1)
     assert not net.store.one('SELECT 1 FROM claims WHERE agent_id=?', a.id)
     assert net._function('large', 'game')['best_source'] == 'improved C'
+    assert 'Max tries reached (2/2)' in net.attempt_limit_note(a, 'large', 'game')
     with pytest.raises(NetworkError, match='Max tries reached'):
         net.attempt(a, 'large', 'another C candidate', 'game')
     assert net.claim_row(a, 'game')['name'] != 'large'
@@ -152,3 +153,41 @@ def test_project_attempts_cannot_bypass_cap(net, monkeypatch):
     monkeypatch.setattr(net.forks, '_fn', lambda *args: net._function('large', 'game'))
     with pytest.raises(NetworkError, match='Max tries reached'):
         net.forks.attempt(a, 'game', 'large', 'new C')
+
+
+def test_all_exhausted_functions_leave_no_work_for_that_worker(net):
+    a, _ = net.local_agent('a')
+    net.set_selection('game', a.name, {'max_tries': 1})
+    for name in ['small', 'middle', 'large']:
+        net._record(net._function(name, 'game'), a, 123, 'C', 1)
+    assert net.selection_remaining('game', a) == 0
+    assert net.claim_row(a, 'game') is None
+    net.set_selection('game', a.name, {})
+    assert net.selection_remaining('game', a) == 3
+
+
+def test_parallel_submissions_cannot_both_use_the_last_try(net, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    a, _ = net.local_agent('a')
+    net.set_selection('game', a.name, {'max_tries': 1})
+    fn = net.claim_row(a, 'game', function='large')
+    entered, proceed = threading.Event(), threading.Event()
+    compiled = []
+    def candidate(*args):
+        compiled.append(1)
+        entered.set()
+        assert proceed.wait(5)
+        net._record(fn, a, 123, 'C', 1)
+        return {'text': 'diff', 'score': 123, 'matched': False}
+    monkeypatch.setattr(net, '_attempt_unlimited', candidate)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(net.attempt, a, 'large', 'C', 'game')
+        assert entered.wait(5)
+        second = pool.submit(net.attempt, a, 'large', 'C2', 'game')
+        proceed.set()
+        assert first.result()['score'] == 123
+        with pytest.raises(NetworkError, match='Max tries reached'):
+            second.result()
+    assert len(compiled) == 1

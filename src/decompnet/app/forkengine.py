@@ -2672,6 +2672,11 @@ class ForkEngine:
 
     def attempt(self, agent: Agent, slug: str, function: str, source: str, keep: bool = True, prelude: str = "",
                 quiet: int | None = None, comment: bool = False) -> dict:
+        with self.net.attempt_turn(agent, self._fn(slug, function)):
+            return self._attempt_and_share(agent, slug, function, source, keep, prelude, quiet, comment)
+
+    def _attempt_and_share(self, agent: Agent, slug: str, function: str, source: str, keep: bool = True, prelude: str = "",
+                           quiet: int | None = None, comment: bool = False) -> dict:
         """`keep`: whether a version that doesn't match stays in the source file (an agent's work in progress) or
         is undone and kept only as the function's best attempt (autopilot's drafts). `prelude`: (decompdecomp's own
         tries) type definitions the code needs, placed after the file's includes. `quiet`: (the permuter's
