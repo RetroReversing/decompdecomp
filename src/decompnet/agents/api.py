@@ -50,7 +50,7 @@ TOO_MANY_REQUESTS = 429
 TOO_LONG_STATUSES = (400, 413, 422, 500)  # what servers answer a request too long for the model's context
 TOO_LONG_READ = 2000  # characters of that answer read for why
 # a function is done with when the helper compiled it to a match or released it: its work then folds into a line
-FINISHING = ("compile_and_diff", "compile_patch", "compile_variants", "release_function")
+FINISHING = ("compile_and_diff", "compile_patch", "compile_variants", "compile_family", "release_function")
 FOLDED = 2  # messages a fold leaves: one call and its result
 
 
@@ -259,7 +259,7 @@ def _done_line(net, slug: str, span: list[dict], done: int, count: int) -> str:
             fn = c["function"]
             if fn["name"] not in FINISHING:
                 continue
-            compiles += fn["name"] in ("compile_and_diff", "compile_patch", "compile_variants")
+            compiles += fn["name"] in ("compile_and_diff", "compile_patch", "compile_variants", "compile_family")
             try:
                 said = json.loads(fn.get("arguments") or "{}").get("function") or ""
             except ValueError:
@@ -378,6 +378,8 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
                             old=st("text occurring exactly once", True), new=st("replacement", True),
                             repair_note=st("Optional decisive repair"), repair_category=st("Repair category"),
                             repair_automation=st("Potential deterministic repair"))),
+        "compile_family": ("Generate bounded local casts, signedness or declaration_order variants; normal batch limits and exact judge.",
+                           s(function=st("function", True), revision=st("candidate revision", True), family=st("casts | signedness | declaration_order", True), old=st("exact expression or declaration anchor", True))),
         "compile_variants": ("Try up to six independent old/new patches against one revision; normal judge and limits. Reports the current revision; does not restore best trial.",
                              s(function=st("function", True), revision=st("candidate revision", True),
                                patches={"type": "array", "minItems": 1, "maxItems": 6, "req": True,

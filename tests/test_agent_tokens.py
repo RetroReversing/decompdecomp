@@ -86,7 +86,7 @@ def test_new_tools_and_paging_are_exposed_to_mcp_and_api(tmp_path):
     net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
     mcp=tools.build_mcp(net,lambda ctx:(a,'game'))
     definitions=anyio.run(mcp.list_tools)
-    for name in ('get_candidate','compile_patch','compile_variants','get_assembly','last_diff'):
+    for name in ('get_candidate','compile_patch','compile_variants','compile_family','get_assembly','last_diff'):
         assert name in {t.name for t in definitions}
         assert name in {t['function']['name'] for t in api_tool_schemas()}
         assert name in tools.tool_names(False) and name in tools.tool_names(True)
@@ -241,3 +241,69 @@ def test_variant_time_budget_stops_before_next_compile(tmp_path, monkeypatch):
     seen=[];monkeypatch.setattr(tools,'_compile',lambda *args:seen.append(args) or 'score 10')
     result=agent_tokens.variants(net,a,'game','f',rev,[{'old':'1','new':'2'},{'old':'1','new':'3'}])
     assert len(seen)==1 and '60-second batch budget reached' in result
+
+
+def test_grouped_batch_compares_start_and_keeps_failures_separate(tmp_path, monkeypatch):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    source='int f(){return 1;}'
+    with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?',(source,))
+    net.claim_row(a,'game','f');fn=net._function('f','game')
+    before=[('i','base','target')];after=[('i','new','target')]
+    net.keep_diff(a.id,fn['id'],before)
+    agent_tokens.outcome(net,a,fn,source,'score 20')
+    seen=[]
+    def compile(agent, function, src, slug):
+        seen.append(src)
+        if 'return 4' in src:
+            net._record(fn,agent,None,src,1)
+            return 'COMPILE ERROR\ninvalid candidate score 0'
+        net._record(fn,agent,10,src,1);net.keep_diff(a.id,fn['id'],after)
+        return 'score 10'
+    monkeypatch.setattr(net,'compile_and_diff',compile)
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    result=agent_tokens.variants(net,a,'game','f',rev,[{'old':'return 1','new':f'return {i}'} for i in (2,3,4)])
+    assert len(seen)==3 and 'Variants 1,2: score 10; improved vs starting score 20' in result
+    assert '1 displayed diff rows changed' in result
+    assert 'Variants 3: score unavailable' in result and 'invalid candidate' in result
+    summary=agent_tokens.tried_summary(net,fn)
+    assert 'explicit patches: 3 trials' in summary and 'not exhausted' in summary
+    assert 'Already tried' in agent_tokens.brief(net,'## CLAIMED: game/f\n','game',a)
+
+
+def test_equal_score_different_diffs_do_not_group(tmp_path, monkeypatch):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?',('int f(){return 1;}',))
+    net.claim_row(a,'game','f');fn=net._function('f','game')
+    def compile(agent,function,src,slug):
+        net._record(fn,agent,10,src,1);net.keep_diff(a.id,fn['id'],[('i',src,'target')]);return 'score 10'
+    monkeypatch.setattr(net,'compile_and_diff',compile)
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    result=agent_tokens.variants(net,a,'game','f',rev,[{'old':'1','new':'2'},{'old':'1','new':'3'}])
+    assert 'Variants 1:' in result and 'Variants 2:' in result and 'Variants 1,2:' not in result
+    assert 'baseline unavailable' in result
+
+
+def test_generated_families_are_bounded_and_explicit():
+    casts=agent_tokens.family_patches('casts','value')
+    assert len(casts)==6 and casts[0]=={'old':'value','new':'(int)(value)'}
+    assert agent_tokens.family_patches('signedness','unsigned int value;')[0]['new']=='int value;'
+    assert agent_tokens.family_patches('signedness','s32 value;')[0]['new']=='u32 value;'
+    assert agent_tokens.family_patches('declaration_order','int a;\nshort b;')[0]['new']=='short b;\nint a;'
+    for family,old in [('invalid','x'),('signedness','float x;'),('declaration_order','int a=side_effect();\nint b;')]:
+        with pytest.raises(NetworkError):agent_tokens.family_patches(family,old)
+
+
+@pytest.mark.parametrize('mode',['rom','fork'])
+def test_local_family_uses_same_batch_judge_and_records_history(tmp_path, monkeypatch, mode):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode}),))
+        db.execute('UPDATE functions SET best_source=?',('int f(){int x;return x;}',))
+    net.claim_row(a,'game','f');fn=net._function('f','game');seen=[]
+    def compile(agent,function,source,slug):
+        seen.append(source);net._record(fn,agent,10,source,1);return 'score 10'
+    monkeypatch.setattr(net,'compile_and_diff',compile)
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    result=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'signedness','old':'int x;'})
+    assert seen==['int f(){unsigned int x;return x;}'] and 'Generated replacements' in result
+    assert 'signedness: 1 trials' in agent_tokens.tried_summary(net,fn)
