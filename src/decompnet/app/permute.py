@@ -258,7 +258,7 @@ class Permuter:
             with self.net.store.tx() as db:
                 db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (key, str(fn['id'])))
             candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '')
-            if not candidates or not self._hold(agent, fn, count_turn=False):
+            if not self._hold(agent, fn, count_turn=False):
                 continue
             st.holding(fn['name'], True)
             try:
@@ -277,7 +277,7 @@ class Permuter:
                     if st.stop.is_set() or attempts >= 32 or time.monotonic() >= deadline:
                         break
                     digest = hashlib.sha256((context + candidate).encode()).hexdigest()
-                    trial = f"draft-repair-v4:{fn['id']}:{digest}"
+                    trial = f"draft-repair-v5:{fn['id']}:{digest}"
                     if self.net.store.one("SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?", fn['id'], trial):
                         continue
                     attempts += 1
@@ -292,6 +292,8 @@ class Permuter:
                         if score == 0:
                             st.add(matched=1)
                             break
+                if not fork and best > 0 and attempts <= 29 and time.monotonic() < deadline and not st.stop.is_set():
+                    attempts += self._repair_flags(agent, proj, fn, st, deadline)
             except Exception:
                 log.exception("permuter: targeted repairs failed for %s", fn['name'])
             finally:
@@ -389,6 +391,46 @@ class Permuter:
                 gen.close()
             st.holding(fn["name"], False)
             self._let_go(agent, fn)
+
+    def _repair_flags(self, agent, proj, fn, st, deadline):
+        """Two cached debug-flag probes on close ROM misses; persist only a byte-exact function range.
+
+        Imported projects own their build flags: never rewrite their build setup from this phase.
+        """
+        if not hasattr(self.net, '_judge_with'):
+            return 0
+        current = self.net.store.one("SELECT * FROM functions WHERE id=?", fn['id'])
+        if current['status'] != 'open' or not current['best_score'] or current['best_score'] > current['n_insns'] * 2:
+            return 0
+        own = compiler_for(self.net.cfg(proj), fn['vram'])
+        ctx = self.net._context(proj['id'], fn['unit'])
+        count = 0
+        symbols = [tuple(row) for row in self.net.store.all('SELECT name,address FROM symbols WHERE project_id=? ORDER BY name', proj['id'])]
+        choices = [f for f in self.net.debug_flag_variants(own['toolchain'], list(own['flags'])) if f != own['flags']]
+        for flags in choices[:2]:
+            if st.stop.is_set() or time.monotonic() >= deadline:
+                break
+            digest = hashlib.sha256(repr((current['target'], current['relocs'], current['best_source'],
+                                          ctx['header'], self.net.cfg(proj), symbols, flags)).encode()).hexdigest()
+            key = 'draft-debug-v1:' + digest
+            if self.net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], key):
+                continue
+            count += 1
+            st.add(variants=1, repairs=1)
+            exact, _, _ = self.net._judge_with(proj, current, own['toolchain'], flags, current['best_source'])
+            with self.net.store.tx() as db:
+                db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
+                           (fn['id'], key, 'match' if exact else 'miss', 'near-miss debug flag probe'))
+            if exact:
+                # Changing this function's compiler settings cannot invalidate another function's match.
+                self.net.set_compiler_ranges(proj['slug'], [[fn['vram'], fn['vram'] + fn['size']]], own['toolchain'], flags)
+                fresh = self.net.project_row(proj['slug'])
+                count += 1
+                st.add(variants=1, repairs=1)
+                if self._score(agent, fresh, current, current['best_source'], current['best_score'], None) == 0:
+                    st.add(improved=1, matched=1)
+                break
+        return count
 
     def _score(self, agent, proj, fn, source: str, best: int, fork: str | None) -> int | None:
         """A variant's score; recorded (as the function's best attempt, or its match) only when it beats `best`."""
