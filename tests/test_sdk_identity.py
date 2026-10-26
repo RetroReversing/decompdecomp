@@ -65,7 +65,7 @@ def test_sdk_badge_explains_identity_without_changing_match_status():
     node = shutil.which('node')
     if not node:
         pytest.skip('Node is needed for GUI helper tests')
-    source = (Path(__file__).parents[1] / 'src/decompnet/app/static/js/function.js').read_text()
+    source = (Path(__file__).parents[1] / 'src/decompnet/app/static/js/function.js').read_text(encoding='utf-8')
     helper = source[source.index('function sdkBadge('):source.index('function renderList(')]
     script = '''const assert = require('node:assert/strict');
 const esc = s => s.replaceAll('<', '&lt;').replaceAll('"', '&quot;');
