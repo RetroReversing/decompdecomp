@@ -784,3 +784,9 @@ tokens per match (unavailable rates show a dash). They can be sorted by status, 
 model or token efficiency. Work settings expose the effective functions-per-session value and can save a new
 value for the next session without restarting the current function. The shared scheduler supports least-tried
 first alongside the existing selection strategies, in ROM and imported project mode.
+
+Verified rebuilt imports can prepare writable C candidates from their original assembly paths, as well as
+independently generated reference assembly. Autopilot probes up to 32 new source-less units per run using
+the project's actual build rule; later runs continue with the next batch. Original assembly and reference
+objects remain unchanged. MIPS drafts normalize numeric general registers to ABI names so return registers
+are recognized; coprocessor register numbers and data directives are preserved.
