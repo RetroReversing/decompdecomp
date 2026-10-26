@@ -10,6 +10,7 @@ from ..forks.csource import _blank, find
 
 LIMIT = 8
 _IDENT = r'[A-Za-z_]\w*'
+_MEMBER = rf'{_IDENT}(?:\s*(?:->|\.)\s*{_IDENT})*'
 
 
 def variants(source: str, name: str, arch: str) -> list[str]:
@@ -48,10 +49,10 @@ def variants(source: str, name: str, arch: str) -> list[str]:
     # Byte pointers converted to integer addresses can need the operands exchanged too. The 32-bit cast
     # is only proposed on supported 32-bit processors, never on a 64-bit or unknown imported project.
     if arch in {'mips', 'ppc', 'x86', 'arm', 'thumb'}:
-        address = re.compile(rf'\(\s*\(\s*(?:u8|char|unsigned\s+char)\s*\*\s*\)\s*'
-                             rf'(?P<p>{_IDENT})\s*\+\s*(?P<i>{_IDENT})\s*\)')
+        address = re.compile(rf'\(\s*(?P<wrap>\()?\s*\(\s*(?:u8|char|unsigned\s+char)\s*\*\s*\)\s*'
+                             rf'(?P<p>{_MEMBER})\s*(?(wrap)\))\s*\+\s*(?P<i>{_IDENT})\s*\)')
         for m in address.finditer(body):
-            add(offset + m.start(), offset + m.end(), f'({m["i"]} + (int){m["p"]})')
+            add(offset + m.start(), offset + m.end(), f'({m["i"]} + (int){source[offset + m.start("p"):offset + m.end("p")]})')
 
     # Try dropping a trailing literal from a call, not an arbitrary expression with side effects. Walk
     # balanced parentheses so nested calls/commas are not confused with the outer argument boundary.

@@ -142,3 +142,20 @@ def test_run_again_does_not_start_random_permutation_or_remote_room_work():
     net.links = {'game': object()}
     state = perm.repair_pass('game', threading.Event())
     assert state.repairs == 0
+
+
+@pytest.mark.parametrize('pointer', ['obj->base', 'obj.data.base', 'obj -> link -> base'])
+@pytest.mark.parametrize('wrapped', [False, True])
+def test_member_address_cast_with_optional_parentheses(pointer, wrapped):
+    cast = f'(u8 *) {pointer}'
+    if wrapped:
+        cast = f'({cast})'
+    src = f'int f(int i) {{ return *(int *)({cast} + i); }}'
+    assert f'int f(int i) {{ return *(int *)(i + (int){pointer}); }}' in variants(src, 'f', 'mips')
+    assert not variants(src, 'f', 'x86_64')
+
+
+def test_member_rule_excludes_calls_and_increments():
+    for expr in ['get()->base', 'obj[i++].base', 'obj->base++']:
+        src = f'int f(int i) {{ return *(int *)(((u8 *) {expr}) + i); }}'
+        assert not variants(src, 'f', 'mips')

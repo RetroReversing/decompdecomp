@@ -276,7 +276,7 @@ class Permuter:
                     if st.stop.is_set() or attempts >= 32 or time.monotonic() >= deadline:
                         break
                     digest = hashlib.sha256((context + candidate).encode()).hexdigest()
-                    trial = f"draft-repair-v1:{fn['id']}:{digest}"
+                    trial = f"draft-repair-v2:{fn['id']}:{digest}"
                     if self.net.store.one("SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?", fn['id'], trial):
                         continue
                     attempts += 1
