@@ -55,16 +55,17 @@ enabled = ["Bash"]
     assert KIMI.models(None, run=False)[0]['id'] == 'kimi-code/test'
 
 
-def test_stdin_bridge_passes_prompt_in_memory_not_process_argv(tmp_path):
+@pytest.mark.parametrize('newline',['\n','\r\n'])
+def test_stdin_bridge_passes_prompt_in_memory_not_process_argv(tmp_path,newline):
     node = shutil.which('node')
     if not node:
         pytest.skip('needs Node')
     entry = tmp_path / 'fake-cli.mjs'
     entry.write_text('console.log(JSON.stringify({args:process.argv.slice(2)}));')
     cmd = KIMI.launch_command([node, str(entry), '--output-format', 'stream-json'])
-    prompt = 'Multiline prompt\nwith "quotes" and `shell` syntax $(untouched)'
+    prompt = 'Multiline prompt'+newline+'with "quotes" and `shell` syntax $(untouched)'
     assert all(prompt not in arg for arg in cmd)
-    result = subprocess.run(cmd, input=prompt, text=True, capture_output=True, check=True, timeout=10)
+    result = subprocess.run(cmd, input=prompt.encode(), capture_output=True, check=True, timeout=10)
     assert json.loads(result.stdout)['args'] == ['--output-format', 'stream-json', '-p', prompt]
 
 
