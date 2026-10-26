@@ -2676,6 +2676,7 @@ class ForkEngine:
         variants) recorded only when better than this score. A try that isn't kept holds the function only while
         it builds (twins' tries come unclaimed: a 30-minute claim each kept agents off them, then counted as given up).
         `comment`: (polishing) the comment right above the definition goes into the file, in place of the file's."""
+        self.net.check_attempt_limit(agent, self._fn(slug, function))
         held = None if keep else self._hold_for_try(slug, function, agent)
         try:
             res = self._attempt(agent, slug, function, source, keep, prelude, quiet, comment)

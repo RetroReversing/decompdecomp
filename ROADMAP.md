@@ -655,6 +655,12 @@ Before building it, find out:
 
 The answer goes here: build it, build part of it, or not, and why.
 
+### Per-agent work selection (done)
+
+The launcher and each worker card offer independent queue strategies, a best-match percentage ceiling and per-worker candidate-attempt limits.
+Choices persist across sessions, apply to ROM/project mode and travel to the team host; automatic mode keeps
+adaptive routing. Configured queues do not batch unfiltered neighbours.
+
 ## Later
 
 - **Better look-alikes.** A second measure (edit distance over opcodes) next to today's, and shared runs of

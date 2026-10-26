@@ -222,6 +222,13 @@ const settle = async () => { for (let i = 0; i < SETTLE_TICKS; i++) await tick()
       return { good: good && [good.platform, good.code, good.title], broken: identifyHead(h, file), said: notSupported(h, file) };
     })(),
     // the launcher keeps the last effort picked: Claude Code's xhigh isn't one opencode offers
+    selection: (() => {
+      const box = (raw, strategy) => ({querySelector: (sel) => ({value: sel === "[data-selection-below]" ? raw : sel === "[data-selection-tries]" ? "" : strategy})});
+      let rejected = false;
+      try { readSelection(box("101", "hardest")); } catch (_) { rejected = true; }
+      return [readSelection(box("80", "hardest")), readSelection(box("", "untried")), rejected,
+        selectionFields({strategy: "hardest", match_below: 75}).includes('value="hardest" selected')];
+    })(),
     efforts: (() => {
       LZ.effort = "xhigh";
       const claude = { takes_effort: true, efforts: ["low", "medium", "high", "xhigh", "max"] };

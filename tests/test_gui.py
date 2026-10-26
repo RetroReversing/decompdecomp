@@ -195,3 +195,8 @@ def test_grouped_name_hints_and_rename_refresh():
         pytest.skip("needs node to run the GUI's scripts")
     subprocess.run([NODE, str(Path(__file__).with_name("gui_name_hints.js"))], check=True,
                    capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_work_selection_keeps_zero_and_blank_distinct_and_validates_the_threshold(gui):
+    assert gui["checks"]["selection"] == [
+        {"strategy": "hardest", "match_below": 80}, {"strategy": "untried", "match_below": None}, True, True]

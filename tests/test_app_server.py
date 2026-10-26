@@ -747,3 +747,27 @@ def test_free_search_settings_are_bounded_and_can_disable_automatic_work(app):
     assert response.json()['reuse_seconds'] == 600 and response.json()['reuse_attempts'] == 1
     assert not net.cascades.enabled
     client.post('/api/settings', json={'reuse_seconds': 120, 'reuse_attempts': 128}, headers={'X-Decomp': '1'})
+
+
+def test_work_selection_route_edits_only_the_named_worker(tmp_path, monkeypatch):
+    from .test_loading import tiny_game
+
+    net = RomNetwork(tmp_path / "decomp.db", tmp_path)
+    tiny_game(net)
+    mcp, manager, security, _ = build(net, tmp_path, PORT, SECRET)
+    monkeypatch.setattr(manager, "_prepare", lambda slug: None)
+    monkeypatch.setattr(manager, "_run", lambda session: None)
+    client = TestClient(mcp.streamable_http_app(transport_security=security, host="127.0.0.1"),
+                        base_url=f"http://127.0.0.1:{PORT}", headers=WINDOW)
+    response = client.post("/api/agents/start", headers={"X-Decomp": "1"}, json={
+        "kind": "codex", "slug": "game", "options": {"selection": {"strategy": "hardest", "match_below": 80}}})
+    assert response.status_code == 200, response.text
+    sid = response.json()["started"][0]
+    response = client.post("/api/agents/selection", headers={"X-Decomp": "1"}, json={
+        "id": sid, "selection": {"strategy": "untried", "match_below": 70}})
+    assert response.status_code == 200, response.text
+    assert manager.sessions[sid].snapshot()["selection"] == {"strategy": "untried", "match_below": 70.0}
+    invalid = client.post("/api/agents/selection", headers={"X-Decomp": "1"}, json={
+        "id": sid, "selection": {"match_below": 101}})
+    assert invalid.status_code == 400
+    assert manager.sessions[sid].snapshot()["selection"]["match_below"] == 70

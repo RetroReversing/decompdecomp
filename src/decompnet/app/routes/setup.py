@@ -85,7 +85,7 @@ def register(app: App) -> None:
         data = await body(request)
         kind, slug = str(data.get("kind", "")), str(data.get("slug", ""))
         given = data.get("options") or {}
-        options = {k: v for k, v in given.items() if k in ("model", "per_session", "task")}  # task: "readable" polishes
+        options = {k: v for k, v in given.items() if k in ("model", "per_session", "task", "selection")}  # task: "readable" polishes
         options.setdefault("per_session", settings.data.get("per_session", agents.PER_SESSION))
         count = max(1, min(int(data.get("count", 1)), agents.MAX_AT_ONCE))
         picked: list[str] = []
@@ -110,6 +110,17 @@ def register(app: App) -> None:
             settings.data["recent_models"][kind] = [model] + [m for m in recent if m != model][:7]
         settings.save()
         return JSONResponse({"started": ids})
+
+    @mcp.custom_route("/api/agents/selection", methods=["POST"])
+    async def api_agents_selection(request: Request) -> Response:
+        if (bad := guard(request, write=True)):
+            return bad
+        data = await body(request)
+        try:
+            policy = manager.set_selection(str(data.get("id", "")), data.get("selection") or {})
+        except (NetworkError, ValueError) as e:
+            return fail(e)
+        return JSONResponse({"selection": policy})
 
     @mcp.custom_route("/api/agents/stop", methods=["POST"])
     async def api_agents_stop(request: Request) -> Response:

@@ -157,6 +157,7 @@ STRATEGIES = {
                        "g.project_id=f.project_id AND g.unit=f.unit AND g.status='open') ASC, f.n_insns ASC",
     # near-misses, the ones given up on least first (else every agent resumes the same stuck one)
     "closest": "f.best_score IS NULL, f.abandons ASC, CAST(f.best_score AS REAL) / (f.n_insns * 100) ASC",
+    "untried": "f.attempts > 0, f.abandons > 0, f.n_insns ASC",
     "hardest": "f.n_insns DESC",
     "random": "RANDOM()",
 }
@@ -629,8 +630,14 @@ class Network:
             "SELECT DISTINCT f.name FROM functions f JOIN events e ON e.project_id=f.project_id AND e.detail=f.name "
             "WHERE f.project_id=? AND f.status='open' AND e.agent_id=? AND e.kind='release' AND e.created_at > ? "
             "AND f.id NOT IN (SELECT function_id FROM claims) ORDER BY f.name", proj["id"], agent.id, cutoff)
+        policy = self.selection(proj["slug"], agent.name)
+        selection_note = (f" Work selection: {policy.get('strategy') or 'automatic'}"
+                          + (f", below {policy['match_below']:g}% match" if policy.get("match_below") is not None else "")
+                          + (f", max {policy['max_tries']} tries per function" if policy.get("max_tries") else "")
+                          + ". No eligible free function is available; do not repeatedly claim. Change the filter or wait."
+                          if any(v is not None and v != "" for v in policy.values()) else "")
         lines = [f"Nothing to claim in {proj['slug']} right now: {n_open} function{'s' * (n_open != 1)} "
-                 f"{'are' if n_open != 1 else 'is'} open, but none is free for you."]
+                 f"{'are' if n_open != 1 else 'is'} open, but none is free for you.{selection_note}"]
         if held:
             shown = ", ".join(f"{r['name']} ({r['agent'] or '?'}, {max(0, int(r['expires_at'] - now)) // 60} min left)"
                               for r in held[:10])
@@ -642,6 +649,80 @@ class Network:
                          f"{', '.join(names[:10])}{', ...' if len(names) > 10 else ''}. They come back to you later. "
                          f"To take one now, call claim_function with function=\"{names[0]}\".")
         return "\n".join(lines)
+
+    @staticmethod
+    def validate_selection(policy: dict | None) -> dict:
+        """User queue choices are enforced by the scheduler, not left to the model's prompt."""
+        if policy is not None and not isinstance(policy, dict):
+            raise NetworkError("Work selection must contain a strategy and optional match percentage")
+        policy = dict(policy or {})
+        strategy = policy.get("strategy", "")
+        if strategy is None:
+            strategy = ""
+        if not isinstance(strategy, str) or (strategy and strategy not in STRATEGIES):
+            raise NetworkError(f"strategy must be one of {', '.join(STRATEGIES)}")
+        below = policy.get("match_below")
+        if below is not None and below != "":
+            try:
+                below = float(below)
+            except (ValueError, TypeError):
+                raise NetworkError("Match percentage must be a number from 0 to 100") from None
+            if not 0 <= below <= 100:
+                raise NetworkError("Match percentage must be a number from 0 to 100")
+        else:
+            below = None
+        result = {"strategy": strategy, "match_below": below}
+        limit = policy.get("max_tries")
+        if limit is not None and limit != "":
+            try:
+                value = float(limit)
+            except (ValueError, TypeError):
+                raise NetworkError("Max tries must be a whole number from 1 to 10000") from None
+            if isinstance(limit, bool) or not 1 <= value <= 10000 or not value.is_integer():
+                raise NetworkError("Max tries must be a whole number from 1 to 10000")
+            result["max_tries"] = int(value)
+        return result
+
+    def set_selection(self, project: str, agent: str, policy: dict | None) -> dict:
+        policy = self.validate_selection(policy)
+        with self.store.tx() as db:
+            db.execute("INSERT OR REPLACE INTO agent_selection VALUES(?,?,?)", (project, agent, json.dumps(policy)))
+        return policy
+
+    def selection(self, project: str, agent: str) -> dict:
+        row = self.store.one("SELECT policy FROM agent_selection WHERE project=? AND agent=?", project, agent)
+        return json.loads(row["policy"]) if row else {}
+
+    def attempt_limit(self, agent: Agent, fn) -> tuple[int | None, int]:
+        slug = self.store.one("SELECT slug FROM projects WHERE id=?", fn["project_id"])["slug"]
+        limit = self.selection(slug, agent.name).get("max_tries")
+        used = self.store.one("SELECT COUNT(*) AS n FROM attempts WHERE function_id=? AND agent_id=?",
+                              fn["id"], agent.id)["n"] if limit is not None else 0
+        return limit, used
+
+    def check_attempt_limit(self, agent: Agent, fn) -> None:
+        """Candidate submissions (including compile errors) count across sessions, per worker and function."""
+        if fn["status"] != "open":
+            return  # polishing and reads of matched code have their own queue
+        limit, used = self.attempt_limit(agent, fn)
+        if limit is None or used < limit:
+            return
+        held = self.store.one("SELECT 1 FROM claims WHERE function_id=? AND agent_id=?", fn["id"], agent.id)
+        if held:
+            Network.release(self, agent, fn["name"], f"User's max tries reached ({used}/{limit}); best attempt retained.",
+                            self.store.one("SELECT slug FROM projects WHERE id=?", fn["project_id"])["slug"])
+        raise NetworkError(f"Max tries reached for {fn['name']} ({used}/{limit}). Your work is saved. "
+                           "Call claim_function for another function, or ask the user to raise the limit.")
+
+    def selection_remaining(self, project: str, agent: Agent) -> int:
+        policy = self.selection(project, agent.name)
+        return self.store.one(
+            "SELECT COUNT(*) AS n FROM functions f JOIN projects p ON p.id=f.project_id WHERE p.slug=? "
+            "AND f.status='open' AND (? IS NULL OR f.best_score IS NULL OR "
+            "MAX(0.0, 100.0 * (1.0 - CAST(f.best_score AS REAL) / MAX(1, f.n_insns * 100))) < ?) "
+            "AND (? IS NULL OR (SELECT COUNT(*) FROM attempts a WHERE a.function_id=f.id AND a.agent_id=?) < ?)",
+            project, policy.get("match_below"), policy.get("match_below"), policy.get("max_tries"), agent.id,
+            policy.get("max_tries"))["n"]
 
     def claim_row(self, agent: Agent, project: str | None = None, function: str | None = None,
                   strategy: str = "easiest"):
@@ -668,6 +749,13 @@ class Network:
                     raise NetworkError(f"{fn['name']} is already matched; use get_function to read its source")
                 if fn["status"] == "asm":
                     raise NetworkError(f"{fn['name']} is set aside ({set_aside(fn)['set_aside']}): claim another")
+                slug = proj["slug"] if proj else db.execute("SELECT slug FROM projects WHERE id=?", (fn["project_id"],)).fetchone()["slug"]
+                self.check_attempt_limit(agent, fn)
+                below = self.selection(slug, agent.name).get("match_below")
+                if below is not None and fn["best_score"] is not None:
+                    percent = max(0.0, 100.0 * (1.0 - fn["best_score"] / max(1, fn["n_insns"] * 100)))
+                    if percent >= below:
+                        raise NetworkError(f"{fn['name']} is outside this agent's match percentage filter; claim another")
                 other = db.execute("SELECT agent_id, expires_at FROM claims WHERE function_id=?", (fn["id"],)).fetchone()
                 if other is not None:
                     raise NetworkError(f"{fn['name']} is claimed by {self._agent_name(other['agent_id'])} "
@@ -675,7 +763,12 @@ class Network:
                 db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fn["id"], agent.id, now, now + self.claim_ttl))
                 self._event(db, fn["project_id"], agent.id, "claim", fn["name"])
             else:
-                route = self._route(db, proj["id"], agent, now)
+                policy = self.selection(proj["slug"], agent.name)
+                custom = bool(policy.get("strategy"))
+                strategy = policy.get("strategy") or strategy
+                # Explicit user ordering wins over adaptive routing and release penalties. Leases and the
+                # agent's recent-release exclusion still prevent two workers or a tight retry loop.
+                route = None if custom else self._route(db, proj["id"], agent, now)
                 family = model_family(agent.name)
                 kin = [r["id"] for r in db.execute("SELECT id, name FROM agents") if model_family(r["name"]) == family]
                 tried = db.execute("SELECT SUM(status = 'matched') AS won, SUM(status = 'matched' OR attempts > 0) "
@@ -687,24 +780,29 @@ class Network:
                 query = (
                     f"""SELECT f.* FROM functions f LEFT JOIN {_REGION} r ON r.region = f.vram / {REGION_BYTES}
                         WHERE f.project_id=:pid AND f.status='open' AND (:weak = 0 OR f.abandons < :escalate)
+                        AND (:below IS NULL OR f.best_score IS NULL OR
+                             MAX(0.0, 100.0 * (1.0 - CAST(f.best_score AS REAL) / MAX(1, f.n_insns * 100))) < :below)
+                        AND (:tries IS NULL OR (SELECT COUNT(*) FROM attempts a
+                             WHERE a.function_id=f.id AND a.agent_id=:agent) < :tries)
                         AND f.id NOT IN (SELECT function_id FROM claims)
                         AND f.name NOT IN (SELECT detail FROM events WHERE project_id=:pid AND agent_id=:agent
                                            AND kind='release' AND created_at > :mine)
-                        ORDER BY f.id IN ({WAITING}),
-                                 f.name IN (SELECT detail FROM events WHERE project_id=:pid AND agent_id=:agent
-                                            AND kind='release'),
-                                 f.name IN (SELECT detail FROM events WHERE project_id=:pid AND kind='release'
+                        ORDER BY CASE WHEN :custom THEN 0 ELSE f.id IN ({WAITING}) END,
+                                 CASE WHEN :custom THEN 0 ELSE f.name IN (SELECT detail FROM events WHERE project_id=:pid AND agent_id=:agent
+                                            AND kind='release') END,
+                                 CASE WHEN :custom THEN 0 ELSE f.name IN (SELECT detail FROM events WHERE project_id=:pid AND kind='release'
                                             AND agent_id IN (SELECT value FROM json_each(:kin)) AND created_at >
                                             COALESCE((SELECT MAX(created_at) FROM events WHERE project_id=:pid
-                                                      AND kind IN ('context', 'compiler')), 0)),
-                                 f.name IN (SELECT detail FROM events WHERE project_id=:pid AND kind='release'
-                                            AND created_at > :cooled),
-                                 f.id IN ({READY}) DESC, f.id IN ({WANTED}) DESC,
+                                                      AND kind IN ('context', 'compiler')), 0)) END,
+                                 CASE WHEN :custom THEN 0 ELSE f.name IN (SELECT detail FROM events WHERE project_id=:pid AND kind='release'
+                                            AND created_at > :cooled) END,
+                                 CASE WHEN :custom THEN 0 ELSE f.id IN ({READY}) END DESC, CASE WHEN :custom THEN 0 ELSE f.id IN ({WANTED}) END DESC,
                                  :strong AND f.abandons >= :escalate DESC, {STRATEGIES[strategy]} LIMIT 1""")
                 escalate = self._escalation(db, proj["id"]) if route else ESCALATE_AFTER
                 args = {"pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
                         "overall": overall, "escalate": escalate, "weak": route == "weak", "strong": route == "strong",
-                        "mine": self._own_release_cutoff(db, agent.id, now)}
+                        "mine": self._own_release_cutoff(db, agent.id, now), "custom": custom,
+                        "below": policy.get("match_below"), "tries": policy.get("max_tries")}
                 fn = db.execute(query, args).fetchone()
                 if fn is None and route == "weak":  # only what stronger models are for is left: better tried than idle
                     fn = db.execute(query, args | {"weak": False}).fetchone()
@@ -981,6 +1079,8 @@ class Network:
         proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
         now = time.time()
 
+        self.check_attempt_limit(agent, fn)
+
         # Claim bookkeeping first: you can't score (or get credit) on someone else's function.
         with self.store.tx() as db:
             self._expire_claims(db)
@@ -1192,6 +1292,11 @@ class Network:
                            (source, agent.id, now, source, fn["id"]))
                 db.execute("DELETE FROM claims WHERE function_id=?", (fn["id"],))
                 self._event(db, fn["project_id"], agent.id, "match", fn["name"])
+        if not matched and fn["status"] == "open":
+            try:
+                self.check_attempt_limit(agent, fn)
+            except NetworkError:
+                pass  # the attempt itself still returns its diff; the next claim moves on
         if matched:
             self.on_match(self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"]), fn["id"], agent)
 
