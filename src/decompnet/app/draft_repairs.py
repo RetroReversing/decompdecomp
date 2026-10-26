@@ -8,7 +8,7 @@ import re
 
 from .. import m2cfix, seeds
 from ..forks.csource import _blank, find
-from . import expression_repairs
+from . import branch_locals, expression_repairs
 
 LIMIT = 8
 _IDENT = r'[A-Za-z_]\w*'
@@ -30,6 +30,8 @@ def variants(source: str, name: str, arch: str, asm: str = '') -> list[str]:
     body = body[:-1]
     offset = opening + 1
     proposals = []
+    if local := branch_locals.variant(source, name):
+        proposals.append(local)
     # Fresh m2c drafts already get this alternative in autopilot. Saved/transferred drafts need the
     # same chance, with their macro typedef block kept out of the refinement's type substitutions.
     if arch == 'mips' and ('M2C_FIELD(' in source or 'M2C_UNK' in source):
