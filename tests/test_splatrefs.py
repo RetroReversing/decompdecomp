@@ -257,7 +257,8 @@ def test_assembly_units_are_visible_without_counting_original_assembly_as_c(tmp_
 
 
 @pytest.mark.parametrize('root_elf', [False, True])
-def test_verified_rebuild_retains_nested_config_version(tmp_path, monkeypatch, root_elf):
+@pytest.mark.parametrize('source_tree', [True, False])
+def test_verified_rebuild_retains_nested_config_version(tmp_path, monkeypatch, root_elf, source_tree):
     cfg = config(tmp_path)
     data = b'full original cartridge'
     image = tmp_path/'baserom.jp.z64'
@@ -265,10 +266,13 @@ def test_verified_rebuild_retains_nested_config_version(tmp_path, monkeypatch, r
     elf = tmp_path / ('demo.elf' if root_elf else 'build/demo.elf')
     if root_elf:
         cfg['options']['elf_path'] = 'demo.elf'
-    mapping = elf.with_suffix('.map')
+    mapping = elf.with_suffix('.map') if source_tree else tmp_path / (elf.stem + '.map')
+    if not source_tree:
+        cfg['options']['src_path'] = 'not-created-yet'
     elf.write_bytes(b'linked ELF read by mocked objcopy')
     monkeypatch.setattr(splatrefs, 'binary_span', lambda _: len(data))
     mapping.write_text(' .text 0x80000400 0x10 build/src/demo.o\n')
+    (elf.parent / 'unrelated.map').write_text('other image, not this ELF')
     (tmp_path/'asm').mkdir()
     (tmp_path/'build/asm').mkdir()
     (tmp_path/'src/demo.s').write_text('assembly alternative for the same linked C object')

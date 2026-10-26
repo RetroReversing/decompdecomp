@@ -41,7 +41,10 @@ When a Splat layout omits explicit segment addresses, the importer can use the
 linked ELF and map instead. It creates reference objects only after converting
 the complete ELF back to an image with the original SHA-1. Cartridge FF gap
 fill and trailing FF padding are supported; every layout must pass that same
-whole-image hash. Assembly-only units remain unrecovered.
+whole-image hash. Assembly-only checkouts need no empty source directory; their
+units remain unrecovered. The importer prefers the map with the matching ELF
+basename, beside the ELF or at the checkout root, so another linked program's
+map cannot accidentally supply its object list.
 
 Recovered function names are paired with generated assembly names only when the
 linked symbol address identifies one unique candidate. These mappings change
