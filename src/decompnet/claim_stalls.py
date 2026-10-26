@@ -2,7 +2,7 @@
 import hashlib
 import json
 
-VERSION = 'local-repairs-v8'
+VERSION = 'local-repairs-v9'
 RELEASES = 3
 PREFIX = 'agent-stall:'
 

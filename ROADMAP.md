@@ -137,6 +137,14 @@ remain planned. Dynamic addends, ambiguous mappings and named-field reconstructi
 still need deeper analysis. Candidate-local padding repair now handles simple struct definitions in the
 candidate itself, with bounded proposals from aligned load/store offsets. Shared-header layout reconstruction,
 complex/nested types and field reordering remain planned.
+Deterministic candidates also split field/address expressions into pointer temporaries, materialize small
+arithmetic/comparison literals, and materialize both floating comparison loads in either load order without
+inverting the comparison. Saved drafts and fresh m2c autopilot try explicitly bounded byte stack buffers,
+including canonical indexed fill loops. Guarded induction alternatives translate simple typed-pointer
+loops to indexed accesses and back, plus a narrow string-loop latch repair. All five families reach the
+same ROM/imported judge and agent-local family tools; unsupported syntax is skipped. Families rotate within
+the candidate cap. These are bounded hypotheses, not general C control-flow reconstruction or semantic proofs.
+
 Bounded scheduling repairs include debug-flag-gated statement/else line joins, floating-expression
 hoisting before stores, and scalar parameter assignments split through compatible locals. After an agent
 releases a tried function, a separate machine pass tries at most six candidates with an eight-second

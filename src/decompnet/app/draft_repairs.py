@@ -97,4 +97,13 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
             break
     for text in proposals:
         labels.setdefault(text,'expression_or_near_repair')
-    return proposals[:LIMIT]
+    # Round-robin families so a new family cannot crowd existing repairs out of a short pass.
+    groups = {}
+    for text in dict.fromkeys(proposals):
+        groups.setdefault(labels[text],[]).append(text)
+    ordered = []
+    while any(groups.values()):
+        for items in groups.values():
+            if items:
+                ordered.append(items.pop(0))
+    return ordered[:LIMIT]
