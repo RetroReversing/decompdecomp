@@ -5,10 +5,12 @@ The shared recorder handles every architecture and both ROM and imported-project
 """
 from __future__ import annotations
 
+import contextvars
 import difflib
 import hashlib
 import json
 import time
+from contextlib import contextmanager
 
 from .network import NetworkError
 from .project import compiler_for
@@ -19,6 +21,8 @@ STATES = ('new', 'reviewed', 'implemented', 'dismissed')
 SCHEMA = (
     '''CREATE TABLE IF NOT EXISTS repair_attempt_settings(
         attempt_id INTEGER PRIMARY KEY REFERENCES attempts(id) ON DELETE CASCADE, settings TEXT NOT NULL)''',
+    '''CREATE TABLE IF NOT EXISTS repair_attempt_provenance(
+        attempt_id INTEGER PRIMARY KEY REFERENCES attempts(id) ON DELETE CASCADE, provenance TEXT NOT NULL)''',
     '''CREATE TABLE IF NOT EXISTS repair_examples(
         id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
         function_id INTEGER NOT NULL REFERENCES functions(id) ON DELETE CASCADE,
@@ -30,6 +34,18 @@ SCHEMA = (
     'CREATE INDEX IF NOT EXISTS idx_repair_examples_attempt ON repair_examples(attempt_id)',
     'CREATE INDEX IF NOT EXISTS idx_repair_examples_function ON repair_examples(function_id,id)',
 )
+
+
+_TRIAL = contextvars.ContextVar('repair_trial', default=None)
+
+
+@contextmanager
+def trial(provenance):
+    token = _TRIAL.set(provenance)
+    try:
+        yield
+    finally:
+        _TRIAL.reset(token)
 
 
 def _settings(proj, fn):
@@ -52,9 +68,13 @@ class RepairFeedback:
             for statement in SCHEMA:
                 db.execute(statement)
 
-    def attempt(self, db, fn, attempt_id, context_version):
+    def attempt(self, db, fn, attempt_id, context_version, effective_settings=None):
         proj = db.execute('SELECT * FROM projects WHERE id=?', (fn['project_id'],)).fetchone()
         settings = _settings(proj, fn)
+        if effective_settings and settings['mode']=='rom':
+            settings.update(effective_settings)
+        if _TRIAL.get() is not None:
+            db.execute('INSERT INTO repair_attempt_provenance VALUES(?,?)',(attempt_id,json.dumps(_TRIAL.get())))
         header = db.execute('SELECT unit,header FROM context_versions WHERE project_id=? AND version=? '
                             "AND unit IN (?, '') ORDER BY (unit=?) DESC LIMIT 1",
                             (fn['project_id'], context_version, fn['unit'] or '', fn['unit'] or '')).fetchone()
@@ -74,6 +94,23 @@ class RepairFeedback:
         recorded = db.execute('SELECT settings FROM repair_attempt_settings WHERE attempt_id=?',
                               (attempt_id,)).fetchone() if attempt_id else None
         current = json.loads(recorded['settings']) if recorded else _settings(proj, fn)
+        comparable = db.execute('SELECT a.*,s.settings AS recorded_settings FROM attempts a JOIN repair_attempt_settings s ON s.attempt_id=a.id '
+                                'WHERE a.function_id=? AND a.compiled=1 AND a.score>0 AND (? IS NULL OR a.id<?) ORDER BY a.score,a.id DESC LIMIT 100',
+                                (fn['id'],attempt_id,attempt_id)).fetchall()
+        comparable = next((r for r in comparable if json.loads(r['recorded_settings'])==current),None)
+        if comparable:
+            before = comparable
+            old_settings = {'settings':comparable['recorded_settings']}
+        previous = db.execute('SELECT * FROM attempts WHERE function_id=? AND agent_id=? AND (score IS NULL OR score>0) AND (? IS NULL OR id<?) ORDER BY id DESC LIMIT 1',
+                              (fn['id'],agent_id,attempt_id,attempt_id)).fetchone()
+        def snapshot(row):
+            if not row:
+                return None
+            settings = db.execute('SELECT settings FROM repair_attempt_settings WHERE attempt_id=?',(row['id'],)).fetchone()
+            return {'attempt_id':row['id'],'source_sha256':hashlib.sha256((row['source'] or '').encode()).hexdigest(),
+                    'score':row['score'],'context_version':row['context_version'],'agent_id':row['agent_id'],
+                    'settings':json.loads(settings['settings']) if settings else None}
+        provenance = db.execute('SELECT provenance FROM repair_attempt_provenance WHERE attempt_id=?',(attempt_id,)).fetchone()
         meta = json.loads(fn['meta'] or '{}')
         agent = db.execute('SELECT name FROM agents WHERE id=?', (agent_id,)).fetchone() if agent_id else None
         session = None
@@ -97,7 +134,10 @@ class RepairFeedback:
                        'score': before['score'],
                        'agent_id': before['agent_id'], 'context_version': before['context_version'],
                        'settings': json.loads(old_settings['settings']) if old_settings else None} if before else None,
-            'comparison': 'closest saved failed attempt; may involve other edits/settings, not necessarily the final edit',
+            'previous':snapshot(previous),
+            'provenance':json.loads(provenance['provenance']) if provenance else _TRIAL.get(),
+            'comparable_settings':bool(comparable),
+            'comparison': 'closest comparable-settings failed attempt when available, otherwise closest historical failure; previous retains last own failed trial',
         }
         db.execute('INSERT INTO repair_examples(project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence) '
                    'VALUES(?,?,?,?,?,?,?)', (fn['project_id'], fn['id'], attempt_id, before['id'] if before else None,
@@ -153,7 +193,7 @@ class RepairFeedback:
         if row is None:
             raise NetworkError('No repair example exists in this project.')
         result = dict(row); evidence = json.loads(result.pop('evidence'))
-        for stage in ('before', 'after'):
+        for stage in ('before', 'after', 'previous'):
             value = evidence.get(stage)
             if not value:
                 continue
@@ -184,6 +224,8 @@ class RepairFeedback:
         if include_source:
             old = (evidence.get('before') or {}).get('source') or ''
             new = evidence['after'].get('source') or ''
+            if evidence.get('previous') and evidence['previous'].get('source') is not None:
+                evidence['previous_diff'] = ''.join(difflib.unified_diff(evidence['previous']['source'].splitlines(True),new.splitlines(True),fromfile='previous.c',tofile='matched.c'))
             evidence['diff'] = ''.join(difflib.unified_diff(old.splitlines(True), new.splitlines(True),
                                                           fromfile='before.c', tofile='matched.c'))
         return result | {'evidence': evidence}

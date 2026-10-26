@@ -7,7 +7,7 @@ $("repairExamples").onclick = async () => {
     <ol><li>Expand an example to see what changed before it matched.</li>
     <li>Send it to a coding agent to investigate a reusable fix in decompdecomp, or export examples and copy the analysis prompt.</li>
     <li>Review and test the proposed app change before enabling it. Examples do not teach the permuter automatically.</li></ol>
-    <p class="muted small">The comparison uses the closest saved failed attempt; headers, compiler settings or other edits may also matter.
+    <p class="muted small">New captures prefer a comparable-settings failure and retain the agent’s preceding trial in the technical evidence; other edits may also matter.
     Review categories are optional developer tools.</p>
     <div class="transcript-controls"><label><input type="checkbox" data-all> Across all projects</label>
     <label><input type="checkbox" data-comparable checked> Only with a failed candidate</label>

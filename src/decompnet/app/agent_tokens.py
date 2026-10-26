@@ -2,12 +2,15 @@
 
 import difflib
 import hashlib
+import json
 import re
 import time
 
 from .. import scoring
 from ..network import NetworkError
-from . import agent_targets
+from ..project import compiler_for
+from ..repair_feedback import trial
+from . import agent_targets, expression_repairs, pattern_repairs
 
 
 def candidate(net, agent, slug, function):
@@ -299,8 +302,25 @@ def local_family(net, agent, slug, function, revision, family, old='', declarati
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
             raise NetworkError('Candidate changed. Call get_candidate before trying families.')
+        if family in ('typed_temporary','branch_orientation','narrowing','source_lines'):
+            if old or declaration or occurrence or target:
+                raise NetworkError('Pattern families use function and revision only; omit target/old/declaration/occurrence.')
+            proj = net._project(slug)
+            cfg = json.loads(proj['config'])
+            flags = compiler_for(cfg,fn['vram']).get('flags',[]) if not net.fork_slug(slug) else []
+            debug = any(re.fullmatch(r'-g[1-3]?',flag) for flag in flags)
+            if family == 'source_lines' and not debug:
+                raise NetworkError('source_lines requires known debug compiler flags; imported per-file flags are not available yet.')
+            if family == 'narrowing':
+                mask_count = lambda text: len(re.findall(r'&\s*0x(?:[Ff]{4}|[Ff]{2})\b',text))
+                generated = [s for s in expression_repairs.variants(source,fn['name'],proj['arch']) if mask_count(s)<mask_count(source)]
+            else:
+                generated = [s for kind,s in pattern_repairs.variants(source,fn['name'],debug) if kind==family]
+            if not generated:
+                return 'No applicable '+family+' variants for this candidate. No compile run.'
+            return variants(net,agent,slug,function,revision,[{'old':source,'new':s} for s in generated[:6]],family)
         if target:
-            if target != 'next' or old or declaration or occurrence:
+            if target != 'next'  or old or declaration or occurrence:
                 raise NetworkError('Use target=next alone with family and revision; do not combine other selectors.')
             targets = agent_targets.valid_targets(source,family)
             available = [t for t in targets if not target_tried(net,fn,revision,family,t['old'])]
@@ -364,7 +384,8 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
                 results.append('Stopped before the next trial: 60-second batch budget reached. Resume with the current revision.')
                 break
             try:
-                result = _compile(net, agent, slug, function, src)
+                with trial({'kind':'agent batch','family':family,'variant':i,'base_revision':revision}):
+                    result = _compile(net, agent, slug, function, src)
             except NetworkError as e:
                 results.append(f'{i}: stopped: {e}')
                 break

@@ -438,3 +438,21 @@ def test_blank_redraft_is_actionable_and_does_not_invoke_drafter(tmp_path, monke
     schemas={t['function']['name']:t['function'] for t in api_tool_schemas()}
     assert schemas['redraft']['parameters']['properties']['context']['minLength']==1
     assert 'Not for compiler/flag findings' in schemas['share_knowledge']['description']
+
+
+@pytest.mark.parametrize('mode',['rom','fork'])
+def test_pattern_family_uses_normal_judge_and_captures_provenance(tmp_path, monkeypatch,mode):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    source='void f(u16 *d,u32 w){*(u16*)d=(u16)(w>>16);}'
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode,'compiler':{'toolchain':'example','flags':[]}}),))
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    net.claim_row(a,'game','f');fn=net._function('f','game');seen=[]
+    def compile(agent,function,source,slug):
+        seen.append(source);net._record(fn,agent,0,source,1,matched=True);return 'MATCH!'
+    monkeypatch.setattr(net,'compile_and_diff',compile)
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    out=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'typed_temporary'})
+    assert len(seen)==1 and '__repair_narrow' in seen[0] and 'MATCH!' in out
+    case=net.repair_feedback.listing('game')['examples'][0]['id']
+    assert net.repair_feedback.detail('game',case)['evidence']['provenance']['family']=='typed_temporary'

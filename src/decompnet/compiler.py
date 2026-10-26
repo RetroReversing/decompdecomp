@@ -90,6 +90,7 @@ class CompileResult:
     obj: bytes | None
     log: str
     language: str = "c"  # "c++" when it compiled only as C++ (see compile_source)
+    effective_settings: dict | None = None
 
 
 def _sandbox_mode(cfg: CompilerConfig) -> str:

@@ -8,14 +8,14 @@ import re
 
 from .. import m2cfix, seeds
 from ..forks.csource import _blank, find
-from . import branch_locals, expression_repairs, near_repairs
+from . import branch_locals, expression_repairs, near_repairs, pattern_repairs
 
 LIMIT = 20
 _IDENT = r'[A-Za-z_]\w*'
 _MEMBER = rf'{_IDENT}(?:\s*(?:->|\.)\s*{_IDENT})*'
 
 
-def variants(source: str, name: str, arch: str, asm: str = '') -> list[str]:
+def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=None) -> list[str]:
     span = find(source, name)
     if span is None:
         return []
@@ -29,17 +29,24 @@ def variants(source: str, name: str, arch: str, asm: str = '') -> list[str]:
         return []
     body = body[:-1]
     offset = opening + 1
-    proposals = near_repairs.variants(source, name, arch, asm)
-    if local := branch_locals.variant(source, name):
-        proposals.append(local)
+    proposals = []
+    labels = labels if labels is not None else {}
     # Fresh m2c drafts already get this alternative in autopilot. Saved/transferred drafts need the
     # same chance, with their macro typedef block kept out of the refinement's type substitutions.
-    if arch == 'mips' and ('M2C_FIELD(' in source or 'M2C_UNK' in source):
+    if arch == 'mips' and ('M2C_FIELD(' in source or 'M2C_UNK' in source or re.search(r'\barg[0-3]\b',source)):
         plain = re.sub(r'#ifndef M2C_DEFINES.*?#endif\n?', '', source, flags=re.S)
         refined = m2cfix.refine_draft(plain, name, asm)
         if refined and refined != plain:
             proposals.append(seeds.M2C_MACROS + refined)
+            labels[proposals[-1]] = 'm2c_refinement'
+    if local := branch_locals.variant(source, name):
+        proposals.append(local)
+        labels[local] = 'branch_locals'
+    for family,text in pattern_repairs.variants(source,name,any(re.fullmatch(r'-g[1-3]?',f) for f in flags)):
+        proposals.append(text)
+        labels[text] = family
     proposals += expression_repairs.variants(source, name, arch)
+    proposals += near_repairs.variants(source, name, arch, asm)
 
     def add(a, b, text):
         candidate = source[:a] + text + source[b:]
@@ -88,4 +95,6 @@ def variants(source: str, name: str, arch: str, asm: str = '') -> list[str]:
             add(offset + commas[-1], offset + close, '')
         if len(proposals) >= LIMIT:
             break
+    for text in proposals:
+        labels.setdefault(text,'expression_or_near_repair')
     return proposals[:LIMIT]
