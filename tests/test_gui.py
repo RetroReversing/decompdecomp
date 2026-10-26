@@ -154,7 +154,7 @@ def test_the_import_offers_every_compiler_of_the_games_console(gui):
 
 def test_helper_cards_show_polished_counts_separately_from_matches(gui):
     assert gui["checks"]["helperResults"] == ['<b class="ok">2 polished</b>', '<b class="ok">0 polished</b>',
-                                               '<b class="ok">9 matched</b>']
+                                               '<b class="ok">9 matched</b> · <span title="Distinct functions where this agent beat the previous best matching score. Includes matches; repeated improvements to the same function count once. An initial candidate must improve on 0%.">4 improved</span>']
 
 
 def test_public_project_settings_show_compiler_and_per_file_flags(gui):
