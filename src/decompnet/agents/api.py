@@ -379,7 +379,9 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
                             repair_note=st("Optional decisive repair"), repair_category=st("Repair category"),
                             repair_automation=st("Potential deterministic repair"), occurrence=it("1-based occurrence; 0 requires unique anchor"))),
         "compile_family": ("Generate bounded local casts, signedness or declaration_order variants; normal batch limits and exact judge.",
-                           s(function=st("function", True), revision=st("candidate revision", True), family=st("casts | signedness | declaration_order", True), old=st("exact expression or declaration anchor"), declaration=st("simple declaration name instead of old"), occurrence=it("1-based occurrence of old; 0 requires unique anchor"))),
+                           s(function=st("function", True), revision=st("candidate revision", True), family=st("casts | signedness | declaration_order", True), old=st("exact expression or declaration anchor"), declaration=st("simple declaration name instead of old"), occurrence=it("1-based occurrence of old; 0 requires unique anchor"), target=st("next: select an untried valid declaration target for this revision"))),
+        "family_targets": ("Read current revision, valid declaration names/pairs and tried status; expression optionally lists literal occurrences. No compile.",
+                           s(function=st("function", True), family=st("declaration_order | signedness | casts"), expression=st("literal expression to locate"))),
         "compile_variants": ("Try up to six independent old/new patches against one revision; normal judge and limits. Reports the current revision; does not restore best trial.",
                              s(function=st("function", True), revision=st("candidate revision", True),
                                patches={"type": "array", "minItems": 1, "maxItems": 6, "req": True,
@@ -432,9 +434,9 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
                          "pointer reaches; where else it flows; the type matched code already uses.",
                          s(function=st("function", True), argument=st("arg0-arg3, this (PC), return, or a global; "
                                                                        "+0x14 follows the pointer at 0x14"))),
-        "redraft": ("m2c's draft of a function made again with your declarations (a struct, a prototype) added to "
+        "redraft": ("Requires nonempty actual C declarations in context; inspect existing C with get_function(section=candidate). m2c's draft made again with your declarations (a struct, a prototype) added to "
                     "the shared header's, which they replace where they declare the same names. Recorded nowhere.",
-                    s(function=st("function", True), context=st("C declarations", True))),
+                    s(function=st("function", True), context={"type":"string", "minLength":1, "description":"Actual C struct/prototype/extern declarations; not an empty refresh", "req":True})),
         "compiler_map": ("Which compiler built each part of the game, where it differs from today's. survey=true starts "
                          "the judge's survey of other compilers in the background; check_ranges=true looks at the "
                          "applied ranges again.", s(survey=bo("start the survey"), check_ranges=bo("check applied ranges"))),
@@ -448,7 +450,7 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
         "claim_readable": ("Take the next matched function that isn't readable yet.", s()),
         "make_readable": ("A readable rewrite of a matched function (names, types, a comment); kept only if it still "
                           "matches byte for byte.", s(function=st("function", True), source=st("readable C", True))),
-        "share_knowledge": ("Propose something every agent on this game should know, or back proposal #N "
+        "share_knowledge": ("Not for compiler/flag findings: use compiler_map, try_compiler/search_flags or suggest. Propose shared code knowledge or back proposal #N "
                             "(supports=N). It counts once two different models agree. Not for compiler questions.",
                             s(text=st("what every agent should know"), supports=it("a proposal's number to back"))),
         "suggest": ("Suggest a setup change for the user (another compiler or flags), with evidence.",

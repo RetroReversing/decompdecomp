@@ -16,24 +16,47 @@ def declarations(source):
             if DECL.fullmatch(source[m.start(1):m.end(1)])]
 
 
-def choices(source):
+def valid_targets(source, family):
+    if family not in ('signedness','declaration_order'):
+        raise NetworkError('Named targets support signedness or declaration_order; casts needs an expression anchor.')
+    items = declarations(source)
+    names = [d[0] for d in items]
+    targets = []
+    for i,(name,start,end) in enumerate(items):
+        if names.count(name) != 1:
+            continue
+        label = name
+        if family == 'signedness':
+            if re.match(r'\s*(?:float|double)\b',source[start:end]):
+                continue
+        else:
+            if i+1 == len(items):
+                continue
+            other,next_start,next_end = items[i+1]
+            gap = source[end:next_start]
+            if gap.strip() or gap.count('\n') != 1 or names.count(other) != 1:
+                continue
+            end = next_end
+            label += ' -> '+other
+        targets.append({'name':name,'label':label,'line':source.count('\n',0,start)+1,'old':source[start:end]})
+    return targets
+
+
+def choices(source, family=None):
+    if family in ('signedness','declaration_order'):
+        items = valid_targets(source,family)
+        return ('Valid '+family+' targets: '+', '.join(f"{t['label']} (line {t['line']})" for t in items[:6])
+                if items else 'No valid '+family+' targets in this candidate. Use an explicit patch or a different family.')
     items = declarations(source)
     return ('Simple declaration choices: '+', '.join(f'{n} (line {source.count(chr(10),0,a)+1})' for n,a,b in items[:6])
             if items else 'No simple uninitialized declaration choices found; supply an exact expression/declaration anchor.')
 
 
 def named_anchor(source, name, family):
-    items = declarations(source)
-    found = [i for i,d in enumerate(items) if d[0] == name]
-    if len(found) != 1:
-        raise NetworkError('Declaration name must identify exactly one simple declaration. '+choices(source))
-    i = found[0]; _,start,end = items[i]
-    if family == 'declaration_order':
-        if (i+1 == len(items) or source[end:items[i+1][1]].strip()
-                or source[end:items[i+1][1]].count('\n') != 1):
-            raise NetworkError('Choose a declaration immediately followed by another simple declaration. '+choices(source))
-        end = items[i+1][2]
-    return source[start:end]
+    targets = [t for t in valid_targets(source,family) if t['name']==name]
+    if len(targets) != 1:
+        raise NetworkError('Declaration name must identify exactly one valid target. '+choices(source,family))
+    return targets[0]['old']
 
 
 def replace_anchor(source, old, new, occurrence=0):
@@ -51,14 +74,9 @@ def replace_anchor(source, old, new, occurrence=0):
 
 
 def suggestions(source):
-    items = declarations(source)
     result = []
-    for i,(name,start,end) in enumerate(items):
-        if not re.match(r'\s*(?:float|double)\b',source[start:end]):
-            result.append(f'signedness(declaration={name})')
-        if (i+1 < len(items) and not source[end:items[i+1][1]].strip()
-                and source[end:items[i+1][1]].count('\n') == 1):
-            result.append(f'declaration_order(declaration={name})')
-        if len(result)>=2:
-            break
-    return 'Local families available: '+', '.join(result[:2])+'. Use compile_family with the candidate revision.\n' if result else ''
+    for family in ('signedness','declaration_order'):
+        items = valid_targets(source,family)
+        if items:
+            result.append(f"{family}(declaration={items[0]['name']})")
+    return 'Local families available: '+', '.join(result)+'. Use compile_family with the candidate revision.\n' if result else ''

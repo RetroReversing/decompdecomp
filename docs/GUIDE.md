@@ -530,3 +530,28 @@ Compact claims defer shared-header declaration fences longer than 16 lines to
 blocks once within a batch. Candidate C and user instructions remain intact. Repeated generated
 compilation instructions are shown once, and the recent-family summary is limited to two families;
 full function and history reads remain available.
+
+
+### Current targets and automatic selection
+
+`family_targets(function, family="declaration_order")` returns the current candidate revision and
+up to six valid declaration pairs, with tried/untried status. `family="signedness"` lists only
+supported unique integer declarations. `expression="value"` also lists the count and first six line
+numbers of literal occurrences; use `family="casts"` when only expression locations are needed.
+This is a read-only operation: no full source download or compile. Error choices and claim hints use
+the same validity filter, so a variable without a supported adjacent declaration is not offered as a
+swap target.
+
+`compile_family(function, revision, family="declaration_order", target="next")` selects the first
+valid untried pair locally, or reports that none remain without compiling. Signedness supports the
+same selection. Do not combine `target="next"` with `old`, `declaration` or `occurrence`. Existing
+revision checks, the exact judge, attempt caps and batch budgets still apply. A target is recorded
+only after at least one trial was submitted. Tried status is scoped to the candidate revision,
+project configuration and context versions; it does not blacklist targets after a compiler/header
+change. Explicit declaration/anchor requests remain available for deliberate retries. Cast expressions
+remain agent-selected rather than guessed automatically.
+
+`redraft` requires actual nonempty C declarations in `context`; it is not a refresh command. Use
+`get_function(section="candidate")` to inspect the existing C. Compiler and flag findings belong in
+`compiler_map`, `try_compiler`/`search_flags`, or `suggest` for proposed setup changes, not
+`share_knowledge`. Invalid requests explain the appropriate tool and perform no drafting or knowledge write.

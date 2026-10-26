@@ -175,8 +175,8 @@ repair_automation in compile_and_diff (single function only). These are saved on
 Explain what changed and how a deterministic repair could do it; omit uncertain explanations. No extra compile
 is needed. report_repair can annotate your captured match afterwards. These are review ideas, never live rules.
 """
-WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness or declaration_order experiments without spelling out variants. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
-FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness or declaration_order experiments without spelling out variants. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
+WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness or declaration_order experiments without spelling out variants. family_targets lists current choices; target=next selects an untried valid declaration target locally. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
+FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness or declaration_order experiments without spelling out variants. family_targets lists current choices; target=next selects an untried valid declaration target locally. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
 
 
 def _console_guides() -> dict:
@@ -337,12 +337,20 @@ def _add_note(net: RomNetwork, agent: Agent, slug: str, text: str, function: str
     return net.add_note(agent, slug, text, function)
 
 
+def _redraft(net, slug, function, context):
+    if not isinstance(context,str) or not context.strip():
+        raise NetworkError('redraft needs nonempty C declarations in context (a real struct, callee prototype or extern). '
+                           'To inspect existing C, use get_function(function, section="candidate"). No redraft was run.')
+    return net.redraft(slug,function,context)
+
+
 HANDLERS: dict[str, Callable[..., str]] = {
     "project_info": lambda net, agent, slug, detail=False: project_info(net, slug, detail),
     "get_candidate": agent_tokens.get_candidate,
     "compile_patch": agent_tokens.patch,
     "compile_variants": agent_tokens.variants,
     "compile_family": agent_tokens.local_family,
+    "family_targets": agent_tokens.family_targets,
     "get_assembly": lambda net, agent, slug, function, start=0, limit=60: agent_tokens.assembly(net, slug, function, start, limit),
     "claim_function": lambda net, agent, slug, function="", strategy="", count=1:
         _claim(net, agent, slug, function, strategy, count),
@@ -366,7 +374,7 @@ HANDLERS: dict[str, Callable[..., str]] = {
                                                             if net.fork_slug(slug) else net.read_data(slug, what, length)),
     "get_class": lambda net, agent, slug, what="": net.get_class(slug, what),
     "guess_struct": lambda net, agent, slug, function, argument="arg0": net.guess_struct(slug, function, argument),
-    "redraft": lambda net, agent, slug, function, context: net.redraft(slug, function, context),
+    "redraft": lambda net, agent, slug, function, context: _redraft(net, slug, function, context),
     "compiler_map": lambda net, agent, slug, survey=False, check_ranges=False:
         net.compiler_map_text(slug, bool(survey), bool(check_ranges)),
     "list_functions": lambda net, agent, slug, status="open", limit=40: net.list_functions(slug, status, limit),
@@ -536,11 +544,17 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
         return await run(ctx, 'compile_variants', function=function, revision=revision, patches=patches)
 
     @tool
-    async def compile_family(ctx: Context, function: str, revision: str, family: str, old: str = '', declaration: str = '', occurrence: int = 0) -> str:
+    async def compile_family(ctx: Context, function: str, revision: str, family: str, old: str = '', declaration: str = '', occurrence: int = 0, target: str = '') -> str:
         """Run a bounded local family: declaration=name for signedness/declaration_order, old=expression for
-        casts. occurrence selects a 1-based repeated old anchor; default 0 requires uniqueness. Missing
+        casts. target="next" chooses an untried valid declaration target for this revision. family_targets lists current choices. occurrence selects a 1-based repeated old anchor; default 0 requires uniqueness. Missing
         targets return choices. Normal judge, claim limits and batch budgets apply."""
-        return await run(ctx, 'compile_family', function=function, revision=revision, family=family, old=old, declaration=declaration, occurrence=occurrence)
+        return await run(ctx, 'compile_family', function=function, revision=revision, family=family, old=old, declaration=declaration, occurrence=occurrence, target=target)
+
+    @tool
+    async def family_targets(ctx: Context, function: str, family: str = 'declaration_order', expression: str = '') -> str:
+        """Read current revision and valid named targets/pairs with tried status. No compile or full source.
+        Optional expression gives literal occurrence counts and line numbers; family=casts needs expression."""
+        return await run(ctx, 'family_targets', function=function, family=family, expression=expression)
 
     @tool
     async def get_assembly(ctx: Context, function: str, start: int = 0, limit: int = 60) -> str:
@@ -621,7 +635,8 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
 
     @tool
     async def redraft(ctx: Context, function: str, context: str) -> str:
-        """m2c's machine draft of a function made again with your declarations (a struct, a prototype, an extern
+        """Requires nonempty actual C declarations in context; to inspect existing C use get_function(section="candidate").
+        m2c's machine draft of a function made again with your declarations (a struct, a prototype, an extern
         you worked out) added to the shared header's; yours replace the header's where they declare the same
         names. Returns the new draft, recorded nowhere: try it with compile_and_diff, and edit_context what helped.
         PC games: Ghidra's draft made compilable again with them (a class declaring the function, a callee's
@@ -696,7 +711,8 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
 
     @tool
     async def share_knowledge(ctx: Context, text: str = "", supports: int = 0) -> str:
-        """Propose something every agent on this game should know (a convention, what a struct is, how the code
+        """Not for compiler/flag findings: inspect compiler_map, test try_compiler/search_flags, propose changes with suggest.
+        Propose something every agent on this game should know (a convention, what a struct is, how the code
         is organised), or back an open proposal with supports=its number. It reaches every agent once helpers
         running two different models agree. Not for which compiler built what: that's the compiler map's job."""
         return await run(ctx, "share_knowledge", text=text, supports=supports)

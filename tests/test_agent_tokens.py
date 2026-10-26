@@ -86,7 +86,7 @@ def test_new_tools_and_paging_are_exposed_to_mcp_and_api(tmp_path):
     net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
     mcp=tools.build_mcp(net,lambda ctx:(a,'game'))
     definitions=anyio.run(mcp.list_tools)
-    for name in ('get_candidate','compile_patch','compile_variants','compile_family','get_assembly','last_diff'):
+    for name in ('get_candidate','compile_patch','compile_variants','compile_family','family_targets','get_assembly','last_diff'):
         assert name in {t.name for t in definitions}
         assert name in {t['function']['name'] for t in api_tool_schemas()}
         assert name in tools.tool_names(False) and name in tools.tool_names(True)
@@ -342,7 +342,7 @@ def test_named_and_occurrence_family_targets_use_normal_judge(tmp_path, monkeypa
     assert len(seen)==7 and 'return a + (int)(a)' in seen[1]
     _,rev=agent_tokens.candidate(net,a,'game','f')
     out=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'signedness'})
-    assert 'Simple declaration choices:' in out and 'a (line' in out and len(seen)==7
+    assert 'Valid signedness targets:' in out and 'a (line' in out and len(seen)==7
     out=tools.call(net,a,'game','compile_patch',{'function':'f','revision':rev,'old':'a','new':'other','occurrence':1})
     assert 'int other;' in seen[-1]  # occurrence counts exact nonoverlapping text, including declarations
 
@@ -382,3 +382,59 @@ def test_claim_deduplicates_short_shared_header_and_generated_next_step(tmp_path
     out=agent_tokens.brief(net,text,'game')
     assert out.count('extern int shared;')==1 and out.count(next_step)==1
     assert 'int f(){return 1;}' in out and 'int g(){return 2;}' in out
+
+
+def test_family_choices_only_offer_usable_pairs():
+    from decompnet.app import agent_targets
+    source='int a;\nshort b;\ncall();\nint c;\n'
+    assert [t['name'] for t in agent_targets.valid_targets(source,'declaration_order')]==['a']
+    out=agent_targets.choices(source,'declaration_order')
+    assert out=='Valid declaration_order targets: a -> b (line 1)'
+    with pytest.raises(NetworkError,match='Valid declaration_order targets: a -> b'):
+        agent_targets.named_anchor(source,'c','declaration_order')
+    assert not agent_targets.valid_targets('int a;\nint a;\n','signedness')
+
+
+@pytest.mark.parametrize('mode',['rom','fork'])
+def test_current_target_listing_and_auto_selection_are_revision_scoped(tmp_path, monkeypatch,mode):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    source='int f(){\n int a;\n short b;\n char c;\n return a;\n}'
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode}),))
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    net.claim_row(a,'game','f')
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    seen=[]
+    # Cached-style trials retain the candidate: makes repeat selection under the same snapshot observable.
+    monkeypatch.setattr(tools,'_compile',lambda *args:seen.append(args[4]) or 'score 10')
+    listed=tools.call(net,a,'game','family_targets',{'function':'f','expression':' a'})
+    assert rev in listed and 'a -> b' in listed and 'b -> c' in listed and '2 literal occurrences' in listed
+    assert seen==[]
+    first=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'declaration_order','target':'next'})
+    second=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'declaration_order','target':'next'})
+    third=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'declaration_order','target':'next'})
+    assert 'Selected declaration a' in first and 'Selected declaration b' in second
+    assert 'No untried valid' in third and len(seen)==2
+    assert 'tried' in agent_tokens.family_targets(net,a,'game','f')
+    with net.store.tx() as db:db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode,'changed':True}),))
+    assert 'untried' in agent_tokens.family_targets(net,a,'game','f')
+    fn=net._function('f','game');previous_scope=agent_tokens.target_scope(net,fn,rev)
+    with net.store.tx() as db:
+        db.execute("INSERT INTO context_versions(project_id,version,header,unit) VALUES(?,9999,'extern int changed;','')",(fn['project_id'],))
+    assert previous_scope != agent_tokens.target_scope(net,fn,rev)
+    with pytest.raises(NetworkError,match='Candidate changed'):
+        agent_tokens.local_family(net,a,'game','f','stale','declaration_order',target='next')
+    with pytest.raises(NetworkError,match='do not combine'):
+        agent_tokens.local_family(net,a,'game','f',rev,'declaration_order',declaration='a',target='next')
+
+
+def test_blank_redraft_is_actionable_and_does_not_invoke_drafter(tmp_path, monkeypatch):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a');seen=[]
+    monkeypatch.setattr(net,'redraft',lambda *args:seen.append(args) or 'draft')
+    result=tools.call(net,a,'game','redraft',{'function':'f','context':'  '})
+    assert 'No redraft was run' in result and 'section="candidate"' in result and seen==[]
+    assert tools.call(net,a,'game','redraft',{'function':'f','context':'extern int count;'})=='draft'
+    assert len(seen)==1
+    schemas={t['function']['name']:t['function'] for t in api_tool_schemas()}
+    assert schemas['redraft']['parameters']['properties']['context']['minLength']==1
+    assert 'Not for compiler/flag findings' in schemas['share_knowledge']['description']

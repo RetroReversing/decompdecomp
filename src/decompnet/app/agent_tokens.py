@@ -259,12 +259,54 @@ def family_patches(family, old):
     raise NetworkError('Choose family casts, signedness or declaration_order.')
 
 
-def local_family(net, agent, slug, function, revision, family, old='', declaration='', occurrence=0):
+def family_targets(net, agent, slug, function, family='declaration_order', expression=''):
+    """Read-only choices from the current snapshot, without source or compilation."""
+    fn = net._function(function, slug)
+    source, revision = candidate(net, agent, slug, function)
+    lines = [f'Candidate revision {revision}; targets refer only to this snapshot.']
+    if family == 'casts':
+        if not expression:
+            return '\n'.join(lines+['Supply expression to list its literal occurrences for casts.'])
+    else:
+        targets = agent_targets.valid_targets(source,family)
+        for t in targets[:6]:
+            tried = target_tried(net,fn,revision,family,t['old'])
+            lines.append(f"{t['label']} (line {t['line']}), {'tried' if tried else 'untried'}")
+        if not targets:
+            lines.append(agent_targets.choices(source,family))
+        lines.append(f'{len(targets)} valid targets; displaying at most 6. target="next" scans all valid targets.')
+    if expression:
+        hits = [source.count('\n',0,m.start())+1 for m in re.finditer(re.escape(expression),source)]
+        lines.append(f'{len(hits)} literal occurrences; first 6: '+', '.join(f'{i}: line {line}' for i,line in enumerate(hits[:6],1)))
+    return '\n'.join(lines)
+
+
+def target_scope(net, fn, revision):
+    config = net.store.one('SELECT config FROM projects WHERE id=?',fn['project_id'])
+    contexts = net.store.all('SELECT unit,MAX(version) AS version FROM context_versions WHERE project_id=? GROUP BY unit ORDER BY unit',fn['project_id'])
+    settings = str(config['config'] if config else '') + repr([(r['unit'],r['version']) for r in contexts])
+    return hashlib.sha256((revision+settings).encode()).hexdigest()
+
+
+def target_tried(net, fn, revision, family, old):
+    return net.store.one('SELECT 1 FROM agent_family_targets WHERE function_id=? AND scope=? AND family=? AND target_hash=?',
+                         fn['id'],target_scope(net,fn,revision),family,hashlib.sha256(old.encode()).hexdigest()) is not None
+
+
+def local_family(net, agent, slug, function, revision, family, old='', declaration='', occurrence=0, target=''):
     fn = net._function(function, slug)
     with net.attempt_turn(agent, fn):
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
             raise NetworkError('Candidate changed. Call get_candidate before trying families.')
+        if target:
+            if target != 'next' or old or declaration or occurrence:
+                raise NetworkError('Use target=next alone with family and revision; do not combine other selectors.')
+            targets = agent_targets.valid_targets(source,family)
+            available = [t for t in targets if not target_tried(net,fn,revision,family,t['old'])]
+            if not available:
+                return 'No untried valid '+family+' targets for revision '+revision+'. No compile run.'
+            declaration = available[0]['name']
         if declaration:
             if family not in ('signedness','declaration_order'):
                 raise NetworkError('Use declaration with signedness or declaration_order; casts needs old expression and optional occurrence.')
@@ -272,14 +314,20 @@ def local_family(net, agent, slug, function, revision, family, old='', declarati
                 raise NetworkError('Use declaration alone, or old with optional occurrence.')
             old = agent_targets.named_anchor(source, declaration, family)
         if not old:
-            raise NetworkError('Supply old or declaration. '+agent_targets.choices(source))
+            raise NetworkError('Supply old or declaration. '+agent_targets.choices(source,family))
         try:
             patches = family_patches(family, old)
         except NetworkError as e:
-            raise NetworkError(str(e)+' '+agent_targets.choices(source)) from e
+            raise NetworkError(str(e)+' '+agent_targets.choices(source,family)) from e
         for p in patches:
             p['occurrence'] = occurrence
-        return variants(net, agent, slug, function, revision, patches, family)
+        scope = target_scope(net,fn,revision)
+        result = variants(net, agent, slug, function, revision, patches, family)
+        if re.search(r'last submitted variant [1-6]',result):
+            with net.store.tx() as db:
+                db.execute('INSERT OR IGNORE INTO agent_family_targets VALUES(?,?,?,?)',
+                           (fn['id'],scope,family,hashlib.sha256(old.encode()).hexdigest()))
+        return (f'Selected declaration {declaration}.\n' if declaration else '') + result
 
 
 def variants(net, agent, slug, function, revision, patches, family="explicit patches"):
