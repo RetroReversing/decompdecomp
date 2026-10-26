@@ -15,7 +15,7 @@ const button = new Element('button'), body = new Element('body');
 const long = '<script>doNotRun()</script>' + 'full prompt '.repeat(1000), requests = [];
 const row = (id) => ({id, started_at: id, model: 'test', kind: 'codex', outcome: '', tokens: 500, input_tokens: 100,
   output_tokens: 20, cache_read_tokens: 380, cache_write_tokens: 0, usd: 0});
-const source = fs.readFileSync(path.join(__dirname, '../src/decompnet/app/static/js/agents.js'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '../src/decompnet/app/static/js/transcripts.js'), 'utf8');
 const context = { S: {logFor: '7', slug: 'demo'}, document: {body, createElement: (tag) => new Element(tag)},
   $: () => button, clock: (n) => String(n), beginWork: () => () => {}, esc: (s) => s, toast: (s) => { throw Error(s); },
   money: () => '$0', api: async (url) => {

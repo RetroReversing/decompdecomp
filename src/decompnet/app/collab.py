@@ -383,6 +383,8 @@ def host_app(net, rooms: dict[str, Room]) -> Starlette:
 
     def claim(room, member, d):
         agent = room.agent_for(member, d.get("agent"))
+        if "selection" in d:
+            net.set_selection(room.slug, agent.name, d["selection"])
         fn = net.claim_row(agent, room.slug, d.get("function") or None, str(d.get("strategy") or "easiest"))
         return {"function": fn["name"] if fn else None, "vram": fn["vram"] if fn else None}
 
@@ -605,7 +607,8 @@ class Link:
     # -- actions, called by RomNetwork for a linked project
 
     def claim(self, agent: Agent, function: str | None, strategy: str) -> str | None:
-        return self._req("POST", "/collab/claim", {"agent": agent.name, "function": function, "strategy": strategy})["function"]
+        return self._req("POST", "/collab/claim", {"agent": agent.name, "function": function, "strategy": strategy,
+                                                    "selection": self.net.selection(self.slug, agent.name)})["function"]
 
     def attempt(self, agent: Agent, function: str, source: str) -> dict:
         return self._req("POST", "/collab/attempt", {"agent": agent.name, "function": function, "source": source})

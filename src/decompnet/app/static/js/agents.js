@@ -105,6 +105,7 @@ function renderSessions(sessions) {
       ${todo ? `<span class="todo-line">${esc(todo)}</span>` : ""}
       ${s.last_message ? `<q class="said" title="${esc(s.last_message)}">${esc(s.last_message)}</q>` : ""}
       <span class="facts-line">${facts.join(" · ")}</span>
+      ${s.task !== "readable" ? `<button class="link-btn" data-queue="${id}" type="button">Work selection · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}</button>` : ""}
       <button class="link-btn" data-log="${id}" type="button" aria-pressed="${S.logFor === s.id}">${S.logFor === s.id ? "Back to everything" : "What it said and did"}</button></div>`;
   }).join("");
   setHtml(box, html);
@@ -118,6 +119,21 @@ function renderSessions(sessions) {
       poll(false);
     };
   });
+  box.querySelectorAll("[data-queue]").forEach((b) => { b.onclick = () => {
+    const s = sessions.find((x) => x.id === b.dataset.queue);
+    const panel = dialog(`Work selection · ${s.label}`, `${selectionFields(s.selection)}<button class="primary" data-save-selection>Save</button><button class="ghost" data-cancel-selection>Cancel</button>`);
+    panel.querySelector("[data-cancel-selection]").onclick = closeDialog;
+    panel.querySelector("[data-save-selection]").onclick = async () => {
+      try {
+        const selection = readSelection(panel);
+        await api("/api/agents/selection", { method: "POST", body: { id: s.id, selection } });
+        s.selection = selection;
+        closeDialog();
+        toast("Work selection saved. The current function stays with its agent.", "match");
+        renderSessions(S.sessions || []);
+      } catch (e) { toast(esc(e.message), "err"); }
+    };
+  }; });
   act("[data-stop]", "/api/agents/stop", (b) => ({ id: b.dataset.stop }));
   act("[data-remove]", "/api/agents/stop", (b) => ({ id: b.dataset.remove, remove: true }));
   act("[data-again]", "/api/agents/restart", (b) => ({ id: b.dataset.again }));
@@ -133,7 +149,29 @@ $("stopAll").onclick = async () => {
 };
 
 /* ------------------------------------------------------------------ the launcher: agent, model, how many */
-const LZ = { kind: null, model: "", count: 1, per: null, effort: "", task: "" };
+const LZ = { kind: null, model: "", count: 1, per: null, effort: "", task: "", selection: {} };
+const QUEUE_STRATEGIES = [["", "Automatic (recommended)"], ["easiest", "Easiest first"],
+  ["untried", "Untried first"], ["hardest", "Largest first"], ["closest", "Closest to matching"],
+  ["finish", "Finish source files"], ["random", "Random"]];
+function selectionFields(policy = {}) {
+  return `<label class="field"><span>Next function</span><select data-selection-strategy>${QUEUE_STRATEGIES.map(([v, label]) =>
+    `<option value="${v}" ${(policy.strategy || "") === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+    <label class="field"><span>Only functions below match % (optional)</span><input data-selection-below type="number" min="0" max="100" step="any" placeholder="No limit" value="${esc(policy.match_below ?? "")}"></label>
+    <label class="field"><span>Max tries per function (optional)</span><input data-selection-tries type="number" min="1" max="10000" step="1" placeholder="Unlimited" value="${esc(policy.max_tries ?? "")}"></label>
+    <p class="muted small">Max tries counts this worker's candidate submissions, including compile errors, across sessions and restarts. At the limit its best attempt is saved and the function is released for another worker. Compiler/flag searches are separate.
+    Unscored functions are included. Untried first favours functions with no compile attempts.
+    An explicit strategy overrides adaptive model routing. A change applies after the current function; the percentage filter also applies to named claims.</p>`;
+}
+function readSelection(box) {
+  const raw = box.querySelector("[data-selection-below]").value.trim();
+  const below = raw === "" ? null : Number(raw);
+  if (below !== null && (!Number.isFinite(below) || below < 0 || below > 100)) throw new Error("Use a match percentage from 0 to 100.");
+  const tries = box.querySelector("[data-selection-tries]").value.trim();
+  const max = tries === "" ? null : Number(tries);
+  if (max !== null && (!Number.isInteger(max) || max < 1 || max > 10000)) throw new Error("Use a whole number from 1 to 10000 for max tries.");
+  return { strategy: box.querySelector("[data-selection-strategy]").value, match_below: below,
+    ...(max === null ? {} : { max_tries: max }) };
+}
 const EFFORT_NAMES = { minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
 const effortField = (a) => (a.takes_effort ? `<label class="field"><span>Effort (how hard the model thinks, for models that offer it)</span><select data-f="effort">${[["", "Model's default"], ...(a.efforts || []).map((e) => [e, EFFORT_NAMES[e] || e])].map(([v, l]) => `<option value="${v}" ${effortOf(a) === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>` : "");
 // an agent that takes an effort (opencode 2, Claude Code) gets it with the model's name: provider/model#high. The
@@ -185,6 +223,8 @@ async function startAgents(a, model, count, btn, extra = {}) {
     else if (effortOf(a) && !model) throw new Error("pick a model to set its effort");
     if (LZ.per) options.per_session = LZ.per;
     if (LZ.task) options.task = LZ.task;
+    if (!LZ.task) options.selection = btn?.closest(".lz-body")?.querySelector("[data-selection-strategy]")
+      ? readSelection(btn.closest(".lz-body")) : LZ.selection;
     await api("/api/agents/start", { method: "POST", body: { kind: a.id, slug: S.slug, count, options } });
     S.st.settings.launcher = { kind: a.id, model: model || "", count };
     if (model && !a.uses_endpoints) {
@@ -246,6 +286,7 @@ function renderLauncher(box, compact = true) {
   if (!tasks) LZ.task = "";
   box.innerHTML = `${tasks}<div class="lz-kinds">${kinds}</div>
     <div class="lz-body">${body}
+      ${ready && !LZ.task ? `<details data-launch-selection><summary>Work selection (for these agents)</summary>${selectionFields(LZ.selection)}</details>` : ""}
       ${ready ? `<div class="lz-row">
         <div class="field"><span>How many</span><span class="stepper"><button type="button" data-step="-1">−</button><output>${LZ.count}</output><button type="button" data-step="1">+</button></span></div>
         <label class="field"><span>Functions per session</span><input data-f="per" type="number" min="1" max="${MAX_PER_SESSION}" value="${LZ.per || S.st.settings.per_session}"></label>
@@ -253,6 +294,10 @@ function renderLauncher(box, compact = true) {
         <button class="primary" data-act="start" type="button">${esc(launchLabel(a, LZ.model, LZ.count))}</button></div>
         <p class="muted small">${a.uses_endpoints ? "A built-in agent loop drives the model through the decomp tools." : esc(a.signin)} Each agent takes a different function; a fresh session every few functions keeps its context small.</p>` : ""}
     </div>`;
+  const selectionBox = box.querySelector("[data-launch-selection]");
+  if (selectionBox) selectionBox.onchange = () => {
+    try { LZ.selection = readSelection(selectionBox); } catch (e) { toast(esc(e.message), "err"); }
+  };
   wireCopies(box);
   const rerender = () => renderLauncher(box, compact);
   box.querySelectorAll("[data-task]").forEach((b) => { b.onclick = () => { LZ.task = b.dataset.task; rerender(); }; });
@@ -593,68 +638,3 @@ function addThoughts(sessions, first) {
   }
   if (first) renderLog();
 }
-
-
-
-/* Fetch transcripts only on request: full prompts and C must never ride along in the live poll. */
-$("helperTranscript").onclick = async () => {
-  const helper = S.logFor, slug = S.slug;
-  if (!helper) return;
-  const dialog = document.createElement("dialog");
-  dialog.className = "transcript-dialog";
-  dialog.innerHTML = `<h2>Session transcript</h2>
-    <p class="muted small">App prompts, exposed replies and full app tool exchanges, recorded from this update onward.
-    CLI internal system prompts, hidden reasoning, shell output and context compaction are not captured.
-    API requests include the context actually sent. Credentials are redacted.</p>
-    <div class="transcript-controls"><select aria-label="Session"></select>
-    <button data-older type="button">Older sessions</button><button data-refresh type="button">Refresh</button>
-    <button data-close type="button">Close</button></div>
-    <p data-usage></p><div data-events></div><button data-more type="button" hidden>Load more messages</button>`;
-  document.body.append(dialog);
-  const select = dialog.querySelector("select"), events = dialog.querySelector("[data-events]");
-  const older = dialog.querySelector("[data-older]"), more = dialog.querySelector("[data-more]");
-  const refresh = dialog.querySelector("[data-refresh]");
-  let session = 0, after = 0, oldest = 0;
-  const endpoint = () => `/api/transcript?slug=${encodeURIComponent(slug)}&helper=${encodeURIComponent(helper)}`;
-  function showEvents(result, reset) {
-    if (reset) { events.replaceChildren(); after = 0; }
-    for (const entry of result.events) {
-      const details = document.createElement("details"), summary = document.createElement("summary");
-      const labels = {prompt: "Initial prompt", instructions: "App instructions", tool_definitions: "Tool definitions",
-        tool_request: "Tool request", tool_response: "Tool response", api_request: "API request (actual context)",
-        text: "Agent reply", think: "Exposed reasoning", usage: "Reported usage"};
-      summary.textContent = `${clock(entry.created_at)} · ${labels[entry.kind] || entry.kind} · ${entry.text.length.toLocaleString()} characters`;
-      const pre = document.createElement("pre"); pre.textContent = entry.text;
-      details.append(summary, pre); events.append(details); after = entry.id;
-    }
-    more.hidden = !result.more;
-    if (!events.children.length) events.textContent = "No transcript was recorded for this session. Earlier sessions cannot be reconstructed.";
-    const row = result.session;
-    dialog.querySelector("[data-usage]").textContent = row && (row.input_tokens || row.output_tokens || row.cache_read_tokens || row.cache_write_tokens)
-      ? `Reported tokens: ${row.input_tokens.toLocaleString()} input (excluding cache), ${row.cache_read_tokens.toLocaleString()} cache read, ${row.cache_write_tokens.toLocaleString()} cache write, ${row.output_tokens.toLocaleString()} output. ${row.usd ? money(row.usd) + " reported cost." : "No dollar cost reported."}`
-      : row?.tokens ? `${row.tokens.toLocaleString()} tokens reported; input/cache/output breakdown unavailable.`
-      : "No token usage reported yet; this does not mean the session was free.";
-  }
-  async function load(reset = true, old = false) {
-    const finish = beginWork(events, "Loading transcript", [select, older, more, refresh]);
-    try {
-      const result = await api(endpoint() + `&session=${old ? session : reset ? Number(select.value || 0) : session}&after=${reset ? 0 : after}&before=${old ? oldest : 0}`);
-      if (!dialog.isConnected) return;
-      for (const row of result.sessions) {
-        if ([...select.options].some((option) => option.value === String(row.id))) continue;
-        const option = document.createElement("option"); option.value = row.id;
-        option.textContent = `${new Date(row.started_at * 1000).toLocaleString()} · ${row.model || row.kind} · ${row.outcome || "running / interrupted"}`;
-        select.append(option);
-      }
-      if (result.sessions.length && (old || !oldest)) oldest = result.sessions.at(-1).id;
-      if (!old) { session = result.session?.id || 0; select.value = String(session); showEvents(result, reset); }
-      older.hidden = result.sessions.length < 30;
-    } catch (error) { toast(esc(error.message), "err"); }
-    finally { finish(); }
-  }
-  select.onchange = () => load(); refresh.onclick = () => load();
-  more.onclick = () => load(false); older.onclick = () => load(false, true);
-  dialog.querySelector("[data-close]").onclick = () => dialog.close();
-  dialog.addEventListener("close", () => dialog.remove(), { once: true });
-  dialog.showModal(); await load();
-};

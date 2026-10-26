@@ -360,6 +360,7 @@ class Session:
 
     def snapshot(self, since: int = 0) -> dict:
         return {"id": self.id, "kind": self.kind, "kind_name": agents.get(self.kind).name, "label": self.label,
+                "selection": self.options.get("selection") or {},
                 "task": self.options.get("task") or "",  # "readable": it polishes matched code
                 "slug": self.slug, "agent": self.agent_name, "model": self.model, "state": self.state, "why": self.why,
                 "todo": self.todo, "until": self.until, "stopped_by": self.stopped_by,
@@ -565,6 +566,7 @@ class Manager:
 
     def start(self, kind: str, slug: str, count: int = 1, options: dict | None = None) -> list[str]:
         options = dict(options or {})
+        options["selection"] = self.net.validate_selection(options.get("selection"))
         agent = agents.get(kind)  # (an unknown kind is a ValueError that says which there are)
         if agent.id != kind:
             kind = agent.id
@@ -585,7 +587,20 @@ class Manager:
                 ids.append(s.id)
         return ids
 
+    def set_selection(self, sid: str, policy: dict) -> dict:
+        with self._lock:
+            s = self.sessions.get(sid)
+            if s is None:
+                raise ValueError("This agent no longer exists. Refresh the agents list.")
+            policy = self.net.set_selection(s.slug, s.agent_name, policy)
+            s.options["selection"] = policy
+            with self.net.store.tx() as db:
+                kept = {k: v for k, v in s.options.items() if k != "api_key"}
+                db.execute("UPDATE helpers SET options=? WHERE id=?", (json.dumps(kept), s.id))
+            return policy
+
     def _launch(self, s: Session) -> None:
+        self.net.set_selection(s.slug, s.agent_name, s.options.get("selection"))
         s.stop = threading.Event()
         s.state, s.why, s.todo, s.until, s.stopped_by, s.error = "starting", "", "", None, "", ""
         s.signed_out = s.throttled = s.limited = s.auth_failed = False
@@ -902,6 +917,7 @@ class Manager:
 
     def _run(self, s: Session) -> None:
         agent, token = self.net.local_agent(s.agent_name)
+        self.net.set_selection(s.slug, agent.name, s.options.get("selection"))
         self.assignments[agent.id] = s.slug
         workdir = self.home / "agents" / s.agent_name
         workdir.mkdir(parents=True, exist_ok=True)
@@ -919,6 +935,15 @@ class Manager:
             if self._left(s.slug, task := s.options.get("task") or "") == 0:
                 self._finish(s, f"nothing left to {'polish' if task == 'readable' else 'decompile'} here 🎉")
                 break
+            policy = self.net.selection(s.slug, agent.name)
+            if task != "readable" and (policy.get("match_below") is not None or policy.get("max_tries")):
+                if not self.net.selection_remaining(s.slug, agent) and not self.net.store.one(
+                        "SELECT 1 FROM claims WHERE agent_id=?", agent.id):
+                    below = policy.get("match_below")
+                    why = f"no functions remain below {below:g}% match" if below is not None else "no functions remain within max tries"
+                    self._pause(s, why + " for this worker (unscored functions also count)",
+                                "Change Work selection, then press Start again.")
+                    break
             if (cap := self.over_budget(s.slug)) is not None:
                 self._finish(s, f"the agents on this project have spent the ${cap:.2f} budget (Setup)")
                 break

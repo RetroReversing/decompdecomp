@@ -1,0 +1,6 @@
+/* Long local transcripts are expanded on demand, without widening the agent feed. */
+.transcript-dialog { width: min(1000px, 92vw); max-height: 90vh; overflow: auto; }
+.transcript-controls { display: flex; flex-wrap: wrap; gap: .5rem; }
+.transcript-controls select { min-width: 0; max-width: 100%; flex: 1; }
+.transcript-dialog details { margin: .6rem 0; border-top: 1px solid var(--line); padding-top: .6rem; }
+.transcript-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 55vh; overflow: auto; }
