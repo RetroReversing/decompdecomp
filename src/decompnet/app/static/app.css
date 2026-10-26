@@ -1060,3 +1060,6 @@ details.more[open] > summary::before { content: "− "; }
 .local-import-footer { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 20px; }
 .local-import-footer > details { margin: 12px 0; }
 .local-scan-notes { margin: 12px 0; }
+
+/* Library identity is independent of the function's matching status. */
+.sdk-badge { display: inline-block; margin-left: .5rem; padding: .15rem .4rem; border: 1px solid var(--line); border-radius: 3px; font: 11px system-ui, sans-serif; color: var(--muted); white-space: nowrap; }

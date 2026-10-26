@@ -643,12 +643,23 @@ class Network:
                          f"To take one now, call claim_function with function=\"{names[0]}\".")
         return "\n".join(lines)
 
+    def sdk_functions(self, proj) -> dict:
+        """Recorded SDK identities; identification is separate from a verified C match."""
+        out = {}
+        for row in self.store.all("SELECT id,meta FROM functions WHERE project_id=? AND "
+                                  "json_extract(meta, '$.naming.method')='sdk_signature'", proj["id"]):
+            naming = json.loads(row["meta"])["naming"]
+            out[row["id"]] = {"names": [naming.get("source_name") or naming["name"]],
+                              "corpora": naming.get("source_corpora", []), "evidence": "recorded SDK signature"}
+        return out
+
     def claim_row(self, agent: Agent, project: str | None = None, function: str | None = None,
                   strategy: str = "easiest"):
         """Claim (or renew) a function and return its row, or None when nothing is left."""
         if strategy not in STRATEGIES:
             raise NetworkError(f"strategy must be one of {', '.join(STRATEGIES)}")
         proj = self._project(project) if (project or function is None) else None
+        sdk = self.sdk_functions(proj) if proj is not None and not function else {}
         now = time.time()
         with self.store.tx() as db:
             self._expire_claims(db)
@@ -690,7 +701,7 @@ class Network:
                         AND f.id NOT IN (SELECT function_id FROM claims)
                         AND f.name NOT IN (SELECT detail FROM events WHERE project_id=:pid AND agent_id=:agent
                                            AND kind='release' AND created_at > :mine)
-                        ORDER BY f.id IN ({WAITING}),
+                        ORDER BY f.id IN (SELECT value FROM json_each(:sdk)), f.id IN ({WAITING}),
                                  f.name IN (SELECT detail FROM events WHERE project_id=:pid AND agent_id=:agent
                                             AND kind='release'),
                                  f.name IN (SELECT detail FROM events WHERE project_id=:pid AND kind='release'
@@ -702,7 +713,7 @@ class Network:
                                  f.id IN ({READY}) DESC, f.id IN ({WANTED}) DESC,
                                  :strong AND f.abandons >= :escalate DESC, {STRATEGIES[strategy]} LIMIT 1""")
                 escalate = self._escalation(db, proj["id"]) if route else ESCALATE_AFTER
-                args = {"pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
+                args = {"sdk": json.dumps(list(sdk)), "pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
                         "overall": overall, "escalate": escalate, "weak": route == "weak", "strong": route == "strong",
                         "mine": self._own_release_cutoff(db, agent.id, now)}
                 fn = db.execute(query, args).fetchone()
