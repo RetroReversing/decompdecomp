@@ -1007,3 +1007,18 @@ def test_whole_image_rejects_a_function_match_that_changes_other_data(fork):
         assert source.read_text() == before and fp.verify()[0]
     finally:
         manifest_path.write_text(manifest)
+
+
+@pytest.mark.parametrize("platform", ["n64", "psx", "ps2"])
+def test_nested_splat_rom_uses_effective_yaml_base(tmp_path, platform):
+    (tmp_path / 'Makefile').write_text('all:\n\t@true\n')
+    folder = tmp_path / 'config/us'
+    folder.mkdir(parents=True)
+    config = folder / 'game.yaml'
+    config.write_text(f"sha1: {'a' * 40}\noptions:\n  platform: {platform}\n"
+                      "  base_path: .\n  target_path: baserom.z64\n  base_path: ../..\nsegments: []\n")
+    project = ForkProject(tmp_path)
+    assert project.needs()['path'] == 'baserom.z64'
+    assert project.needs()['sha1'] == 'a' * 40
+    config.write_text(config.read_text().replace('base_path: ../..', 'base_path: ../../..'))
+    assert not project.needs()['auto']
