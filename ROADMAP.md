@@ -20,6 +20,10 @@ applied after revalidation. Bulk comparisons skip completed tests while their so
 installed tools and compiler profiles are unchanged; interrupted functions are retried on the next run.
 Project-mode compiler comparisons remain a gap.
 
+Kimi Code 2.x helpers use the same MCP tools and session controls as other CLI helpers, with isolated
+configuration and request token breakdowns. Live integration checked on macOS; Windows and Linux
+launcher behavior is covered by portable tests but still needs physical host verification.
+
 ## What works where
 
 Each feature and the platforms it covers today. A — is a gap: pick one up (the notes under the table say where to
