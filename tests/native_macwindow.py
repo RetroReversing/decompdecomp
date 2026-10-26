@@ -99,7 +99,7 @@ def evaluate(script, callback):
 
 def tick(_timer):
     try:
-        assert time.monotonic() < deadline, "native app load/close timed out"
+        assert time.monotonic() < deadline, f"native app load/close timed out in phase {state['phase']}"
         if state["busy"]:
             return
         phase = state["phase"]
@@ -131,13 +131,15 @@ def tick(_timer):
             evaluate('var a=document.createElement("a");a.href="/";a.target="_blank";a.click();true',
                      lambda _: None)
         elif phase == 21:
-            if len(headers) <= state["requests_before"]:
+            # Seeing the HTTP request only proves navigation started, not that WebKit has loaded
+            # app.js and completed its first status fetch. Keep polling just as for the initial load;
+            # setting a terminal phase here made a slower CI reload fail and then idle until timeout.
+            if len(headers) <= state["requests_before"] or delegate.view.isLoading():
                 return
-            state["phase"] = 22
-            evaluate('Boolean(typeof S !== "undefined" && S.st)',
-                     lambda loaded: state.update(phase=3) if loaded else failures.append("internal new tab lost app page"))
-        elif phase == 22:
-            return
+            def reloaded(value):
+                if value:
+                    state["phase"] = 3
+            evaluate('Boolean(typeof S !== "undefined" && S.st && typeof decompClose === "function")', reloaded)
         elif phase == 3:
             state["phase"] = 31
             evaluate('window.decompClose=()=>"wait"; true', lambda _: None)
