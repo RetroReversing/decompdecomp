@@ -154,6 +154,7 @@ These additional searches currently support MIPS ROM projects; imported reposito
 | **Claude Code** | Operates without a window, through the local MCP server of the app. |
 | **Codex CLI** | The same. It can approve only the tools of decompdecomp. |
 | **Antigravity CLI** | The same, through the MCP configuration of the workspace (`agy`). |
+| **Kimi Code** | Install `npm install -g @moonshot-ai/kimi-code` (Node.js 22.19+), then `kimi login`. Uses your Kimi Code account and configured models. The legacy Python `kimi-cli` is not supported. |
 | **opencode** | The same, with each provider that you set up: DeepSeek, Qwen, Kimi and more. |
 
 The app starts each helper itself, from **Start agents** in the project's header. A helper that stops starts again
@@ -572,3 +573,24 @@ including failures. Imported builds still explicitly mark effective per-file fla
 Agent batches/families attach family, variant and base revision provenance automatically; deterministic
 background repairs attach candidate fingerprints. The evidence remains observational and cannot
 prove a particular edit caused a match. Older captures are unchanged.
+
+### Kimi Code helpers
+
+Select **Kimi Code** under **Start agents** after installing the CLI and signing in with `kimi login`.
+The desktop app and CLI share the account configuration. Models come from your Kimi Code model list;
+choose its default or another configured alias. Effort options are low, high and max, subject to model support.
+
+Each helper uses a private Kimi data directory with copies of its login credentials and provider/model
+settings. Only decompdecomp's MCP tools are enabled: user MCP servers, hooks, plugins and built-in shell,
+file and web tools are not enabled. Prompts arrive on stdin through a Node launcher, rather than OS argv.
+Your original Kimi settings are not edited. If copied credentials expire, sign in again and restart the helper.
+
+Text and tool activity stream into the agent feed. At normal session exit, request usage is read from
+that session's local `usage.record` entries, keeping input, cache reads, cache writes and output separate.
+Context occupancy is never counted as spend, and duplicate step summaries are ignored. Abrupt termination
+can leave usage unreported. Kimi subscription usage has no invented dollar charge. Ordinary claiming,
+matching, per-session limits, stopping, restarting and model statistics use the shared helper pipeline.
+
+Validated locally with Kimi Code 2.3.3 against an isolated HTTP MCP server using an existing desktop login.
+The CLI called the test tool and returned its result; its token breakdown was recorded. No game project
+or live helper was used for that smoke test.

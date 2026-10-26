@@ -241,7 +241,8 @@ def test_every_helper_with_an_effort_offers_medium_to_max(tmp_path):
     helper (a local llama.cpp model's template wants xhigh): each one that takes an effort offers all four now."""
     for kind in kinds.AGENTS:
         if kind.takes_effort:
-            assert {"medium", "high", "xhigh", "max"} <= set(kind.describe()["efforts"]), kind.id
+            expected = {"low", "high", "max"} if kind.id == "kimi" else {"medium", "high", "xhigh", "max"}
+            assert expected <= set(kind.describe()["efforts"]), kind.id
     cmd, _ = kinds.get("codex").session_command("codex", tmp_path, URL, "token", "gpt-5.5#max")
     assert 'model_reasoning_effort="max"' in cmd
 

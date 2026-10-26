@@ -205,6 +205,10 @@ class Agent:
         for the agent's default."""
         raise RuntimeError(f"{self.name} isn't a program the app runs")
 
+    def launch_command(self, cmd: list[str]) -> list[str]:
+        """Optional stdin bridge after resolving the installed CLI's native launcher."""
+        return cmd
+
     def stdin(self, prompt: str) -> str:
         """What goes in on stdin: the prompt, as the agent reads it. Never on the command line: no length limit, and
         nothing in it is parsed."""
@@ -319,10 +323,11 @@ def _registry() -> list[Agent]:
     from .api import API
     from .claude import CLAUDE
     from .codex import CODEX
+    from .kimi import KIMI
     from .opencode import OPENCODE
 
     # the order the Agents page lists them in (the launcher puts the recommended one first)
-    return [CLAUDE, CODEX, ANTIGRAVITY, OPENCODE, API]
+    return [CLAUDE, CODEX, KIMI, ANTIGRAVITY, OPENCODE, API]
 
 
 AGENTS: list[Agent] = _registry()
