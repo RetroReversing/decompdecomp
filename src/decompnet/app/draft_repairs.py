@@ -8,9 +8,9 @@ import re
 
 from .. import m2cfix, seeds
 from ..forks.csource import _blank, find
-from . import branch_locals, expression_repairs
+from . import branch_locals, expression_repairs, near_repairs
 
-LIMIT = 8
+LIMIT = 20
 _IDENT = r'[A-Za-z_]\w*'
 _MEMBER = rf'{_IDENT}(?:\s*(?:->|\.)\s*{_IDENT})*'
 
@@ -29,7 +29,7 @@ def variants(source: str, name: str, arch: str, asm: str = '') -> list[str]:
         return []
     body = body[:-1]
     offset = opening + 1
-    proposals = []
+    proposals = near_repairs.variants(source, name, arch, asm)
     if local := branch_locals.variant(source, name):
         proposals.append(local)
     # Fresh m2c drafts already get this alternative in autopilot. Saved/transferred drafts need the

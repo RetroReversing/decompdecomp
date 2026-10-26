@@ -784,3 +784,23 @@ tokens per match (unavailable rates show a dash). They can be sorted by status, 
 model or token efficiency. Work settings expose the effective functions-per-session value and can save a new
 value for the next session without restarting the current function. The shared scheduler supports least-tried
 first alongside the existing selection strategies, in ROM and imported project mode.
+
+Near-miss repairs now use raw annotated MIPS instruction words for small alias corrections and signed-low-half
+address mistakes, independently of the diff's relocation labels. Candidate-local byte-padding pairs can be
+combined with a removed pointer bias and an address correction. Ordinary unused local byte padding and
+independent local aggregate stores have bounded stack/order alternatives. These source hypotheses run through
+the shared targeted phase in ROM and imported project modes; only the existing exact judge accepts a match.
+The round still has 32 compiles / 20 seconds, cached candidates and a rotating 20-function window.
+
+Close ROM misses also try up to two cached debug-flag alternatives before random permutations, retaining a
+function-only compiler range after exact verification and recording the source through the ordinary judge.
+Imported projects still own their build flags: automatic flag application there remains planned work, requiring
+an adapter that can change and restore the project's per-file settings safely. Raw-address reconstruction needs
+annotated MIPS words; imported assembly without them currently uses the existing object-feedback repairs.
+
+Private regression checkpoint: seven previously failing functions in a regional MIPS game, 400 instructions /
+1,600 bytes. The complete targeted phase recovered all seven automatically in 11 compiles (~3.5 seconds); a second
+round used zero compiles. The snapshot, original failing sources, compiler settings, verified outputs and replay
+script remain outside git. This measures recovery of known cases, not additional live-project progress. Synthetic
+tests cover signed low halves, register clobbers, alias loads, opaque source text, unused padding, independent-store
+dependencies, combined layout/address repairs, exact-only compiler persistence and cached flag misses.
