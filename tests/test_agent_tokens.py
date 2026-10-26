@@ -79,14 +79,14 @@ def test_claim_brief_pages_assembly_and_preserves_candidate_and_history(tmp_path
     net._record(fn,a,30,'int f(){return 1;}',1)
     text='## CLAIMED: game/f\n```asm\n'+'\n'.join(f'line{i}' for i in range(200))+'\n```\n### Best attempt\nint f(){return 1;}'
     out=agent_tokens.brief(net,text,'game')
-    assert len(out)<len(text) and 'line199' not in out and 'int f(){return 1;}' in out and 'supporting attempt history' in out
+    assert len(out)<len(text) and 'line199' not in out and 'int f(){return 1;}' in out and 'history: get_function' in out
 
 
 def test_new_tools_and_paging_are_exposed_to_mcp_and_api(tmp_path):
     net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
     mcp=tools.build_mcp(net,lambda ctx:(a,'game'))
     definitions=anyio.run(mcp.list_tools)
-    for name in ('get_candidate','compile_patch','compile_variants','get_assembly','last_diff'):
+    for name in ('get_candidate','compile_patch','compile_variants','compile_family','family_targets','get_assembly','last_diff'):
         assert name in {t.name for t in definitions}
         assert name in {t['function']['name'] for t in api_tool_schemas()}
         assert name in tools.tool_names(False) and name in tools.tool_names(True)
@@ -96,6 +96,10 @@ def test_new_tools_and_paging_are_exposed_to_mcp_and_api(tmp_path):
     batch=next(t['function'] for t in api_tool_schemas() if t['function']['name']=='compile_variants')
     assert batch['parameters']['required']==['function','revision','patches']
     assert batch['parameters']['properties']['patches']['maxItems']==6
+    assert 'occurrence' in batch['parameters']['properties']['patches']['items']['properties']
+    family=next(t['function'] for t in api_tool_schemas() if t['function']['name']=='compile_family')
+    assert family['parameters']['required']==['function','revision','family']
+    assert 'declaration' in family['parameters']['properties']
 
 
 def test_fork_reads_disk_candidate_and_all_target_assembly(tmp_path, monkeypatch):
@@ -183,7 +187,7 @@ def test_independent_variants_use_normal_judge_and_leave_last_candidate(tmp_path
     with pytest.raises(NetworkError,match='Candidate changed'):
         agent_tokens.variants(net,a,'game','f',rev,[{'old':'return 1','new':'return 5'}])
     _,rev=agent_tokens.candidate(net,a,'game','f')
-    with pytest.raises(NetworkError,match='Every patch'):
+    with pytest.raises(NetworkError,match='exactly once'):
         agent_tokens.variants(net,a,'game','f',rev,[{'old':'return 3','new':'return 5'}, {'old':'absent','new':'x'}])
     assert len(seen)==2  # validate the whole batch before compiling anything
 
@@ -241,3 +245,196 @@ def test_variant_time_budget_stops_before_next_compile(tmp_path, monkeypatch):
     seen=[];monkeypatch.setattr(tools,'_compile',lambda *args:seen.append(args) or 'score 10')
     result=agent_tokens.variants(net,a,'game','f',rev,[{'old':'1','new':'2'},{'old':'1','new':'3'}])
     assert len(seen)==1 and '60-second batch budget reached' in result
+
+
+def test_grouped_batch_compares_start_and_keeps_failures_separate(tmp_path, monkeypatch):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    source='int f(){return 1;}'
+    with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?',(source,))
+    net.claim_row(a,'game','f');fn=net._function('f','game')
+    before=[('i','base','target')];after=[('i','new','target')]
+    net.keep_diff(a.id,fn['id'],before)
+    agent_tokens.outcome(net,a,fn,source,'score 20')
+    seen=[]
+    def compile(agent, function, src, slug):
+        seen.append(src)
+        if 'return 4' in src:
+            net._record(fn,agent,None,src,1)
+            return 'COMPILE ERROR\ninvalid candidate score 0'
+        net._record(fn,agent,10,src,1);net.keep_diff(a.id,fn['id'],after)
+        return 'score 10'
+    monkeypatch.setattr(net,'compile_and_diff',compile)
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    result=agent_tokens.variants(net,a,'game','f',rev,[{'old':'return 1','new':f'return {i}'} for i in (2,3,4)])
+    assert len(seen)==3 and 'Variants 1,2: score 10; improved vs starting score 20' in result
+    assert '1 displayed diff rows changed' in result
+    assert 'Variants 3: score unavailable' in result and 'invalid candidate' in result
+    summary=agent_tokens.tried_summary(net,fn)
+    assert 'explicit patches: 3 trials' in summary and 'not exhausted' in summary
+    assert 'Already tried' in agent_tokens.brief(net,'## CLAIMED: game/f\n','game',a)
+
+
+def test_equal_score_different_diffs_do_not_group(tmp_path, monkeypatch):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?',('int f(){return 1;}',))
+    net.claim_row(a,'game','f');fn=net._function('f','game')
+    def compile(agent,function,src,slug):
+        net._record(fn,agent,10,src,1);net.keep_diff(a.id,fn['id'],[('i',src,'target')]);return 'score 10'
+    monkeypatch.setattr(net,'compile_and_diff',compile)
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    result=agent_tokens.variants(net,a,'game','f',rev,[{'old':'1','new':'2'},{'old':'1','new':'3'}])
+    assert 'Variants 1:' in result and 'Variants 2:' in result and 'Variants 1,2:' not in result
+    assert 'baseline unavailable' in result
+
+
+def test_generated_families_are_bounded_and_explicit():
+    casts=agent_tokens.family_patches('casts','value')
+    assert len(casts)==6 and casts[0]=={'old':'value','new':'(int)(value)'}
+    assert agent_tokens.family_patches('signedness','unsigned int value;')[0]['new']=='int value;'
+    assert agent_tokens.family_patches('signedness','s32 value;')[0]['new']=='u32 value;'
+    assert agent_tokens.family_patches('declaration_order','int a;\nshort b;')[0]['new']=='short b;\nint a;'
+    for family,old in [('invalid','x'),('signedness','float x;'),('declaration_order','int a=side_effect();\nint b;')]:
+        with pytest.raises(NetworkError):agent_tokens.family_patches(family,old)
+
+
+@pytest.mark.parametrize('mode',['rom','fork'])
+def test_local_family_uses_same_batch_judge_and_records_history(tmp_path, monkeypatch, mode):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode}),))
+        db.execute('UPDATE functions SET best_source=?',('int f(){int x;return x;}',))
+    net.claim_row(a,'game','f');fn=net._function('f','game');seen=[]
+    def compile(agent,function,source,slug):
+        seen.append(source);net._record(fn,agent,10,source,1);return 'score 10'
+    monkeypatch.setattr(net,'compile_and_diff',compile)
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    result=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'signedness','old':'int x;'})
+    assert seen==['int f(){unsigned int x;return x;}'] and 'Generated replacements' in result
+    assert 'signedness: 1 trials' in agent_tokens.tried_summary(net,fn)
+
+
+def test_occurrence_selection_and_actionable_errors():
+    from decompnet.app import agent_targets
+    source='int f(){return value + value;}'
+    assert agent_targets.replace_anchor(source,'value','other',2)=='int f(){return value + other;}'
+    with pytest.raises(NetworkError,match='Found 2 occurrences'):
+        agent_targets.replace_anchor(source,'value','other')
+    for occurrence in (-1,3,True,'1'):
+        with pytest.raises(NetworkError):agent_targets.replace_anchor(source,'value','other',occurrence)
+
+
+@pytest.mark.parametrize('mode',['rom','fork'])
+def test_named_and_occurrence_family_targets_use_normal_judge(tmp_path, monkeypatch,mode):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    source='int f(){\n  int a;\n  short b;\n  return a + a;\n}'
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode}),))
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    net.claim_row(a,'game','f');fn=net._function('f','game');seen=[]
+    def compile(agent,function,source,slug):
+        seen.append(source);net._record(fn,agent,10,source,1);return 'score 10'
+    monkeypatch.setattr(net,'compile_and_diff',compile)
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    out=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'declaration_order','declaration':'a'})
+    assert 'score 10' in out and '  short b;\n  int a;' in seen[0]
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    out=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'casts','old':'a','occurrence':3})
+    assert len(seen)==7 and 'return a + (int)(a)' in seen[1]
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    out=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'signedness'})
+    assert 'Valid signedness targets:' in out and 'a (line' in out and len(seen)==7
+    out=tools.call(net,a,'game','compile_patch',{'function':'f','revision':rev,'old':'a','new':'other','occurrence':1})
+    assert 'int other;' in seen[-1]  # occurrence counts exact nonoverlapping text, including declarations
+
+
+def test_declaration_choices_ignore_comments_and_require_supported_pairs():
+    from decompnet.app import agent_targets
+    source='/*\nint fake;\n*/\nint a;\nshort b;\nint initialized=call();\n'
+    assert [d[0] for d in agent_targets.declarations(source)]==['a','b']
+    assert 'declaration_order(declaration=a)' in agent_targets.suggestions(source)
+    assert agent_targets.named_anchor(source,'a','declaration_order')=='int a;\nshort b;'
+    assert 'fake' not in agent_targets.choices(source)
+    assert 'declaration_order' not in agent_targets.suggestions('int a;\n\nshort b;')
+    with pytest.raises(NetworkError,match='exactly one'):
+        agent_targets.named_anchor('int a;\nint a;','a','signedness')
+
+
+def test_claim_compacts_shared_headers_preserving_candidate_and_user_text(tmp_path):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    source='int f(){\n int a;\n short b;\n return a;\n}'
+    with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?',(source,))
+    net.claim_row(a,'game','f')
+    declarations='\n'.join(f'extern int data{i};' for i in range(30))
+    text='## CLAIMED: game/f\n### Declarations it uses\n```c\n'+declarations+'\n```\n### Best attempt\n```c\n'+source+'\n```\nMandatory user instructions: retain this.\n'
+    out=agent_tokens.brief(net,text,'game',a)
+    assert source in out and 'Mandatory user instructions: retain this.' in out
+    assert 'data29' not in out and 'section="declarations"' in out
+    assert 'Local families available' in out and 'declaration=a' in out
+    assert len(out)<len(text)+400  # suggestions remain bounded
+
+
+
+def test_claim_deduplicates_short_shared_header_and_generated_next_step(tmp_path):
+    net,_=_game(tmp_path,[('f',10,'open')])
+    next_step='Next: read context.h with get_context, write C for this function, and iterate with compile_and_diff until score is 0. Submit only the function body (plus any helper declarations); context.h is included automatically.'
+    block='### Declarations it uses\n```c\nextern int shared;\n```\n'
+    text='## CLAIMED: game/f\n'+block+'### Candidate\n```c\nint f(){return 1;}\n```\n'+next_step+'\n'+block+'### Candidate\n```c\nint g(){return 2;}\n```\n'+next_step+'\n'
+    out=agent_tokens.brief(net,text,'game')
+    assert out.count('extern int shared;')==1 and out.count(next_step)==1
+    assert 'int f(){return 1;}' in out and 'int g(){return 2;}' in out
+
+
+def test_family_choices_only_offer_usable_pairs():
+    from decompnet.app import agent_targets
+    source='int a;\nshort b;\ncall();\nint c;\n'
+    assert [t['name'] for t in agent_targets.valid_targets(source,'declaration_order')]==['a']
+    out=agent_targets.choices(source,'declaration_order')
+    assert out=='Valid declaration_order targets: a -> b (line 1)'
+    with pytest.raises(NetworkError,match='Valid declaration_order targets: a -> b'):
+        agent_targets.named_anchor(source,'c','declaration_order')
+    assert not agent_targets.valid_targets('int a;\nint a;\n','signedness')
+
+
+@pytest.mark.parametrize('mode',['rom','fork'])
+def test_current_target_listing_and_auto_selection_are_revision_scoped(tmp_path, monkeypatch,mode):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    source='int f(){\n int a;\n short b;\n char c;\n return a;\n}'
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode}),))
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    net.claim_row(a,'game','f')
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    seen=[]
+    # Cached-style trials retain the candidate: makes repeat selection under the same snapshot observable.
+    monkeypatch.setattr(tools,'_compile',lambda *args:seen.append(args[4]) or 'score 10')
+    listed=tools.call(net,a,'game','family_targets',{'function':'f','expression':' a'})
+    assert rev in listed and 'a -> b' in listed and 'b -> c' in listed and '2 literal occurrences' in listed
+    assert seen==[]
+    first=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'declaration_order','target':'next'})
+    second=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'declaration_order','target':'next'})
+    third=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'declaration_order','target':'next'})
+    assert 'Selected declaration a' in first and 'Selected declaration b' in second
+    assert 'No untried valid' in third and len(seen)==2
+    assert 'tried' in agent_tokens.family_targets(net,a,'game','f')
+    with net.store.tx() as db:db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode,'changed':True}),))
+    assert 'untried' in agent_tokens.family_targets(net,a,'game','f')
+    fn=net._function('f','game');previous_scope=agent_tokens.target_scope(net,fn,rev)
+    with net.store.tx() as db:
+        db.execute("INSERT INTO context_versions(project_id,version,header,unit) VALUES(?,9999,'extern int changed;','')",(fn['project_id'],))
+    assert previous_scope != agent_tokens.target_scope(net,fn,rev)
+    with pytest.raises(NetworkError,match='Candidate changed'):
+        agent_tokens.local_family(net,a,'game','f','stale','declaration_order',target='next')
+    with pytest.raises(NetworkError,match='do not combine'):
+        agent_tokens.local_family(net,a,'game','f',rev,'declaration_order',declaration='a',target='next')
+
+
+def test_blank_redraft_is_actionable_and_does_not_invoke_drafter(tmp_path, monkeypatch):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a');seen=[]
+    monkeypatch.setattr(net,'redraft',lambda *args:seen.append(args) or 'draft')
+    result=tools.call(net,a,'game','redraft',{'function':'f','context':'  '})
+    assert 'No redraft was run' in result and 'section="candidate"' in result and seen==[]
+    assert tools.call(net,a,'game','redraft',{'function':'f','context':'extern int count;'})=='draft'
+    assert len(seen)==1
+    schemas={t['function']['name']:t['function'] for t in api_tool_schemas()}
+    assert schemas['redraft']['parameters']['properties']['context']['minLength']==1
+    assert 'Not for compiler/flag findings' in schemas['share_knowledge']['description']

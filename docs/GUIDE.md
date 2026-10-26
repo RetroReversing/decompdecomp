@@ -489,3 +489,69 @@ only shows a fragment of a larger source file, fetch the full candidate before p
 `candidate`, `declarations`, `compiler` and `layouts` are also available, with `all` preserving the
 full view. After three successive identical instruction diffs, feedback suggests changing approach
 or trying a local permutation search. This advice does not skip attempts or change the judge.
+
+
+Batch results group variants with identical displayed instruction diffs and scores into one line;
+this is display compression, not proof of identical bytes and never skips the normal judge.
+Where available, results compare scores with a previous compile of the starting C and count changed
+displayed diff rows. Missing baselines are marked unavailable; historical compiler/header settings
+may differ. Equal scores with different diffs remain separate, and compile errors stay distinct.
+
+`compile_family(function, revision, family, old)` generates local experiments without sending each
+replacement. `casts` wraps expression `old` in int, unsigned int, short, unsigned short, char and
+unsigned char casts. `signedness` toggles the integer type at the start of an exact declaration
+anchor (standard integer types or s8/u8 through s64/u64). `declaration_order` swaps exactly two
+adjacent simple uninitialized declarations. The generated replacements are shown with their variant
+numbers. All use the same six-trial/60-second batch limits and normal claim, compiler and judge paths.
+
+Claims include a bounded summary of recent recorded batch families and their best historical scores,
+shared across agents. `get_function(section="history")` includes this summary. These records are
+observations, not a permanent exhausted-family blacklist; later headers and compiler settings may
+make another trial useful. Records contain family names and summary metrics, not game source.
+
+
+### Choosing local experiment targets
+
+For `compile_family`, use `declaration="counter"` with `signedness` or `declaration_order` to
+select a unique simple uninitialized declaration by name. The latter swaps it with the immediately
+following supported declaration. Initialized, complex, duplicate-name and comment-only examples
+are excluded. Claims suggest at most two applicable declaration experiments. Missing or invalid
+targets return at most six declaration choices with line numbers instead of requiring a full-source read.
+
+For repeated expressions, use `old="value"` and `occurrence=2` to change only the second exact,
+nonoverlapping occurrence. Occurrences count literal text throughout the candidate, including
+comments and declarations: use a larger anchor for surrounding context when needed. This applies
+to `compile_family`, `compile_patch`, and each patch in `compile_variants`. Omitted/zero occurrence
+still requires a unique anchor; all edits retain revision checks and the normal judge. Ambiguous
+anchors return occurrence counts and up to six line numbers.
+
+Compact claims defer shared-header declaration fences longer than 16 lines to
+`get_function(section="declarations")` / `get_context(function)`, and reference identical declaration
+blocks once within a batch. Candidate C and user instructions remain intact. Repeated generated
+compilation instructions are shown once, and the recent-family summary is limited to two families;
+full function and history reads remain available.
+
+
+### Current targets and automatic selection
+
+`family_targets(function, family="declaration_order")` returns the current candidate revision and
+up to six valid declaration pairs, with tried/untried status. `family="signedness"` lists only
+supported unique integer declarations. `expression="value"` also lists the count and first six line
+numbers of literal occurrences; use `family="casts"` when only expression locations are needed.
+This is a read-only operation: no full source download or compile. Error choices and claim hints use
+the same validity filter, so a variable without a supported adjacent declaration is not offered as a
+swap target.
+
+`compile_family(function, revision, family="declaration_order", target="next")` selects the first
+valid untried pair locally, or reports that none remain without compiling. Signedness supports the
+same selection. Do not combine `target="next"` with `old`, `declaration` or `occurrence`. Existing
+revision checks, the exact judge, attempt caps and batch budgets still apply. A target is recorded
+only after at least one trial was submitted. Tried status is scoped to the candidate revision,
+project configuration and context versions; it does not blacklist targets after a compiler/header
+change. Explicit declaration/anchor requests remain available for deliberate retries. Cast expressions
+remain agent-selected rather than guessed automatically.
+
+`redraft` requires actual nonempty C declarations in `context`; it is not a refresh command. Use
+`get_function(section="candidate")` to inspect the existing C. Compiler and flag findings belong in
+`compiler_map`, `try_compiler`/`search_flags`, or `suggest` for proposed setup changes, not
+`share_knowledge`. Invalid requests explain the appropriate tool and perform no drafting or knowledge write.

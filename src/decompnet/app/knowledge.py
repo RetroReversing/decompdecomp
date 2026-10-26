@@ -85,7 +85,8 @@ class Knowledge:
             raise NetworkError("say what every agent on this game should know (text), or back a proposal (supports=id)")
         if COMPILER_TALK.search(text):
             raise NetworkError("which compiler built what isn't shared knowledge: the compiler map settles it with "
-                               "evidence. Use try_compiler, compiler_map or suggest(...) instead")
+                               "evidence. Inspect compiler_map(); test a function with try_compiler or search_flags; "
+                               "propose a setup change with suggest(text=..., function=...). This was not saved as shared knowledge.")
         mine = _words(text)
         for row in self._open(proj):
             if difflib.SequenceMatcher(None, mine, _words(row["text"])).ratio() >= SAME_IDEA_RATIO:
