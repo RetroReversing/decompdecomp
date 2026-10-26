@@ -17,6 +17,66 @@ def close(text, start, left='(', right=')'):
     return None
 
 
+def negate(condition):
+    """Invert a single top-level comparison, retaining nested macro operands."""
+    depth = 0
+    for match in re.finditer(r'[()]|->|<<|>>|==|!=|<=|>=|<|>|&&|\|\||[=?:;]', condition):
+        token = match[0]
+        if token == '(':
+            depth += 1
+        elif token == ')':
+            depth -= 1
+        elif depth == 0:
+            if token == '->':
+                continue
+            if token in ('&&', '||', '<<', '>>', '=', '?', ':', ';'):
+                return None
+            lhs, rhs = condition[:match.start()].strip(), condition[match.end():].strip()
+            if not lhs or not rhs or re.search(r'&&|\|\||==|!=|<=|>=|[<>]', rhs):
+                return None
+            inverse = {'==':'!=','!=':'==','<=':'>','>=':'<','<':'>=','>':'<='}[token]
+            return f'{lhs} {inverse} {rhs}'
+    return None
+
+
+def redundant_jump(body, arm_start, arm_end, branch_end):
+    """Only delete a sole terminal jump over closing if/else blocks."""
+    jump = re.search(r'\bgoto\s+('+IDENT+r')\s*;\s*}$', body[arm_start:arm_end])
+    if not jump:
+        return None
+    label = jump[1]
+    if len(re.findall(r'\b'+re.escape(label)+r'\b', body)) != 2:
+        return None
+    target = re.search(r'\b'+re.escape(label)+r'\s*:', body[branch_end:])
+    if not target:
+        return None
+    target_start = branch_end+target.start()
+    if not re.fullmatch(r'[\s}]*', body[branch_end:target_start]):
+        return None
+    # Each crossed enclosing block must be an if/else, never a loop or switch.
+    stack = []
+    safe = set()
+    for pos, ch in enumerate(body[:target_start]):
+        if ch == '{':
+            prefix = body[:pos].rstrip()
+            allowed = bool(re.search(r'\belse$', prefix))
+            if prefix.endswith(')'):
+                depth = 1; start = len(prefix)-2
+                while start >= 0 and depth:
+                    depth += (prefix[start] == ')') - (prefix[start] == '(')
+                    start -= 1
+                allowed = bool(re.search(r'\bif\s*$', prefix[:start+1]))
+            stack.append((pos, allowed))
+        elif ch == '}' and stack:
+            _, allowed = stack.pop()
+            if allowed:
+                safe.add(pos)
+    if any(ch == '}' and branch_end+i not in safe for i,ch in enumerate(body[branch_end:target_start])):
+        return None
+    return [(arm_start+jump.start(), arm_start+jump.start()+jump[0].index(';')+1, ''),
+            (target_start, branch_end+target.end(), '')]
+
+
 def variants(source, name, debug_lines=False):
     span = find(source,name)
     if not span:
@@ -49,12 +109,21 @@ def variants(source, name, debug_lines=False):
             continue
         c = b+other.end()-1; d = close(body,c,'{','}')
         cond = body[m.end():end-1]
-        simple = re.fullmatch(r'\s*([^()=;{}]+?)\s*(==|!=|<=|>=|<|>)\s*([^()=;{}]+?)\s*',cond)
-        if not d or not simple:
+        newcond = negate(cond)
+        if not d or not newcond:
             continue
-        inverse = {'==':'!=','!=':'==','<=':'>','>=':'<','<':'>=','>':'<='}[simple[2]]
-        newcond = f'{simple[1]} {inverse} {simple[3]}'
-        branches.append((b-a+d-c,[(m.end(),end-1,newcond),(a,b,source[opening+c:opening+d]),(c,d,source[opening+a:opening+b])]))
+        edits = [(m.end(),end-1,newcond),(a,b,source[opening+c:opening+d]),(c,d,source[opening+a:opening+b])]
+        for arm_start, arm_end in ((a,b),(c,d)):
+            cleanup = redundant_jump(body,arm_start,arm_end,d)
+            if cleanup:
+                add('branch_orientation',cleanup)
+                # Remove the jump within its swapped arm; never overlap edit ranges.
+                x,y,_ = cleanup[0]
+                arms = {a:source[opening+a:opening+b],c:source[opening+c:opening+d]}
+                text = arms[arm_start]
+                arms[arm_start] = text[:x-arm_start]+text[y-arm_start:]
+                add('branch_orientation',[(m.end(),end-1,newcond),(a,b,arms[c]),(c,d,arms[a]),cleanup[1]])
+        branches.append((b-a+d-c,edits))
     for _,edits in sorted(branches,key=lambda item:item[0])[:4]:
         add('branch_orientation',edits)
 
