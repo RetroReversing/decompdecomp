@@ -514,6 +514,9 @@ class Network:
         if hit is None:
             return None
         self._compiled.move_to_end(key)
+        if hit.get('diff'):
+            rows, legend = hit['diff']
+            self.keep_diff(agent.id, fn['id'], rows, legend)
         who = "your" if hit["agent_id"] == agent.id else f"{self._agent_name(hit['agent_id'])}'s"
         head = (f"🔁 REPEAT: this source is the same (indentation aside) as {who} compile #{hit['n']} of {fn['name']} "
                 f"({_ago(hit['at'])}), and nothing it depends on changed since, so it wasn't built again and doesn't "
@@ -525,7 +528,8 @@ class Network:
         """A compile's result (without its move-on line), for repeat_of."""
         n = self.store.one("SELECT COUNT(*) AS n FROM attempts WHERE function_id=? AND agent_id=?", fn["id"],
                            agent.id)["n"]
-        self._compiled[key] = {"text": text, "score": score, "agent_id": agent.id, "n": n, "at": time.time()}
+        self._compiled[key] = {"text": text, "score": score, "agent_id": agent.id, "n": n, "at": time.time(),
+                               "diff": self._last_diffs.get((agent.id, fn["id"])) if score is not None else None}
         while len(self._compiled) > REPEATS_KEPT:
             self._compiled.popitem(last=False)
 

@@ -230,6 +230,15 @@ def test_agent_cards_sort_metrics_and_handle_unavailable_rates(gui):
     assert cards['least']
 
 
+def test_token_breakdown_distinguishes_cache_and_missing_usage():
+    if NODE is None:
+        pytest.skip('needs node')
+    source = (Path(__file__).parents[1] / 'src/decompnet/app/static/js/agents.js').read_text()
+    function = source[source.index('function tokenBreakdown('):source.index('async function renderCosts(')]
+    script = function + "\nconst assert=require('node:assert/strict');\n" + "assert.match(tokenBreakdown({input_tokens:1000,cache_read_tokens:9000,output_tokens:500}), /1.0k uncached input.*9.0k cache reads.*0.5k output/);\nassert.equal(tokenBreakdown({}), 'Token breakdown unavailable');"
+    subprocess.run([NODE, '-e', script], check=True, capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
 def test_compiler_results_apply_selected_profile_and_guard_function():
     if NODE is None:
         pytest.skip('needs node to run GUI scripts')

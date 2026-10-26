@@ -56,6 +56,12 @@ function helperState(s, claim) {
 
 /* What each model cost on this game (helper_sessions), now and then: which models to run more of. */
 const COSTS_EVERY_MS = 30000;
+function tokenBreakdown(r) {
+  const parts = [["input_tokens", "uncached input"], ["cache_read_tokens", "cache reads"], ["cache_write_tokens", "cache writes"], ["output_tokens", "output"]];
+  if (!parts.some(([key]) => r[key] > 0)) return "Token breakdown unavailable";
+  return parts.map(([key, label]) => `${((r[key] || 0) / 1000).toFixed(1)}k ${label}`).join(" · ");
+}
+
 async function renderCosts(force = false) {
   if (!force && S.costsAt && Date.now() - S.costsAt < COSTS_EVERY_MS && S.costsSlug === S.slug) return;
   S.costsAt = Date.now(); S.costsSlug = S.slug;
@@ -63,9 +69,10 @@ async function renderCosts(force = false) {
   try { rows = await api(`/api/modelcosts?slug=${encodeURIComponent(S.slug)}`); } catch { return; }
   const box = $("modelCosts");
   $("costPanel").hidden = !rows.length;
-  const per = (r) => r.matches ? (r.usd ? `${money(r.usd / r.matches)} a match` : `${Math.round(r.tokens / r.matches / 1000)}k tokens a match`) : "no match yet";
+  const per = (r) => r.matches ? (r.usd ? `${money(r.usd / r.matches)} a match` : `${Math.round(r.tokens / r.matches / 1000)}k total tokens a match`) : "no match yet";
   setHtml(box, `<ul class="mini-list">${rows.map((r) => `<li><b>${esc(r.model || r.kind)}</b> <span class="muted small">${esc(r.kind)}</span>
-      <span class="small">${r.matches.toLocaleString()} ${r.matches === 1 ? "match" : "matches"} · ${per(r)}${r.usd ? ` · ${money(r.usd)} in all` : ""}</span></li>`).join("")}</ul>`);
+      <span class="small">${r.matches.toLocaleString()} ${r.matches === 1 ? "match" : "matches"} · ${per(r)}${r.usd ? ` · ${money(r.usd)} in all` : ""}</span>
+      <span class="small muted" title="Reported token categories; cached tokens are included in the total and do not have the same price as uncached input">${tokenBreakdown(r)}</span></li>`).join("")}</ul>`);
   // a model spinning here lately (agents.py spin_advice): advice to weigh, above the helpers it's about
   const advice = rows.filter((r) => r.advice).map((r) => r.advice);
   $("modelAdvice").hidden = !advice.length;
@@ -99,7 +106,7 @@ function sortAgentCards(sessions, board, mode, now = Date.now() / 1000) {
 function agentMetrics(s, stats) {
   const elapsed = agentRuntime(s), rate = agentTokenRate(s, stats);
   const runtime = LIVE.includes(s.state) ? `${Math.floor(elapsed / 3600)}h ${Math.floor(elapsed % 3600 / 60)}m` : "Not running";
-  return `<div class="agent-metrics"><div><strong>${s.task === "readable" ? stats?.polished || 0 : stats?.matched || 0}</strong><span>${s.task === "readable" ? "polished" : "matched"}</span></div><div><strong>${stats?.improved || 0}</strong><span title="Distinct functions improved; includes matches">improved</span></div><div><strong>${runtime}</strong><span>since latest start</span></div><div><strong>${rate == null ? "—" : (rate / 1000).toFixed(1) + "k"}</strong><span title="Recorded lifetime tokens divided by this agent’s lifetime matches; not just this start">tokens / match</span></div></div>`;
+  return `<div class="agent-metrics"><div><strong>${s.task === "readable" ? stats?.polished || 0 : stats?.matched || 0}</strong><span>${s.task === "readable" ? "polished" : "matched"}</span></div><div><strong>${stats?.improved || 0}</strong><span title="Distinct functions improved; includes matches">improved</span></div><div><strong>${runtime}</strong><span>since latest start</span></div><div><strong>${rate == null ? "—" : (rate / 1000).toFixed(1) + "k"}</strong><span title="Recorded lifetime total tokens, including cache reads, divided by lifetime matches; not a dollar cost">tokens / match</span></div></div>`;
 }
 $("agentSort").onchange = () => { agentSort = $("agentSort").value; renderSessions(S.sessions || []); };
 

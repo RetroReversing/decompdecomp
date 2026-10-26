@@ -50,7 +50,7 @@ TOO_MANY_REQUESTS = 429
 TOO_LONG_STATUSES = (400, 413, 422, 500)  # what servers answer a request too long for the model's context
 TOO_LONG_READ = 2000  # characters of that answer read for why
 # a function is done with when the helper compiled it to a match or released it: its work then folds into a line
-FINISHING = ("compile_and_diff", "release_function")
+FINISHING = ("compile_and_diff", "compile_patch", "release_function")
 FOLDED = 2  # messages a fold leaves: one call and its result
 
 
@@ -259,7 +259,7 @@ def _done_line(net, slug: str, span: list[dict], done: int, count: int) -> str:
             fn = c["function"]
             if fn["name"] not in FINISHING:
                 continue
-            compiles += fn["name"] == "compile_and_diff"
+            compiles += fn["name"] in ("compile_and_diff", "compile_patch")
             try:
                 said = json.loads(fn.get("arguments") or "{}").get("function") or ""
             except ValueError:
@@ -371,7 +371,15 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
     it = lambda desc: {"type": "integer", "description": desc}
     bo = lambda desc: {"type": "boolean", "description": desc}
     defs = {
-        "project_info": ("Which game, compiler and progress.", s()),
+        "project_info": ("Game, compiler and progress; detail=true includes all facts and suggestions.", s(detail=bo("full details"))),
+        "get_candidate": ("Read candidate C and its revision, without assembly or notes.", s(function=st("function", True))),
+        "compile_patch": ("Compile one exact-text replacement against a candidate revision using the normal judge.",
+                          s(function=st("function", True), revision=st("revision from get_candidate or compile feedback", True),
+                            old=st("text occurring exactly once", True), new=st("replacement", True),
+                            repair_note=st("Optional decisive repair"), repair_category=st("Repair category"),
+                            repair_automation=st("Potential deterministic repair"))),
+        "get_assembly": ("Read a page of target assembly omitted from a compact claim.",
+                         s(function=st("function", True), start=it("zero-based line"), limit=it("up to 200 lines"))),
         "claim_function": ("Claim the next function (or one by name/address). Returns assembly, data, best attempt, "
                            "notes and a draft. count > 1: a batch of small functions to judge together.",
                            s(function=st("optional name or address"), strategy=st("finish | easiest | untried | closest | hardest | random"),
@@ -387,8 +395,8 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
                           s(function=st("Function you matched", True), change=st("Decisive change; do not guess", True),
                             category=st("Repair category (same as compile_and_diff)"),
                             automation=st("How a deterministic rule could make it"))),
-        "last_diff": ("Every differing row of your last compile_and_diff of a function (its result cuts long diffs). "
-                      "Costs no compile.", s(function=st("function", True), context=it("equal rows around each difference"))),
+        "last_diff": ("A page of rows from your last compile diff; start is zero-based and limit is at most 200. "
+                      "Costs no compile.", s(function=st("function", True), context=it("equal rows around each difference"), start=it("zero-based row"), limit=it("up to 200 rows"))),
         "release_function": ("Give up a function with notes for the next agent, once compile_and_diff says to move "
                              "on (before that it answers once with what to try; call again to release anyway).",
                              s(function=st("function", True), notes=st("what you tried, what is left", True),

@@ -836,3 +836,13 @@ def test_session_size_changes_are_validated_persisted_and_exposed(tmp_path):
             manager.set_selection(session.id, {}, invalid)
     assert session.options['per_session'] == 12
     assert net.selection('game', session.agent_name)['strategy'] == 'least_tried'
+
+
+def test_model_costs_separate_cached_and_uncached_tokens(tmp_path, quiet):
+    net = _game(tmp_path)
+    m = agents.Manager(net, tmp_path, URL)
+    with net.store.tx() as db:
+        db.execute("INSERT INTO helper_sessions(helper_id,project,kind,model,agent,started_at,input_tokens,"
+                   "cache_read_tokens,cache_write_tokens,output_tokens,tokens) VALUES(1,'game','api','local','a',0,100,900,20,50,1070)")
+    row = m.costs('game')[0]
+    assert [row[k] for k in ('input_tokens','cache_read_tokens','cache_write_tokens','output_tokens','tokens')] == [100,900,20,50,1070]
