@@ -693,10 +693,11 @@ $("testInstalledCompilers").onclick = async () => {
   log.hidden = false;
   showJobError(log, "");
   try {
-    const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true } });
+    const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, untested_only: !$("compilerRetest").checked } });
     const result = await followJob(job, log);
     if (S.slug !== slug) return;
     renderCompilerImprovements(slug, result.improvements || []);
+    log.textContent += `\n${result.tried} functions tested; ${result.skipped || 0} completed comparisons skipped. Results saved.`;
   } catch (e) { showJobError(log, e.message); } finally { finish(); }
 };
 

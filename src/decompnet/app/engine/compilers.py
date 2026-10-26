@@ -169,19 +169,7 @@ class CompilerMixin:
         threading.Thread(target=run, daemon=True, name=f"survey-{slug}").start()
         return state
 
-    def survey_compilers(self, slug: str, log=lambda line: None, limit: int = 400, state: dict | None = None,
-                         all_installed: bool = False, function: str = "") -> dict:
-        """The judge's part of the compiler map. Agents' C for functions that don't match yet, built with each other
-        compiler the project uses: C that matches the game with another compiler (and not with today's) confirms that
-        compiler for its function. Contradicted functions first, then the closest attempts; C already tried is
-        skipped. Then each run of the map with confirmations becomes a suggestion, checked like an agent's."""
-        if not isinstance(function, str):
-            raise NetworkError("Choose a function by name.")
-        self._rom_only(slug, "the compiler survey")
-        proj = self._project(slug)
-        if self.compiler_map(proj) is None:
-            raise NetworkError("the compiler map reads MIPS code (PlayStation 2, PlayStation, N64) for now")
-        cmap = self.compiler_map(proj)
+    def _comparison_candidates(self, proj, all_installed=True):
         cfg = self.cfg(proj)
         candidates = sorted({(cfg["compiler"]["toolchain"], tuple(cfg["compiler"]["flags"]))}
                             | {(r["toolchain"], tuple(r["flags"])) for r in cfg.get("compiler_ranges", [])})
@@ -196,18 +184,67 @@ class CompilerMixin:
         # Debug line labels can change old GCC assemblers' delay-slot scheduling even at the same -O level.
         candidates = sorted({(tc, tuple(variant)) for tc, flags in candidates
                              for variant in self.debug_flag_variants(tc, list(flags))})
-        if function and not all_installed:
-            raise NetworkError("Single-function comparison needs installed-compiler mode.")
         if all_installed:
             candidates = sorted({(tc, tuple(debug)) for tc, flags in candidates
                                  for variant in self.flag_variants(tc, list(flags))
                                  for debug in self.debug_flag_variants(tc, variant)})
+        return candidates
+
+    def _comparison_digest(self, proj, fn, source, candidates):
+        contexts = [list(r) for r in self.store.all(
+            "SELECT unit,version,header FROM context_versions WHERE project_id=? AND unit IN ('',?) ORDER BY unit",
+            proj["id"], fn["unit"])]
+        symbols = [list(r) for r in self.store.all("SELECT name,address,size,kind FROM symbols WHERE project_id=? ORDER BY name", proj["id"])]
+        cfg = self.cfg(proj)
+        tools = [[tid, toolchains.installed(tid)] for tid in sorted({tc for tc, _ in candidates})]
+        data = [source, candidates, contexts, symbols, tools, (fn["target"] or b"").hex(), fn["relocs"],
+                fn["vram"], cfg.get("gp"), cfg.get("big_endian"), compiler_for(cfg, fn["vram"])]
+        return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+
+    def compiler_test_result(self, proj, fn):
+        row = self.store.one("SELECT * FROM compiler_tests WHERE function_id=?", fn["id"])
+        if row is None:
+            return None
+        candidates = self._comparison_candidates(proj)
+        digest = self._comparison_digest(proj, fn, self._source_of(fn), candidates)
+        return {"completed_at": row["completed_at"], "stale": digest != row["input_digest"],
+                "comparison": json.loads(row["result"])}
+
+    def run_compiler_comparison(self, slug, log=print, function="", untested_only=True):
+        lock = self._compiler_comparison_locks.setdefault(slug, threading.Lock())
+        if not lock.acquire(blocking=False):
+            raise NetworkError("A compiler comparison is already running for this project. Wait for it to finish.")
+        try:
+            return self.survey_compilers(slug, log=log, all_installed=True, function=function,
+                                         untested_only=untested_only and not function)
+        finally:
+            lock.release()
+
+    def survey_compilers(self, slug: str, log=lambda line: None, limit: int = 400, state: dict | None = None,
+                         all_installed: bool = False, function: str = "", untested_only: bool = False) -> dict:
+        """The judge's part of the compiler map. Agents' C for functions that don't match yet, built with each other
+        compiler the project uses: C that matches the game with another compiler (and not with today's) confirms that
+        compiler for its function. Contradicted functions first, then the closest attempts; C already tried is
+        skipped. Then each run of the map with confirmations becomes a suggestion, checked like an agent's."""
+        if not isinstance(function, str):
+            raise NetworkError("Choose a function by name.")
+        self._rom_only(slug, "the compiler survey")
+        proj = self._project(slug)
+        if self.compiler_map(proj) is None:
+            raise NetworkError("the compiler map reads MIPS code (PlayStation 2, PlayStation, N64) for now")
+        cmap = self.compiler_map(proj)
+        cfg = self.cfg(proj)
+        if function and not all_installed:
+            raise NetworkError("Single-function comparison needs installed-compiler mode.")
+        candidates = self._comparison_candidates(proj, all_installed)
+        if all_installed and not candidates:
+            raise NetworkError("Install at least one usable compiler in Compilers & tools before testing.")
         if all_installed and not function:
             log(f"Testing {len(candidates)} compiler/flag combinations per function on up to {limit} existing unmatched C attempts. This uses the same flag search as a single-function comparison and may take longer.")
         old = cfg.get("compiler_survey") or {}
         tried, confirmed = ({}, {}) if all_installed else (dict(old.get("tried", {})), dict(old.get("confirmed", {})))
         rows = self.store.all("SELECT * FROM functions WHERE project_id=? AND status NOT IN ('matched', 'asm') AND n_insns>=?",
-                              proj["id"], self.SURVEY_MIN_INSNS)
+                              proj["id"], 0 if all_installed else self.SURVEY_MIN_INSNS)
         if function:
             fn = self._function(function, slug)
             if fn["status"] in ("matched", "asm"):
@@ -220,12 +257,17 @@ class CompilerMixin:
         state = state if state is not None else {}
         comparison = None
         improvements = []
-        n = found = 0
+        n = found = skipped = 0
         for fn in rows:
             if n >= limit:
                 break
             source = self._source_of(fn)
             if not source:
+                continue
+            input_digest = self._comparison_digest(proj, fn, source, candidates) if all_installed else None
+            previous = self.store.one("SELECT input_digest FROM compiler_tests WHERE function_id=?", fn["id"]) if all_installed else None
+            if untested_only and previous and previous["input_digest"] == input_digest:
+                skipped += 1
                 continue
             digest = hashlib.sha1(json.dumps([source, candidates]).encode()).hexdigest()[:16]
             if tried.get(str(fn["vram"])) == digest:
@@ -243,7 +285,7 @@ class CompilerMixin:
                 for index, (tc, flags) in enumerate(candidates, 1):
                     ok, diff, _ = self._judge_with(proj, fn, tc, list(flags), source)
                     percent = 100.0 if ok else diff.percent if diff is not None else None
-                    if function:
+                    if all_installed:
                         ranked.append({"toolchain": tc, "flags": list(flags), "percent": percent,
                                        "exact": ok, "current": (tc, flags) == today})
                     if percent is not None and (best is None or percent > best):
@@ -263,11 +305,15 @@ class CompilerMixin:
                 if improved:
                     improvements.append({"function": fn["name"], "before": baseline, "best": best,
                                          "profile": best_profile})
+                ranked.sort(key=lambda r: (r["percent"] is None, -(r["percent"] or 0), r["toolchain"], r["flags"]))
+                completed = {"before": baseline, "best": best, "profile": best_profile,
+                             "tested": len(candidates), "exact_matches": len(matches),
+                             "improved": improved, "ranked": ranked}
+                with self.store.tx() as db:
+                    db.execute("INSERT OR REPLACE INTO compiler_tests VALUES(?,?,?,?)",
+                               (fn["id"], input_digest, time.time(), json.dumps(completed)))
                 if function:
-                    ranked.sort(key=lambda r: (r["percent"] is None, -(r["percent"] or 0), r["toolchain"], r["flags"]))
-                    comparison = {"before": baseline, "best": best, "profile": best_profile,
-                                  "tested": len(candidates), "exact_matches": len(matches),
-                                  "improved": improved, "ranked": ranked}
+                    comparison = completed
                 if matches:
                     confirmed[str(fn["vram"])] = matches
                     found += 1
@@ -294,8 +340,9 @@ class CompilerMixin:
             # An explicit comparison is a report, even when automatic compiler changes are enabled.
             log(f"Finished: {n} functions tested; {found} have exact matches. Project settings unchanged.")
             if not n:
-                log("No eligible unmatched C attempts yet. Run the free matching pass or agents first.")
-            return {"tried": n, "confirmed": found, "matches": confirmed, "comparison": comparison,
+                log("All eligible saved attempts already have up-to-date comparisons." if skipped else
+                    "No eligible unmatched C attempts yet. Run the free matching pass or agents first.")
+            return {"tried": n, "skipped": skipped, "confirmed": found, "matches": confirmed, "comparison": comparison,
                     "improvements": sorted(improvements, key=lambda r: -r["best"])}
         self._update_cfg(slug, lambda c: c.__setitem__("compiler_survey", {"tried": tried, "confirmed": confirmed,
                                                                            "t": time.time()}))
@@ -648,8 +695,9 @@ class CompilerMixin:
         self._update_cfg(slug, lambda cfg: next(s for s in cfg["suggestions"] if s["id"] == sid).__setitem__(
             "status", "applied" if apply else "dismissed"))
 
-    def apply_function_compiler(self, slug: str, function: str, toolchain: str, flags: list[str]) -> dict:
-        """Revalidate an improved comparison, apply only its function's range, then record its C normally."""
+    def apply_function_compiler(self, slug: str, function: str, toolchain: str, flags: list[str],
+                                allow_non_improving: bool = False) -> dict:
+        """Revalidate a selected profile, apply one function's range, and recheck its C."""
         self._rom_only(slug, "applying function compiler settings")
         proj = self._project(slug)
         fn = self._function(function, slug)
@@ -663,9 +711,16 @@ class CompilerMixin:
         if not source:
             raise NetworkError("This function has no C attempt to apply. Run a fresh comparison.")
         ok, diff, _ = self._judge_with(proj, fn, toolchain, flags, source)
-        if diff is None or (not ok and fn["best_score"] is not None and diff.score >= fn["best_score"]):
+        if diff is None:
+            raise NetworkError("These settings could not compile or compare this function. Run a fresh comparison.")
+        if not allow_non_improving and not ok and fn["best_score"] is not None and diff.score >= fn["best_score"]:
             raise NetworkError("These settings no longer improve this function. Run a fresh comparison.")
         self.set_compiler_ranges(slug, [[fn["vram"], fn["vram"] + fn["size"]]], toolchain, flags)
+        if allow_non_improving:
+            # A deliberate compiler change can lower the percentage. The old score
+            # described another profile; retain the C/attempt history, rebase its score.
+            with self.store.tx() as db:
+                db.execute("UPDATE functions SET best_score=? WHERE id=? AND status='open'", (diff.score, fn["id"]))
         agent, _ = self.local_agent("autopilot")
         # The background autopilot may hold another function. A scoped try checks this function's claim
         # and releases its own on both matches and misses, without disturbing the other work.

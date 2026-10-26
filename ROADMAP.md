@@ -15,6 +15,11 @@ identical, in addition to passing the function judge. This shared project-mode c
 Verified Splat imports also support assembly-only checkouts and maps at the checkout root;
 references still require the complete original image hash, and assembly contributes no recovered C.
 
+ROM-mode compiler comparisons save the complete ranked results per function. Any compiled row can be
+applied after revalidation. Bulk comparisons skip completed tests while their source, context, target,
+installed tools and compiler profiles are unchanged; interrupted functions are retried on the next run.
+Project-mode compiler comparisons remain a gap.
+
 ## What works where
 
 Each feature and the platforms it covers today. A — is a gap: pick one up (the notes under the table say where to

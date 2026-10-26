@@ -98,6 +98,9 @@ CREATE TABLE IF NOT EXISTS sdk_signatures(
   name TEXT NOT NULL, fingerprint TEXT NOT NULL, size INTEGER NOT NULL,
   UNIQUE(corpus, arch, big_endian, name, fingerprint));
 CREATE INDEX IF NOT EXISTS idx_sdk_signatures_fingerprint ON sdk_signatures(arch, big_endian, fingerprint);
+CREATE TABLE IF NOT EXISTS compiler_tests(
+  function_id INTEGER PRIMARY KEY, input_digest TEXT NOT NULL,
+  completed_at REAL NOT NULL, result TEXT NOT NULL);
 """
 
 # Columns added after the first release; applied in place to existing databases.
