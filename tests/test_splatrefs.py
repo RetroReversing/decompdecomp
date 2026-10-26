@@ -179,7 +179,8 @@ def test_paths_cannot_escape_the_checkout_through_symlinks(tmp_path):
 
 @pytest.mark.skipif(toolchains.installed('binutils-mips') is None, reason='needs pinned MIPS binutils')
 @pytest.mark.parametrize('object_suffix', ['.c.o', '.o'])
-def test_verified_full_rebuild_snapshots_linked_overlay_objects(tmp_path, object_suffix):
+@pytest.mark.parametrize("layout", ["overlay", "implicit-vram", "implicit-vram-padded"])
+def test_verified_full_rebuild_snapshots_linked_overlay_objects(tmp_path, object_suffix, layout):
     cfg = synthetic_project(tmp_path, 'n64')
     object_path = 'build/src/demo' + object_suffix
     tools = toolchains.require('binutils-mips')
@@ -190,10 +191,18 @@ def test_verified_full_rebuild_snapshots_linked_overlay_objects(tmp_path, object
     splatrefs.run([linker, '-EB', '-Ttext', '0x0', '-Map', 'build/program.map', '-e', 'demo_func',
                    '-o', 'build/program.elf', object_path], tmp_path, print)
     splatrefs.run([objcopy, '-O', 'binary', 'build/program.elf', 'baserom.z64'], tmp_path, print)
+    if layout == 'implicit-vram-padded':
+        splatrefs.run([objcopy, '-O', 'binary', '--gap-fill', '0xff',
+                       'build/program.elf', 'baserom.z64'], tmp_path, print)
+        with (tmp_path / 'baserom.z64').open('ab') as image:
+            image.write(b'\xff' * 32)
     cfg['sha1'] = hashlib.sha1((tmp_path / 'baserom.z64').read_bytes()).hexdigest()
-    cfg['segments'].insert(0, {'type': 'code', 'start': 0, 'vram': 0,
-                               'subsegments': [[0, 'textbin', 'microcode']]})
-    cfg['segments'][1]['exclusive_ram_id'] = 'overlay'
+    if layout == 'overlay':
+        cfg['segments'].insert(0, {'type': 'code', 'start': 0, 'vram': 0,
+                                   'subsegments': [[0, 'textbin', 'microcode']]})
+        cfg['segments'][1]['exclusive_ram_id'] = 'overlay'
+    else:
+        del cfg['segments'][0]['vram']
     assert splatrefs.generate(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, consoles.get('n64'))
     objdiff = json.loads((tmp_path / 'objdiff.json').read_text())
     assert len(objdiff['units']) == 1
@@ -306,20 +315,24 @@ def test_verified_rebuild_retains_nested_config_version(tmp_path, monkeypatch, r
     assert '1 linked binary assembly' in result['coverage_notes'][0]
 
 
-def test_padding_fallback_rejects_an_unreadable_build(tmp_path, monkeypatch):
+@pytest.mark.parametrize("layout", ["padding", "implicit-vram"])
+def test_padding_fallback_rejects_an_unreadable_build(tmp_path, monkeypatch, layout):
     cfg = config(tmp_path)
     image = tmp_path/'baserom.z64'
     image.write_bytes(b'original cartridge')
     cfg.update(sha1=hashlib.sha1(image.read_bytes()).hexdigest())
     cfg['options']['target_path'] = 'baserom.z64'
-    cfg['segments'][0]['subsegments'].insert(1, [8, 'pad'])
+    if layout == 'padding':
+        cfg['segments'][0]['subsegments'].insert(1, [8, 'pad'])
+    else:
+        del cfg['segments'][0]['vram']
     (tmp_path/'build/demo.elf').write_bytes(b'nonmatching ELF')
     bindir = tmp_path/'tools'
     bindir.mkdir()
     (bindir/'mips-ps2-decompals-objcopy').touch()
     monkeypatch.setattr(toolchains, 'require', lambda _: bindir)
     monkeypatch.setattr(splatrefs, 'run', lambda cmd, *a, **kw: __import__('pathlib').Path(cmd[-1]).write_bytes(b'wrong'))
-    with pytest.raises(ForkError, match='readable linked ELF'):
+    with pytest.raises(ForkError, match='readable linked ELF|exactly one ELF'):
         splatrefs.generate(ForkProject(tmp_path), tmp_path/'demo.yaml', cfg, consoles.get('n64'))
     assert not (tmp_path/'objdiff.json').exists()
 

@@ -115,7 +115,8 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
                 continue  # No gap-fill choice can shrink a flat ELF into the original image.
             # Cartridge link scripts commonly leave FF-filled gaps. Both layouts must satisfy the same
             # complete original-image hash; no payload bytes are supplied from the original here.
-            for fill in ([], ['--gap-fill', '0xff']):
+            for fill in ([], ['--gap-fill', '0xff'],
+                         ['--gap-fill', '0xff', f'--pad-to={image_path.stat().st_size:#x}']):
                 try:
                     run([str(objcopy), '-O', 'binary', *fill, str(elf), str(binary)], root, log=lambda *_: None)
                 except (ForkError, subprocess.TimeoutExpired):
@@ -423,12 +424,13 @@ def generate(project, config_path: Path, config: dict, console, log=print) -> bo
     except ForkError as error:
         if ("compressed or overlay code segments" not in str(error)
                 and "subsegment 'pad'" not in str(error)
-                and "relative unit names without parent paths" not in str(error)):
+                and "relative unit names without parent paths" not in str(error)
+                and "numeric start and vram" not in str(error)):
             raise
         try:
             return verified_rebuild(project, config_path, config, image_path, sha1.lower(), log)
         except ForkError as rebuilt:
-            if 'exactly one ELF' not in str(rebuilt):
+            if 'numeric start and vram' in str(error) or 'exactly one ELF' not in str(rebuilt):
                 raise
             units = plan(root, config, independent=True)
     configured_elf = inside(root, options.get('elf_path', 'build/project.elf'))
