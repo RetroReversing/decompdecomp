@@ -2,6 +2,7 @@
 from starlette.responses import JSONResponse, StreamingResponse
 
 from ...network import NetworkError
+from .. import repair_investigations
 
 
 def register(app):
@@ -25,6 +26,27 @@ def register(app):
             return JSONResponse(await app.call(feedback.listing, slug, q.get('category', ''), q.get('status', ''),
                                                int(q.get('before', 0)), q.get('comparable') == '1'))
         except (NetworkError, ValueError, KeyError) as error:
+            return app.fail(error)
+
+    @app.mcp.custom_route('/api/repair-examples/investigate', methods=['GET', 'POST'])
+    async def investigate(request):
+        if bad := app.guard(request, write=request.method == 'POST'):
+            return bad
+        if request.method == 'GET':
+            return JSONResponse({'prompt': repair_investigations.PROMPT,
+                                 'agents': await app.call(repair_investigations.choices)})
+        try:
+            data = await app.body(request)
+            slug = '' if data.get('all') else str(data.get('slug') or '')
+            if not slug and not data.get('all'):
+                raise NetworkError('Choose a project or explicitly select all projects.')
+            example = await app.call(feedback.detail, slug, int(data['id']))
+            kind = str(data.get('agent') or '')
+            if not any(a['id'] == kind and a['installed'] for a in repair_investigations.choices()):
+                raise NetworkError('Choose an installed coding CLI for this investigation.')
+            job = app.jobs.start('repair investigation', lambda log: repair_investigations.launch(app.home, example, kind, log))
+            return JSONResponse({'job': job})
+        except (NetworkError, ValueError, KeyError, TypeError) as error:
             return app.fail(error)
 
     @app.mcp.custom_route('/api/repair-examples/export', methods=['GET'])
