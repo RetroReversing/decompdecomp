@@ -62,6 +62,9 @@ class Toolchain:
     prelude: str = ""  # C put before every file it compiles: works around a compiler's own bugs (see toolchains.toml)
     intrinsics: str = ""  # pinned module providing fixed compiler intrinsic templates
     cplusplus: bool = False  # it compiles C++ too (by the file's extension: .cpp)
+    driver: str = ""  # packaged, console-owned compiler adapter, staged read-only with the tools
+    build: str = ""  # native source-built tools, after checksum-verified parts are extracted
+    family: str = ""  # backend family when the registry id doesn't carry its compiler's name
 
     @property
     def proprietary(self) -> bool:
@@ -119,6 +122,11 @@ def get(tid: str) -> Toolchain:
     if tid not in reg:
         raise ToolchainError(f"unknown toolchain {tid!r}; known: {', '.join(sorted(reg))}")
     return reg[tid]
+
+
+def compiler_family(tid: str) -> str:
+    """An explicitly declared backend family; custom command ids may be unknown."""
+    return _registry_data().get(tid, {}).get("family", "")
 
 
 def data_dir() -> Path:
@@ -359,6 +367,8 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
                         if f.is_file():
                             os.chmod(f, 0o755)
             pinned.append({"url": part["url"], "sha256": digest})
+        if tc.build == "psyq-obj-parser":
+            _build_psyq_parser(dest, linux, log)
         if linux and "runtime-i386" in tc.requires:  # WSL systems rarely have a 32-bit loader: bring ours
             n = wsl.wrap_i386(dest, wsl.path(path("runtime-i386", linux=True)))
             log(f"  {n} 32-bit programs start through the pinned 32-bit runtime")
@@ -372,6 +382,30 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
     }, indent=2), encoding="utf-8")
     log(f"{tid}: installed at {dest}")
     return dest
+
+
+def _build_psyq_parser(dest: Path, linux: bool, log) -> None:
+    """Build only PCSX-Redux's standalone converter and its pinned header dependencies."""
+    source = "source"
+    argv = ["c++", "-std=c++20", "-O2", "-DNDEBUG", "-DFMT_HEADER_ONLY",
+            *["-I" + source + "/" + p for p in ("", "pcsx/src", "fmt/include", "elfio", "args", "magic_enum/include")],
+            *[source + "/pcsx/" + p for p in ("tools/psyq-obj-parser/psyq-obj-parser.cc",
+                                             "src/supportpsx/psyq-obj.cc", "src/support/file.cc")],
+            "-lz", "-o", "psyq-obj-parser"]
+    log("  building the pinned PsyQ-to-ELF converter (first install only)")
+    try:
+        if linux and sys.platform == "win32":
+            result = wsl.run(["prlimit", "--as=2147483648", "--", *argv], dest, 300,
+                             inputs=[source], outputs=["psyq-obj-parser"])
+        else:
+            result = subprocess.run(limits.capped(argv), cwd=dest, capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace", timeout=300, creationflags=NO_WINDOW)
+        if result.returncode or not (dest / "psyq-obj-parser").is_file():
+            raise ToolchainError("Building the PsyQ converter needs a C++20 compiler and zlib headers "
+                                 "(Xcode Command Line Tools on macOS; g++ and zlib1g-dev on Linux/WSL).\n"
+                                 + (result.stdout + result.stderr)[-3000:])
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ToolchainError(f"Couldn't build the PsyQ converter: {error}. Install a C++20 compiler and zlib headers.") from error
 
 
 def _build_mips_binutils(archive: Path, dest: Path, subdir: str | None, log) -> None:

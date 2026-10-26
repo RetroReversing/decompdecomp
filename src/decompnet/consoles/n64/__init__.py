@@ -1,14 +1,15 @@
-"""Nintendo 64: the VR4300's MIPS (big-endian), KMC GCC 2.7.2 and IDO 5.3 / 7.1, ROM mode.
+"""Nintendo 64: the VR4300's MIPS (big-endian), KMC GCC, IDO and SN64 GCC, ROM mode.
 
 - rom.py: the ROM file: its byte order (.z64, .v64, .n64), header and a first guess at the compiler.
 - code.py: code splat's own look misses: segments the game loads later, and code kept compressed in the ROM.
-- guides/: what agents read about the N64 (n64.md) and its compilers (gcc-kmc.md, ido.md).
+- guides/: what agents read about the N64 (n64.md) and its compilers (gcc-kmc.md, ido.md, sn64.md).
 
 Its demo game is projects/demo-rom (the Demo Quest game in projects/demo-n64/original, built with KMC GCC).
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from ...rom import Picked
@@ -28,6 +29,8 @@ class Nintendo64(Console):
         Compiler("gcc-2.7.2-kmc", "KMC GCC 2.7.2", "many third-party N64 games", guess="KMC"),
         Compiler("ido-7.1", "IDO 7.1", "most later first-party N64 games", guess="IDO"),
         Compiler("ido-5.3", "IDO 5.3", "early N64 games (1996-97)"),
+        Compiler("sn-n64-281", "SN64 GCC 2.8.1", "SN Systems toolchains used by some third-party games"),
+        Compiler("sn-n64-272-0001", "SN64 GCC 2.7.2 (0001)", "earlier SN Systems N64 toolchains"),
     )
     guides = ("mips",)
     m2c = "mips-gcc"
@@ -74,10 +77,17 @@ class Nintendo64(Console):
 
     def up_front_guide(self, compiler: str) -> str:
         compiler = compiler.lower()  # (a fork of a public decomp: "project", its own build's)
-        return "ido" if "ido" in compiler else "gcc-kmc" if "gcc" in compiler else ""
+        return "ido" if "ido" in compiler else "sn64" if compiler.startswith("sn-n64") else "gcc-kmc" if "gcc" in compiler else ""
 
     def m2c_target(self, compiler: str = "") -> str:
         return "mips-ido" if "ido" in compiler.lower() else "mips-gcc"
+
+    def export_asm(self, text: str) -> str:
+        text = super().export_asm(text)
+        # Some inferred code ranges include data decoded as a later MIPS `pref`.
+        # VR4300 cannot assemble it; retain its original non-relocating word.
+        return re.sub(r"^(\s*/\* [0-9A-Fa-f]+ [0-9A-Fa-f]{8} ([0-9A-Fa-f]{8}) \*/\s*)pref\b[^\n]*",
+                      lambda m: f"{m[1]}.word 0x{m[2]}", text, flags=re.M)
 
 
 N64 = Nintendo64()
