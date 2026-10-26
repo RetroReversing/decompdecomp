@@ -86,13 +86,16 @@ def test_new_tools_and_paging_are_exposed_to_mcp_and_api(tmp_path):
     net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
     mcp=tools.build_mcp(net,lambda ctx:(a,'game'))
     definitions=anyio.run(mcp.list_tools)
-    for name in ('get_candidate','compile_patch','get_assembly','last_diff'):
+    for name in ('get_candidate','compile_patch','compile_variants','get_assembly','last_diff'):
         assert name in {t.name for t in definitions}
         assert name in {t['function']['name'] for t in api_tool_schemas()}
         assert name in tools.tool_names(False) and name in tools.tool_names(True)
     patch=next(t['function'] for t in api_tool_schemas() if t['function']['name']=='compile_patch')
     assert patch['parameters']['required']==['function','revision','old','new']
-    assert 'compile_patch' in FINISHING
+    assert 'compile_patch' in FINISHING and 'compile_variants' in FINISHING
+    batch=next(t['function'] for t in api_tool_schemas() if t['function']['name']=='compile_variants')
+    assert batch['parameters']['required']==['function','revision','patches']
+    assert batch['parameters']['properties']['patches']['maxItems']==6
 
 
 def test_fork_reads_disk_candidate_and_all_target_assembly(tmp_path, monkeypatch):
@@ -157,3 +160,84 @@ def test_codex_invalid_effort_is_fatal_but_transient_errors_are_not():
     assert CODEX.fatal("Unsupported value: minimal is not supported with this model. Supported reasoning effort values are low and high")
     assert not CODEX.fatal('connection reset; retry later')
     assert not CODEX.fatal('rate limit exceeded')
+
+
+@pytest.mark.parametrize('mode', ['rom', 'fork'])
+def test_independent_variants_use_normal_judge_and_leave_last_candidate(tmp_path, monkeypatch, mode):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?', (json.dumps({'kind':mode}),))
+        db.execute('UPDATE functions SET best_source=?', ('int f(){return 1;}',))
+    net.claim_row(a,'game','f')
+    seen=[]
+    def compile(agent, function, source, slug):
+        seen.append(source);net._record(net._function('f','game'),agent,10,source,1)
+        return 'score 10'
+    monkeypatch.setattr(net,'compile_and_diff',compile)
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    result=tools.call(net,a,'game','compile_variants',{'function':'f','revision':rev,'patches':[
+        {'old':'return 1','new':'return 2'}, {'old':'return 1','new':'return 3'}]})
+    assert seen==['int f(){return 2;}','int f(){return 3;}']
+    assert 'last submitted variant 2' in result
+    assert agent_tokens.candidate(net,a,'game','f')[0]==seen[-1]
+    with pytest.raises(NetworkError,match='Candidate changed'):
+        agent_tokens.variants(net,a,'game','f',rev,[{'old':'return 1','new':'return 5'}])
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    with pytest.raises(NetworkError,match='Every patch'):
+        agent_tokens.variants(net,a,'game','f',rev,[{'old':'return 3','new':'return 5'}, {'old':'absent','new':'x'}])
+    assert len(seen)==2  # validate the whole batch before compiling anything
+
+
+def test_variants_stop_on_match_and_normal_limit_error(tmp_path, monkeypatch):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?',('int f(){return 1;}',))
+    net.claim_row(a,'game','f');_,rev=agent_tokens.candidate(net,a,'game','f')
+    calls=[]
+    def match(*args):
+        calls.append(args)
+        with net.store.tx() as db:db.execute("UPDATE functions SET status='matched'")
+        return 'MATCH!'
+    monkeypatch.setattr(tools,'_compile',match)
+    result=agent_tokens.variants(net,a,'game','f',rev,[{'old':'1','new':'2'},{'old':'1','new':'3'}])
+    assert len(calls)==1 and 'last submitted variant 1' in result
+    with net.store.tx() as db:db.execute("UPDATE functions SET status='open'")
+    def limit(*args):raise NetworkError('Max tries reached')
+    monkeypatch.setattr(tools,'_compile',limit)
+    assert 'stopped: Max tries reached' in agent_tokens.variants(net,a,'game','f',rev,[{'old':'1','new':'2'}])
+
+
+def test_claim_revision_and_selective_reads(tmp_path, monkeypatch):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    src='int f(){return 1;}'
+    with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?',(src,))
+    net.claim_row(a,'game','f');_,rev=agent_tokens.candidate(net,a,'game','f')
+    text='## CLAIMED: game/f\n### Current source\n```c\n'+src+'\n```\n### Notes\nuseful note\n### Compiler\ncompiler flags'
+    assert rev in agent_tokens.brief(net,text,'game',a)
+    monkeypatch.setattr(net,'get_function',lambda *args:text)
+    out=tools.call(net,a,'game','get_function',{'function':'f','section':'notes'})
+    assert 'useful note' in out and src not in out and 'compiler flags' not in out
+    assert 'compiler flags' in agent_tokens.function_view(net,a,'game','f','all')
+    assert src in agent_tokens.function_view(net,a,'game','f','candidate')
+    with pytest.raises(NetworkError,match='Choose section'):
+        agent_tokens.function_view(net,a,'game','f','invalid')
+
+
+def test_unchanged_instruction_guidance_resets_on_different_diff(tmp_path):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a');fn=net._function('f','game')
+    rows=[('i','one','two')];net.keep_diff(a.id,fn['id'],rows)
+    full='score 10\n'+scoring.render_rows(rows)
+    for _ in range(3):out=agent_tokens.feedback(net,a,'game','f',full,rows)
+    assert 'Multiple edits produced identical instructions' in out
+    agent_tokens.feedback(net,a,'game','f',full,[('i','other','diff')])
+    assert 'Multiple edits' not in agent_tokens.feedback(net,a,'game','f',full,rows)
+
+
+
+def test_variant_time_budget_stops_before_next_compile(tmp_path, monkeypatch):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?',('int f(){return 1;}',))
+    net.claim_row(a,'game','f');_,rev=agent_tokens.candidate(net,a,'game','f')
+    clock=iter([0,61]);monkeypatch.setattr(agent_tokens.time,'monotonic',lambda:next(clock))
+    seen=[];monkeypatch.setattr(tools,'_compile',lambda *args:seen.append(args) or 'score 10')
+    result=agent_tokens.variants(net,a,'game','f',rev,[{'old':'1','new':'2'},{'old':'1','new':'3'}])
+    assert len(seen)==1 and '60-second batch budget reached' in result

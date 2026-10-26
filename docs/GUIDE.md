@@ -471,3 +471,21 @@ on 26 October 2026 ([OpenAI pricing](https://developers.openai.com/api/docs/pric
 models' model pages). They are not subscription charges or additional money owed. Cache-write,
 long-context, Fast-mode and regional premiums are excluded. Unknown models or incomplete legacy
 token breakdowns have no estimate; reported provider charges remain separate.
+
+
+### Fewer model round trips for small experiments
+
+`compile_variants(function, revision, patches)` tests up to six independent `{"old": "...",
+"new": "..."}` replacements against the same candidate snapshot. Each uses the normal compiler,
+claim limits and exact judge. All replacements are validated before trials begin. Trials stop on
+a match or claim error, and do not start another trial after 60 seconds; results give a compact summary and the current revision. Patches are not
+cumulative. The current candidate is not automatically restored to the best trial; cached or
+rejected trials may retain an earlier candidate. Best attempts remain saved normally. Use
+`get_candidate` if you need to recover the current C, or `last_diff` for the last completed trial.
+
+Claims include the candidate revision when their C is exactly the patchable candidate. If a brief
+only shows a fragment of a larger source file, fetch the full candidate before patching.
+`get_function(section="notes")` fetches supporting notes without the complete brief; `history`,
+`candidate`, `declarations`, `compiler` and `layouts` are also available, with `all` preserving the
+full view. After three successive identical instruction diffs, feedback suggests changing approach
+or trying a local permutation search. This advice does not skip attempts or change the judge.
