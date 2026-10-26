@@ -34,3 +34,11 @@ This is opt-in because unfinished source builds may legitimately fail their
 whole-image checksum. Enable it only after verifying the complete build. It
 checks the selected image; it does not imply that every function is recovered C
 or cover additional executables that the configured output does not contain.
+
+## Importing a verified rebuild
+
+When a Splat layout omits explicit segment addresses, the importer can use the
+linked ELF and map instead. It creates reference objects only after converting
+the complete ELF back to an image with the original SHA-1. Cartridge FF gap
+fill and trailing FF padding are supported; every layout must pass that same
+whole-image hash. Assembly-only units remain unrecovered.
