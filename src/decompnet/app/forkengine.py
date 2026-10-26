@@ -2211,6 +2211,9 @@ class ForkEngine:
         if text:
             _, span = self._find(text, self._names(self._meta(r), r))
             source = text[span[0]:span[1]] if span else None
+        original = db.execute('SELECT * FROM functions WHERE id=?', (r['id'],)).fetchone()
+        self.net.repair_feedback.capture(db, original, source or original['best_source'],
+                                        agent.id if agent else None, 'unit diff', 0)
         db.execute("UPDATE functions SET status='matched', best_score=0, matched_at=?, matched_agent_id=?, "
                    "matched_source=COALESCE(?, matched_source, best_source) WHERE id=?",
                    (time.time(), agent.id if agent else None, source, r["id"]))

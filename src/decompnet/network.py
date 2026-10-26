@@ -385,6 +385,8 @@ class Network:
         self._attempt_locks: dict[tuple[int, int], threading.RLock] = {}
         self._pool = ThreadPoolExecutor(max_workers=8)
         # (agent id, function id) -> its last compile's diff rows and their legend, for last_diff
+        from .repair_feedback import RepairFeedback
+        self.repair_feedback = RepairFeedback(self)
         self._last_diffs: dict[tuple[int, int], tuple[list, str]] = {}
         self._generation: dict[int, int] = {}  # project id -> changes compiles depend on (bump_generation)
         self._compiled: OrderedDict[str, dict] = OrderedDict()  # compile_key -> result, for repeat_of
@@ -1317,8 +1319,13 @@ class Network:
         now = time.time()
         compiled = score is not None if compiled is None else compiled
         with self.store.tx() as db:
-            db.execute("INSERT INTO attempts(function_id,agent_id,score,compiled,context_version,source,created_at,via) "
-                       "VALUES(?,?,?,?,?,?,?,?)", (fn["id"], agent.id, score, compiled, ctx_version, source, now, via))
+            current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
+            attempt = db.execute("INSERT INTO attempts(function_id,agent_id,score,compiled,context_version,source,created_at,via) "
+                       "VALUES(?,?,?,?,?,?,?,?)", (fn["id"], agent.id, score, compiled, ctx_version, source, now, via)).lastrowid
+            if compiled:
+                self.repair_feedback.attempt(db, current, attempt, ctx_version)
+            if matched:
+                self.repair_feedback.capture(db, current, source, agent.id, via, ctx_version, attempt)
             db.execute("UPDATE functions SET attempts=attempts+1 WHERE id=?", (fn["id"],))
             if score is not None:
                 db.execute("UPDATE functions SET best_score=?, best_source=?, best_agent_id=? "

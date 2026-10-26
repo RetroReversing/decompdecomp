@@ -379,7 +379,14 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
         "get_function": ("Show any function by name or address.", s(function=st("name or address", True))),
         "compile_and_diff": ("Compile C for the function, link it at its address and diff against the ROM. "
                              "Score 0 = matched. Several functions: names comma-separated, all definitions in source.",
-                             s(function=st("function name, or several: a, b, c", True), source=st("C source", True))),
+                             s(function=st("function name, or several: a, b, c", True), source=st("C source", True),
+                             repair_note=st("Optional one-sentence decisive change, single function only; saved only if it matches"),
+                             repair_category=st("types | casts | constants | addresses | signatures | layout | temporaries | expression_order | control_flow | compiler_settings | other"),
+                             repair_automation=st("How a deterministic repair could make this change"))),
+        "report_repair": ("Annotate your captured verified match for human review, without enabling a rule.",
+                          s(function=st("Function you matched", True), change=st("Decisive change; do not guess", True),
+                            category=st("Repair category (same as compile_and_diff)"),
+                            automation=st("How a deterministic rule could make it"))),
         "last_diff": ("Every differing row of your last compile_and_diff of a function (its result cuts long diffs). "
                       "Costs no compile.", s(function=st("function", True), context=it("equal rows around each difference"))),
         "release_function": ("Give up a function with notes for the next agent, once compile_and_diff says to move "
