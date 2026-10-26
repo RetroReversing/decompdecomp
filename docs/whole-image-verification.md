@@ -42,3 +42,14 @@ linked ELF and map instead. It creates reference objects only after converting
 the complete ELF back to an image with the original SHA-1. Cartridge FF gap
 fill and trailing FF padding are supported; every layout must pass that same
 whole-image hash. Assembly-only units remain unrecovered.
+
+Recovered function names are paired with generated assembly names only when the
+linked symbol address identifies one unique candidate. These mappings change
+name pairing, never the required byte comparison. A changed instruction still
+fails to match.
+
+Function totals describe detected boundaries in the imported code. Rebuilding
+a complete ROM does not prove that every function boundary has been identified.
+Matched functions and total functions are separate counts; code percentages
+measure bytes. Binary microcode and other unsplit program images are listed in
+the project coverage notes rather than presented as recovered C.

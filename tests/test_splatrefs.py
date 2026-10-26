@@ -11,7 +11,7 @@ import yaml
 from elftools.elf.elffile import ELFFile
 
 from decompnet import consoles, toolchains
-from decompnet.forks import splatrefs
+from decompnet.forks import objdiff, splatrefs
 from decompnet.forks.project import ForkError, ForkProject
 
 from .test_ps2_debug import SHF_ALLOC, SHF_EXECINSTR, SHT_PROGBITS, _elf
@@ -501,3 +501,36 @@ def test_overlay_skips_objcopy_when_flat_image_exceeds_original(tmp_path, monkey
         splatrefs.verified_rebuild(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, image,
                                    hashlib.sha1(image.read_bytes()).hexdigest(), lambda *_: None)
     assert not (tmp_path / 'objdiff.json').exists()
+
+
+@pytest.mark.skipif(toolchains.installed('binutils-mips') is None, reason='needs pinned MIPS binutils')
+@pytest.mark.parametrize('platform', ['n64', 'psx', 'ps2'])
+def test_import_maps_generated_names_to_linked_c_names(tmp_path, platform):
+    cfg = synthetic_project(tmp_path, platform)
+    console = consoles.get(platform)
+    tools = toolchains.require('binutils-mips')
+    suffix = '.exe' if (tools / 'mips-ps2-decompals-as.exe').exists() else ''
+    assembler = str(tools / ('mips-ps2-decompals-as' + suffix))
+    linker = str(tools / ('mips-ps2-decompals-ld' + suffix))
+    candidate = (tmp_path / 'original.s').read_text().replace('demo_func', 'readable_function')
+    (tmp_path / 'candidate.s').write_text(candidate)
+    splatrefs.run([assembler, *console.as_flags, '-o', 'build/src/demo.o', 'candidate.s'], tmp_path, print)
+    splatrefs.run([linker, *(f for f in console.as_flags if f in ('-EB', '-EL')), '-Ttext', '0x80000400',
+                   '-e', 'readable_function', '-o', 'build/program.elf', 'build/src/demo.o'], tmp_path, print)
+    splatrefs.generate(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, console)
+    result = json.loads((tmp_path / 'objdiff.json').read_text())
+    unit = next(u for u in result['units'] if u.get('base_path'))
+    assert unit['symbol_mappings'] == {'demo_func': 'readable_function'}
+    (tmp_path / 'src/demo.c').write_text('int readable_function(void) { return 7; }')
+    report = objdiff.report(tmp_path, tmp_path / 'report.json')
+    function = next(f for u in report['units'] for f in u.get('functions', []) if f['name'] == 'demo_func')
+    assert function['fuzzy_match_percent'] == 100
+    (tmp_path / 'candidate.s').write_text(candidate.replace(',7', ',8'))
+    splatrefs.run([assembler, *console.as_flags, '-o', 'build/src/demo.o', 'candidate.s'], tmp_path, print)
+    report = objdiff.report(tmp_path, tmp_path / 'report.json')
+    function = next(f for u in report['units'] for f in u.get('functions', []) if f['name'] == 'demo_func')
+    assert function['fuzzy_match_percent'] < 100
+    target = tmp_path / unit['target_path']
+    base = tmp_path / unit['base_path']
+    assert splatrefs.source_symbol_mappings(target, base, {'readable_function': 0x80000404}, 0x80000400) == {}
+    assert splatrefs.source_symbol_mappings(target, tmp_path / 'missing.o', {}, 0x80000400) == {}

@@ -718,3 +718,6 @@ adaptive routing. Configured queues do not batch unfiltered neighbours.
   exchanges by session, with paged access and reported token usage. API requests capture
   the actual trimmed context. CLI internal system prompts, hidden reasoning, shell
   output and provider compaction remain outside the app's observable interface.
+
+- Done: original-section imports pair generated symbols with unique linked C
+  names, and nested Splat ROM placement follows the effective YAML base path.

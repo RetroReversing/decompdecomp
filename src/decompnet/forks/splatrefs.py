@@ -373,6 +373,29 @@ def assemble(root: Path, work: Path, unit: dict, definitions: dict, image: bytes
 
 
 
+def source_symbol_mappings(target: Path, base: Path, definitions: dict[str, int], vram: int) -> dict[str, str]:
+    """Pair a generated name with its unique linked C function, without changing the byte comparison."""
+    try:
+        with target.open('rb') as stream:
+            elf = ELFFile(stream)
+            targets = [(s.name, s['st_value']) for s in elf.get_section_by_name('.symtab').iter_symbols()
+                       if s['st_info']['type'] == 'STT_FUNC' and isinstance(s['st_shndx'], int)]
+        with base.open('rb') as stream:
+            elf = ELFFile(stream)
+            candidates = {s.name for s in elf.get_section_by_name('.symtab').iter_symbols()
+                          if s['st_info']['type'] == 'STT_FUNC' and isinstance(s['st_shndx'], int)}
+    except (OSError, ELFError, AttributeError):
+        return {}  # A missing or unfinished candidate still gets its original reference.
+    mappings = {}
+    for name, offset in targets:
+        if name in candidates:
+            continue
+        aliases = [symbol for symbol in candidates if definitions.get(symbol) == vram + offset]
+        if len(aliases) == 1:
+            mappings[name] = aliases[0]
+    return mappings
+
+
 def reference_symbols(work: Path) -> dict[str, int]:
     """Original addresses printed by the disassembler, including labels shared across code units.
 
@@ -502,6 +525,7 @@ def generate(project, config_path: Path, config: dict, console, log=print) -> bo
         private_config.write_text(yaml.safe_dump(split, sort_keys=False), encoding='utf-8')
         log('Generating ROM-derived objdiff reference assembly…')
         run([console_python(sys.executable), '-m', 'splat', 'split', str(private_config)], root, log)
+        linked_definitions = dict(definitions)
         definitions.update(reference_symbols(work))
         entries = []
         image = image_path.read_bytes()
@@ -513,6 +537,9 @@ def generate(project, config_path: Path, config: dict, console, log=print) -> bo
             if unit['source']:
                 entry.update(base_path=unit['base'].relative_to(root).as_posix(),
                              metadata={'source_path': unit['source'].relative_to(root).as_posix()})
+                mappings = source_symbol_mappings(target, unit['base'], linked_definitions, unit['vram'])
+                if mappings:
+                    entry['symbol_mappings'] = mappings
             entries.append(entry)
         pending = work / 'objdiff.json'
         pending.write_text(json.dumps({'custom_make': 'make', 'build_target': False, 'build_base': True,
