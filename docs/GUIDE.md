@@ -421,3 +421,26 @@ name across the indexed library variants and one target in the game. Compiler bu
 Name collisions and explicit prior renames are preserved. The normal checked rename operation verifies existing matched C before saving.
 Function naming metadata and notes retain the source corpora and fingerprint. Naming a routine does not
 increase the decompilation match count. No library archive or source is bundled or downloaded.
+
+## Agent token use
+
+Agent tools now return compact project facts, claim assembly and compiler feedback. Complete function briefs
+remain available through `get_function`; `project_info(detail=true)` returns all project facts. Detailed guides
+and long tool instructions load through `guide(topic)` and `guide(topic="tool:compile_patch")` when needed.
+
+For a small source change, an agent can call `get_candidate(function)` once, then use
+`compile_patch(function, revision, old, new)`. The old text must occur exactly once and the revision must still
+identify the current candidate. Each response supplies the next revision. A stale or ambiguous patch is refused;
+a valid patch goes through the same claim limits, compiler, build protection and byte judge as a full submission.
+`compile_and_diff` remains available for a new function or larger rewrite, and both tools accept optional repair
+notes on a verified match.
+
+Compile feedback shows a bounded set of changed instruction rows. An equal score alone never means the diff is
+unchanged. `last_diff(function, start=0, limit=40)` pages the saved full diff without compiling, and `get_assembly`
+pages the target listing. Cached submissions return a short result and do not consume another compile attempt.
+Claims include a small historical summary across agents, recent source-change summaries and the number of
+recorded automatic repair/reuse trials. Historical scores can reflect different headers or compiler settings.
+
+The model-cost panel separates reported uncached input, cache reads, cache writes and output. These are token
+categories, not interchangeable prices. Older records without a breakdown say it is unavailable. Providers'
+reported dollar amounts remain separate; no cost estimate is inferred from total tokens alone.

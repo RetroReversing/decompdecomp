@@ -730,7 +730,8 @@ class Manager:
         more of. Cheapest per match first; models with no match last. A model spinning in the last SPIN_WINDOW gets
         `advice` (spin_advice)."""
         query = ("SELECT kind, model, COUNT(*) AS sessions, SUM(usd) AS usd, SUM(tokens) AS tokens, SUM(matches) AS "
-                 "matches, SUM(compiles) AS compiles FROM helper_sessions WHERE project=? AND started_at >= ? "
+                 "matches, SUM(compiles) AS compiles, SUM(input_tokens) AS input_tokens, SUM(cache_read_tokens) AS cache_read_tokens, "
+                 "SUM(cache_write_tokens) AS cache_write_tokens, SUM(output_tokens) AS output_tokens FROM helper_sessions WHERE project=? AND started_at >= ? "
                  "GROUP BY kind, model")
         rows = self.net.store.all(query, slug, 0)
         recent = [dict(r) for r in self.net.store.all(query, slug, time.time() - SPIN_WINDOW)]
@@ -1109,9 +1110,9 @@ class Manager:
 
     def prompt(self, s: Session) -> str:
         text = self._prompt(s)
-        # the know-how every session reads first, given up front (saves each session its first tool calls)
+        # Keep detailed guides on demand; the work prompt already teaches the matching loop.
         ov = self.net.overview(s.slug)  # (only its platform's parts: tools.for_platform)
-        text += "\nKnow-how you'd otherwise read with guide() (more topics: guide()):\n\n" + tools.up_front(
+        text += "\nGuides to load when needed:\n\n" + tools.up_front(
             ov.get("platform") or "", ov.get("kind") or "", ov["compiler"]["toolchain"])
         if (known := self.net.knowledge.for_prompt(s.slug)):
             text += f"\n{known}\n"
