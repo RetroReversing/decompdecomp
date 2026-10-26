@@ -57,6 +57,31 @@ def run(command: list[str], root: Path, log) -> None:
         log(result.stdout[-1000:])
 
 
+def binary_span(path: Path) -> int | None:
+    """Bound objcopy's flat output using section load addresses, including gaps.
+
+    Default MIPS linker scripts can put ABI metadata far from .text. Filling that
+    gap can take minutes and gigabytes even for a tiny input ELF.
+    """
+    try:
+        with path.open('rb') as stream:
+            elf = ELFFile(stream)
+            loads = [segment for segment in elf.iter_segments() if segment['p_type'] == 'PT_LOAD']
+            ranges = []
+            for section in elf.iter_sections():
+                if not section['sh_flags'] & 2 or section['sh_type'] == 'SHT_NOBITS' or not section['sh_size']:
+                    continue
+                address = section['sh_addr']
+                for segment in loads:
+                    if segment.section_in_segment(section):
+                        address += segment['p_paddr'] - segment['p_vaddr']
+                        break
+                ranges.append((address, address + section['sh_size']))
+            return max(end for _, end in ranges) - min(start for start, _ in ranges) if ranges else 0
+    except (OSError, ELFError, ValueError):
+        return None
+
+
 def verified_rebuild(project, config_path: Path, config: dict, image_path: Path, sha1: str, log) -> bool:
     """Freeze linked code objects only when objcopy of the ELF reproduces the complete original image.
 
@@ -85,12 +110,15 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
         configured = inside(root, options.get('elf_path', str(build_dir.relative_to(root) / 'project.elf')))
         elves = set(build_dir.glob('*.elf')) | ({configured} if configured.is_file() else set())
         for elf in sorted(elves):
+            span = binary_span(elf)
+            if span is None or span > image_path.stat().st_size:
+                continue  # No gap-fill choice can shrink a flat ELF into the original image.
             # Cartridge link scripts commonly leave FF-filled gaps. Both layouts must satisfy the same
             # complete original-image hash; no payload bytes are supplied from the original here.
             for fill in ([], ['--gap-fill', '0xff']):
                 try:
                     run([str(objcopy), '-O', 'binary', *fill, str(elf), str(binary)], root, log=lambda *_: None)
-                except ForkError:
+                except (ForkError, subprocess.TimeoutExpired):
                     continue  # Not every linked ELF has a flat cartridge layout.
                 if digest(binary) == sha1:
                     matches.append(elf)

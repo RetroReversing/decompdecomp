@@ -898,28 +898,76 @@ $("localScan").onclick = async () => {
   finally { finish(); }
 };
 
+function localProjectGroups(projects, query = "", showImported = false) {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const groups = new Map();
+  projects.forEach((p, index) => {
+    if (p.existing && !showImported) return;
+    const text = `${p.name} ${p.path} ${p.kind}`.toLowerCase();
+    if (!words.every(word => text.includes(word))) return;
+    const kind = p.kind || "custom";
+    if (!groups.has(kind)) groups.set(kind, []);
+    groups.get(kind).push({ project: p, index });
+  });
+  return [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([kind, rows]) => ({
+    kind, rows: rows.sort((a, b) => a.project.name.localeCompare(b.project.name) || a.project.path.localeCompare(b.project.path))
+  }));
+}
+
 function renderLocalProjects(box, scan) {
-  const warnings = [...(scan.errors || []).map((e) => `${e.path}: ${e.error}`),
-    ...(scan.limited ? ["The scan reached its size or depth limit. Scan a smaller folder to see the rest."] : [])];
-  box.innerHTML = `${warnings.map((warning) => `<p class="muted small">${esc(warning)}</p>`).join("")}
-    ${scan.projects.length ? `<p>${plural(scan.projects.length, "repository")} found. Select the projects to add.</p>
-    <div class="row"><button class="ghost" type="button" data-select> Select all new projects</button><button class="ghost" type="button" data-clear>Clear selection</button></div>
-    <ul class="mini-list">${scan.projects.map((p, i) => `<li><label class="check"><input type="checkbox" data-local="${i}" ${p.existing ? "disabled" : ""}><span><b>${esc(p.name)}</b> · ${esc(p.kind)}${p.existing ? " · already imported" : p.kind === "custom" ? " · manual setup needed" : ""}<br><span class="mono small">${esc(p.path)}</span></span></label>
-      <details><summary>AI and contribution rules</summary>${policyHtml(p.policy, false)}</details></li>`).join("")}</ul>
+  const imported = scan.projects.filter(p => p.existing).length;
+  const available = scan.projects.length - imported;
+  box.innerHTML = `${scan.limited ? '<p class="notice small">Scan limit reached. Choose a smaller folder to find the remaining repositories.</p>' : ""}
+    ${(scan.errors || []).length ? `<details class="local-scan-notes"><summary>Scan notes (${scan.errors.length})</summary>${scan.errors.map(e => `<p class="muted small">${esc(e.path)}: ${esc(e.error)}</p>`).join("")}</details>` : ""}
+    ${scan.projects.length ? `<div class="local-import-summary" data-import-summary><strong>${available} new projects</strong><span class="muted small">${imported} already imported · ${scan.projects.length} found</span></div>
+    <div class="local-import-tools"><label class="field"><span>Find a project</span><input type="search" data-search placeholder="Search name, folder or project type…"></label>
+    <label class="check"><input type="checkbox" data-show-imported><span>Show already imported (${imported})</span></label></div>
+    <div class="row"><button class="ghost small-btn" type="button" data-select>Select visible projects</button><button class="ghost small-btn" type="button" data-clear>Clear selection</button><span class="muted small" data-selection aria-live="polite"></span></div>
+    <div data-project-groups></div><p class="muted small" data-empty hidden>No projects match your search.</p>
+    <div class="local-import-footer">
     <label class="field"><span>Where to work</span><select data-copy><option value="copy">Clone separate copies</option><option value="existing">Use the existing checkouts</option></select></label>
-    <p class="muted small">Existing checkouts keep their files, tools, uncommitted work and current branch. When you later run agents, accepted changes are committed in that checkout on its current branch. Separate clones contain committed files; ignored game files and tools must be supplied again. Nothing is pushed.</p>
-    <p class="muted small">After importing, open each project to review setup and measure its progress. Repositories with unsupported builds need manual setup. ROM progress saves still use Open a saved project.</p>
+    <details class="muted small"><summary>How copies and setup work</summary><p>Existing checkouts keep their files, tools, uncommitted work and current branch. Agent changes are committed on that branch. Separate clones contain committed files; supply ignored game files and tools again. Nothing is pushed.</p><p>After importing, open each project to review setup and measure progress. Unsupported builds need manual setup.</p></details>
     <label class="check"><input type="checkbox" data-rules><span>I have reviewed the selected projects' contribution rules and will follow them.</span></label>
     <button class="primary" type="button" data-import disabled>Import selected projects</button>
-    <pre class="joblog" data-local-log hidden></pre><div data-local-outcome></div>` : '<p>No checked-out repositories found in this folder.</p>'}`;
+    <pre class="joblog" data-local-log hidden></pre><div data-local-outcome></div></div>` : '<p>No checked-out repositories found in this folder.</p>'}`;
   if (!scan.projects.length) return;
-  const selected = () => [...box.querySelectorAll("[data-local]:checked")].map((input) => scan.projects[Number(input.dataset.local)]);
+  const picked = new Set();
+  const selected = () => [...picked].map(index => scan.projects[index]).filter(p => !p.existing);
   const go = box.querySelector("[data-import]"), rules = box.querySelector("[data-rules]");
-  const update = () => { go.disabled = !rules.checked || !selected().length; };
-  box.querySelectorAll("[data-local]").forEach((input) => { input.onchange = update; });
-  rules.onchange = update;
-  box.querySelector("[data-select]").onclick = () => { box.querySelectorAll("[data-local]:not(:disabled)").forEach((input) => { input.checked = true; }); update(); };
-  box.querySelector("[data-clear]").onclick = () => { box.querySelectorAll("[data-local]").forEach((input) => { input.checked = false; }); update(); };
+  const search = box.querySelector("[data-search]"), showImported = box.querySelector("[data-show-imported]");
+  let visible = [];
+  const update = () => {
+    const count = selected().length, hidden = [...picked].filter(index => !visible.includes(index)).length;
+    go.disabled = !rules.checked || !count;
+    go.textContent = count ? `Import ${count} selected project${count === 1 ? "" : "s"}` : "Import selected projects";
+    box.querySelector("[data-selection]").textContent = `${count} selected${hidden ? ` · ${hidden} hidden by filters` : ""}`;
+  };
+  const renderList = () => {
+    const importedNow = scan.projects.filter(p => p.existing).length;
+    box.querySelector("[data-import-summary]").innerHTML = `<strong>${scan.projects.length - importedNow} new projects</strong><span class="muted small">${importedNow} already imported · ${scan.projects.length} found</span>`;
+    const groups = localProjectGroups(scan.projects, search.value, showImported.checked);
+    visible = groups.flatMap(group => group.rows.map(row => row.index));
+    const host = box.querySelector("[data-project-groups]");
+    host.innerHTML = groups.map(group => `<section class="local-project-group"><header><h3>${esc(group.kind)}</h3><span class="badge">${group.rows.length}</span></header>
+      <div class="local-project-grid">${group.rows.map(({ project: p, index }) => `<article class="local-repo-card${p.existing ? " imported" : ""}">
+        <label class="local-repo-choice"><input type="checkbox" data-local="${index}" ${p.existing ? "disabled" : picked.has(index) ? "checked" : ""}><span><b>${esc(p.name)}</b>
+        <span class="muted small">${p.existing ? "Already imported" : p.kind === "custom" ? "Manual setup needed" : "Available to import"}</span></span></label>
+        <div class="local-repo-path mono small" title="${esc(p.path)}">${esc(p.path)}</div>
+        <details class="local-repo-policy"><summary>AI and contribution rules</summary>${policyHtml(p.policy, false)}</details></article>`).join("")}</div></section>`).join("");
+    box.querySelector("[data-empty]").hidden = visible.length > 0;
+    box.querySelector("[data-empty]").textContent = importedNow === scan.projects.length && !showImported.checked
+      ? "All found projects are already imported. Turn on Show already imported to see them." : "No projects match your search.";
+    host.querySelectorAll("[data-local]").forEach(input => { input.onchange = () => {
+      const index = Number(input.dataset.local);
+      if (input.checked) picked.add(index); else picked.delete(index);
+      update();
+    }; });
+    update();
+  };
+  search.oninput = renderList; showImported.onchange = renderList; rules.onchange = update;
+  box.querySelector("[data-select]").onclick = () => { visible.forEach(index => { if (!scan.projects[index].existing) picked.add(index); }); renderList(); };
+  box.querySelector("[data-clear]").onclick = () => { picked.clear(); renderList(); };
+  renderList();
   go.onclick = async () => {
     const paths = selected().map((p) => p.path), copies = box.querySelector("[data-copy]").value === "copy";
     const log = box.querySelector("[data-local-log]"), outcome = box.querySelector("[data-local-outcome]");
@@ -932,6 +980,12 @@ function renderLocalProjects(box, scan) {
       outcome.innerHTML = `<p>${result.imported.length} imported or already present; ${result.errors.length} failed.</p>
         <ul>${result.imported.map((p) => `<li><a href="#/p/${encodeURIComponent(p.slug)}">${esc(p.slug)}</a></li>`).join("")}</ul>
         ${result.errors.map((e) => `<p class="err">${esc(e.path)}: ${esc(e.error)}</p>`).join("")}`;
+      for (const item of result.imported) {
+        const project = scan.projects.find(p => p.path === item.path);
+        if (project) project.existing = item.slug;
+      }
+      for (const index of [...picked]) if (scan.projects[index].existing) picked.delete(index);
+      renderList();
       await loadState();
       loadNav();
     } catch (error) { showJobError(log, error.message); }
