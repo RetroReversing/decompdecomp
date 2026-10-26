@@ -202,3 +202,13 @@ def test_explicit_strategy_overrides_sdk_deferral_but_automatic_preserves_it(net
     assert net.claim_row(automatic, 'game', strategy='hardest')['name'] == 'middle'
     net.set_selection('game', explicit.name, {'strategy': 'hardest', 'max_tries': 10})
     assert net.claim_row(explicit, 'game')['name'] == 'large'
+
+
+@pytest.mark.parametrize('kind', ['rom', 'fork'])
+def test_least_tried_sorts_actual_attempt_counts(net, kind):
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?', (json.dumps({'kind': kind}),))
+        db.execute("UPDATE functions SET attempts=9 WHERE name='large'")
+    agent, _ = net.local_agent('least-worker')
+    net.set_selection('game', agent.name, {'strategy': 'least_tried'})
+    assert net.claim_row(agent, 'game')['name'] == 'middle'

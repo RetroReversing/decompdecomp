@@ -237,6 +237,18 @@ const settle = async () => { for (let i = 0; i < SETTLE_TICKS; i++) await tick()
       return [readSelection(box("80", "hardest")), readSelection(box("", "untried")), rejected,
         selectionFields({strategy: "hardest", match_below: 75}).includes('value="hardest" selected')];
     })(),
+    agentCards: (() => {
+      const sessions = [{agent: "a", label: "A", model: "z-model", state: "working", started_at: 100, tokens: 10000},
+                        {agent: "b", label: "B", model: "a-model", state: "working", started_at: 200, tokens: 3000},
+                        {agent: "c", label: "C", model: "b-model", state: "stopped", started_at: 1, tokens: 0}];
+      const board = new Map([["a", {matched: 2, improved: 8}], ["b", {matched: 3, improved: 4}]]);
+      return {sorts: ["matches", "improved", "runtime", "model", "efficiency"].map(mode =>
+        sortAgentCards(sessions, board, mode, 400).map(s => s.agent)),
+        elapsed: agentRuntime(sessions[0], 400), stopped: agentRuntime(sessions[2], 400),
+        rate: agentTokenRate(sessions[0], board.get("a")), empty: agentTokenRate(sessions[2], {}),
+        html: agentMetrics(sessions[0], board.get("a")),
+        least: selectionFields({strategy: "least_tried"}).includes('value="least_tried" selected')};
+    })(),
     efforts: (() => {
       LZ.effort = "xhigh";
       const claude = { takes_effort: true, efforts: ["low", "medium", "high", "xhigh", "max"] };

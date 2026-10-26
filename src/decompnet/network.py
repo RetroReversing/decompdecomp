@@ -148,6 +148,7 @@ WAITING = ("SELECT w.function_id FROM waits w JOIN functions n ON n.id=w.needs_i
 READY = "SELECT w.function_id FROM waits w JOIN functions n ON n.id=w.needs_id WHERE n.status = 'matched'"
 WANTED = "SELECT w.needs_id FROM waits w JOIN functions b ON b.id=w.function_id WHERE b.status = 'open'"
 STRATEGIES = {
+    "least_tried": "f.attempts ASC, f.n_insns ASC",
     # (a failing part waits even for its twins: they'd fail the same way)
     "easiest": f"{_FAILING}, " + _TWINS + f"f.abandons > 0, (f.n_insns + {SIZE_STEP - 1}) / {SIZE_STEP} ASC, "
                                           f"{_SHARE} DESC, f.n_insns ASC",

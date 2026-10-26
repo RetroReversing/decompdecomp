@@ -779,19 +779,8 @@ further isolated proofs rather than automatically applying an agent's whole befo
 The repair-example panel opens on New (not yet reviewed); choose All review states to revisit earlier audits.
 Saving a review removes that example from the default queue while retaining its evidence and review notes.
 
-### Large functions: returning-branch pointer locals
-
-A bounded candidate gives ordinary pointer temporaries separate live ranges in returning `if` blocks, while
-leaving later uses, member names, comments and strings intact. Address-taking, gotos/labels, qualified/initialized
-locals and fall-through branches are excluded. This is a compilation hypothesis, accepted only by the exact judge.
-The deterministic saved-draft phase can inspect up to 1,024 instructions, under its unchanged global 32-attempt /
-20-second round budget; random permutation keeps its 400-instruction cap. The rule is shared across processors
-and both modes; real-game verification was MIPS ROM mode, other modes use synthetic coverage.
-
-An isolated test of the 12 largest unmatched functions (741–966 instructions) found one exact 779-instruction /
-3,116-byte match from this generic rule in one attempt (~0.5 s). Two 60-second random turns on large near misses
-tried 246 variants with no improvements. This supports targeted hypotheses rather than lifting the random cap.
-The other 11 are not claimed solved. Remaining opportunities include localized diff windows / branch-displacement
-cascade diagnostics and more reliable symbolic display of masked low-address assembly expressions, to reduce
-agent context spent on secondary differences. Keep source reconstruction and exact verification separate from
-these diagnostic improvements.
+Agent cards now show recorded matches and improvements, runtime since the most recent start, and lifetime
+tokens per match (unavailable rates show a dash). They can be sorted by status, matches, improvements, runtime,
+model or token efficiency. Work settings expose the effective functions-per-session value and can save a new
+value for the next session without restarting the current function. The shared scheduler supports least-tried
+first alongside the existing selection strategies, in ROM and imported project mode.
