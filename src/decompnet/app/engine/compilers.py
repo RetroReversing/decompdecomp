@@ -290,6 +290,10 @@ class CompilerMixin:
                                        "exact": ok, "current": (tc, flags) == today})
                     if percent is not None and (best is None or percent > best):
                         best, best_profile = percent, [tc, list(flags)]
+                        if not function and (baseline is None or best > baseline + 0.001):
+                            before_text = f"{baseline:.2f}%" if baseline is not None else "no previous score"
+                            log(f"{fn['name']}: better settings found: {before_text} → {best:.2f}% "
+                                f"with {self._short((tc, flags))}. Settings unchanged.")
                     if function:
                         score_text = f"{percent:.2f}%" if percent is not None else "could not compile or compare"
                         log(f"{index}/{len(candidates)} · {self._short((tc, flags))}: {score_text}"
@@ -300,7 +304,10 @@ class CompilerMixin:
                         log(f"{fn['name']}: MATCH {self._short((tc, flags))}"
                             + (" (current settings)" if (tc, flags) == today else ""))
                     if index % 10 == 0:
-                        log(f"{fn['name']}: {index}/{len(candidates)} combinations tested; {len(matches)} exact matches.")
+                        best_text = f"{best:.2f}%" if best is not None else "no usable result"
+                        before_text = f"{baseline:.2f}%" if baseline is not None else "no previous score"
+                        log(f"{fn['name']}: {index}/{len(candidates)} combinations tested; "
+                            f"best {best_text} (saved {before_text}); {len(matches)} exact matches.")
                 improved = best is not None and (baseline is None or best > baseline + 0.001)
                 if improved:
                     improvements.append({"function": fn["name"], "before": baseline, "best": best,
@@ -338,7 +345,8 @@ class CompilerMixin:
                 log(f"{n} functions tried, {found} confirmed")
         if all_installed:
             # An explicit comparison is a report, even when automatic compiler changes are enabled.
-            log(f"Finished: {n} functions tested; {found} have exact matches. Project settings unchanged.")
+            log(f"Finished: {n} functions tested; {len(improvements)} have better tested settings; "
+                f"{found} have exact matches. Project settings unchanged.")
             if not n:
                 log("All eligible saved attempts already have up-to-date comparisons." if skipped else
                     "No eligible unmatched C attempts yet. Run the free matching pass or agents first.")
