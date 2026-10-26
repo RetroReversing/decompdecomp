@@ -92,3 +92,21 @@ def test_explicit_non_improving_choice_is_revalidated_and_rebases_score(comparis
     with pytest.raises(Exception, match='could not compile'):
         net.apply_function_compiler('demo', 'f0', 'sn-n64-281', ['-O3'], allow_non_improving=True)
     assert len(applied) == 1
+
+
+def test_bulk_logs_percentage_improvements_without_exact_matches(comparison):
+    net, _, _, _ = comparison
+    logs = []
+    result = net.survey_compilers('demo', all_installed=True, log=logs.append)
+    assert result['confirmed'] == 0
+    assert any('better settings found: 50.00% → 80.00%' in line for line in logs)
+    assert any('2 have better tested settings; 0 have exact matches' in line for line in logs)
+    assert net._function('f0', 'demo')['best_score'] == 200
+
+
+def test_bulk_progress_includes_best_percentage(comparison, monkeypatch):
+    net, profiles, _, _ = comparison
+    profiles.extend([('gcc-2.7.2-kmc', (f'-DTEST={i}',)) for i in range(8)])
+    logs = []
+    net.survey_compilers('demo', all_installed=True, log=logs.append)
+    assert any('10/10 combinations tested; best 80.00% (saved 50.00%); 0 exact matches.' in line for line in logs)
