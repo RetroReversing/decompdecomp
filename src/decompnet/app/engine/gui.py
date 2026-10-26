@@ -317,7 +317,9 @@ class GuiMixin:
             per_hour[23 - min(23, max(0, int((now - r["matched_at"]) // 3600)))] += 1  # (one matched since `now`: this hour)
         compiles = self.store.one("SELECT COUNT(*) AS n FROM attempts t JOIN functions f ON f.id=t.function_id "
                                   "WHERE f.project_id=? AND t.created_at > ?", pid, now - 3600)["n"]
-        return {"agents": board[:24], "matches_per_hour": per_hour, "compiles_last_hour": compiles}
+        # Agent cards and sorting need every worker, including fresh helpers below the historical leaders.
+        # The overview limits its leaderboard in the GUI; truncating here makes active cards show zero.
+        return {"agents": board, "matches_per_hour": per_hour, "compiles_last_hour": compiles}
 
     def live(self, slug: str, since_event: int = 0, since_attempt: int = 0) -> dict:
         proj = self._project(slug)

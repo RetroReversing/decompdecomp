@@ -30,3 +30,30 @@ def test_distinct_improvements_ignore_ties_failures_and_other_projects(tmp_path)
     assert board['first']['matched'] == 0
     assert board['second']['improved'] == 1  # direct match counts, ties and failures do not
     assert board['second']['matched'] == 1
+
+
+def test_new_workers_keep_their_counts_below_historical_leaderboard_cutoff(tmp_path):
+    net = RomNetwork(tmp_path / 'app.db', tmp_path)
+    with net.store.tx() as db:
+        pid = db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                         ('demo', 'Demo', 'mips', str(tmp_path), json.dumps({'kind': 'rom'}))).lastrowid
+    for i in range(30):
+        agent, _ = net.local_agent(f'worker-{i}')
+        with net.store.tx() as db:
+            fid = db.execute('INSERT INTO functions(project_id,name,size,n_insns,status,matched_agent_id) VALUES(?,?,?,?,?,?)',
+                             (pid, f'fn-{i}', 40, 10, 'matched', agent.id)).lastrowid
+            for _ in range(31-i):
+                db.execute('INSERT INTO attempts(function_id,agent_id,score,compiled,created_at) VALUES(?,?,?,?,?)',
+                           (fid, agent.id, 0, 1, 1))
+    stats = net.stats('demo')
+    assert len(stats['agents']) == 30
+    last = stats['agents'][-1]
+    assert last['agent'] == 'worker-29'
+    assert last['matched'] == 1 and last['improved'] == 1 and last['compiles'] == 2
+    # Further work must update the same card even while it remains below rank 24.
+    agent, _ = net.local_agent('worker-29')
+    with net.store.tx() as db:
+        db.execute('INSERT INTO attempts(function_id,agent_id,score,compiled,created_at) VALUES(?,?,?,?,?)',
+                   (fid, agent.id, 0, 1, 2))
+    updated = next(r for r in net.stats('demo')['agents'] if r['agent'] == 'worker-29')
+    assert updated['compiles'] == 3 and updated['matched'] == 1 and updated['improved'] == 1
