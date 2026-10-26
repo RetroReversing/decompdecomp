@@ -175,8 +175,8 @@ repair_automation in compile_and_diff (single function only). These are saved on
 Explain what changed and how a deterministic repair could do it; omit uncertain explanations. No extra compile
 is needed. report_repair can annotate your captured match afterwards. These are review ideas, never live rules.
 """
-WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
-FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
+WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness or declaration_order experiments without spelling out variants. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
+FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness or declaration_order experiments without spelling out variants. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
 
 
 def _console_guides() -> dict:
@@ -308,6 +308,7 @@ def _compile(net: RomNetwork, agent: Agent, slug: str, function: str, source: st
     else:
         result = net.attempt_many(agent, [net.resolve_function(agent, slug, n) for n in names], source, slug)
     if len(names) == 1:
+        agent_tokens.outcome(net, agent, fn, source, result)
         agent_tokens.remember(net, agent, fn, previous_attempt)
         result = agent_tokens.feedback(net, agent, slug, names[0], result, previous_diff)
         for note in (net.stall_note(fn['id'], agent.id), net.attempt_limit_note(agent, names[0], slug)):
@@ -341,6 +342,7 @@ HANDLERS: dict[str, Callable[..., str]] = {
     "get_candidate": agent_tokens.get_candidate,
     "compile_patch": agent_tokens.patch,
     "compile_variants": agent_tokens.variants,
+    "compile_family": agent_tokens.local_family,
     "get_assembly": lambda net, agent, slug, function, start=0, limit=60: agent_tokens.assembly(net, slug, function, start, limit),
     "claim_function": lambda net, agent, slug, function="", strategy="", count=1:
         _claim(net, agent, slug, function, strategy, count),
@@ -532,6 +534,13 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
         Stops on match or claim error; returns a compact table and current revision. Cached or rejected
         trials may retain earlier C. Each patch starts from the original snapshot, not the previous patch."""
         return await run(ctx, 'compile_variants', function=function, revision=revision, patches=patches)
+
+    @tool
+    async def compile_family(ctx: Context, function: str, revision: str, family: str, old: str) -> str:
+        """Generate bounded local variants: casts (six integer casts on expression old), signedness
+        (toggle the integer type starting declaration old), declaration_order (swap two adjacent simple
+        uninitialized declarations in old). Exact anchor must occur once. Uses normal judge and batch limits."""
+        return await run(ctx, 'compile_family', function=function, revision=revision, family=family, old=old)
 
     @tool
     async def get_assembly(ctx: Context, function: str, start: int = 0, limit: int = 60) -> str:

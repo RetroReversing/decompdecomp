@@ -489,3 +489,22 @@ only shows a fragment of a larger source file, fetch the full candidate before p
 `candidate`, `declarations`, `compiler` and `layouts` are also available, with `all` preserving the
 full view. After three successive identical instruction diffs, feedback suggests changing approach
 or trying a local permutation search. This advice does not skip attempts or change the judge.
+
+
+Batch results group variants with identical displayed instruction diffs and scores into one line;
+this is display compression, not proof of identical bytes and never skips the normal judge.
+Where available, results compare scores with a previous compile of the starting C and count changed
+displayed diff rows. Missing baselines are marked unavailable; historical compiler/header settings
+may differ. Equal scores with different diffs remain separate, and compile errors stay distinct.
+
+`compile_family(function, revision, family, old)` generates local experiments without sending each
+replacement. `casts` wraps expression `old` in int, unsigned int, short, unsigned short, char and
+unsigned char casts. `signedness` toggles the integer type at the start of an exact declaration
+anchor (standard integer types or s8/u8 through s64/u64). `declaration_order` swaps exactly two
+adjacent simple uninitialized declarations. The generated replacements are shown with their variant
+numbers. All use the same six-trial/60-second batch limits and normal claim, compiler and judge paths.
+
+Claims include a bounded summary of recent recorded batch families and their best historical scores,
+shared across agents. `get_function(section="history")` includes this summary. These records are
+observations, not a permanent exhausted-family blacklist; later headers and compiler settings may
+make another trial useful. Records contain family names and summary metrics, not game source.

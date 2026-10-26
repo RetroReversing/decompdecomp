@@ -92,6 +92,7 @@ def brief(net, text, slug=None, agent=None):
             name = name[len(slug)+1:]
         try:
             fn = net._function(name.strip(), slug)
+            text += '\n' + tried_summary(net, fn)
             text += f"\n{fn['name']}: supporting attempt history: get_function(section=\"history\").\n"
             if agent is not None:
                 source, revision = candidate(net, agent, slug, fn['name'])
@@ -168,7 +169,8 @@ def feedback(net, agent, slug, function, text, previous):
 def function_view(net, agent, slug, function, section='all'):
     """Small supporting reads without replaying the candidate and assembly."""
     if section == 'history':
-        return history(net, net._function(function, slug)) or 'No attempt history.'
+        fn = net._function(function, slug)
+        return tried_summary(net, fn) + (history(net, fn) or 'No attempt history.')
     if section == 'candidate':
         return get_candidate(net, agent, slug, function)
     if section not in ('all', 'notes', 'declarations', 'compiler', 'layouts'):
@@ -186,7 +188,60 @@ def function_view(net, agent, slug, function, section='all'):
     return '\n'.join(selected) if selected else f'No {section} section; use get_function(section="all") for the full brief.'
 
 
-def variants(net, agent, slug, function, revision, patches):
+def outcome(net, agent, fn, source, text):
+    """Track displayed diffs, never substitute this summary for the byte judge."""
+    score = re.search(r'\bscore[: ]+(\d+)', text)
+    score = 0 if 'MATCH!' in text else int(score[1]) if score else None
+    if 'COMPILE ERROR' in text or text.startswith(('error:', '❌')):
+        score = None
+    kept = net._last_diffs.get((agent.id, fn['id'])) if score is not None else None
+    offsets = [text.index(mark) for mark in ('\ncompiler output:', '\nwhen linking your code') if mark in text]
+    warnings = text[min(offsets):] if offsets else ''
+    value = {'source': source, 'score': score, 'rows': list(kept[0]) if kept else None, 'warnings': warnings}
+    if not hasattr(net, '_agent_outcomes'):
+        net._agent_outcomes = {}
+    net._agent_outcomes[agent.id, fn['id']] = value
+    return value
+
+
+def tried_summary(net, fn):
+    rows = net.store.all('SELECT family,SUM(trials) AS trials,MIN(best_score) AS best FROM '
+                         '(SELECT * FROM agent_variant_runs WHERE function_id=? ORDER BY id DESC LIMIT 20) '
+                         'GROUP BY family ORDER BY trials DESC LIMIT 4', fn['id'])
+    if not rows:
+        return ''
+    return ('Already tried (recent recorded batches): ' + '; '.join(
+        f"{r['family']}: {r['trials']} trials, best score {r['best'] if r['best'] is not None else 'unknown'}" for r in rows)
+        + '. Historical settings may differ; families are not exhausted. Details: get_function(section="history").\n')
+
+
+def family_patches(family, old):
+    """Bounded, explicit-anchor experiments. The compiler and exact judge decide every candidate."""
+    if not isinstance(old, str) or not old:
+        raise NetworkError('Supply the exact nonempty declaration or expression to vary.')
+    if family == 'casts':
+        return [{'old': old, 'new': f'({t})({old})'} for t in ('int', 'unsigned int', 'short', 'unsigned short', 'char', 'unsigned char')]
+    if family == 'signedness':
+        pairs = {'int': 'unsigned int', 'short': 'unsigned short', 'char': 'unsigned char',
+                 'long': 'unsigned long', 's8': 'u8', 's16': 'u16', 's32': 'u32', 's64': 'u64'}
+        pairs.update({v:k for k,v in list(pairs.items())})
+        match = re.match(r'('+'|'.join(re.escape(k) for k in sorted(pairs,key=len,reverse=True))+r')\b', old)
+        if not match:
+            raise NetworkError('signedness needs an anchor starting with a supported integer type.')
+        return [{'old':old, 'new':pairs[match[1]]+old[match.end():]}]
+    if family == 'declaration_order':
+        lines = old.splitlines()
+        if len(lines) != 2 or not all(re.fullmatch(r'\s*(?:unsigned\s+|signed\s+)?(?:int|short|long|char|float|double|[su](?:8|16|32|64))\s+\*?\s*[A-Za-z_]\w*\s*;\s*', line) for line in lines):
+            raise NetworkError('declaration_order needs exactly two adjacent simple uninitialized declarations.')
+        return [{'old':old,'new':'\n'.join(reversed(lines))}]
+    raise NetworkError('Choose family casts, signedness or declaration_order.')
+
+
+def local_family(net, agent, slug, function, revision, family, old):
+    return variants(net, agent, slug, function, revision, family_patches(family, old), family)
+
+
+def variants(net, agent, slug, function, revision, patches, family="explicit patches"):
     """Independent alternatives against one snapshot, never a cumulative patch chain."""
     from .tools import _compile
     if not isinstance(patches, list) or not 1 <= len(patches) <= 6:
@@ -204,6 +259,17 @@ def variants(net, agent, slug, function, revision, patches):
             candidates.append(source.replace(p['old'], p['new'], 1))
         results = ['Independent variants against revision '+revision+' (not cumulative):']
         last = None
+        groups = {}
+        scores = []
+        baseline = getattr(net, '_agent_outcomes', {}).get((agent.id, fn['id']))
+        if baseline and baseline['source'] != source:
+            baseline = None
+        if baseline is None:
+            prior = net.store.one('SELECT score FROM attempts WHERE function_id=? AND source=? ORDER BY id DESC LIMIT 1', fn['id'],source)
+            if prior and prior['score'] is not None:
+                baseline = {'score':prior['score'], 'rows':None}
+        if family != 'explicit patches':
+            results.append('Generated replacements: '+ '; '.join(f"{i}: {p['new'][:100]}" for i,p in enumerate(patches,1)))
         began = time.monotonic()
         for i, src in enumerate(candidates, 1):
             if last is not None and time.monotonic() - began >= 60:
@@ -215,11 +281,49 @@ def variants(net, agent, slug, function, revision, patches):
                 results.append(f'{i}: stopped: {e}')
                 break
             last = i
-            # Keep failures and limit guidance actionable without replaying every instruction diff.
-            head = result.split('Changed differing rows', 1)[0].split('markers:', 1)[0]
-            results.append(f'{i}: '+ '\n'.join(head.splitlines()[:5])[:650])
+            measured = getattr(net, '_agent_outcomes', {}).get((agent.id, fn['id']))
+            measured = measured if measured and measured['source'] == src else None
+            score = measured['score'] if measured else None
+            rows = measured['rows'] if measured else None
+            if score is not None:
+                scores.append(score)
+            # Group only successful, identical displayed diffs AND scores. Errors stay distinct;
+            # identical text does not prove byte identity and never skips a compile.
+            key = (score, repr(rows), measured.get('warnings',''), 'MATCH!' in result) if rows is not None else ('unavailable', i)
+            if key in groups:
+                groups[key][0].append(i)
+            else:
+                base_score = baseline['score'] if baseline else None
+                comparison = ('baseline unavailable' if score is None or base_score is None else
+                              f"{'improved' if score < base_score else 'worse' if score > base_score else 'equal'} vs starting score {base_score}")
+                changes = 'instruction changes unavailable'
+                if rows is not None and baseline and baseline['rows'] is not None:
+                    before = baseline['rows']
+                    count = sum(a != b for a,b in zip(before,rows)) + abs(len(before)-len(rows))
+                    changes = f'{count} displayed diff rows changed vs start'
+                summary = f'score {score if score is not None else "unavailable"}; {comparison}; {changes}'
+                if rows is not None:
+                    summary += f"; {sum(r[0] != ' ' for r in rows)} displayed mismatch rows vs target"
+                if measured and measured.get('warnings'):
+                    summary += '; diagnostics: '+measured['warnings'][:250]
+                if 'MATCH!' in result:
+                    summary += '; MATCH! verified by normal judge'
+                if score is None:
+                    summary += '; ' + '\n'.join(result.splitlines()[:4])[:400]
+                if 'Max tries reached' in result:
+                    summary += '; Max tries reached'
+                groups[key] = ([i], summary)
+            if 'Max tries reached' in result:
+                results.append('Max tries reached; no further variants submitted.')
             if net._function(function, slug)['status'] != 'open' or 'Max tries reached' in result:
                 break
+        for indices, summary in groups.values():
+            results.append('Variants '+','.join(map(str,indices))+': '+summary)
+        if baseline:
+            results.append('Baseline is a previously observed compile of the starting C; settings may have changed. Grouping uses displayed diffs, not proof of byte identity.')
+        with net.store.tx() as db:
+            db.execute('INSERT INTO agent_variant_runs(function_id,family,revision,trials,best_score,created_at) VALUES(?,?,?,?,?,?)',
+                       (fn['id'],family,revision,last or 0,min(scores) if scores else None,time.time()))
         current_source, current = candidate(net, agent, slug, function)
         current_index = next((i for i, src in enumerate(candidates, 1) if src == current_source), None)
         results.append(f'Current candidate revision {current}; last submitted variant {last}; current source variant {current_index or "retained candidate"}. '

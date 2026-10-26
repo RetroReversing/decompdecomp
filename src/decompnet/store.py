@@ -37,6 +37,10 @@ CREATE TABLE IF NOT EXISTS attempts(
 CREATE TABLE IF NOT EXISTS attempt_hints(
   attempt_id INTEGER PRIMARY KEY, function_id INTEGER NOT NULL, summary TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_attempt_hints_fn ON attempt_hints(function_id,attempt_id);
+CREATE TABLE IF NOT EXISTS agent_variant_runs(
+  id INTEGER PRIMARY KEY, function_id INTEGER NOT NULL, family TEXT NOT NULL,
+  revision TEXT NOT NULL, trials INTEGER NOT NULL, best_score INTEGER, created_at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_agent_variant_fn ON agent_variant_runs(function_id,id);
 CREATE TABLE IF NOT EXISTS notes(
   id INTEGER PRIMARY KEY, project_id INTEGER, function_id INTEGER, agent_id INTEGER, text TEXT, created_at REAL);
 CREATE TABLE IF NOT EXISTS events(
