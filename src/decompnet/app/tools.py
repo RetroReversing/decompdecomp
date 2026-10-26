@@ -522,25 +522,25 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
 
     @tool
     async def compile_patch(ctx: Context, function: str, revision: str, old: str, new: str, repair_note: str = '',
-                            repair_category: str = 'other', repair_automation: str = '') -> str:
-        """Compile one exact-text replacement in your versioned candidate. Stale or ambiguous patches are refused.
+                            repair_category: str = 'other', repair_automation: str = '', occurrence: int = 0) -> str:
+        """Compile one exact-text replacement in your versioned candidate. Use occurrence=1-based index for repeated old text; default 0 requires a unique anchor. Stale revisions are refused.
         Uses the ordinary compiler, claim limits and exact judge; no files bypass the build checks."""
-        return await run(ctx, 'compile_patch', function=function, revision=revision, old=old, new=new,
+        return await run(ctx, 'compile_patch', function=function, revision=revision, old=old, new=new, occurrence=occurrence,
                          repair_note=repair_note, repair_category=repair_category, repair_automation=repair_automation)
 
     @tool
-    async def compile_variants(ctx: Context, function: str, revision: str, patches: list[dict[str, str]]) -> str:
-        """Try 1–6 independent old/new replacements against one candidate revision. Normal judge and limits.
+    async def compile_variants(ctx: Context, function: str, revision: str, patches: list[dict]) -> str:
+        """Try 1–6 independent old/new replacements against one candidate revision. Each patch can specify occurrence=1-based index for repeated old text. Normal judge and limits.
         Stops on match or claim error; returns a compact table and current revision. Cached or rejected
         trials may retain earlier C. Each patch starts from the original snapshot, not the previous patch."""
         return await run(ctx, 'compile_variants', function=function, revision=revision, patches=patches)
 
     @tool
-    async def compile_family(ctx: Context, function: str, revision: str, family: str, old: str) -> str:
-        """Generate bounded local variants: casts (six integer casts on expression old), signedness
-        (toggle the integer type starting declaration old), declaration_order (swap two adjacent simple
-        uninitialized declarations in old). Exact anchor must occur once. Uses normal judge and batch limits."""
-        return await run(ctx, 'compile_family', function=function, revision=revision, family=family, old=old)
+    async def compile_family(ctx: Context, function: str, revision: str, family: str, old: str = '', declaration: str = '', occurrence: int = 0) -> str:
+        """Run a bounded local family: declaration=name for signedness/declaration_order, old=expression for
+        casts. occurrence selects a 1-based repeated old anchor; default 0 requires uniqueness. Missing
+        targets return choices. Normal judge, claim limits and batch budgets apply."""
+        return await run(ctx, 'compile_family', function=function, revision=revision, family=family, old=old, declaration=declaration, occurrence=occurrence)
 
     @tool
     async def get_assembly(ctx: Context, function: str, start: int = 0, limit: int = 60) -> str:
