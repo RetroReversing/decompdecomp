@@ -41,6 +41,9 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   await button.onclick();
   const dialog = body.children[0], list = dialog.querySelector('[data-list]');
   assert(requests[0].url.includes('comparable=1'));
+  assert(requests[0].url.includes('status=new'));
+  const statusFilter = dialog.querySelector('[data-status]'); statusFilter.value = ''; await statusFilter.onchange();
+  assert(requests.at(-1).url.includes('status='));
   const details = list.children[0]; details.open = true; await details.listeners.toggle();
   const evidence = details.children[1], pre = evidence.children[5].children[1];
   assert(pre.textContent.includes('<script>neverExecute()</script>'));

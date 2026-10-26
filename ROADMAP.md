@@ -775,3 +775,6 @@ repairs. This measures reproducibility and future agent-call avoidance, not new 
 Remaining evidence includes 13 regional/donor corrections, 15 coupled scheduling/layout/reconstruction cases,
 and 3 first-try successes without a failed source. Broader stack-layout and pointer-expression temporaries need
 further isolated proofs rather than automatically applying an agent's whole before/after diff.
+
+The repair-example panel opens on New (not yet reviewed); choose All review states to revisit earlier audits.
+Saving a review removes that example from the default queue while retaining its evidence and review notes.
