@@ -236,7 +236,7 @@ class Permuter:
             self._repair_round(agent, self.net.project_row(slug), st)
         return st
 
-    def _repair_round(self, agent, proj, st: State) -> None:
+    def _repair_round(self, agent, proj, st: State, *, function_id=None, budget=32, seconds=20) -> None:
         """At most 32 compiles / 20 seconds before normal random turns; rotate even over ineligible drafts.
 
         Cache individual candidates with their target, header and configured compiler. A new source/header/
@@ -247,14 +247,14 @@ class Permuter:
         cursor = int(saved['value']) if saved else 0
         todo = self.net.store.all(
             "SELECT * FROM functions WHERE project_id=? AND status='open' AND best_source IS NOT NULL "
-            "AND best_score>0 AND n_insns<=? AND id NOT IN (SELECT function_id FROM claims) "
-            "ORDER BY (id<=?), id LIMIT ?", proj['id'], REPAIR_MAX_INSNS, cursor, CANDIDATES)
-        deadline, attempts = time.monotonic() + 20, 0
+            "AND best_score>0 AND n_insns<=? AND (? IS NULL OR id=?) AND id NOT IN (SELECT function_id FROM claims) "
+            "ORDER BY (id<=?), id LIMIT ?", proj['id'], REPAIR_MAX_INSNS, function_id, function_id, cursor, CANDIDATES)
+        deadline, attempts = time.monotonic() + seconds, 0
         fork = self.net.fork_slug(proj['slug'])
         symbols = [tuple(row) for row in self.net.store.all(
             "SELECT name,address,size,kind FROM symbols WHERE project_id=? ORDER BY name", proj['id'])]
         for fn in todo:
-            if st.stop.is_set() or attempts >= 32 or time.monotonic() >= deadline:
+            if st.stop.is_set() or attempts >= budget or time.monotonic() >= deadline:
                 break
             with self.net.store.tx() as db:
                 db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (key, str(fn['id'])))
@@ -276,10 +276,10 @@ class Permuter:
                                 fn['unit'], fn['target'], fn['relocs'], fn['vram']))
                 best = fn['best_score']
                 for candidate in candidates:
-                    if st.stop.is_set() or attempts >= 32 or time.monotonic() >= deadline:
+                    if st.stop.is_set() or attempts >= budget or time.monotonic() >= deadline:
                         break
                     digest = hashlib.sha256((context + candidate).encode()).hexdigest()
-                    trial = f"draft-repair-v7:{fn['id']}:{digest}"
+                    trial = f"draft-repair-v8:{fn['id']}:{digest}"
                     if self.net.store.one("SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?", fn['id'], trial):
                         continue
                     attempts += 1
@@ -295,7 +295,7 @@ class Permuter:
                         if score == 0:
                             st.add(matched=1)
                             break
-                if not fork and best > 0 and attempts <= 29 and time.monotonic() < deadline and not st.stop.is_set():
+                if function_id is None and not fork and best > 0 and attempts <= budget-3 and time.monotonic() < deadline and not st.stop.is_set():
                     attempts += self._repair_flags(agent, proj, fn, st, deadline)
             except Exception:
                 log.exception("permuter: targeted repairs failed for %s", fn['name'])
