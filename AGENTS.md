@@ -128,6 +128,7 @@ Shared pieces: `network.py` (claims, attempts, notes, shared header), `compiler.
 `scoring.py` (capstone disassembly and diffs for every arch), `elfobj.py` (ELF objects), `classes.py` (C++ classes
 from the vtables constructors store, MIPS and x86, named by a PC program's RTTI, `consoles/pc/rtti.py`: the `get_class`
 tool and the class lines of `get_function`),
+`m2cfix.py` (m2c's usual mistakes undone for MIPS GCC games, and its macros expanded for the permuter),
 `structs.py` (struct layouts from the loads and stores through pointers, read by the processor's
 `Arch.field_accesses`, MIPS: `arch/mips_fields.py`, x86: `arch/x86_fields.py`; the `guess_struct` tool and the brief's lines, `app/engine/layouts.py`),
 `compilermap.py` (which compiler built each part of a MIPS game; the judge's survey is `engine.survey_compilers`;

@@ -33,7 +33,7 @@ from concurrent.futures import wait
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .. import consoles, scoring, seeds, toolchains
+from .. import consoles, m2cfix, scoring, seeds, toolchains
 from ..hostenv import NO_WINDOW
 from ..network import NetworkError
 from ..permuter import mutate
@@ -340,7 +340,8 @@ class Permuter:
                     gen = Generator()
                 except OSError as e:  # its environment is broken: the simple rewrites still work
                     log.info("permuter: decomp-permuter didn't start: %s", e)
-            start_src = best_src = cur_src = fn["best_source"]
+            # (a draft still in m2c's macros isn't C decomp-permuter's parser reads: written out, it is the same code)
+            start_src = best_src = cur_src = m2cfix.expand_macros(fn["best_source"])
             best = cur = fn["best_score"]
             deadline = time.monotonic() + SECONDS
             batches = misses = 0
@@ -368,6 +369,7 @@ class Permuter:
                 for cand in batch:
                     if cand is None or time.monotonic() >= deadline or st.stop.is_set():
                         break
+                    cand = m2cfix.static_helpers(cand)  # (a global helper would not link: m2cfix.py)
                     st.add(variants=1)
                     score = self._score(agent, proj, fn, cand, best, fork)
                     if score is None:
