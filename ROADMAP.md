@@ -12,6 +12,8 @@ Want to work on one? Open an issue first, so two people don't build the same thi
 Public projects with a verified full source image can protect partial units with
 [`verify_image`](docs/whole-image-verification.md): source changes must keep the complete output
 identical, in addition to passing the function judge. This shared project-mode check works with any console.
+Verified Splat imports also support assembly-only checkouts and maps at the checkout root;
+references still require the complete original image hash, and assembly contributes no recovered C.
 
 ## What works where
 

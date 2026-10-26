@@ -95,8 +95,8 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
     options = config['options']
     build_dir = inside(root, options.get('build_path', 'build'))
     source_dir = inside(root, options.get('src_path', 'src'))
-    if not build_dir.is_dir() or not source_dir.is_dir():
-        raise ForkError("a verified overlay import needs the project's built objects and source tree")
+    if not build_dir.is_dir():
+        raise ForkError("a verified overlay import needs the project's built objects")
     directory = toolchains.require('binutils-mips')
     objcopy = next((p for p in (directory / 'mips-ps2-decompals-objcopy',
                                 directory / 'bin' / 'mips-ps2-decompals-objcopy') if p.is_file()), None)
@@ -128,7 +128,10 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
             raise ForkError("overlay references need exactly one ELF whose complete binary matches the original "
                             "image's SHA-1")
     elf = matches[0]
-    maps = list(elf.parent.glob('*.map'))
+    paired = elf.with_suffix('.map')
+    root_map = root / (elf.stem + '.map')
+    maps = ([paired] if paired.is_file() else [root_map] if root_map.is_file()
+            else list(elf.parent.glob('*.map')))
     if len(maps) != 1:
         raise ForkError("overlay references need one linker map beside the matching ELF")
     mapped = maps[0].read_text(errors='replace', encoding='utf-8')
