@@ -84,6 +84,28 @@ its string literal with an external pointer can hide the length and change gener
 literal visible and let the judge verify its linked data references. Do not count matching relocation-masked
 instructions as a verified match.
 
+### Use the diff to separate layout changes from missing behaviour
+
+A same-sized candidate can still combine several independent source-revision differences. Resolve them in
+small steps and keep the comparison from each step:
+
+- Missing calls or branches indicate missing behaviour, not just register allocation. A port may replace a
+  disc check with a constant, suppress a pickup sound lookup, or add a state reset absent from the retail
+  executable. Consult the available revisions and call targets before changing those statements.
+- If several accesses through one structure differ by the same number of bytes, compare their field positions
+  against earlier accesses that still agree. Correct the candidate-local layout at the first affected field;
+  do not shift the entire structure or patch every instruction's immediate independently. If the field's
+  meaning is unknown, label the recovered space as unknown rather than inventing an original field name.
+- Rendering helpers that still call a later platform's primitive-submission function need the PS1 ordering
+  table macro from the corresponding SDK headers. Preserve its bitfield form: a manually rewritten mask can
+  change register allocation even when it appears equivalent.
+
+An SDK object signature can identify an entry hidden inside a larger detected function. Treat its relocation
+mask as identity and boundary evidence only. Compile recovered C independently, compare every linked byte,
+and test the SDK compiler version on that function when an otherwise identical wrapper only differs in
+instruction scheduling. Keep any successful compiler override confined to the verified range and recheck
+all existing matches before importing it.
+
 ### Repair only what the evidence supports
 
 Text enums can differ between source revisions. Propose candidate-local corrections using the target's
@@ -91,6 +113,29 @@ immediates and check every linked byte; do not shift all text IDs or rewrite sha
 For function boundaries, combine a return and delay slot, the next prologue, and callers or callback-table
 references. A compiler size mismatch alone does not justify splitting a function. Overlay references must be
 read from the function's own segment, even when multiple overlays share a RAM address.
+
+### Check merged entries before rewriting correct source
+
+A candidate that ends cleanly before its target does may already describe a whole function. For a bulk pass:
+
+1. Compile each source candidate with its own declarations and the target's compiler settings. Record its
+   byte length alongside the target's length, rather than treating the difference as missing C statements.
+2. Inspect the candidate-length offset in the target. A completed return and delay slot followed by a fresh
+   stack prologue is a boundary clue. Check callers, callback tables, or independently identified source
+   neighbours too; an internal return or unreachable block is not sufficient evidence.
+3. Split only an unmatched entry in the isolated copy. Retain the trailing bytes as a separate function;
+   do not discard them or remove them from coverage. Run the ordinary judge on the complete prefix.
+4. Try the newly separated neighbour against its own source. A useful split can recover both functions,
+   but the neighbour stays unmatched until its own linked bytes pass.
+5. Record split operations before source submissions so the verified batch can be replayed through the app.
+   Recheck all existing matches after replaying it.
+
+If the boundaries are sound and just a few instructions differ, inspect register lifetimes and pointer
+qualification before making broad source changes. Period GCC may keep the address of a global in a saved
+register when it is accessed through a local const pointer. An equivalent candidate can therefore restore a
+missing move without changing the compiler flags. Treat this as a hypothesis to test against the complete
+linked function, not a rule to add const pointers everywhere. Record such adaptations separately from the
+reference source, and do not patch machine instructions to make the comparison pass.
 
 Record unsuccessful candidates separately from verified matches. Report matched bytes as well as function
 counts, and retain the original project snapshot so a bulk import remains reviewable.

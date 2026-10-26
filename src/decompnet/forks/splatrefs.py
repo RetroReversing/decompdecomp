@@ -1,6 +1,6 @@
 """Create objdiff references from a verified splat image or a byte-exact, fully linked rebuild.
 
-Only simple code/data layouts are supported. A private all-assembly split supplies the reference bytes and
+Only explicit code/data mappings are supported. A private all-assembly split supplies the reference bytes and
 relocations; linking those references must reproduce every initialized section's original image range before
 any objdiff configuration is published. Existing configurations and expected objects are never replaced.
 """
@@ -19,6 +19,7 @@ import tempfile
 from pathlib import Path
 
 import yaml
+from elftools.common.exceptions import ELFError
 from elftools.elf.elffile import ELFFile
 
 from .. import limits, toolchains
@@ -29,7 +30,7 @@ MAX_UNITS = 2000
 TIMEOUT = 180
 SYMBOL = re.compile(r"[A-Za-z_.$][\w.$]*")
 ADDRESS_COMMENT = re.compile(r"/\* [0-9A-Fa-f]+ ([0-9A-Fa-f]{8})")
-ADDRESS_NAME = re.compile(r"(?:\.L|D_|func_|jtbl_)([0-9A-Fa-f]{8})")
+ADDRESS_NAME = re.compile(r"(?:\.L|D_|func_|jtbl_)([0-9A-Fa-f]{8})(?:_[A-Za-z0-9_.$]+)?")
 
 
 def inside(root: Path, value: str) -> Path:
@@ -81,10 +82,19 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
     parent.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='verified-rebuild-', dir=parent) as temp:
         binary = Path(temp) / 'rebuilt.z64'
-        for elf in sorted(build_dir.glob('*.elf')):
-            run([str(objcopy), '-O', 'binary', str(elf), str(binary)], root, log=lambda *_: None)
-            if digest(binary) == sha1:
-                matches.append(elf)
+        configured = inside(root, options.get('elf_path', str(build_dir.relative_to(root) / 'project.elf')))
+        elves = set(build_dir.glob('*.elf')) | ({configured} if configured.is_file() else set())
+        for elf in sorted(elves):
+            # Cartridge link scripts commonly leave FF-filled gaps. Both layouts must satisfy the same
+            # complete original-image hash; no payload bytes are supplied from the original here.
+            for fill in ([], ['--gap-fill', '0xff']):
+                try:
+                    run([str(objcopy), '-O', 'binary', *fill, str(elf), str(binary)], root, log=lambda *_: None)
+                except ForkError:
+                    continue  # Not every linked ELF has a flat cartridge layout.
+                if digest(binary) == sha1:
+                    matches.append(elf)
+                    break
         if len(matches) != 1:
             raise ForkError("overlay references need exactly one ELF whose complete binary matches the original "
                             "image's SHA-1")
@@ -97,7 +107,19 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
                                  mapped, re.M))
     units, binary_assembly = [], []
     assembly_dir = inside(root, options.get('asm_path', 'asm'))
-    sources = sorted(source_dir.rglob('*.c')) + sorted(set(source_dir.rglob('*.s')) | set(assembly_dir.rglob('*.s')))
+    sources = set(source_dir.rglob('*.c')) | set(source_dir.rglob('*.s')) | set(assembly_dir.rglob('*.s'))
+    # Versioned builds can link shared sources outside Splat's selected src_path. Follow the verified map,
+    # rather than assuming that directory contains every compiled unit.
+    for name in mapped_text:
+        object_path = inside(root, name)
+        try:
+            relative = object_path.relative_to(build_dir)
+        except ValueError:
+            continue
+        stem = relative.with_suffix('')
+        candidates = [stem] if stem.suffix in ('.c', '.s') else [stem.with_suffix('.c'), stem.with_suffix('.s')]
+        sources.update(root / candidate for candidate in candidates if (root / candidate).is_file())
+    sources = sorted(sources, key=lambda path: (path.suffix != '.c', path.as_posix()))
     claimed = set()
     for source in sources:
         relative = source.relative_to(root)
@@ -166,7 +188,7 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
     return True
 
 
-def plan(root: Path, config: dict) -> list[dict]:
+def plan(root: Path, config: dict, *, independent: bool = False) -> list[dict]:
     """Accept linear code mappings; C units have candidates, assembly units remain source-less targets."""
     options = config.get('options', {})
     source_root = options.get('src_path', 'src')
@@ -175,8 +197,8 @@ def plan(root: Path, config: dict) -> list[dict]:
     segments = config.get('segments', [])
     if not isinstance(segments, list):
         raise ForkError("automatic objdiff setup needs a list of explicit splat segments")
-    # Overlay imports must use complete-image verification, regardless of earlier subsegment kinds.
-    if any(isinstance(segment, dict) and segment.get('type') == 'code'
+    # Prefer a verified whole rebuild for overlays; independent mode verifies original sections instead.
+    if not independent and any(isinstance(segment, dict) and segment.get('type') == 'code'
            and any(key in segment for key in ('exclusive_ram_id', 'compressed', 'decompressor'))
            for segment in segments):
         raise ForkError("automatic objdiff setup cannot yet verify compressed or overlay code segments")
@@ -190,12 +212,12 @@ def plan(root: Path, config: dict) -> list[dict]:
             continue
         if not isinstance(segment.get('start'), int) or not isinstance(segment.get('vram'), int):
             raise ForkError("automatic objdiff setup needs a numeric start and vram for each code segment")
-        if any(key in segment for key in ('exclusive_ram_id', 'compressed', 'decompressor')):
+        if any(key in segment for key in ('compressed', 'decompressor')) or (not independent and 'exclusive_ram_id' in segment):
             raise ForkError("automatic objdiff setup cannot yet verify compressed or overlay code segments")
         entries = segment.get('subsegments', [])
         if not isinstance(entries, list):
             raise ForkError("automatic objdiff setup needs a list of explicit splat subsegments")
-        for entry in entries:
+        for index, entry in enumerate(entries):
             if isinstance(entry, dict) and entry.get('type') in ('bss', '.bss'):
                 continue
             if not isinstance(entry, list) or len(entry) < 2:
@@ -203,11 +225,17 @@ def plan(root: Path, config: dict) -> list[dict]:
             offset, kind = entry[:2]
             if not isinstance(offset, int) or not isinstance(kind, str):
                 raise ForkError("automatic objdiff setup needs explicit numeric subsegment offsets")
+            if independent and kind == 'pad':
+                continue
             if kind not in ('c', 'asm', 'hasm', 'data', 'rodata', 'bss', '.data', '.rodata', '.bss', 'bin'):
                 raise ForkError(f"automatic objdiff setup does not support splat subsegment {kind!r} yet")
             if kind not in ('c', 'asm', 'hasm'):
                 continue
+            following = entries[index + 1] if index + 1 < len(entries) else None
+            if isinstance(following, list) and following and following[0] == offset:
+                continue  # An explicitly empty code subsegment has no function denominator.
             name = str(entry[2]) if len(entry) > 2 else f'{offset:X}'
+            name = (Path(str(segment.get('dir', ''))) / name).as_posix()
             if Path(name).is_absolute() or '..' in Path(name).parts or '\\' in name or ':' in name:
                 raise ForkError("automatic objdiff setup needs relative unit names without parent paths")
             source = base = None
@@ -222,9 +250,25 @@ def plan(root: Path, config: dict) -> list[dict]:
                 if len(built) != 1:
                     raise ForkError(f"ambiguous built objects for {relative}; remove stale build outputs or configure objdiff manually")
                 base = built[0]
-            units.append({'name': name, 'source': source, 'base': base, 'offset': offset,
-                          'vram': segment['vram'] + offset - segment['start'],
-                          'delta': segment['start'] - segment['vram']})
+            unit = {'name': name, 'source': source, 'base': base, 'offset': offset,
+                    'vram': segment['vram'] + offset - segment['start'],
+                    'delta': segment['start'] - segment['vram']}
+            mapped_sections = {}
+            for sibling in entries:
+                if isinstance(sibling, dict) and sibling.get('type') in ('bss', '.bss'):
+                    sibling_name = (Path(str(segment.get('dir', ''))) / str(sibling.get('name', ''))).as_posix()
+                    if sibling_name == name and isinstance(sibling.get('vram'), int):
+                        mapped_sections['.bss'] = sibling['vram']
+                    continue
+                if not isinstance(sibling, list) or len(sibling) < 3 or not isinstance(sibling[0], int):
+                    continue
+                section = str(sibling[1]).lstrip('.')
+                sibling_name = (Path(str(segment.get('dir', ''))) / str(sibling[2])).as_posix()
+                if section in ('data', 'rodata') and sibling_name == name:
+                    mapped_sections['.' + section] = segment['vram'] + sibling[0] - segment['start']
+            if mapped_sections:
+                unit['sections'] = mapped_sections
+            units.append(unit)
     if not units or len(units) > MAX_UNITS or len({u['name'] for u in units}) != len(units):
         raise ForkError("automatic objdiff setup needs distinct code units in a supported splat layout")
     return units
@@ -268,9 +312,10 @@ def assemble(root: Path, work: Path, unit: dict, definitions: dict, image: bytes
         path = work / 'asm/data' / (name + '.' + section + '.s')
         if path.exists():
             match = ADDRESS_COMMENT.search(path.read_text(encoding='utf-8'))
-            if not match:
+            configured = unit.get('sections', {}).get('.' + section)
+            if configured is None and not match:
                 raise ForkError("cannot establish a reference data section's original address")
-            sections['.' + section] = int(match[1], 16)
+            sections['.' + section] = configured if configured is not None else int(match[1], 16)
             parts.append(path)
     source = work / 'combined' / (name + '.s')
     source.parent.mkdir(parents=True, exist_ok=True)
@@ -284,7 +329,7 @@ def assemble(root: Path, work: Path, unit: dict, definitions: dict, image: bytes
         elf = ELFFile(stream)
         for symbol in elf.get_section_by_name('.symtab').iter_symbols():
             match = ADDRESS_NAME.fullmatch(symbol.name)
-            if symbol['st_shndx'] == 'SHN_UNDEF' and match and symbol.name not in definitions:
+            if symbol['st_shndx'] == 'SHN_UNDEF' and match:
                 definitions[symbol.name] = int(match[1], 16)
     script = target.with_suffix('.ld')
     script.write_text('\n'.join(f'PROVIDE({name} = {hex(value)});' for name, value in definitions.items())
@@ -296,6 +341,38 @@ def assemble(root: Path, work: Path, unit: dict, definitions: dict, image: bytes
         root, log)
     verify(linked, image, unit)
     return target
+
+
+
+def reference_symbols(work: Path) -> dict[str, int]:
+    """Original addresses printed by the disassembler, including labels shared across code units.
+
+    A candidate ELF can have shifted addresses while its decompilation is incomplete. Reference labels must
+    come from the pinned input instead. Every resolved reference section is still compared byte for byte.
+    """
+    definitions = {}
+    for path in sorted((work / 'asm').rglob('*.s')):
+        pending = []
+        for line in path.read_text(encoding='utf-8').splitlines():
+            label = re.match(r'\s*(?:glabel|dlabel|jlabel|alabel)\s+([A-Za-z_.$][\w.$]*)\s*$', line)
+            local = re.match(r'\s*([A-Za-z_.$][\w.$]*):\s*$', line)
+            if label or local:
+                pending.append((label or local)[1])
+            address = ADDRESS_COMMENT.search(line)
+            if address:
+                value = int(address[1], 16)
+                for name in pending:
+                    if name in definitions and definitions[name] != value:
+                        raise ForkError('the original reference assembly has ambiguous symbol addresses')
+                    definitions[name] = value
+                pending.clear()
+    for name in ('undefined_funcs.txt', 'undefined_syms.txt'):
+        path = work / name
+        if path.is_file():
+            for symbol, value in re.findall(r'^\s*([A-Za-z_.$][\w.$]*)\s*=\s*(0x[0-9A-Fa-f]+)\s*;',
+                                             path.read_text(encoding='utf-8'), re.M):
+                definitions.setdefault(symbol, int(value, 16))
+    return definitions
 
 
 def generate(project, config_path: Path, config: dict, console, log=print) -> bool:
@@ -317,18 +394,31 @@ def generate(project, config_path: Path, config: dict, console, log=print) -> bo
         units = plan(root, config)
     except ForkError as error:
         if ("compressed or overlay code segments" not in str(error)
-                and "subsegment 'pad'" not in str(error)):
+                and "subsegment 'pad'" not in str(error)
+                and "relative unit names without parent paths" not in str(error)):
             raise
-        return verified_rebuild(project, config_path, config, image_path, sha1.lower(), log)
+        try:
+            return verified_rebuild(project, config_path, config, image_path, sha1.lower(), log)
+        except ForkError as rebuilt:
+            if 'exactly one ELF' not in str(rebuilt):
+                raise
+            units = plan(root, config, independent=True)
     configured_elf = inside(root, options.get('elf_path', 'build/project.elf'))
     candidates = [configured_elf] if configured_elf.is_file() else list(inside(root, 'build').rglob('*.elf'))
-    # A reference address map is accepted only beside a complete image rebuilt byte-for-byte.
-    candidates = [elf for elf in candidates if any(p.is_file() and digest(p) == sha1.lower()
+    # Prefer a complete matching image; original disassembly addresses override an incomplete build below.
+    matching = [elf for elf in candidates if any(p.is_file() and digest(p) == sha1.lower()
                                                   for p in (elf.with_suffix('.z64'), elf.with_suffix('.bin'),
                                                             elf.with_suffix('.exe')))]
-    if len(candidates) != 1:
+    if len(matching) == 1:
+        candidates = matching
+    elif len(candidates) == 1:
+        log('The source rebuild is incomplete; deriving and verifying references independently from the original image.')
+    else:
         raise ForkError("automatic objdiff setup needs one linked ELF beside a rebuilt image with the original SHA-1")
-    definitions = symbols(candidates[0])
+    try:
+        definitions = symbols(candidates[0])
+    except ELFError:
+        raise ForkError('automatic objdiff setup needs a readable linked ELF for unresolved symbols') from None
     tid, assembler_name, linker_name = console.reference_tools
     directory = toolchains.require(tid)
     def executable(name):
@@ -354,10 +444,20 @@ def generate(project, config_path: Path, config: dict, console, log=print) -> bo
                     inside(original_base, values))
         opts.update(base_path=str(root), target_path=str(image_path), asm_path=str(work / 'asm'),
                     generated_asm_macros_directory=str(work / 'include'),
+                    data_path=str(work / 'asm/data'), nonmatchings_path=str(work / 'asm/nonmatchings'),
+                    matchings_path=str(work / 'asm/matchings'), cache_path=str(work / '.splache'),
                     src_path=str(work / 'src'), asset_path=str(work / 'assets'), build_path=str(work / 'objects'),
                     ld_script_path=str(work / 'reference.ld'), elf_path=str(work / 'reference.elf'),
                     undefined_funcs_auto_path=str(work / 'undefined_funcs.txt'),
                     undefined_syms_auto_path=str(work / 'undefined_syms.txt'))
+        # Splat also emits headers and optional partial-link files. A reference split must not rewrite
+        # the project's headers, cache, or linker metadata while another build uses them.
+        for key, value in {'ld_symbol_header_path': 'include/ld_symbols.h',
+                           'elf_section_list_path': 'elf_sections.txt',
+                           'ld_partial_scripts_path': 'partial-scripts',
+                           'ld_partial_build_segments_path': 'partial-objects'}.items():
+            if opts.get(key) is not None:
+                opts[key] = str(work / value)
         for segment in split['segments']:
             if not isinstance(segment, dict):
                 continue
@@ -372,6 +472,7 @@ def generate(project, config_path: Path, config: dict, console, log=print) -> bo
         private_config.write_text(yaml.safe_dump(split, sort_keys=False), encoding='utf-8')
         log('Generating ROM-derived objdiff reference assembly…')
         run([console_python(sys.executable), '-m', 'splat', 'split', str(private_config)], root, log)
+        definitions.update(reference_symbols(work))
         entries = []
         image = image_path.read_bytes()
         for index, unit in enumerate(units, 1):
@@ -385,7 +486,11 @@ def generate(project, config_path: Path, config: dict, console, log=print) -> bo
             entries.append(entry)
         pending = work / 'objdiff.json'
         pending.write_text(json.dumps({'custom_make': 'make', 'build_target': False, 'build_base': True,
-                                       'units': entries}, indent=2) + '\n', encoding='utf-8')
+                                       'units': entries,
+                                       'coverage_notes': ([] if matching else [
+                                           'The source rebuild has not passed the whole-image checksum. Function '
+                                           'progress uses independently byte-verified original sections.'])},
+                                      indent=2) + '\n', encoding='utf-8')
         # All outputs stay private to the project. Never overwrite a hand-written configuration or expected/.
         if (root / 'objdiff.json').exists():
             raise ForkError("objdiff.json appeared during setup; the existing configuration was retained")
