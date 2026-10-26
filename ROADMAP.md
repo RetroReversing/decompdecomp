@@ -738,3 +738,8 @@ remain with agents/the random permuter. No full-permuter installation is needed 
 Follow-up evidence: two additional historical near misses matched after only changing a local's integer
 width/signedness, under the same saved header/compiler. The random permuter already supports these mutations;
 a load/store-guided shortlist could prioritize them and avoid spending a random turn finding the same edits.
+
+Targeted address repair also accepts side-effect-free member chains (`obj->base`, `obj.data.base`),
+including a parenthesized byte-pointer cast. It still excludes calls, indexing and increments.
+MIPS jump diffs show relocation addends as byte offsets, so two internal destinations in the same function
+no longer appear equal. This changes diagnostics/scores, not the exact-match judge.
