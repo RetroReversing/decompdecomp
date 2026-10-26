@@ -51,3 +51,42 @@ def test_guarded_review_and_source_opt_in_export(repair_app, monkeypatch):
     full = client.get('/api/repair-examples/export?slug=feedback-demo&include_source=1')
     assert json.loads(full.text)['examples'][0]['evidence']['after']['source'] == 'private matching code'
     assert client.get('/api/repair-examples/export?slug=feedback-demo', headers={'User-Agent': 'outside'}).status_code == 401
+
+
+def test_investigation_route_requires_write_guard_and_scoped_example(repair_app, monkeypatch):
+    from decompnet.app import repair_investigations
+    client, net, _ = repair_app
+    monkeypatch.setattr(repair_investigations, 'choices', lambda: [{'id': 'codex', 'name': 'Codex CLI', 'installed': True}])
+    launched = []
+    monkeypatch.setattr(repair_investigations, 'launch', lambda home, row, kind, log: launched.append(row['id']) or {'repository': 'scratch'})
+    monkeypatch.setattr(net, 'on_match', lambda *a: None)
+    agent, _ = net.local_agent('feedback-test')
+    with net.store.tx() as db:
+        pid = db.execute('INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)',
+                         ('feedback-demo', 'Demo', '/unused', '{}')).lastrowid
+        db.execute('INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)',
+                   ('other', 'Other', '/unused', '{}'))
+        fid = db.execute('INSERT INTO functions(project_id,name,unit,status,n_insns,size,target) VALUES(?,?,?,?,?,?,?)',
+                         (pid, 'target', '', 'open', 1, 4, b'test')).lastrowid
+    f = net.store.one('SELECT * FROM functions WHERE id=?', fid)
+    net._record(f, agent, 0, 'private matching code', 0, matched=True)
+    case = net.repair_feedback.listing('feedback-demo')['examples'][0]['id']
+    url = '/api/repair-examples/investigate'
+    assert client.get(url, headers={'User-Agent': 'outside'}).status_code == 401
+    assert client.get(url).json()['agents'][0]['id'] == 'codex'
+    body = {'id': case, 'slug': 'feedback-demo', 'agent': 'codex'}
+    assert client.post(url, json=body).status_code == 403
+    headers = {'X-Decomp': '1'}
+    assert client.post(url, json=body | {'slug': 'other'}, headers=headers).status_code == 400
+    assert client.post(url, json=body | {'slug': ''}, headers=headers).status_code == 400
+    assert client.post(url, json=body | {'agent': 'unknown'}, headers=headers).status_code == 400
+    assert not launched
+    response = client.post(url, json=body, headers=headers)
+    assert response.status_code == 200 and response.json()['job']
+    # The guarded route starts preparation in a job, never blocks the page until an agent completes.
+    import time
+    for _ in range(100):
+        if launched:
+            break
+        time.sleep(.01)
+    assert launched == [case]

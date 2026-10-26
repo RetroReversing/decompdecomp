@@ -55,6 +55,9 @@ class ClaudeCode(Agent):
     def config_model(self) -> str | None:
         return read_json(Path.home() / ".claude" / "settings.json").get("model") or None
 
+    def investigation_command(self, exe: str, prompt: str) -> list[str]:
+        return [exe, prompt]
+
     def session_command(self, exe: str, workdir: Path, mcp_url: str, token: str, model: str) -> tuple[list[str], dict]:
         cfg = workdir / "mcp.json"
         cfg.write_text(json.dumps({"mcpServers": {"decomp": {"type": "http", "url": mcp_url,

@@ -40,6 +40,9 @@ class Codex(Agent):
     def config_model(self) -> str | None:
         return codex_config().get("model") or None
 
+    def investigation_command(self, exe: str, prompt: str) -> list[str]:
+        return [exe, prompt]
+
     def session_command(self, exe: str, workdir: Path, mcp_url: str, token: str, model: str) -> tuple[list[str], dict]:
         # The helper's own server; the user's MCP servers are switched off for the run (`-c` settings merge into the
         # user's config), as --strict-mcp-config does for Claude Code

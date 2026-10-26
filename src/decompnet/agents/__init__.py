@@ -126,6 +126,10 @@ class Agent:
                 "install": self.install_text(), "recommended": self.recommended, "uses_endpoints": self.uses_endpoints,
                 "takes_effort": self.takes_effort, "efforts": list(self.efforts)}
 
+    def investigation_command(self, exe: str, prompt: str) -> list[str] | None:
+        """Interactive repository work, with the CLI's normal permissions; None when unsupported."""
+        return None
+
     def install_text(self) -> str:
         return (self.windows_install or self.install) if sys.platform == "win32" else self.install
 

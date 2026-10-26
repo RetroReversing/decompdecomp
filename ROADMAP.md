@@ -741,3 +741,15 @@ Targeted address repair also accepts side-effect-free member chains (`obj->base`
 including a parenthesized byte-pointer cast. It still excludes calls, indexing and increments.
 MIPS jump diffs show relocation addends as byte offsets, so two internal destinations in the same function
 no longer appear equal. This changes diagnostics/scores, not the exact-match judge.
+
+### Investigating repair examples
+
+Repair examples explain the workflow, show a readable source diff, and offer an analysis prompt plus a full
+export for improving automatic matching. Review categories/notes and raw technical evidence are optional.
+A selected example can be sent to an installed Codex CLI or Claude Code: preparation clones the app repository
+into a new private investigation folder, keeps game evidence outside git, and opens an interactive terminal
+using the CLI's configured model/account and normal permissions. The terminal is separate from managed game
+helpers; follow/stop it there, and it may continue when the app closes. Proposed edits remain local for review.
+The handoff reaches every game architecture and both modes. Other CLI/API providers can use copy/export;
+managed in-app repository investigation and additional providers remain future work. Native launch adapters
+cover macOS Terminal, Windows console and common Linux terminals; no terminal means an actionable export fallback.
