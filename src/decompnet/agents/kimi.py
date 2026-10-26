@@ -125,6 +125,8 @@ class KimiCode(Agent):
             entry = str(Path(entry).resolve())
             own_node = Path(cmd[0]).parent / ('node.exe' if os.name == 'nt' else 'node')
             node = str(own_node) if own_node.is_file() else _node()
+        # cli_argv can prepend Node while retaining npm's extensionless symlink.
+        entry = str(Path(entry).resolve())
         if Path(entry).suffix not in ('.mjs', '.cjs', '.js'):
             raise RuntimeError('Install the current Kimi Code CLI with npm install -g @moonshot-ai/kimi-code; the legacy Python kimi-cli is not supported.')
         if not node:

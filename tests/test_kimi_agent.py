@@ -103,3 +103,20 @@ def test_legacy_kimi_launcher_has_an_actionable_error(tmp_path):
     old.write_text('#!/usr/bin/env python3')
     with pytest.raises(RuntimeError, match='legacy Python'):
         KIMI.launch_command([str(old)])
+
+
+def test_node_prefixed_npm_symlink_resolves_before_entry_validation(tmp_path):
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('needs Node')
+    entry = tmp_path / 'main.mjs'
+    entry.write_text('console.log(JSON.stringify({args:process.argv.slice(2)}));')
+    shim = tmp_path / 'kimi'
+    try:
+        shim.symlink_to(entry)
+    except OSError:
+        pytest.skip('host cannot create symlinks')
+    cmd = KIMI.launch_command([node, str(shim), '--output-format', 'stream-json'])
+    assert str(entry.resolve()) in cmd
+    result = subprocess.run(cmd, input='prompt through npm shim', text=True, capture_output=True, check=True, timeout=10)
+    assert json.loads(result.stdout)['args'][-2:] == ['-p', 'prompt through npm shim']
