@@ -814,3 +814,25 @@ def test_empty_filtered_queue_pauses_before_spending_on_a_session(tmp_path, monk
     m._run(s)
     assert s.state == "paused" and "below 0%" in s.why
     assert s.runs == 0
+
+
+def test_session_size_changes_are_validated_persisted_and_exposed(tmp_path):
+    net = _game(tmp_path)
+    manager = agents.Manager.__new__(agents.Manager)
+    manager.net, manager._lock = net, threading.RLock()
+    session = agents.Session('1', 'codex', 'model', 'game', 'worker', {'per_session': 8})
+    manager.sessions = {session.id: session}
+    with net.store.tx() as db:
+        for statement in agents.SCHEMA:
+            db.execute(statement)
+        db.execute('INSERT INTO helpers(id,project,kind,model,name,label,options,state) VALUES(?,?,?,?,?,?,?,?)',
+                   (session.id, 'game', 'codex', 'model', 'worker', 'worker', '{}', 'working'))
+    manager.set_selection(session.id, {'strategy': 'least_tried'}, 12)
+    assert session.snapshot()['per_session'] == 12
+    row = net.store.one('SELECT options FROM helpers WHERE id=?', session.id)
+    assert json.loads(row['options'])['per_session'] == 12
+    for invalid in (0, 21, True, 2.5, '8'):
+        with pytest.raises(ValueError, match='whole number'):
+            manager.set_selection(session.id, {}, invalid)
+    assert session.options['per_session'] == 12
+    assert net.selection('game', session.agent_name)['strategy'] == 'least_tried'

@@ -778,3 +778,9 @@ further isolated proofs rather than automatically applying an agent's whole befo
 
 The repair-example panel opens on New (not yet reviewed); choose All review states to revisit earlier audits.
 Saving a review removes that example from the default queue while retaining its evidence and review notes.
+
+Agent cards now show recorded matches and improvements, runtime since the most recent start, and lifetime
+tokens per match (unavailable rates show a dash). They can be sorted by status, matches, improvements, runtime,
+model or token efficiency. Work settings expose the effective functions-per-session value and can save a new
+value for the next session without restarting the current function. The shared scheduler supports least-tried
+first alongside the existing selection strategies, in ROM and imported project mode.

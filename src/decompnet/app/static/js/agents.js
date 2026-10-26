@@ -69,13 +69,39 @@ async function renderCosts(force = false) {
   // a model spinning here lately (agents.py spin_advice): advice to weigh, above the helpers it's about
   const advice = rows.filter((r) => r.advice).map((r) => r.advice);
   $("modelAdvice").hidden = !advice.length;
-  setHtml($("modelAdvice"), advice.map((a) => `<p>${esc(a)}</p>`).join(""));
+  setHtml($("modelAdvice"), `<details><summary>${plural(advice.length, "model performance note")}</summary>${advice.map((a) => `<p>${esc(a)}</p>`).join("")}</details>`);
 }
 
 function helperResults(stats, task) {
   if (task === "readable") return `<b class="ok">${stats?.polished || 0} polished</b>`;
   return `<b class="ok">${stats?.matched || 0} matched</b> · <span title="Distinct functions where this agent beat the previous best matching score. Includes matches; repeated improvements to the same function count once. An initial candidate must improve on 0%.">${stats?.improved || 0} improved</span>`;
 }
+
+let agentSort = "state";
+function agentRuntime(s, now = Date.now() / 1000) {
+  return LIVE.includes(s.state) && s.started_at ? Math.max(0, now - s.started_at) : 0;
+}
+function agentTokenRate(s, stats) {
+  return stats?.matched && s.tokens > 0 ? s.tokens / stats.matched : null;
+}
+function sortAgentCards(sessions, board, mode, now = Date.now() / 1000) {
+  return [...sessions].sort((a, b) => {
+    const x = board.get(a.agent), y = board.get(b.agent);
+    const value = mode === "matches" ? (y?.matched || 0) - (x?.matched || 0)
+      : mode === "improved" ? (y?.improved || 0) - (x?.improved || 0)
+      : mode === "runtime" ? agentRuntime(b, now) - agentRuntime(a, now)
+      : mode === "model" ? (a.model || a.agent).localeCompare(b.model || b.agent)
+      : mode === "efficiency" ? (agentTokenRate(a, x) ?? Infinity) - (agentTokenRate(b, y) ?? Infinity)
+      : STATE_ORDER[a.state] - STATE_ORDER[b.state];
+    return (a.task === "readable") - (b.task === "readable") || value || a.label.localeCompare(b.label);
+  });
+}
+function agentMetrics(s, stats) {
+  const elapsed = agentRuntime(s), rate = agentTokenRate(s, stats);
+  const runtime = LIVE.includes(s.state) ? `${Math.floor(elapsed / 3600)}h ${Math.floor(elapsed % 3600 / 60)}m` : "Not running";
+  return `<div class="agent-metrics"><div><strong>${s.task === "readable" ? stats?.polished || 0 : stats?.matched || 0}</strong><span>${s.task === "readable" ? "polished" : "matched"}</span></div><div><strong>${stats?.improved || 0}</strong><span title="Distinct functions improved; includes matches">improved</span></div><div><strong>${runtime}</strong><span>since latest start</span></div><div><strong>${rate == null ? "—" : (rate / 1000).toFixed(1) + "k"}</strong><span title="Recorded lifetime tokens divided by this agent’s lifetime matches; not just this start">tokens / match</span></div></div>`;
+}
+$("agentSort").onchange = () => { agentSort = $("agentSort").value; renderSessions(S.sessions || []); };
 
 function renderSessions(sessions) {
   renderCosts();
@@ -84,8 +110,7 @@ function renderSessions(sessions) {
   const running = sessions.filter((s) => LIVE.includes(s.state));
   $("stopAll").hidden = running.length < 2;
   // decompiling helpers, then polishing ones (task "readable"), each group under its heading when both are at work
-  const sorted = [...sessions].sort((a, b) => (a.task === "readable") - (b.task === "readable")
-    || STATE_ORDER[a.state] - STATE_ORDER[b.state] || a.label.localeCompare(b.label));
+  const sorted = sortAgentCards(sessions, board, agentSort);
   const both = sorted.some((s) => s.task === "readable") && sorted.some((s) => s.task !== "readable");
   const html = sorted.map((s, i) => {
     const group = s.task === "readable" ? "Polishing" : "Decompiling";
@@ -94,7 +119,7 @@ function renderSessions(sessions) {
     const claim = S.claims.find((c) => c.agent === s.agent);
     const dot = s.state === "paused" ? "err" : s.state === "working" ? "on" : s.state === "stopped" ? "" : "work";
     const live = LIVE.includes(s.state), id = esc(s.id), b = board.get(s.agent);
-    const facts = [s.task === "readable" ? `<b>polishing</b>` : "", esc(s.kind_name), s.model ? esc(s.model) : "its default model", helperResults(b, s.task), b ? plural(b.compiles, "compile") : "",
+    const facts = [s.task === "readable" ? `<b>polishing</b>` : "", esc(s.kind_name), s.model ? esc(s.model) : "its default model", s.task === "readable" ? helperResults(b, s.task) : "", b ? plural(b.compiles, "compile") : "",
       s.usd ? money(s.usd) : s.tokens ? `${(s.tokens / 1000).toFixed(0)}k tokens` : "", s.runs ? plural(s.runs, "session") : "",
       s.restarts ? `started again ${plural(s.restarts, "time")}` : "", live && s.started_at ? `since ${hhmm(s.started_at)}` : ""].filter(Boolean);
     const todo = s.todo ? `${sentence(s.todo.replace(/\.$/, ""))}.${s.state === "paused" ? " Then press Start again." : ""}` : "";
@@ -103,9 +128,10 @@ function renderSessions(sessions) {
           : `<button class="ghost" data-again="${id}" type="button">Start again</button><button class="ghost" data-remove="${id}" type="button">Remove</button>`}</div>
       <span class="state ${s.state === "paused" ? "err" : ""}">${helperState(s, claim)}</span>
       ${todo ? `<span class="todo-line">${esc(todo)}</span>` : ""}
-      ${s.last_message ? `<q class="said" title="${esc(s.last_message)}">${esc(s.last_message)}</q>` : ""}
+      ${s.last_message ? `<details class="agent-message"><summary>Latest update</summary><q class="said">${esc(s.last_message)}</q></details>` : ""}
+      ${agentMetrics(s, b)}
       <span class="facts-line">${facts.join(" · ")}</span>
-      ${s.task !== "readable" ? `<button class="link-btn" data-queue="${id}" type="button">Work selection · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}</button>` : ""}
+      <button class="link-btn" data-queue="${id}" type="button">Work settings · ${s.per_session || 8} functions/session${s.task === "readable" ? "" : ` · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}`}</button>
       <button class="link-btn" data-log="${id}" type="button" aria-pressed="${S.logFor === s.id}">${S.logFor === s.id ? "Back to everything" : "What it said and did"}</button></div>`;
   }).join("");
   setHtml(box, html);
@@ -121,13 +147,14 @@ function renderSessions(sessions) {
   });
   box.querySelectorAll("[data-queue]").forEach((b) => { b.onclick = () => {
     const s = sessions.find((x) => x.id === b.dataset.queue);
-    const panel = dialog(`Work selection · ${s.label}`, `${selectionFields(s.selection)}<button class="primary" data-save-selection>Save</button><button class="ghost" data-cancel-selection>Cancel</button>`);
+    const panel = dialog(`Work selection · ${s.label}`, `${s.task === "readable" ? "" : selectionFields(s.selection)}<label class="field"><span>Functions per session</span><input data-session-size type="number" min="1" max="20" value="${s.per_session || 8}"></label><p class="muted small">Session size changes apply at the next session. The current function stays with its agent.</p><button class="primary" data-save-selection>Save</button><button class="ghost" data-cancel-selection>Cancel</button>`);
     panel.querySelector("[data-cancel-selection]").onclick = closeDialog;
     panel.querySelector("[data-save-selection]").onclick = async () => {
       try {
-        const selection = readSelection(panel);
-        await api("/api/agents/selection", { method: "POST", body: { id: s.id, selection } });
+        const selection = s.task === "readable" ? s.selection || {} : readSelection(panel);
+        await api("/api/agents/selection", { method: "POST", body: { id: s.id, selection, per_session: Number(panel.querySelector("[data-session-size]").value) } });
         s.selection = selection;
+        s.per_session = Number(panel.querySelector("[data-session-size]").value);
         closeDialog();
         toast("Work selection saved. The current function stays with its agent.", "match");
         renderSessions(S.sessions || []);
@@ -151,7 +178,7 @@ $("stopAll").onclick = async () => {
 /* ------------------------------------------------------------------ the launcher: agent, model, how many */
 const LZ = { kind: null, model: "", count: 1, per: null, effort: "", task: "", selection: {} };
 const QUEUE_STRATEGIES = [["", "Automatic (recommended)"], ["easiest", "Easiest first"],
-  ["untried", "Untried first"], ["hardest", "Largest first"], ["closest", "Closest to matching"],
+  ["least_tried", "Least tried first"], ["untried", "Untried first"], ["hardest", "Largest first"], ["closest", "Closest to matching"],
   ["finish", "Finish source files"], ["random", "Random"]];
 function selectionFields(policy = {}) {
   return `<label class="field"><span>Next function</span><select data-selection-strategy>${QUEUE_STRATEGIES.map(([v, label]) =>

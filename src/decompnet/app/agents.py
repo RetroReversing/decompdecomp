@@ -361,6 +361,7 @@ class Session:
     def snapshot(self, since: int = 0) -> dict:
         return {"id": self.id, "kind": self.kind, "kind_name": agents.get(self.kind).name, "label": self.label,
                 "selection": self.options.get("selection") or {},
+                "per_session": self.options.get("per_session", PER_SESSION),
                 "task": self.options.get("task") or "",  # "readable": it polishes matched code
                 "slug": self.slug, "agent": self.agent_name, "model": self.model, "state": self.state, "why": self.why,
                 "todo": self.todo, "until": self.until, "stopped_by": self.stopped_by,
@@ -587,12 +588,16 @@ class Manager:
                 ids.append(s.id)
         return ids
 
-    def set_selection(self, sid: str, policy: dict) -> dict:
+    def set_selection(self, sid: str, policy: dict, per_session: int | None = None) -> dict:
         with self._lock:
             s = self.sessions.get(sid)
             if s is None:
                 raise ValueError("This agent no longer exists. Refresh the agents list.")
+            if per_session is not None and (type(per_session) is not int or not 1 <= per_session <= 20):
+                raise ValueError("Functions per session must be a whole number from 1 to 20.")
             policy = self.net.set_selection(s.slug, s.agent_name, policy)
+            if per_session is not None:
+                s.options["per_session"] = per_session
             s.options["selection"] = policy
             with self.net.store.tx() as db:
                 kept = {k: v for k, v in s.options.items() if k != "api_key"}

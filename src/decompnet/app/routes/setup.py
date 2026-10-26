@@ -134,7 +134,7 @@ def register(app: App) -> None:
             return bad
         data = await body(request)
         try:
-            policy = manager.set_selection(str(data.get("id", "")), data.get("selection") or {})
+            policy = manager.set_selection(str(data.get("id", "")), data.get("selection") or {}, data.get("per_session"))
         except (NetworkError, ValueError) as e:
             return fail(e)
         return JSONResponse({"selection": policy})

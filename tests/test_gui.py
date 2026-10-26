@@ -218,3 +218,13 @@ def test_local_importer_groups_searches_and_preserves_filtered_selection():
         pytest.skip('needs node to run GUI scripts')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_local_import.js'))], check=True,
                    capture_output=True, text=True, encoding="utf-8", timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_agent_cards_sort_metrics_and_handle_unavailable_rates(gui):
+    cards = gui['checks']['agentCards']
+    assert cards['sorts'] == [['b', 'a', 'c'], ['a', 'b', 'c'], ['a', 'b', 'c'],
+                              ['b', 'c', 'a'], ['b', 'a', 'c']]
+    assert cards['elapsed'] == 300 and cards['stopped'] == 0
+    assert cards['rate'] == 5000 and cards['empty'] is None
+    assert '5.0k' in cards['html'] and 'since latest start' in cards['html']
+    assert cards['least']
