@@ -228,3 +228,10 @@ def test_agent_cards_sort_metrics_and_handle_unavailable_rates(gui):
     assert cards['rate'] == 5000 and cards['empty'] is None
     assert '5.0k' in cards['html'] and 'since latest start' in cards['html']
     assert cards['least']
+
+
+def test_compiler_results_apply_selected_profile_and_guard_function():
+    if NODE is None:
+        pytest.skip('needs node to run GUI scripts')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_compiler_results.js'))], check=True,
+                   capture_output=True, text=True, encoding="utf-8", timeout=GUI_TIMEOUT_SECONDS)

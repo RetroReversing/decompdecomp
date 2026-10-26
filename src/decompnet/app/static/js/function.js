@@ -95,6 +95,7 @@ document.querySelectorAll("#diffWhich [data-which]").forEach((b) => {
 });
 
 let fnBusy = false;
+let compilerComparisonBusy = false;
 async function refreshFn(first) {
   if (fnBusy || nameChangeBusy || !S.fn) return;
   fnBusy = true;
@@ -124,6 +125,19 @@ async function refreshFn(first) {
       : d.renamed ? `Renamed from ${d.naming.original_name}` : d.named ? "Named function" : "Generated name";
     fnBadge(d);
     $("fnCompilerTest").hidden = S.ov.kind === "fork" || d.status !== "open" || !S.ov.compilers?.length;
+    if (!compilerComparisonBusy && S.ov.kind !== "fork") {
+      const history = d.compiler_test;
+      $("fnCompilerHistory").textContent = history
+        ? `Last completed test: ${new Date(history.completed_at * 1000).toLocaleString()}${history.stale ? " · outdated: saved C, context, tools or settings have changed" : " · up to date"}`
+        : "Not tested yet. Bulk tests in Settings skip functions with completed, up-to-date comparisons.";
+      const buttonLabel = history ? "Run compiler test again" : "Test installed compilers & flags";
+      $("fnTestCompilers").textContent = buttonLabel;
+      const key = `${slug}:${d.name}:${history?.completed_at || 0}:${history?.stale}`;
+      if (history && $("fnCompilerRanked").dataset.history !== key) {
+        renderFunctionCompilerComparison(history.comparison, slug, d.name);
+        $("fnCompilerRanked").dataset.history = key;
+      }
+    }
 
     $("fnSetAside").hidden = d.status !== "open";
     $("fnSetAside").onclick = async () => {
@@ -461,44 +475,44 @@ function renderProgress() {
 }
 
 
+function renderFunctionCompilerComparison(c, slug, name) {
+  const summary = $("fnCompilerSummary"), table = $("fnCompilerRanked");
+  $("fnApplyCompiler").hidden = true;
+  setHtml(table, compilerRankedTable(c?.ranked || [], true));
+  summary.hidden = false;
+  if (!c || c.best == null) summary.textContent = "No usable compiled results. See comparison details for errors.";
+  else {
+    const before = c.before == null ? "no previous score" : `${c.before.toFixed(2)}%`;
+    summary.dataset.improved = String(c.improved);
+    summary.textContent = `${before} → ${c.best.toFixed(2)}% best tested. ${c.tested} combinations tested; ${c.exact_matches} exact matches. Choose any compiled result to apply to this function only.`;
+  }
+  table.onclick = async (event) => {
+    const button = event.target.closest("button[data-compiler-choice]");
+    if (!button || S.slug !== slug || S.fn !== name) return;
+    const row = c.ranked[Number(button.dataset.compilerChoice)];
+    const done = beginWork(summary, "Applying selected compiler settings", [...table.querySelectorAll("button")], "Settings applied.");
+    compilerComparisonBusy = true;
+    try {
+      await api("/api/compiler", { method: "POST", body: { slug, function: name, toolchain: row.toolchain, flags: row.flags, allow_non_improving: true } });
+      await refreshMap(true);
+      summary.textContent = "Applied the selected profile to this function and rechecked its saved C.";
+    } catch (e) { summary.textContent = e.message; }
+    finally { compilerComparisonBusy = false; done(); await refreshFn(false); }
+  };
+}
 $("fnTestCompilers").onclick = async () => {
-  const button = $("fnTestCompilers"), log = $("fnCompilerLog");
+  const button = $("fnTestCompilers"), log = $("fnCompilerLog"), summary = $("fnCompilerSummary");
   const slug = S.slug, name = S.fn;
   log.hidden = false;
-  const summary = $("fnCompilerSummary");
-  $("fnApplyCompiler").hidden = true;
-  $("fnCompilerRanked").replaceChildren();
   summary.hidden = false;
-  summary.textContent = "Comparing installed compilers and flag variants…";
-  delete summary.dataset.improved;
+  compilerComparisonBusy = true;
   const finish = beginWork(summary, `Testing compilers for ${name}`, [button], "Comparison complete.");
   showJobError(log, "");
   try {
     const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, function: name } });
     const result = await followJob(job, log);
     if (S.fn !== name || S.slug !== slug) return;
-    const c = result.comparison;
-    setHtml($("fnCompilerRanked"), compilerRankedTable(c?.ranked || []));
-    if (!c || c.best == null) summary.textContent = "No usable compiled results. See comparison details for errors.";
-    else {
-      const before = c.before == null ? "no previous score" : `${c.before.toFixed(2)}%`;
-      summary.dataset.improved = String(c.improved);
-      if (c.improved && c.profile) {
-        const apply = $("fnApplyCompiler");
-        apply.hidden = false;
-        apply.textContent = `Apply ${c.profile[0]} ${c.profile[1].join(" ")} to this function`;
-        apply.onclick = async () => {
-          const done = beginWork(summary, "Applying function compiler settings", [apply], "Settings applied.");
-          try {
-            await api("/api/compiler", { method: "POST", body: { slug, function: name, toolchain: c.profile[0], flags: c.profile[1] } });
-            apply.hidden = true;
-            summary.textContent = "Applied to this function only. Its saved C has been rechecked with these settings.";
-            await refreshFn(false);
-            await refreshMap(true);
-          } catch (e) { summary.textContent = e.message; } finally { done(); }
-        };
-      }
-      summary.textContent = `${c.improved ? "Better settings found" : "No improvement found"}: ${before} → ${c.best.toFixed(2)}% best tested. ${c.tested} combinations tested; ${c.exact_matches} exact matches. Compiler settings and saved progress are unchanged.`;
-    }
-  } catch (e) { summary.textContent = e.message; showJobError(log, e.message); } finally { finish(); }
+    renderFunctionCompilerComparison(result.comparison, slug, name);
+  } catch (e) { summary.textContent = e.message; showJobError(log, e.message); }
+  finally { compilerComparisonBusy = false; finish(); await refreshFn(false); }
 };

@@ -340,7 +340,7 @@ function leaveProject() {
 }
 
 
-function compilerRankedTable(rows) {
+function compilerRankedTable(rows, selectable = false) {
   if (!rows.length) return "";
-  return `<div class="compiler-table"><table><thead><tr><th>Match</th><th>Compiler</th><th>Flags</th><th>Result</th></tr></thead><tbody>${rows.map((r) => `<tr><td><b>${r.percent == null ? "—" : `${r.percent.toFixed(2)}%`}</b></td><td>${esc(r.toolchain)}</td><td class="mono">${esc(r.flags.join(" "))}</td><td>${r.exact ? "Exact match" : r.percent == null ? "Could not compile or compare" : "Partial match"}${r.current ? " · current settings" : ""}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="compiler-table"><table><thead><tr><th>Match</th><th>Compiler</th><th>Flags</th><th>Result</th>${selectable ? "<th>Action</th>" : ""}</tr></thead><tbody>${rows.map((r, index) => `<tr><td><b>${r.percent == null ? "—" : `${r.percent.toFixed(2)}%`}</b></td><td>${esc(r.toolchain)}</td><td class="mono">${esc(r.flags.join(" "))}</td><td>${r.exact ? "Exact match" : r.percent == null ? "Could not compile or compare" : "Partial match"}${r.current ? " · settings at test time" : ""}</td>${selectable ? `<td><button type="button" class="ghost small-btn" data-compiler-choice="${index}" ${r.percent == null ? "disabled" : ""}>Apply</button></td>` : ""}</tr>`).join("")}</tbody></table></div>`;
 }
