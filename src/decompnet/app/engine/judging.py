@@ -94,14 +94,17 @@ class JudgeMixin:
 
     def _batch_more(self, agent: Agent, proj, first, n: int) -> list:
         """Up to n more small open functions next to `first` (same file, nearest address), claimed for the agent."""
+        sdk = self.sdk_functions(proj)
+        deferred = list(sdk) if first["id"] not in sdk else []
         now = time.time()
         with self.store.tx() as db:
             self._expire_claims(db)
             rows = db.execute(
                 "SELECT f.* FROM functions f WHERE f.project_id=? AND f.status='open' AND f.boost >= 0 AND f.n_insns <= ? "
                 f"AND f.abandons = 0 AND f.unit=? AND f.id NOT IN (SELECT function_id FROM claims) AND f.id NOT IN ({WAITING}) "
+                "AND f.id NOT IN (SELECT value FROM json_each(?)) "
                 "ORDER BY ABS(COALESCE(f.vram, 0) - ?), f.id LIMIT ?",
-                (proj["id"], BATCH_INSNS, first["unit"], first["vram"] or 0, n)).fetchall()
+                (proj["id"], BATCH_INSNS, first["unit"], json.dumps(deferred), first["vram"] or 0, n)).fetchall()
             for r in rows:
                 db.execute("INSERT INTO claims VALUES(?,?,?,?)", (r["id"], agent.id, now, now + self.claim_ttl))
                 self._event(db, proj["id"], agent.id, "claim", r["name"])

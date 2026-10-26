@@ -258,6 +258,7 @@ def test_verified_rebuild_retains_nested_config_version(tmp_path, monkeypatch, r
         cfg['options']['elf_path'] = 'demo.elf'
     mapping = elf.with_suffix('.map')
     elf.write_bytes(b'linked ELF read by mocked objcopy')
+    monkeypatch.setattr(splatrefs, 'binary_span', lambda _: len(data))
     mapping.write_text(' .text 0x80000400 0x10 build/src/demo.o\n')
     (tmp_path/'asm').mkdir()
     (tmp_path/'build/asm').mkdir()
@@ -448,3 +449,42 @@ def test_checksum_failure_can_finish_only_with_verified_references(tmp_path, mon
         with pytest.raises(ForkError, match='computed checksum did NOT match'):
             project.setup(log=lambda *_: None)
         assert not (tmp_path / 'objdiff.json').exists()
+
+
+def test_flat_binary_span_uses_load_addresses_and_ignores_bss(tmp_path, monkeypatch):
+    image = tmp_path / 'program.elf'
+    image.touch()
+    sections = [{'sh_flags': 2, 'sh_type': 'SHT_PROGBITS', 'sh_size': 16, 'sh_addr': 0x80000400},
+                {'sh_flags': 2, 'sh_type': 'SHT_PROGBITS', 'sh_size': 8, 'sh_addr': 0x90000000},
+                {'sh_flags': 2, 'sh_type': 'SHT_NOBITS', 'sh_size': 0x100000, 'sh_addr': 0xa0000000}]
+    class Load(dict):
+        def section_in_segment(self, section):
+            return section['sh_addr'] == self['p_vaddr']
+    loads = [Load(p_type='PT_LOAD', p_vaddr=0x80000400, p_paddr=0),
+             Load(p_type='PT_LOAD', p_vaddr=0x90000000, p_paddr=32)]
+    class Elf:
+        def iter_sections(self):
+            return iter(sections)
+        def iter_segments(self):
+            return iter(loads)
+    monkeypatch.setattr(splatrefs, 'ELFFile', lambda _: Elf())
+    assert splatrefs.binary_span(image) == 40
+    loads.clear()
+    assert splatrefs.binary_span(image) == 0x90000008 - 0x80000400
+
+
+def test_overlay_skips_objcopy_when_flat_image_exceeds_original(tmp_path, monkeypatch):
+    cfg = config(tmp_path)
+    image = tmp_path / 'baserom.z64'
+    image.write_bytes(b'small original')
+    (tmp_path / 'build/program.elf').write_bytes(b'linked image')
+    tools = tmp_path / 'tools'
+    tools.mkdir()
+    (tools / 'mips-ps2-decompals-objcopy').touch()
+    monkeypatch.setattr(toolchains, 'require', lambda _: tools)
+    monkeypatch.setattr(splatrefs, 'binary_span', lambda _: 2**31)
+    monkeypatch.setattr(splatrefs, 'run', lambda *a, **kw: pytest.fail('oversized objcopy must not run'))
+    with pytest.raises(ForkError, match='exactly one ELF'):
+        splatrefs.verified_rebuild(ForkProject(tmp_path), tmp_path / 'splat.yaml', cfg, image,
+                                   hashlib.sha1(image.read_bytes()).hexdigest(), lambda *_: None)
+    assert not (tmp_path / 'objdiff.json').exists()

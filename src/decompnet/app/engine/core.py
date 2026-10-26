@@ -25,6 +25,10 @@ _settings_lock = threading.Lock()
 
 
 class Core(Network):
+    def sdk_functions(self, proj) -> dict:
+        from ..sdk_identity import identify
+        return identify(self, proj, super().sdk_functions(proj))
+
     def __init__(self, db_path: str | Path, workspace: Path, claim_ttl: int = 30 * 60):
         super().__init__(db_path, claim_ttl=claim_ttl)
         self.workspace = Path(workspace)

@@ -143,7 +143,7 @@ class GuiMixin:
         piece joined to its function, kept for its attempts and notes), which the totals leave out too."""
         proj = self._project(slug)
         rows = self.store.all(
-            "SELECT f.name, f.vram, f.size, f.n_insns, f.status, f.best_score, f.attempts, f.unit, f.matched_at, f.meta, "
+            "SELECT f.id, f.name, f.vram, f.size, f.n_insns, f.status, f.best_score, f.attempts, f.unit, f.matched_at, f.meta, "
             "f.readable, "
             "a.name AS agent, m.name AS matched_by FROM functions f LEFT JOIN claims c ON c.function_id=f.id "
             "LEFT JOIN agents a ON a.id=c.agent_id LEFT JOIN agents m ON m.id=f.matched_agent_id "
@@ -153,7 +153,8 @@ class GuiMixin:
         key = (lambda r: r["name"]) if link is not None and link.fork else (lambda r: r["vram"])
         remote = {key(c): "@" + c["agent"] for c in (link.claims if link is not None else [])}
         from ..function_names import state as name_state
-        return [{**name_state(r), "name": r["name"], "vram": r["vram"], "size": r["size"], "insns": r["n_insns"], "unit": r["unit"],
+        sdk = self.sdk_functions(proj)
+        return [{**name_state(r), "sdk": sdk.get(r["id"]), "name": r["name"], "vram": r["vram"], "size": r["size"], "insns": r["n_insns"], "unit": r["unit"],
                  "status": r["status"] if r["status"] in ("matched", "asm") else "working" if (r["agent"] or key(r) in remote) else "open",
                  "best": r["best_score"], "attempts": r["attempts"], "agent": r["agent"] or remote.get(key(r)),
                  "matched_at": r["matched_at"], "matched_by": r["matched_by"],

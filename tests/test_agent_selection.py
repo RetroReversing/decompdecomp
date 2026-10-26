@@ -191,3 +191,14 @@ def test_parallel_submissions_cannot_both_use_the_last_try(net, monkeypatch):
         with pytest.raises(NetworkError, match='Max tries reached'):
             second.result()
     assert len(compiled) == 1
+
+
+def test_explicit_strategy_overrides_sdk_deferral_but_automatic_preserves_it(net):
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET meta=? WHERE name=?',
+                   (json.dumps({'naming': {'method': 'sdk_signature', 'name': 'sdkExample'}}), 'large'))
+    automatic, _ = net.local_agent('automatic')
+    explicit, _ = net.local_agent('explicit')
+    assert net.claim_row(automatic, 'game', strategy='hardest')['name'] == 'middle'
+    net.set_selection('game', explicit.name, {'strategy': 'hardest', 'max_tries': 10})
+    assert net.claim_row(explicit, 'game')['name'] == 'large'

@@ -211,3 +211,10 @@ def test_transfer_results_filter_successes_and_explain_mismatch_scores():
 
 def test_work_selection_attempt_cap_is_optional_and_requires_whole_number(gui):
     assert gui["checks"]["selectionCap"] == [{"strategy": "hardest", "match_below": None, "max_tries": 12}, True, True]
+
+
+def test_local_importer_groups_searches_and_preserves_filtered_selection():
+    if NODE is None:
+        pytest.skip('needs node to run GUI scripts')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_local_import.js'))], check=True,
+                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)

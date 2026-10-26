@@ -737,12 +737,23 @@ class Network:
             project, policy.get("match_below"), policy.get("match_below"), policy.get("max_tries"), agent.id,
             policy.get("max_tries"))["n"]
 
+    def sdk_functions(self, proj) -> dict:
+        """Recorded SDK identities; identification is separate from a verified C match."""
+        out = {}
+        for row in self.store.all("SELECT id,meta FROM functions WHERE project_id=? AND "
+                                  "json_extract(meta, '$.naming.method')='sdk_signature'", proj["id"]):
+            naming = json.loads(row["meta"])["naming"]
+            out[row["id"]] = {"names": [naming.get("source_name") or naming["name"]],
+                              "corpora": naming.get("source_corpora", []), "evidence": "recorded SDK signature"}
+        return out
+
     def claim_row(self, agent: Agent, project: str | None = None, function: str | None = None,
                   strategy: str = "easiest"):
         """Claim (or renew) a function and return its row, or None when nothing is left."""
         if strategy not in STRATEGIES:
             raise NetworkError(f"strategy must be one of {', '.join(STRATEGIES)}")
         proj = self._project(project) if (project or function is None) else None
+        sdk = self.sdk_functions(proj) if proj is not None and not function else {}
         now = time.time()
         with self.store.tx() as db:
             self._expire_claims(db)
@@ -800,7 +811,8 @@ class Network:
                         AND f.id NOT IN (SELECT function_id FROM claims)
                         AND f.name NOT IN (SELECT detail FROM events WHERE project_id=:pid AND agent_id=:agent
                                            AND kind='release' AND created_at > :mine)
-                        ORDER BY CASE WHEN :custom THEN 0 ELSE f.id IN ({WAITING}) END,
+                        ORDER BY CASE WHEN :custom THEN 0 ELSE f.id IN (SELECT value FROM json_each(:sdk)) END,
+                                 CASE WHEN :custom THEN 0 ELSE f.id IN ({WAITING}) END,
                                  CASE WHEN :custom THEN 0 ELSE f.name IN (SELECT detail FROM events WHERE project_id=:pid AND agent_id=:agent
                                             AND kind='release') END,
                                  CASE WHEN :custom THEN 0 ELSE f.name IN (SELECT detail FROM events WHERE project_id=:pid AND kind='release'
@@ -812,7 +824,7 @@ class Network:
                                  CASE WHEN :custom THEN 0 ELSE f.id IN ({READY}) END DESC, CASE WHEN :custom THEN 0 ELSE f.id IN ({WANTED}) END DESC,
                                  :strong AND f.abandons >= :escalate DESC, {STRATEGIES[strategy]} LIMIT 1""")
                 escalate = self._escalation(db, proj["id"]) if route else ESCALATE_AFTER
-                args = {"pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
+                args = {"sdk": json.dumps(list(sdk)), "pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
                         "overall": overall, "escalate": escalate, "weak": route == "weak", "strong": route == "strong",
                         "mine": self._own_release_cutoff(db, agent.id, now), "custom": custom,
                         "below": policy.get("match_below"), "tries": policy.get("max_tries")}
