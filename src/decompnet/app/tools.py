@@ -175,8 +175,8 @@ repair_automation in compile_and_diff (single function only). These are saved on
 Explain what changed and how a deterministic repair could do it; omit uncertain explanations. No extra compile
 is needed. report_repair can annotate your captured match afterwards. These are review ideas, never live rules.
 """
-WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Supporting history and notes: get_function. get_assembly and last_diff are paged.\n"
-FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Supporting history and notes: get_function. get_assembly and last_diff are paged.\n"
+WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
+FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
 
 
 def _console_guides() -> dict:
@@ -279,13 +279,13 @@ def _claim(net: RomNetwork, agent: Agent, slug: str, function: str, strategy: st
     batch of small ones."""
     strategy = strategy or ("finish" if net.fork_slug(slug) else "easiest")
     if not function and int(count or 1) > 1:
-        return agent_tokens.brief(net, net.claim_many(agent, slug, int(count), strategy), slug)
+        return agent_tokens.brief(net, net.claim_many(agent, slug, int(count), strategy), slug, agent)
     try:
-        return agent_tokens.brief(net, net.claim(agent, slug, function or None, strategy), slug)
+        return agent_tokens.brief(net, net.claim(agent, slug, function or None, strategy), slug, agent)
     except NetworkError as e:
         if not function or not re.search(r"already matched|is set aside|is claimed by|outside this agent|Max tries reached", str(e)):
             raise
-        return f"({e}. Here's the next free function instead.)\n\n" + agent_tokens.brief(net, net.claim(agent, slug, None, strategy), slug)
+        return f"({e}. Here's the next free function instead.)\n\n" + agent_tokens.brief(net, net.claim(agent, slug, None, strategy), slug, agent)
 
 
 def _compile(net: RomNetwork, agent: Agent, slug: str, function: str, source: str,
@@ -340,10 +340,11 @@ HANDLERS: dict[str, Callable[..., str]] = {
     "project_info": lambda net, agent, slug, detail=False: project_info(net, slug, detail),
     "get_candidate": agent_tokens.get_candidate,
     "compile_patch": agent_tokens.patch,
+    "compile_variants": agent_tokens.variants,
     "get_assembly": lambda net, agent, slug, function, start=0, limit=60: agent_tokens.assembly(net, slug, function, start, limit),
     "claim_function": lambda net, agent, slug, function="", strategy="", count=1:
         _claim(net, agent, slug, function, strategy, count),
-    "get_function": lambda net, agent, slug, function: net.get_function(function, slug, agent) + agent_tokens.history(net, net._function(function, slug)),
+    "get_function": agent_tokens.function_view,
     "compile_and_diff": lambda net, agent, slug, function, source, repair_note='', repair_category='other', repair_automation='':
         _compile(net, agent, slug, function, source, repair_note, repair_category, repair_automation),
     "report_repair": lambda net, agent, slug, function, change, category='other', automation='':
@@ -494,10 +495,10 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
         return await run(ctx, "claim_function", function=function, strategy=strategy, count=count)
 
     @tool
-    async def get_function(ctx: Context, function: str) -> str:
+    async def get_function(ctx: Context, function: str, section: str = 'all') -> str:
         """Show any function (by name or address): assembly, status, best attempt, notes. Read matched
-        functions to learn how this codebase is written."""
-        return await run(ctx, "get_function", function=function)
+        functions to learn how this codebase is written. section: all (default), history, candidate, notes, declarations, compiler, layouts. Prefer the specific section you need."""
+        return await run(ctx, "get_function", function=function, section=section)
 
     @tool
     async def compile_and_diff(ctx: Context, function: str, source: str, repair_note: str = '',
@@ -524,6 +525,13 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
         Uses the ordinary compiler, claim limits and exact judge; no files bypass the build checks."""
         return await run(ctx, 'compile_patch', function=function, revision=revision, old=old, new=new,
                          repair_note=repair_note, repair_category=repair_category, repair_automation=repair_automation)
+
+    @tool
+    async def compile_variants(ctx: Context, function: str, revision: str, patches: list[dict[str, str]]) -> str:
+        """Try 1–6 independent old/new replacements against one candidate revision. Normal judge and limits.
+        Stops on match or claim error; returns a compact table and current revision. Cached or rejected
+        trials may retain earlier C. Each patch starts from the original snapshot, not the previous patch."""
+        return await run(ctx, 'compile_variants', function=function, revision=revision, patches=patches)
 
     @tool
     async def get_assembly(ctx: Context, function: str, start: int = 0, limit: int = 60) -> str:

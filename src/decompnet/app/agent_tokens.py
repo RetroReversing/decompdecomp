@@ -3,6 +3,7 @@
 import difflib
 import hashlib
 import re
+import time
 
 from .. import scoring
 from ..network import NetworkError
@@ -70,7 +71,7 @@ def history(net, fn):
             + '; '.join(fingerprints) + '. Scores may use older headers/settings. Read existing notes before repeating approaches.\n')
 
 
-def brief(net, text, slug=None):
+def brief(net, text, slug=None, agent=None):
     # Keep the complete candidate and user instructions. Long target listings and auxiliary sections remain
     # available through get_function / get_assembly, rather than repeated on every claim.
     def assembly(m):
@@ -91,7 +92,12 @@ def brief(net, text, slug=None):
             name = name[len(slug)+1:]
         try:
             fn = net._function(name.strip(), slug)
-            text += f"\n{fn['name']}: supporting attempt history is available through get_function(function).\n"
+            text += f"\n{fn['name']}: supporting attempt history: get_function(section=\"history\").\n"
+            if agent is not None:
+                source, revision = candidate(net, agent, slug, fn['name'])
+                # Only attach a revision when the exact candidate is present in the claim.
+                if source and source.strip() in text:
+                    text += f"{fn['name']}: candidate revision {revision}; use compile_patch directly on the candidate above.\n"
         except NetworkError:
             pass
     return text
@@ -141,9 +147,81 @@ def feedback(net, agent, slug, function, text, previous):
     positions = [text.index(marker) for marker in ('\ncompiler output:', '\nwhen linking your code') if marker in text]
     warn = text[min(positions):] if positions else ''
     if previous == rows:
+        key = (agent.id, fn['id'])
+        streaks = getattr(net, '_agent_unchanged', None)
+        if streaks is None:
+            streaks = net._agent_unchanged = {}
+        streaks[key] = streaks.get(key, 0) + 1
         detail = 'Instruction diff unchanged from your previous compile (not merely an equal score).'
+        if streaks[key] >= 3:
+            detail += (' Multiple edits produced identical instructions. Change approach: inspect the differing '
+                       'region, try a local permutation search, or test independent alternatives with compile_variants; '
+                       'avoid repeating edits the compiler optimizes away.')
     else:
+        getattr(net, '_agent_unchanged', {}).pop((agent.id, fn['id']), None)
         # Show newly changed differing rows first, with ordinary first-region fallback.
         changed = [(r[0], f'[{i}] {r[1]}', r[2]) for i,r in enumerate(rows) if r[0]!=' ' and (previous is None or i>=len(previous) or r!=previous[i])]
         detail = 'Changed differing rows (first 12):\n' + scoring.render_rows(changed[:12], 0, max_rows=18, legend=legend, more_hint=False)
     return head + detail + warn + '\nFull/paged instructions: last_diff(function, start=0, limit=40).'
+
+
+def function_view(net, agent, slug, function, section='all'):
+    """Small supporting reads without replaying the candidate and assembly."""
+    if section == 'history':
+        return history(net, net._function(function, slug)) or 'No attempt history.'
+    if section == 'candidate':
+        return get_candidate(net, agent, slug, function)
+    if section not in ('all', 'notes', 'declarations', 'compiler', 'layouts'):
+        raise NetworkError('Choose section all, history, candidate, notes, declarations, compiler or layouts.')
+    text = net.get_function(function, slug, agent)
+    if section == 'all':
+        return text + history(net, net._function(function, slug))
+    titles = {'notes': ('Notes',), 'declarations': ('Declarations', 'Data it uses'),
+              'compiler': ('Compiler',), 'layouts': ('Likely struct layouts',)}[section]
+    blocks = re.split(r'(?=^### )', text, flags=re.M)
+    selected = [b for b in blocks if any(b.startswith('### '+title) for title in titles)]
+    # The preamble contains per-function compiler ranges in ROM mode.
+    if section == 'compiler':
+        selected.insert(0, blocks[0].split('### Target assembly')[0])
+    return '\n'.join(selected) if selected else f'No {section} section; use get_function(section="all") for the full brief.'
+
+
+def variants(net, agent, slug, function, revision, patches):
+    """Independent alternatives against one snapshot, never a cumulative patch chain."""
+    from .tools import _compile
+    if not isinstance(patches, list) or not 1 <= len(patches) <= 6:
+        raise NetworkError('Send 1 to 6 independent patches with old and new text.')
+    fn = net._function(function, slug)
+    with net.attempt_turn(agent, fn):
+        source, actual = candidate(net, agent, slug, function)
+        if revision != actual:
+            raise NetworkError('Candidate changed. Call get_candidate before trying variants.')
+        candidates = []
+        for p in patches:
+            if (not isinstance(p, dict) or not isinstance(p.get('old'), str) or not p['old']
+                    or not isinstance(p.get('new'), str) or source.count(p['old']) != 1):
+                raise NetworkError('Every patch needs old text occurring exactly once and new replacement text.')
+            candidates.append(source.replace(p['old'], p['new'], 1))
+        results = ['Independent variants against revision '+revision+' (not cumulative):']
+        last = None
+        began = time.monotonic()
+        for i, src in enumerate(candidates, 1):
+            if last is not None and time.monotonic() - began >= 60:
+                results.append('Stopped before the next trial: 60-second batch budget reached. Resume with the current revision.')
+                break
+            try:
+                result = _compile(net, agent, slug, function, src)
+            except NetworkError as e:
+                results.append(f'{i}: stopped: {e}')
+                break
+            last = i
+            # Keep failures and limit guidance actionable without replaying every instruction diff.
+            head = result.split('Changed differing rows', 1)[0].split('markers:', 1)[0]
+            results.append(f'{i}: '+ '\n'.join(head.splitlines()[:5])[:650])
+            if net._function(function, slug)['status'] != 'open' or 'Max tries reached' in result:
+                break
+        current_source, current = candidate(net, agent, slug, function)
+        current_index = next((i for i, src in enumerate(candidates, 1) if src == current_source), None)
+        results.append(f'Current candidate revision {current}; last submitted variant {last}; current source variant {current_index or "retained candidate"}. '
+                       'Best attempts are saved normally. last_diff shows the last completed trial; get_candidate recovers the current C. Cached or rejected trials may retain the earlier candidate.')
+        return '\n'.join(results)
