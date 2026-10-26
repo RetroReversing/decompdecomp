@@ -612,6 +612,7 @@ function logLine(f, fresh) {
 }
 function renderLog() {
   const s = (S.sessions || []).find((x) => x.id === S.logFor);
+  $("helperTranscript").hidden = !s;
   $("activity").hidden = !!s; $("thoughts").hidden = !s; $("helperLogClose").hidden = !s;
   $("feedTitle").textContent = s ? `What ${s.label} said and did` : "What's happening";
   $("feedHint").textContent = s ? "its own words, its thinking and the tools it called, newest first" : "every agent's work on this game, newest first";
@@ -637,4 +638,3 @@ function addThoughts(sessions, first) {
   }
   if (first) renderLog();
 }
-

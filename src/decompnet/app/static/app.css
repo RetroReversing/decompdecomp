@@ -1041,6 +1041,8 @@ details.more[open] > summary::before { content: "− "; }
 .image-coverage-table th { color: var(--muted); font-weight: 500; }
 .image-coverage-table td { border-top: 1px solid var(--line-soft); white-space: nowrap; }
 
+
+
 /* Local repository importer: one stable selection across searchable project-type groups. */
 .local-import-summary { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 18px 0; }
 .local-import-summary strong { font-size: 20px; }

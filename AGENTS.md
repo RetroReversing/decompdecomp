@@ -139,7 +139,7 @@ Windows have a tray icon; tests set `DECOMP_WINDOW=0` and
 `DECOMP_TRAY=0`), `app/edition.py` (release or development copy), `app/saves.py` (a ROM project's work as plain files, and a
 project restored from them), `app/readable.py` (polishing matched code), `app/knowledge.py` (what agents learn,
 shared once two models agree), `app/drafts.py` + `app/permute.py` (background drafts and the permuter),
-`structs.py` (struct layouts from loads and stores), `app/guide/*.md` and `consoles/<id>/guides/*.md` (know-how agents read through `guide(topic)`), `app/static/` (GUI: `index.html`, `app.css`, and `js/*.js`, nine plain scripts loaded in order; `js/base.js` says which is which).
+`structs.py` (struct layouts from loads and stores), `app/guide/*.md` and `consoles/<id>/guides/*.md` (know-how agents read through `guide(topic)`), `app/static/` (GUI: `index.html`, `app.css`, and `js/*.js`, plain scripts loaded in order; `js/base.js` says which is which).
 
 ## Conventions
 

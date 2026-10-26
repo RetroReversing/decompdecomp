@@ -53,6 +53,11 @@ def register(app: App) -> None:
         out["sessions"] = [s for s in manager.snapshot(since) if s["slug"] == slug]
         return out
 
+    def p_transcript(slug, request, data):
+        q = request.query_params
+        return manager.transcript(slug, int(q.get('helper', 0)), int(q.get('session', 0)),
+                                  int(q.get('after', 0)), int(q.get('before', 0)))
+
     def p_compiler(slug, request, data):
         if data.get("function"):
             return net.apply_function_compiler(slug, str(data["function"]), str(data.get("toolchain", "")),
@@ -277,6 +282,7 @@ def register(app: App) -> None:
         "/api/modelcosts": (lambda s, r, d: manager.costs(s), ["GET"]),
         "/api/save": (p_save, ["POST"]),
         "/api/live": (p_live, ["GET"]),
+        "/api/transcript": (p_transcript, ["GET"]),
         "/api/function": (lambda s, r, d: net.function_detail(s, r.query_params.get("name", "")), ["GET"]),
         "/api/diff": (lambda s, r, d: net.function_diff(s, r.query_params.get("name", ""),
                                                         r.query_params.get("which", "latest")), ["GET"]),

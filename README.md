@@ -309,6 +309,16 @@ Type `decomp`, or open decompdecomp from your apps menu. It opens in a window of
    the easy ones for free, before any agent starts.
 4. **Export** (in the project's header). You get a decomp project that builds your game again, byte for byte.
 
+To inspect agent costs, open **What it said and did → Session transcript**. Each new
+session keeps the full app prompt (including guides and project instructions), exposed
+replies, app tool arguments/results, and reported input/cache/output usage. API helpers
+also record each request after context trimming, including tool definitions. CLI provider
+system prompts, hidden reasoning, shell output and internal compaction are not available.
+The transcript is local, paged separately from the short live feed, survives restarts,
+and redacts known credentials. It contains source and can grow with long sessions;
+older sessions recorded before this feature cannot be reconstructed. Token counts and
+dollar costs are shown only when reported, not estimated or assumed to be zero.
+
 You can also continue a community decomp: paste the address of its repository and pick your own copy of its game.
 
 Some community projects do not provide `objdiff.json`. After you supply the matching game and the project's build

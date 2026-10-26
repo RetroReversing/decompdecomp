@@ -296,7 +296,14 @@ def test_builtin_api_agent_matches_a_function(app, monkeypatch):
     monkeypatch.setattr(httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
     s = agents.Session("api-t", "api", "Test", slug, "api-test", {"base_url": "http://mock/v1", "model": "m", "api_key": "test-key"})
     agent, _ = net.local_agent("api-test")
+    manager._session_begin(s)
     assert api.API.run(manager, s, agent) is True
+    transcript = manager.transcripts.read(slug, s.id)['events']
+    requests = [json.loads(event['text']) for event in transcript if event['kind'] == 'api_request']
+    assert requests == seen
+    assert any(event['kind'] == 'prompt' for event in transcript)
+    assert any(event['kind'] == 'tool_response' for event in transcript)
+    assert 'test-key' not in json.dumps(transcript)
     assert net._function("func_800007F4", slug)["status"] == "matched"
     assert "byte-identical" in seen[-1]["messages"][-1]["content"]
 
@@ -798,3 +805,16 @@ def test_sdk_inventory_is_global_and_selection_is_a_guarded_project_setting(app,
     monkeypatch.setattr(sdk_library, 'choose', lambda net, slug, selection: selected.append((slug, selection)))
     response = client.post('/api/sdk-library', json={'slug': 'example', 'selection': []}, headers={'X-Decomp': '1'})
     assert response.status_code == 200 and selected == [('example', [])]
+
+
+def test_transcript_route_requires_window_auth_and_checks_project(app):
+    client, net, manager = app
+    s = agents.Session('9001', 'codex', 'Transcript', 'trace-demo', 'trace-helper', {})
+    manager._session_begin(s)
+    s.record('prompt', 'The full initial prompt')
+    url = f'/api/transcript?slug=trace-demo&helper=9001&session={s.session_id}'
+    assert client.get(url, headers={'User-Agent': 'outside'}).status_code == 401
+    result = client.get(url)
+    assert result.status_code == 200
+    assert result.json()['events'][0]['text'] == 'The full initial prompt'
+    assert client.get(url.replace('trace-demo', 'other')).status_code == 400

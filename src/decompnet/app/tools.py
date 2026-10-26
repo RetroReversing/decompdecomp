@@ -389,7 +389,7 @@ def call(net: RomNetwork, agent: Agent, slug: str, name: str, args: dict) -> str
 ALWAYS_LOAD = agents.TOOL_META
 
 
-def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]]) -> MCPServer:
+def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]], observe=None) -> MCPServer:
     """MCP server for CLI agents. `agent_of` maps a request to (agent, project slug)."""
     mcp = MCPServer(name="decomp", title="decompdecomp", instructions=INSTRUCTIONS, version=__version__)
 
@@ -398,10 +398,19 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]])
             agent, slug = agent_of(ctx)
         except NetworkError as e:
             raise ToolError(str(e)) from None
+        if observe:
+            observe(agent, slug, 'tool_request', {'name': name, 'arguments': args})
         try:
-            return await anyio.to_thread.run_sync(lambda: HANDLERS[name](net, agent, slug, **_named(net, agent, slug, args)))
-        except NetworkError as e:
-            raise ToolError(str(e)) from None
+            result = await anyio.to_thread.run_sync(lambda: HANDLERS[name](net, agent, slug, **_named(net, agent, slug, args)))
+        except Exception as e:
+            if observe:
+                observe(agent, slug, 'tool_response', {'name': name, 'error': str(e)})
+            if isinstance(e, NetworkError):
+                raise ToolError(str(e)) from None
+            raise
+        if observe:
+            observe(agent, slug, 'tool_response', {'name': name, 'content': result})
+        return result
 
     @mcp.tool(meta=ALWAYS_LOAD)
     async def project_info(ctx: Context) -> str:

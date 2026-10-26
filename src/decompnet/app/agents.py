@@ -35,6 +35,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -328,6 +329,8 @@ class Session:
     error: str = ""  # the last error
     feed: collections.deque = field(default_factory=lambda: collections.deque(maxlen=FEED_LINES))
     seq: int = 0
+    record: Callable[[str, object], None] | None = field(default=None, repr=False)  # current session transcript callback
+    session_id: int = 0
     stop: threading.Event = field(default_factory=threading.Event)
     thread: threading.Thread | None = None
     proc: subprocess.Popen | None = None
@@ -346,6 +349,8 @@ class Session:
         return str(self.options.get("model") or "")
 
     def push(self, kind: str, text: str) -> None:
+        if self.record and kind in ("text", "think", "error", "info"):
+            self.record(kind, text)
         self.seq += 1
         self.feed.append({"seq": self.seq, "t": time.time(), "type": kind, "text": text[:FEED_TEXT]})
         if kind == "text":
@@ -472,6 +477,8 @@ def _terminate(proc: subprocess.Popen) -> None:
 class Manager:
     def __init__(self, net: RomNetwork, home: Path, mcp_url: str):
         self.net, self.home, self.mcp_url = net, home, mcp_url
+        from .transcripts import Transcripts
+        self.transcripts = Transcripts(net.store)
         self.sessions: dict[str, Session] = {}
         self.assignments: dict[int, str] = {}  # agent id -> project slug
         self._lock = threading.RLock()
@@ -845,6 +852,8 @@ class Manager:
 
     def account(self, s: Session, usage: dict) -> None:
         """Add what a session spent to the helper, the session and the project (kept in its config)."""
+        if s.record:
+            s.record("usage", usage)
         usd = float(usage.get("usd") or 0)
         parts = {k: int(usage.get(k) or 0) for k in TOKEN_KINDS}
         total = sum(parts.values()) or int(usage.get("tokens") or 0)
@@ -1051,9 +1060,28 @@ class Manager:
     def _session_begin(self, s: Session) -> int:
         s.usage = _fresh_usage()
         with self.net.store.tx() as db:
-            return db.execute("INSERT INTO helper_sessions(helper_id, project, kind, model, agent, started_at) "
+            row = db.execute("INSERT INTO helper_sessions(helper_id, project, kind, model, agent, started_at) "
                               "VALUES(?,?,?,?,?,?)", (s.id, s.slug, s.kind, s.model or agents.get(s.kind).config_model() or "",
                                                       s.agent_name, time.time())).lastrowid
+        s.session_id = row
+        s.record = lambda kind, value: self.transcripts.append(row, kind, value, (s.options.get('api_key'),))
+        return row
+
+    def record_agent(self, agent, slug, kind, value):
+        for session in list(self.sessions.values()):
+            if session.agent_name == agent.name and session.slug == slug and session.record:
+                session.record(kind, value)
+                break
+
+    def transcript(self, slug, helper, session=0, after=0, before=0):
+        result = self.transcripts.read(slug, helper, session, after, before)
+        for live in list(self.sessions.values()):
+            if result['session'] and live.session_id == result['session']['id'] and live.record:
+                for key in TOKEN_KINDS:
+                    result['session'][key + '_tokens'] = live.usage[key]
+                result['session']['usd'] = live.usage['usd']
+                result['session']['tokens'] = live.usage['tokens']
+        return result
 
     def _session_end(self, s: Session, row: int, agent, began: float, outcome: str) -> None:
         """What a session did and spent, on its row: to compare models on cost per match."""
@@ -1072,6 +1100,7 @@ class Manager:
         s.push("info", f"session {s.runs} done: {u['tool_calls']} tool calls, {compiles} compiles, {matches} "
                        f"matched{spent}")
         self._save(s)
+        s.record = None
 
     def prompt(self, s: Session) -> str:
         text = self._prompt(s)
@@ -1119,6 +1148,13 @@ class Manager:
     def _run_cli(self, s: Session, token: str, workdir: Path) -> bool:
         k = agents.get(s.kind)
         cmd, env, prompt = self._command(s, token, workdir)
+        if s.record:
+            previous = s.record
+            s.record = lambda kind, value: previous(kind, (value if isinstance(value, str) else
+                                                          json.dumps(value, ensure_ascii=False, indent=2))
+                                                   .replace(token, '[redacted]'))
+            s.record('prompt', prompt)
+            s.record('instructions', tools.INSTRUCTIONS)
         s.push("info", f"session {s.runs}: {k.name} started")
         if os.name == "nt":
             import sys
