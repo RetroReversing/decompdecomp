@@ -42,3 +42,15 @@ Types from instructions
 Stack frame
 - `addiu $sp, $sp, -N` / `addiu $sp, $sp, N`: frame size. On N64, GCC and IDO both reserve 0x10 bytes
   for the argument area of calls. Locals whose address is taken live on the stack (`addiu $a1, $sp, 0x10` = `&local`).
+
+
+### Cheap scheduling experiments
+
+Before rewriting a near match by hand, `compile_family` can test `typed_temporary`,
+`branch_orientation`, or `narrowing` with just the function and candidate revision. The first
+materializes narrow stores or dereferenced call arguments into typed locals; the second exchanges
+braced branches and negates a simple comparison; the third explores mask-to-cast narrowing.
+These are bounded hypotheses, always checked by the exact judge. Under known `-g`/`-g3` flags,
+`source_lines` tests text-only statement placement that an AST formatter cannot preserve.
+Keep the successful source layout when debug labels affect scheduling. Compiler flags must remain
+those verified for the function; formatting variants do not justify changing the judge or guessing ABI arguments.

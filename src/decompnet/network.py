@@ -557,7 +557,11 @@ class Network:
         cfg = json.loads(proj["config"])
         if fn is not None and cfg.get("compiler_ranges"):
             cfg = {**cfg, "compiler": compiler_for(cfg, fn["vram"])}
-        return compile_source(compiler_config(Path(proj["root"]), cfg), header, source)
+        invocation = compiler_config(Path(proj["root"]), cfg)
+        result = compile_source(invocation, header, source)
+        result.effective_settings = {'compiler':cfg['compiler'], 'effective_command':list(invocation.cmd),
+                                     'language':getattr(result,'language','unknown'), 'settings_source':'compile invocation snapshot'}
+        return result
 
     def _evaluate(self, fn, proj, obj: bytes) -> tuple[FunctionObj | None, bool | None, list[str]]:
         """(candidate, verdict, problems) for a compiled object. verdict None means: decide by comparing
@@ -1150,14 +1154,14 @@ class Network:
         result = self._compile(proj, ctx["header"], source, fn)
 
         if not result.ok:
-            self._record(fn, agent, None, source, ctx["version"])
+            self._record(fn, agent, None, source, ctx["version"], effective_settings=getattr(result,"effective_settings",None))
             text = f"❌ COMPILE ERROR (context v{ctx['version']})\n{result.log.strip()}"
             self.remember_compile(key, agent, fn, text, None)
             return {"text": text, "score": None, "matched": False}
 
         cand, verdict, problems = self._evaluate(fn, proj, result.obj)
         if cand is None:
-            self._record(fn, agent, None, source, ctx["version"])
+            self._record(fn, agent, None, source, ctx["version"], effective_settings=getattr(result,"effective_settings",None))
             text = (f"❌ Compiled, but the object has no function named `{fn['name']}`. "
                     f"Define it with exactly that name (non-static).")
             self.remember_compile(key, agent, fn, text, None)
@@ -1168,7 +1172,7 @@ class Network:
         matched_now = d.bytes_match and not scratch
         last = self.store.one("SELECT score FROM attempts WHERE function_id=? AND agent_id=? AND score IS NOT NULL "
                               "ORDER BY id DESC LIMIT 1", fn["id"], agent.id)
-        self._record(fn, agent, d.score, source, ctx["version"], matched=matched_now)
+        self._record(fn, agent, d.score, source, ctx["version"], matched=matched_now, effective_settings=getattr(result,"effective_settings",None))
         self.keep_diff(agent.id, fn["id"], d.rows)
 
         if scratch:
@@ -1320,15 +1324,14 @@ class Network:
                 f"claim_function(function=\"{rows[0]['name']}\") takes one next.")
 
     def _record(self, fn, agent: Agent, score: int | None, source: str, ctx_version: int, matched: bool = False,
-                compiled: bool | None = None, via: str = "agent"):
+                compiled: bool | None = None, via: str = "agent", effective_settings=None):
         now = time.time()
         compiled = score is not None if compiled is None else compiled
         with self.store.tx() as db:
             current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
             attempt = db.execute("INSERT INTO attempts(function_id,agent_id,score,compiled,context_version,source,created_at,via) "
                        "VALUES(?,?,?,?,?,?,?,?)", (fn["id"], agent.id, score, compiled, ctx_version, source, now, via)).lastrowid
-            if compiled:
-                self.repair_feedback.attempt(db, current, attempt, ctx_version)
+            self.repair_feedback.attempt(db, current, attempt, ctx_version, effective_settings)
             if matched:
                 self.repair_feedback.capture(db, current, source, agent.id, via, ctx_version, attempt)
             db.execute("UPDATE functions SET attempts=attempts+1 WHERE id=?", (fn["id"],))

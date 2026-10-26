@@ -719,3 +719,5 @@ adaptive routing. Configured queues do not batch unfiltered neighbours.
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
 
+
+- Debug-line text repairs for imported builds: feed effective per-file compiler/debug flags into the text-layout phase; ROM projects already gate these variants on their known debug flags.

@@ -555,3 +555,20 @@ remain agent-selected rather than guessed automatically.
 `get_function(section="candidate")` to inspect the existing C. Compiler and flag findings belong in
 `compiler_map`, `try_compiler`/`search_flags`, or `suggest` for proposed setup changes, not
 `share_knowledge`. Invalid requests explain the appropriate tool and perform no drafting or knowledge write.
+
+
+Captured repair patterns now run in the deterministic draft-repair round before random permutation.
+Saved m2c argument-position refinements run first; bounded typed temporaries, branch orientation,
+narrowing and known-debug-flag source-line variants follow, within the existing 32-compile/20-second
+round budget and rotating function queue. Agents can also request `compile_family` with
+`typed_temporary`, `branch_orientation`, `narrowing`, or `source_lines` and just function/revision.
+Imported projects share the source patterns and normal objdiff judge; automatic source-line trials
+await recorded per-file debug flags (ROADMAP).
+
+New repair captures prefer a failed candidate with matching recorded settings and retain the last
+failed trial by the winning agent separately, including its source/header and diff in full exports.
+ROM submissions record the selected compiler configuration and command template at compilation,
+including failures. Imported builds still explicitly mark effective per-file flags as unavailable.
+Agent batches/families attach family, variant and base revision provenance automatically; deterministic
+background repairs attach candidate fingerprints. The evidence remains observational and cannot
+prove a particular edit caused a match. Older captures are unchanged.

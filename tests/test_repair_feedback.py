@@ -194,3 +194,34 @@ def test_header_snapshot_records_global_and_unit_context_scopes(setup):
     evidence = net.repair_feedback.detail('demo', 1)['evidence']
     assert evidence['before']['header'] == 'typedef int word;'
     assert evidence['after']['header'] == 'typedef unsigned int word;'
+
+
+def test_comparable_failure_previous_trial_effective_settings_and_provenance(setup):
+    from decompnet.repair_feedback import trial
+    net,winner,_,pid,fid=setup
+    effective={'compiler':{'toolchain':'example','flags':['-O2']},'effective_command':['cc','-O2','{src}']}
+    net._record(fn(net,fid),winner,20,'comparable',1,effective_settings=effective)
+    net._record(fn(net,fid),winner,1,'different settings',1,effective_settings={'compiler':{'toolchain':'other','flags':['-O1']}})
+    with trial({'kind':'agent batch','family':'casts','variant':2}):
+        net._record(fn(net,fid),winner,0,'matched',1,matched=True,effective_settings=effective)
+    case=net.repair_feedback.listing('demo')['examples'][0]['id']
+    evidence=net.repair_feedback.detail('demo',case)['evidence']
+    assert evidence['before']['source']=='comparable' and evidence['comparable_settings']
+    assert evidence['previous']['source']=='different settings'
+    assert evidence['after']['settings']['effective_command']==['cc','-O2','{src}']
+    assert evidence['provenance']['family']=='casts' and evidence['provenance']['variant']==2
+    assert 'different settings' in evidence['previous_diff']
+    exported=net.repair_feedback.detail('demo',case,include_source=False)['evidence']
+    assert 'source' not in exported['previous'] and 'header' not in exported['previous']
+
+
+def test_compile_failure_settings_are_recorded_without_a_repair_case(setup):
+    net,winner,_,pid,fid=setup
+    net._record(fn(net,fid),winner,None,'bad C',1,effective_settings={'compiler':{'cmd':['test','-O1']}})
+    assert not net.repair_feedback.listing('demo')['examples']
+    row=net.store.one('SELECT settings FROM repair_attempt_settings ORDER BY attempt_id DESC LIMIT 1')
+    assert json.loads(row['settings'])['compiler']['cmd']==['test','-O1']
+    net._record(fn(net,fid),winner,0,'valid C',1,matched=True)
+    case=net.repair_feedback.listing('demo')['examples'][0]['id']
+    previous=net.repair_feedback.detail('demo',case)['evidence']['previous']
+    assert previous['source']=='bad C' and previous['score'] is None

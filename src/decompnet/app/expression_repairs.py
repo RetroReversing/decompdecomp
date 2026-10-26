@@ -26,13 +26,36 @@ def variants(source: str, name: str, arch: str) -> list[str]:
 
     # A narrowing assignment can produce different scheduling from an explicit mask. These are hypotheses,
     # not claims of C equivalence (promotion/signedness can differ). Leave nested/side-effecting expressions out.
-    mask = re.compile(rf'\(\s*(?P<x>{IDENT})\s*\+\s*(?P<n>0[xX][0-9a-fA-F]+|[0-9]+)\s*\)'
+    mask = re.compile(rf'\(\s*(?P<x>{IDENT}(?:\s*(?:->|\.)\s*{IDENT})*)\s*(?P<op>[+-])\s*(?P<n>{IDENT}|0[xX][0-9a-fA-F]+|[0-9]+)\s*\)'
                       r'\s*&\s*(?P<mask>0[xX](?:[fF]{4}|[fF]{2}))(?![\w.])')
     for m in mask.finditer(body):
         typ = 'unsigned short' if len(m['mask']) == 6 else 'unsigned char'
-        edit(opening + m.start(), opening + m.end(), f'({typ})({m["x"]} + {m["n"]})')
+        edit(opening + m.start(), opening + m.end(), f'({typ})({m["x"]} {m["op"]} {m["n"]})')
         if len(result) >= 2:
             break
+
+    # Coalesce a narrow copy temporary with its wider source, then try the final masked
+    # subtraction as a cast. Require one simple copy assignment, no other writes to the copy.
+    narrow = re.compile(rf'\b(?:s32|int)\s+(?P<wide>{IDENT})\s*;\s*(?P<t>u16|u8)\s+(?P<small>{IDENT})\s*;')
+    for decl in narrow.finditer(body):
+        assignment = list(re.finditer(r'\b'+re.escape(decl['small'])+r'\s*=\s*'+re.escape(decl['wide'])+r'\s*;',body))
+        writes = re.findall(r'\b'+re.escape(decl['small'])+r'\s*=(?!=)',body)
+        if len(assignment)!=1 or len(writes)!=1:
+            continue
+        copy = assignment[0]
+        if copy.start() < decl.end():
+            continue
+        changed = source[:opening+copy.start()]+source[opening+copy.end():]
+        changed = changed[:opening+decl.start()]+f"{decl['t']} {decl['wide']};"+changed[opening+decl.end():]
+        # Keep declarations and edits restricted to this definition, not neighbouring functions.
+        stop = span[1]-(copy.end()-copy.start())-(decl.end()-decl.start())+len(f"{decl['t']} {decl['wide']};")
+        region = changed[opening:stop]
+        region = re.sub(r'\b'+re.escape(decl['small'])+r'\b',decl['wide'],region)
+        region = re.sub(r'\(([^;{}()]+-[^;{}()]+)\)\s*&\s*0x[Ff]{4}\b',r'(u16)(\1)',region) if decl['t']=='u16' else region
+        candidate = changed[:opening]+region+changed[stop:]
+        if candidate not in result:
+            result.append(candidate)
+        break
 
     if arch in {'mips', 'ppc', 'x86', 'arm', 'thumb'}:
         # A symbol's address is different from reading its value. Only explicit &symbol or a declared

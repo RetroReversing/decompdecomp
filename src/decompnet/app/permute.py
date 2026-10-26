@@ -38,6 +38,7 @@ from ..hostenv import NO_WINDOW
 from ..network import NetworkError
 from ..permuter import mutate
 from ..project import compiler_for
+from ..repair_feedback import trial as repair_trial
 from . import draft_repairs, workers
 
 log = logging.getLogger("decompdecomp")
@@ -257,7 +258,8 @@ class Permuter:
                 break
             with self.net.store.tx() as db:
                 db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (key, str(fn['id'])))
-            candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '')
+            labels = {}
+            candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels)
             if not self._hold(agent, fn, count_turn=False):
                 continue
             st.holding(fn['name'], True)
@@ -277,12 +279,13 @@ class Permuter:
                     if st.stop.is_set() or attempts >= 32 or time.monotonic() >= deadline:
                         break
                     digest = hashlib.sha256((context + candidate).encode()).hexdigest()
-                    trial = f"draft-repair-v5:{fn['id']}:{digest}"
+                    trial = f"draft-repair-v6:{fn['id']}:{digest}"
                     if self.net.store.one("SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?", fn['id'], trial):
                         continue
                     attempts += 1
                     st.add(variants=1, repairs=1)
-                    score = self._score(agent, proj, fn, candidate, best, fork)
+                    with repair_trial({'kind':'deterministic draft repair','family':labels.get(candidate,'draft_repair'),'base_source_sha256':hashlib.sha256(fn['best_source'].encode()).hexdigest(),'source_sha256':hashlib.sha256(candidate.encode()).hexdigest()}):
+                        score = self._score(agent, proj, fn, candidate, best, fork)
                     with self.net.store.tx() as db:
                         db.execute("INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)",
                                    (fn['id'], trial, str(score), "targeted draft repair"))
@@ -448,5 +451,5 @@ class Permuter:
         if verdict is not None:
             d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
         if d.score < best:
-            self.net._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match, via="permuter")
+            self.net._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match, via="permuter", effective_settings=getattr(result,"effective_settings",None))
         return 0 if d.bytes_match else max(1, d.score)
