@@ -718,13 +718,3 @@ adaptive routing. Configured queues do not batch unfiltered neighbours.
   exchanges by session, with paged access and reported token usage. API requests capture
   the actual trimmed context. CLI internal system prompts, hidden reasoning, shell
   output and provider compaction remain outside the app's observable interface.
-
-### Repair feedback examples
-
-- New verified matches on every console and both project modes keep local repair
-  evidence and optional agent explanations. Review, categorization and filtered JSON
-  export support building deterministic rules; no explanation is executed as a rule.
-- Planned: expose complete per-file compiler/flags/includes and repository build
-  revision from imported-project drivers for standalone replay. Current imported
-  examples label that build context as unavailable; ROM examples keep configured
-  compiler/context snapshots, with temporary compile overrides explicitly unproven.
