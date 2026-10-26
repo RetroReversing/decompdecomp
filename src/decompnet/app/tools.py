@@ -175,8 +175,8 @@ repair_automation in compile_and_diff (single function only). These are saved on
 Explain what changed and how a deterministic repair could do it; omit uncertain explanations. No extra compile
 is needed. report_repair can annotate your captured match afterwards. These are review ideas, never live rules.
 """
-WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nUse get_candidate then compile_patch for small edits; get_assembly and last_diff are paged.\n"
-FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nUse get_candidate then compile_patch for small edits; get_assembly and last_diff are paged.\n"
+WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Supporting history and notes: get_function. get_assembly and last_diff are paged.\n"
+FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Supporting history and notes: get_function. get_assembly and last_diff are paged.\n"
 
 
 def _console_guides() -> dict:
@@ -314,7 +314,7 @@ def _compile(net: RomNetwork, agent: Agent, slug: str, function: str, source: st
             if note and note not in result and net._function(names[0], slug)['status'] == 'open':
                 result += note
         _, revision = agent_tokens.candidate(net, agent, slug, names[0])
-        result += f"\nCandidate revision {revision}; compile_patch accepts an exact replacement against it."
+        result += f"\nCandidate revision {revision}; compile_patch accepts an exact replacement against it; keep the edited source and use this revision for your next patch without another get_candidate call."
     if repair_note:
         fn = net._function(names[0], slug)
         case = net.store.one('SELECT e.id FROM repair_examples e JOIN attempts a ON a.id=e.attempt_id '
@@ -343,7 +343,7 @@ HANDLERS: dict[str, Callable[..., str]] = {
     "get_assembly": lambda net, agent, slug, function, start=0, limit=60: agent_tokens.assembly(net, slug, function, start, limit),
     "claim_function": lambda net, agent, slug, function="", strategy="", count=1:
         _claim(net, agent, slug, function, strategy, count),
-    "get_function": lambda net, agent, slug, function: net.get_function(function, slug, agent),
+    "get_function": lambda net, agent, slug, function: net.get_function(function, slug, agent) + agent_tokens.history(net, net._function(function, slug)),
     "compile_and_diff": lambda net, agent, slug, function, source, repair_note='', repair_category='other', repair_automation='':
         _compile(net, agent, slug, function, source, repair_note, repair_category, repair_automation),
     "report_repair": lambda net, agent, slug, function, change, category='other', automation='':

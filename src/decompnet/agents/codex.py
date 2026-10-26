@@ -37,6 +37,11 @@ class Codex(Agent):
     takes_effort = True  # Codex's model_reasoning_effort
     efforts = ("minimal", "low", "medium", "high", "xhigh", "max")
 
+    def fatal(self, error: str) -> bool:
+        # A rejected model/effort setting cannot recover by retrying the same command.
+        return ('unsupported_value' in error and 'reasoning.effort' in error
+                or bool(re.search(r"(?:unsupported value|not supported).*(?:reasoning|effort)|(?:reasoning|effort).*not supported", error, re.I)))
+
     def estimate_cost(self, model: str, usage: dict) -> float | None:
         # Standard API USD / million tokens, checked 2026-10-26:
         # https://developers.openai.com/api/docs/pricing
