@@ -99,7 +99,9 @@ _CHECK = re.compile(r"^build (\S+[/\\]ok): check\b")  # dtk-template writes buil
 _NINJA_PROGRAM = re.compile(r"^(?:([A-Za-z_][\w.-]*)|\s+command)\s*=\s*(.*)$")
 # A target the build couldn't make: ninja's "FAILED: out.o", make's "make: *** [Makefile:12: out.o] Error 1"
 _FAILED = re.compile(r"^FAILED: (.+)$|^make(?:\[\d+\])?: \*\*\* \[(?:[^\]]*?:\d+: )?([^\]]+)\] Error")
-# CodeWarrior's linker warns about every FORCEACTIVE symbol and unknown section: harmless, and thousands of lines
+_BUILD_ERROR = re.compile(r"(?:fatal error:|\berror:|\bError:|No such file or directory|"
+                          r"command not found|cannot execute binary|ModuleNotFoundError:|Traceback \(most recent|^within )")
+# CodeWarrior's linker warnings are harmless and can run to thousands of lines.
 _NOISE = re.compile(r"^#{1,3}\s*(mwldeppc\.exe Linker Warning:|FORCEACTIVE symbol|(doesn't )?exist\.\s+Ignored\.|"
                     r"Section '\.note\.split' is unknown)")
 
@@ -524,11 +526,19 @@ class ForkProject:
         else:
             cmd = consoles.get(self.detect_platform()).project_build_command(self, cmd)
         env = dict(os.environ)
+        # Existing project environments carry its pinned extractor dependencies. Do not install into the app.
+        python = next((folder / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python3')
+                       for folder in (self.root / '.venv', self.root / 'venv')
+                       if (folder / 'pyvenv.cfg').is_file() and
+                       (folder / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python3')).is_file()), None)
+        project_python = [python.parent] if python else []
+        if python:
+            env['VIRTUAL_ENV'] = str(python.parent.parent)
         project_tools = consoles.get(self.detect_platform()).project_tool_paths(self)
-        env["PATH"] = os.pathsep.join([*(str(d) for d in [*_tool_dirs(), *project_tools]), env.get("PATH", "")])
+        env["PATH"] = os.pathsep.join([*(str(d) for d in [*project_python, *_tool_dirs(), *project_tools]), env.get("PATH", "")])
         # found on that PATH (decompdecomp's own ninja): Linux looks a command up there itself, Windows only in this
         # process's PATH, where decompdecomp's environment isn't when it's installed
-        executable = sys.executable if cmd[0] in ("python", "python3") else shutil.which(cmd[0], path=env["PATH"]) or cmd[0]
+        executable = str(python or sys.executable) if cmd[0] in ("python", "python3") else shutil.which(cmd[0], path=env["PATH"]) or cmd[0]
         cmd = [console_python(executable), *cmd[1:]]  # not pythonw.exe: its tools' compilers would flash consoles
         log("$ " + " ".join(Path(c).name if i == 0 else c for i, c in enumerate(cmd)))
         try:
@@ -545,7 +555,7 @@ class ForkProject:
             seen[line] += 1
             if seen[line] > 2 or _NOISE.match(line):  # the same line again, or CodeWarrior's linker chatter
                 quiet += 1
-            elif len(out) <= 400 or len(out) % 50 == 0:
+            elif len(out) <= 400 or len(out) % 50 == 0 or _BUILD_ERROR.search(line):
                 log(line)
         try:
             code = proc.wait(timeout=timeout)
@@ -560,7 +570,8 @@ class ForkProject:
         # what failed, not the warnings after it: dsd's hundreds of "[WARN ] No module for relocation" lines came after
         # a compiler's error and pushed it out of the tail agents and the user read
         said = [ln for ln in out if not _NOISE.match(ln) and not ln.lstrip().startswith("[WARN")] or out
-        tail = "\n".join(said[-60:])
+        problems = [line for line in said if _BUILD_ERROR.search(line)] if code else []
+        tail = "\n".join(dict.fromkeys([*problems[:12], *said[-60:]]))
         if code:
             from .buildhelp import explain
 
@@ -606,9 +617,19 @@ class ForkProject:
         self.unpack_disc(version, log=log)
         for cmd in self.setup_commands(version):
             ok, tail = self.run(cmd, log=log)
+            make_step = Path(cmd[0]).name.removesuffix('.exe') in ('make', 'gmake')
+            if (not ok and make_step and not (self.root / 'objdiff.json').exists()
+                    and re.search(r'computed checksum did NOT match|build succeeded, but did not match', tail)):
+                # A linked but incomplete decomp can still be measured. The generator must independently
+                # verify every original reference section; compiler and missing-tool failures keep failing.
+                log('The whole-image check failed; trying independently verified original references.')
+                try:
+                    self.generate_objdiff(version=version, log=log)
+                except ForkError as error:
+                    log(f'Original references could not be verified: {error}')
             # Incomplete sources may fail make once objdiff can measure individual units. Without that
             # configuration, a failed build is a setup failure, not a successful build missing its report.
-            if not ok and (cmd[0] != "make" or not (self.root / "objdiff.json").exists()):
+            if not ok and (not make_step or not (self.root / "objdiff.json").exists()):
                 raise ForkError(f"setup step failed: {' '.join(cmd)}\n{tail}")
         if (self.root / "objdiff.json").exists() and self._all_source():
             log("compiling every source file, so objdiff can measure each one (some work in progress may not compile)")
@@ -624,7 +645,7 @@ class ForkProject:
         if (self.root / "objdiff.json").exists():
             return False
         path = self._splat_yaml()
-        if version and self.splat_baseroms():
+        if version:
             path = self._splat_version_configs().get(version) or next(
                 (p for p in self.root.glob("*.yaml") if p.name.endswith(f".{version}.yaml")), path)
         if path is None:

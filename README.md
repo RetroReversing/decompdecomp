@@ -50,6 +50,17 @@ data and unidentified regions are excluded. These special image snapshots are re
 sources through the project's promotion/build workflow and use **Check again**. Ordinary object units keep their
 existing agent workflow. See [the export contract](docs/linked-image-progress.md).
 
+## Imported project builds
+
+Builds use an existing `.venv` or `venv` in the project for its Python tools and dependencies. The app does not
+install those dependencies into its own runtime. Failed builds retain the first diagnostic even when later
+warnings or extraction progress would otherwise hide it.
+
+Automatic references can cover shared source directories and per-segment overlay directories. When a source
+rebuild is incomplete, references are derived independently from the pinned original image: each resolved code
+and data section must match its original bytes before any configuration is published. Candidate objects never
+supply reference bytes. Function matches remain separate from a successful whole-game rebuild.
+
 ## Autopilot on imported projects
 
 Autopilot can try machine drafts in imported projects with writable C files and a supported draft decompiler.
