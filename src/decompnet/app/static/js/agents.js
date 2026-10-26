@@ -74,7 +74,7 @@ async function renderCosts(force = false) {
 
 function helperResults(stats, task) {
   if (task === "readable") return `<b class="ok">${stats?.polished || 0} polished</b>`;
-  return stats?.matched ? `<b class="ok">${stats.matched} matched</b>` : "";
+  return `<b class="ok">${stats?.matched || 0} matched</b> · <span title="Distinct functions where this agent beat the previous best matching score. Includes matches; repeated improvements to the same function count once. An initial candidate must improve on 0%.">${stats?.improved || 0} improved</span>`;
 }
 
 function renderSessions(sessions) {

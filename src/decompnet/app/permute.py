@@ -21,6 +21,7 @@ to four), each at a lower CPU priority that the compilers it runs inherit: the a
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import queue
@@ -37,7 +38,7 @@ from ..hostenv import NO_WINDOW
 from ..network import NetworkError
 from ..permuter import mutate
 from ..project import compiler_for
-from . import workers
+from . import draft_repairs, workers
 
 log = logging.getLogger("decompdecomp")
 NEAR = 0.06  # a near miss: at most this much of the function differs (best_score <= 6% of n_insns * 100)
@@ -154,6 +155,7 @@ class State:
     current: str = ""  # the functions the workers hold now
     started_at: float = field(default_factory=time.time)
     stop: threading.Event = field(default_factory=threading.Event)
+    repairs: int = 0  # deterministic candidates, with a separate per-round budget
     _held: list = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -211,6 +213,7 @@ class Permuter:
                     proj = self.net.project_row(slug)
                 except NetworkError:
                     return  # the project is gone
+                self._repair_round(agent, proj, st)
                 todo = self.candidates(proj)
                 if not todo:
                     idle += 1
@@ -223,6 +226,77 @@ class Permuter:
         finally:
             st.state = "stopped" if st.stop.is_set() else "done"
 
+    def repair_pass(self, slug: str, stop: threading.Event) -> State:
+        """Autopilot's Run again can try these without starting agents or random permutation."""
+        st = State(stop=stop)
+        if slug not in self.net.links:
+            agent, _ = self.net.local_agent("permuter")
+            self._repair_round(agent, self.net.project_row(slug), st)
+        return st
+
+    def _repair_round(self, agent, proj, st: State) -> None:
+        """At most 32 compiles / 20 seconds before normal random turns; rotate even over ineligible drafts.
+
+        Cache individual candidates with their target, header and configured compiler. A new source/header/
+        configuration gets another chance. This uses the same judge for ROM and imported project modes.
+        """
+        key = f"draft-repair-cursor:{proj['id']}"
+        saved = self.net.store.one("SELECT value FROM settings WHERE key=?", key)
+        cursor = int(saved['value']) if saved else 0
+        todo = self.net.store.all(
+            "SELECT * FROM functions WHERE project_id=? AND status='open' AND best_source IS NOT NULL "
+            "AND best_score>0 AND n_insns<=? AND id NOT IN (SELECT function_id FROM claims) "
+            "ORDER BY (id<=?), id LIMIT ?", proj['id'], MAX_INSNS, cursor, CANDIDATES)
+        deadline, attempts = time.monotonic() + 20, 0
+        fork = self.net.fork_slug(proj['slug'])
+        symbols = [tuple(row) for row in self.net.store.all(
+            "SELECT name,address,size,kind FROM symbols WHERE project_id=? ORDER BY name", proj['id'])]
+        for fn in todo:
+            if st.stop.is_set() or attempts >= 32 or time.monotonic() >= deadline:
+                break
+            with self.net.store.tx() as db:
+                db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (key, str(fn['id'])))
+            candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'])
+            if not candidates or not self._hold(agent, fn, count_turn=False):
+                continue
+            st.holding(fn['name'], True)
+            try:
+                current = self.net.store.one("SELECT * FROM functions WHERE id=?", fn['id'])
+                if current['status'] != 'open' or current['best_source'] != fn['best_source']:
+                    continue
+                header = (self.net.forks.permuter_header(fork, fn['name']) if fork else
+                          self.net._context(proj['id'], fn['unit'])['header'])
+                # Imported builds own flags outside config. Their cache is only for this process/session;
+                # the next explicit Run again/start retries after a user has changed their build setup.
+                scope = st.started_at if fork else None
+                context = repr((scope, header, self.net.cfg(proj), symbols, proj['arch'], proj['big_endian'],
+                                fn['unit'], fn['target'], fn['relocs'], fn['vram']))
+                best = fn['best_score']
+                for candidate in candidates:
+                    if st.stop.is_set() or attempts >= 32 or time.monotonic() >= deadline:
+                        break
+                    digest = hashlib.sha256((context + candidate).encode()).hexdigest()
+                    trial = f"draft-repair-v2:{fn['id']}:{digest}"
+                    if self.net.store.one("SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?", fn['id'], trial):
+                        continue
+                    attempts += 1
+                    st.add(variants=1, repairs=1)
+                    score = self._score(agent, proj, fn, candidate, best, fork)
+                    with self.net.store.tx() as db:
+                        db.execute("INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)",
+                                   (fn['id'], trial, str(score), "targeted draft repair"))
+                    if score is not None and score < best:
+                        st.add(improved=1)
+                        best = score
+                        if score == 0:
+                            st.add(matched=1)
+                            break
+            except Exception:
+                log.exception("permuter: targeted repairs failed for %s", fn['name'])
+            finally:
+                st.holding(fn['name'], False)
+                self._let_go(agent, fn)
+
     def _turn(self, agent, proj, fn, st: State) -> None:
         try:
             self._permute(agent, proj, fn, st)
@@ -233,14 +307,15 @@ class Permuter:
         except Exception as e:  # one odd function must not stop the rest
             log.info("permuter: %s: %s", fn["name"], e, exc_info=True)
 
-    def _hold(self, agent, fn) -> bool:
+    def _hold(self, agent, fn, *, count_turn=True) -> bool:
         now = time.time()
         with self.net.store.tx() as db:
             self.net._expire_claims(db)
             if db.execute("SELECT 1 FROM claims WHERE function_id=?", (fn["id"],)).fetchone():
                 return False
             db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fn["id"], agent.id, now, now + SECONDS + HOLD_SPARE_SECONDS))
-            db.execute("UPDATE functions SET permuted = permuted + 1 WHERE id=?", (fn["id"],))
+            if count_turn:
+                db.execute("UPDATE functions SET permuted = permuted + 1 WHERE id=?", (fn["id"],))
         return True
 
     def _let_go(self, agent, fn) -> None:

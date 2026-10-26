@@ -400,19 +400,27 @@ class ForkProject:
                                 "SHA-1 selects the build version; decompdecomp saves a .z64 copy for the project. "
                                 "The selected version is passed to extraction and subsequent builds."
                                 + docker_help}
-            y = self._splat_yaml().read_text(errors="replace", encoding="utf-8")
-            target = re.search(r"^\s*target_path:\s*['\"]?([^'\"\n#]+)", y, re.M)
-            base = re.search(r"^\s*base_path:\s*['\"]?([^'\"\n#]+)", y, re.M)
-            sha1 = re.search(r"^[ \t]*sha1:[ \t]*['\"]?([0-9a-fA-F]{40})(?=['\"\s#]|$)", y, re.M)
-            path = target.group(1).strip() if target else ""
-            yaml_dir = os.path.relpath(self._splat_yaml().parent, self.root)
-            if path and base:
-                path = str(Path(yaml_dir) / base.group(1).strip() / path)
-            path = self._inside(path) if path else None
+            import yaml
+
+            config_path = self._splat_yaml()
+            try:
+                config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, yaml.YAMLError):
+                return manual
+            options = config.get("options") if isinstance(config, dict) else None
+            if not isinstance(options, dict):
+                return manual
+            target, base = options.get("target_path"), options.get("base_path", ".")
+            digest = config.get("sha1", options.get("sha1"))
+            sha1 = digest.lower() if isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{40}", digest) else None
+            # Use the same effective YAML values as Splat, including the final duplicate key.
+            # Nested configs resolve their base against their own directory, not the checkout root.
+            path = self._inside(str(config_path.parent / base / target)) if (
+                isinstance(target, str) and isinstance(base, str)) else None
             if path is None:
                 return manual
             return {"what": f"your copy of the game ({Path(path).name})", "path": path,
-                    "sha1": sha1.group(1).lower() if sha1 else None, "auto": True,
+                    "sha1": sha1, "auto": True,
                     "help": ("Checked against the SHA-1 in the project's splat config. " if sha1 else
                              "This splat config does not specify a SHA-1, so decompdecomp cannot check the game "
                              "file by hash before setup. Check the project's README for the required version. ") +

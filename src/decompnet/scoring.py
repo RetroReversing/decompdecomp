@@ -99,7 +99,10 @@ def _mips_reloc_names(relocs) -> dict[int, str]:
     out: dict[int, str] = {}
     for k, r in enumerate(relocs):
         if r.type == 4:  # R_MIPS_26
-            out[r.offset] = r.symbol
+            # REL jump addends are instruction words, not bytes. Keeping the symbol alone hid
+            # jumps to different labels within the same function even though the exact judge failed.
+            off = r.addend << 2
+            out[r.offset] = f"{r.symbol}{f'{off:+#x}' if off else ''}"
         elif r.type in (5, 6):  # R_MIPS_HI16 / R_MIPS_LO16
             if r.type == 5:
                 pair = next((x for x in relocs[k + 1:] if x.type == 6 and x.symbol == r.symbol), None)

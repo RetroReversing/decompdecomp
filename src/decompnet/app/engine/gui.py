@@ -297,6 +297,18 @@ class GuiMixin:
             row["polished"] = polished.pop(row["agent"], 0)
         board += [{"agent": a, "compiles": 0, "matched": 0, "polished": n, "last": None}
                   for a, n in polished.items()]
+        # Running best before each attempt credits every contributor, not just the final owner.
+        # Failed compiles and ties earn nothing; an initial candidate must improve on 0%.
+        improved = {r["agent"]: r["n"] for r in self.store.all(
+            "WITH history AS (SELECT t.agent_id,t.function_id,t.score,t.compiled,f.n_insns, "
+            "MIN(CASE WHEN t.compiled THEN t.score END) OVER (PARTITION BY t.function_id ORDER BY t.id "
+            "ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS previous "
+            "FROM attempts t JOIN functions f ON f.id=t.function_id WHERE f.project_id=?) "
+            "SELECT a.name AS agent,COUNT(DISTINCT h.function_id) AS n FROM history h "
+            "JOIN agents a ON a.id=h.agent_id WHERE h.compiled AND h.score >= 0 "
+            "AND h.score < COALESCE(h.previous,h.n_insns * 100) GROUP BY h.agent_id", pid)}
+        for row in board:
+            row["improved"] = improved.get(row["agent"], 0)
         board.sort(key=lambda r: (-r["matched"], -r["compiles"]))
         per_hour = [0] * 24
         for r in self.store.all("SELECT matched_at FROM functions WHERE project_id=? AND status='matched' AND matched_at > ?",

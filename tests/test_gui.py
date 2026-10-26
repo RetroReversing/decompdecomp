@@ -16,21 +16,21 @@ def test_foreground_progress_covers_delayed_starts_and_clears_on_every_outcome()
     if NODE is None:
         pytest.skip("needs node to run the GUI's scripts")
     subprocess.run([NODE, str(Path(__file__).with_name("gui_progress.js"))], check=True,
-                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+                   capture_output=True, text=True, encoding="utf-8", timeout=GUI_TIMEOUT_SECONDS)
 
 
 def test_saved_project_dialog_preserves_state_and_cancels_pending_requests():
     if NODE is None:
         pytest.skip("needs node to run the GUI's scripts")
     subprocess.run([NODE, str(Path(__file__).with_name("gui_restore.js"))], check=True,
-                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+                   capture_output=True, text=True, encoding="utf-8", timeout=GUI_TIMEOUT_SECONDS)
 
 
 @pytest.fixture(scope="module")
 def gui():
     if NODE is None:
         pytest.skip("needs node to run the GUI's scripts")
-    out = subprocess.run([NODE, str(Path(__file__).with_name("gui_polls.js"))], capture_output=True, text=True,
+    out = subprocess.run([NODE, str(Path(__file__).with_name("gui_polls.js"))], capture_output=True, text=True, encoding="utf-8",
                          timeout=GUI_TIMEOUT_SECONDS, check=True)
     result = json.loads(out.stdout)
     assert result["errors"] == []
@@ -154,7 +154,7 @@ def test_the_import_offers_every_compiler_of_the_games_console(gui):
 
 def test_helper_cards_show_polished_counts_separately_from_matches(gui):
     assert gui["checks"]["helperResults"] == ['<b class="ok">2 polished</b>', '<b class="ok">0 polished</b>',
-                                               '<b class="ok">9 matched</b>']
+                                               '<b class="ok">9 matched</b> · <span title="Distinct functions where this agent beat the previous best matching score. Includes matches; repeated improvements to the same function count once. An initial candidate must improve on 0%.">4 improved</span>']
 
 
 def test_public_project_settings_show_compiler_and_per_file_flags(gui):
@@ -194,7 +194,7 @@ def test_grouped_name_hints_and_rename_refresh():
     if NODE is None:
         pytest.skip("needs node to run the GUI's scripts")
     subprocess.run([NODE, str(Path(__file__).with_name("gui_name_hints.js"))], check=True,
-                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+                   capture_output=True, text=True, encoding="utf-8", timeout=GUI_TIMEOUT_SECONDS)
 
 
 def test_work_selection_keeps_zero_and_blank_distinct_and_validates_the_threshold(gui):
@@ -206,7 +206,7 @@ def test_transfer_results_filter_successes_and_explain_mismatch_scores():
     if NODE is None:
         pytest.skip('needs node to run GUI scripts')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_transfers.js'))], check=True,
-                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+                   capture_output=True, text=True, encoding="utf-8", timeout=GUI_TIMEOUT_SECONDS)
 
 
 def test_work_selection_attempt_cap_is_optional_and_requires_whole_number(gui):
@@ -217,4 +217,4 @@ def test_local_importer_groups_searches_and_preserves_filtered_selection():
     if NODE is None:
         pytest.skip('needs node to run GUI scripts')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_local_import.js'))], check=True,
-                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+                   capture_output=True, text=True, encoding="utf-8", timeout=GUI_TIMEOUT_SECONDS)
