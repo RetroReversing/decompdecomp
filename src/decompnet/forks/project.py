@@ -869,8 +869,49 @@ class ForkProject:
             text = text[:start] + word + text[end:]
         return text
 
+    def image_verification(self) -> tuple[Path, str, list[list[str]]] | None:
+        """An explicit whole-image check also protects partially decompiled source units."""
+        manifest = self.manifest or {}
+        check = manifest.get("verify_image")
+        if check is None:
+            return None
+        game = manifest.get("game") or {}
+        if not isinstance(check, dict):
+            raise ForkError("verify_image must name an output and build commands")
+        output, commands, sha1 = check.get("path"), check.get("commands"), game.get("sha1", "")
+        if (not isinstance(output, str) or not output or not isinstance(sha1, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha1)
+                or not isinstance(commands, list) or not commands
+                or any(not isinstance(cmd, list) or not cmd
+                       or any(not isinstance(arg, str) or not arg for arg in cmd) for cmd in commands)):
+            raise ForkError("verify_image needs an output path, nonempty command lists and the original game's SHA-1")
+        path = (self.root / output).resolve()
+        if self.root.resolve() not in path.parents or path == (self.root / game.get("path", "")).resolve():
+            raise ForkError("verify_image must check a rebuilt image inside the project, separate from the original")
+        return path, sha1.lower(), commands
+
+    def source_is_linked(self, unit: Unit) -> bool:
+        """A source replacement must preserve an explicitly verified image, even before its unit is complete."""
+        return self.image_verification() is not None or (unit.complete and self.linkable())
+
     def verify(self, log=lambda *_: None) -> tuple[bool, str]:
         """Build the game and check it against its checksums (regenerating the build when configure.py changed)."""
+        if check := self.image_verification():
+            path, expected, commands = check
+            logs = []
+            for command in commands:
+                cmd = [sys.executable if arg in ("python", "python3") else arg for arg in command]
+                ok, text = self.run(cmd, log=log, timeout=1800)
+                logs.append(text)
+                if not ok:
+                    return False, "\n".join(logs)
+            try:
+                with path.open("rb") as stream:
+                    actual = hashlib.file_digest(stream, "sha1").hexdigest()
+            except OSError as error:
+                return False, f"couldn't read rebuilt image {path.relative_to(self.root)}: {error}"
+            if actual != expected:
+                return False, f"rebuilt image SHA-1 {actual} does not match original SHA-1 {expected}"
+            return True, "\n".join(logs + [f"rebuilt image SHA-1 matches {expected}"])
         target = self.check_target()
         if target is None:
             return False, "this project has no checksum check to run"

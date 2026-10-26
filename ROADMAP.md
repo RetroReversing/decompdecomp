@@ -9,6 +9,10 @@ a gap to close, each with its item here (CONTRIBUTING.md, "Every console gets ev
 
 Want to work on one? Open an issue first, so two people don't build the same thing. CONTRIBUTING.md has the rest.
 
+Public projects with a verified full source image can protect partial units with
+[`verify_image`](docs/whole-image-verification.md): source changes must keep the complete output
+identical, in addition to passing the function judge. This shared project-mode check works with any console.
+
 ## What works where
 
 Each feature and the platforms it covers today. A — is a gap: pick one up (the notes under the table say where to

@@ -2790,7 +2790,7 @@ class ForkEngine:
                 db.execute("UPDATE claims SET expires_at=? WHERE function_id=?", (now + self.net.claim_ttl, fn["id"]))
         path = fp.safe_path(unit.source, write=True)
         symbol = meta.get("symbol") or fn["name"]
-        linked = unit.complete and fp.linkable()  # the game is built from this file: changes must keep it identical
+        linked = fp.source_is_linked(unit)  # the game is built from this file: changes must keep it identical
         with self._tree(proj).exclusive() if linked else self._tree(proj).shared(), self._unit_lock(proj, unit.name):
             before = path.read_text(errors="replace", encoding="utf-8") if path.exists() else ""
             # What matches in the file as it is now is what this change must keep (not the database's idea of it,
@@ -2859,8 +2859,11 @@ class ForkEngine:
             def undo() -> None:
                 _rewrite(path, before)
                 unname()
-                if self._build_unit(proj, fp, unit)[0] and scores is not None:
-                    self._keep_scores(proj, unit, before, scores)
+                if self._build_unit(proj, fp, unit)[0]:
+                    if scores is not None:
+                        self._keep_scores(proj, unit, before, scores)
+                    if linked:
+                        self._verify(proj, fp)
 
             ok, log = self._build_unit(proj, fp, unit)
             if not ok and (broken := fp.build_problem()) is not None:
@@ -2899,7 +2902,7 @@ class ForkEngine:
                                            f"{', '.join(broken[:8])}. Check you replaced the right definition "
                                            "(overloads?) and didn't change shared code.", None),
                         "score": None, "matched": False, "broken": broken}
-            if linked and d.matched and not (ok := self._verify(proj, fp))[0]:
+            if linked and (d.matched or fp.image_verification() is not None) and not (ok := self._verify(proj, fp))[0]:
                 undo()
                 if quiet is None:
                     self.net._record(fn, agent, None, code, 0, compiled=True)
@@ -2997,7 +3000,7 @@ class ForkEngine:
         source = source.strip() or self.net._source_of(fn) or ""
         if not source:
             raise NetworkError(f"{fn['name']} has no attempt yet: pass the C as source")
-        linked = unit.complete and fp.linkable()
+        linked = fp.source_is_linked(unit)
         tried, kept, changed = [], None, False
         until = time.monotonic() + TRY_ALL_SECONDS
         held = self._hold_for_try(slug, function, agent)  # a function nobody holds is held only while it's tried
@@ -3064,7 +3067,7 @@ class ForkEngine:
         if not source:
             raise NetworkError(f"{fn['name']} has no attempt yet: pass the C as source")
         shown = lambda flags: " ".join(flags) or "(the project's flags only)"  # noqa: E731
-        linked = unit.complete and fp.linkable()
+        linked = fp.source_is_linked(unit)
         results, kept, changed = [], None, False
         held = self._hold_for_try(slug, function, agent)
         try:
@@ -3605,7 +3608,7 @@ class ForkEngine:
     def _edit_source(self, agent: Agent, proj, fp: ForkProject, p: Path, rel: str, units: list, old: str, new: str,
                      message: str) -> str:
         """Edit a unit's source file: rebuild and measure just that unit, keep everything that matched before."""
-        linked = any(u.complete for u in units) and fp.linkable()
+        linked = any(fp.source_is_linked(u) for u in units)
         with self._tree(proj).exclusive() if linked else self._tree(proj).shared(), \
                 self._units_locked(proj, [u.name for u in units]):
             existed, text, updated = self._edited(p, rel, old, new)
@@ -3621,6 +3624,8 @@ class ForkEngine:
                 for u in units:
                     if self._build_unit(proj, fp, u)[0] and bases[u.name][0] is not None:
                         self._keep_scores(proj, u, text, bases[u.name][0])
+                if linked:
+                    self._verify(proj, fp)
 
             after: dict[str, dict | None] = {}
             for u in units:
@@ -3671,7 +3676,7 @@ class ForkEngine:
             existed, text, updated = self._edited(p, rel, old, new)
             failed_before: list[str] = []
             self._build_all(proj, fp, failed=failed_before)  # what already doesn't build, so it isn't blamed on the edit
-            game_ok = fp.linkable() and fp.verify()[0]
+            game_ok = (fp.image_verification() is not None or fp.linkable()) and fp.verify()[0]
             broken_before = fp.failed_units(failed_before)
             protected = {(r["unit"], self._meta(r).get("symbol")) for r in self.net.store.all(
                 "SELECT unit, meta FROM functions WHERE project_id=? AND status='matched'", proj["id"])}
@@ -3684,6 +3689,8 @@ class ForkEngine:
                 else:
                     p.unlink(missing_ok=True)
                 self._build_all(proj, fp)
+                if game_ok:
+                    self._verify(proj, fp)
 
             failed_after: list[str] = []
             _, log = self._build_all(proj, fp, failed=failed_after)
