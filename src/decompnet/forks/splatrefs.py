@@ -133,7 +133,7 @@ def verified_rebuild(project, config_path: Path, config: dict, image_path: Path,
     maps = ([paired] if paired.is_file() else [root_map] if root_map.is_file()
             else list(elf.parent.glob('*.map')))
     if len(maps) != 1:
-        raise ForkError("overlay references need one linker map beside the matching ELF")
+        raise ForkError("overlay references need one linker map paired with the matching ELF")
     mapped = maps[0].read_text(errors='replace', encoding='utf-8')
     mapped_text = set(re.findall(r'^\s*\.text\s+0x[0-9A-Fa-f]+\s+0x[1-9A-Fa-f][0-9A-Fa-f]*\s+(\S+\.o)\s*$',
                                  mapped, re.M))
