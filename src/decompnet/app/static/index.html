@@ -377,8 +377,9 @@
           <div id="compilerWaiting"></div>
           <label class="check" id="autoAdjustRow"><input type="checkbox" id="autoAdjust"><span><b>Apply proven changes by themselves.</b> When agents prove a part of the game was built with another compiler (its code matches with it, and its neighbours agree), the app uses it without asking you.</span></label>
           <div id="installedCompilerTest">
-            <button class="ghost" type="button" id="testInstalledCompilers">Test installed compilers</button>
-            <p class="small muted">Compare up to 400 existing unmatched C attempts locally. No AI tokens, downloads or changes to your compiler settings. Uses the same compiler and flag search as the single-function test, including optimization, small-data and debug variants. This can take longer; it does not test every possible flag combination.</p>
+            <button class="ghost" type="button" id="testInstalledCompilers">Test untested functions</button>
+            <label class="check"><input type="checkbox" id="compilerRetest"><span>Include previously tested functions</span></label>
+            <p class="small muted">Test up to 400 unmatched functions with saved C, skipping completed comparisons unless their inputs have changed. Each finished function is saved, so another run continues where the last left off. No AI tokens, downloads or changes to your compiler settings. Uses the same compiler and flag search as the single-function test, including optimization, small-data and debug variants. This can take longer; it does not test every possible flag combination.</p>
             <div id="compilerImprovements"></div>
             <pre class="joblog" id="installedCompilerLog" aria-label="Compiler comparison results" aria-live="off" hidden></pre>
           </div>
@@ -530,6 +531,7 @@
       <div id="fnCompilerTest" hidden>
         <button class="ghost small-btn" id="fnTestCompilers" type="button">Test installed compilers &amp; flags</button>
         <p class="small muted">Tests this function’s saved C attempt locally with every installed compiler and supported flag-search variant. No AI tokens; settings stay unchanged. This is not every possible compiler option.</p>
+        <p class="small muted" id="fnCompilerHistory">Not tested yet.</p>
         <p class="compiler-result" id="fnCompilerSummary" role="status" hidden></p>
         <div id="fnCompilerRanked"></div>
         <button class="primary small-btn" id="fnApplyCompiler" type="button" hidden>Apply these settings to this function</button>

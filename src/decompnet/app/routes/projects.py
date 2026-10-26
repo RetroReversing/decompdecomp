@@ -61,7 +61,7 @@ def register(app: App) -> None:
     def p_compiler(slug, request, data):
         if data.get("function"):
             return net.apply_function_compiler(slug, str(data["function"]), str(data.get("toolchain", "")),
-                                               data.get("flags") or [])
+                                               data.get("flags") or [], allow_non_improving=data.get("allow_non_improving") is True)
         if net.fork_slug(slug) and "auto" not in data:  # its source files each have a compiler (DS)
             tc = str(data.get("toolchain", ""))
             if not str(data.get("ranges") or "").strip():  # the whole game: every file, one at a time
@@ -116,8 +116,8 @@ def register(app: App) -> None:
         if request.method == "POST" and data.get("all_installed"):
             if net.fork_slug(slug):
                 raise NetworkError("This comparison currently needs a ROM-mode project.")
-            return {"job": jobs.start("installed compilers", lambda log: net.survey_compilers(
-                slug, log=log, all_installed=True, function=data.get("function", "")))}
+            return {"job": jobs.start("installed compilers", lambda log: net.run_compiler_comparison(
+                slug, log=log, function=data.get("function", ""), untested_only=data.get("untested_only", True)))}
         return net.compiler_answer(slug, check_now=request.method == "POST")
 
     def p_open(slug, request, data):

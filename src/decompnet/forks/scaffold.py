@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+from pathlib import Path
 
 from .. import seeds
-from .project import STATE, ForkError
+from .project import FORBIDDEN_PARTS, STATE, ForkError
 
 HEADER = '''/* C candidates for an undecompiled unit. The original ROM/assembly remains the linked baseline. */
 typedef signed char s8;
@@ -22,11 +24,12 @@ typedef double f64;
 ''' + seeds.M2C_MACROS + '\n'
 
 
-def prepare(project, log=print) -> list[str]:
-    """Only touch source-less units whose target and assembly were privately generated and verified by this app.
+def prepare(project, log=print, *, limit: int = 32) -> list[str]:
+    """Prepare a bounded batch of source-less units with app-verified reference objects.
 
     Probe the actual project's object rule before publishing each candidate. Never invent a compiler or alter
-    Makefiles/linker scripts. Unsupported builds retain their source-less units and original config.
+    Makefiles/linker scripts. Rebuilt references may use the project's original assembly paths.
+    Unsupported builds retain their source-less units and original config; later calls continue the batch.
     """
     cfg = copy.deepcopy(project.objdiff_config())
     original = (project.root / 'objdiff.json').read_bytes()
@@ -40,15 +43,31 @@ def prepare(project, log=print) -> list[str]:
             if entry.get('base_path') or (entry.get('metadata') or {}).get('source_path'):
                 continue
             target = (project.root / entry.get('target_path', '')).resolve()
-            if refs / 'objects' not in target.parents or not target.is_file():
+            layout = next((refs / name for name in ('objects', 'targets')
+                           if refs / name in target.parents), None)
+            if layout is None or not target.is_file():
                 continue
-            relative = target.relative_to(refs / 'objects').with_suffix('')
-            assembly = refs / 'asm' / relative.with_suffix('.s')
+            relative = target.relative_to(layout).with_suffix('')
+            if layout.name == 'targets':
+                value = (entry.get('metadata') or {}).get('assembly_source')
+                if not isinstance(value, str) or Path(value).is_absolute():
+                    continue
+                assembly = (project.root / value).resolve()
+                if project.root.resolve() not in assembly.parents:
+                    continue
+            else:
+                assembly = refs / 'asm' / relative.with_suffix('.s')
             if not assembly.is_file():
                 continue
-            source = project.root / 'src' / 'decompdecomp' / relative.with_suffix('.c')
+            candidate = relative.with_suffix('.c')
+            if set(candidate.parts) & FORBIDDEN_PARTS:
+                # References mirror build/asm paths; C candidates must pass the same write gate as agents.
+                identity = hashlib.sha256(relative.as_posix().encode()).hexdigest()[:12]
+                candidate = Path('candidates') / f'{relative.stem}_{identity}.c'
+            source = project.root / 'src' / 'decompdecomp' / candidate
             if project.root.resolve() not in source.resolve().parents:
                 raise ForkError('The candidate source path leaves this checkout; no files were changed')
+            project.safe_path(source.relative_to(project.root).as_posix(), write=True)
             if source.exists():
                 raise ForkError(f'{source.relative_to(project.root)} already exists; it was retained')
             source.parent.mkdir(parents=True, exist_ok=True)
@@ -63,6 +82,8 @@ def prepare(project, log=print) -> list[str]:
             if not ok or not unit.base.is_file():
                 raise ForkError(f"This project's build cannot compile the generated C candidate {unit.source}:\n{output[-2000:]}")
             sources.append(unit.source)
+            if len(sources) >= limit:
+                break  # Probe bounded batches; subsequent runs prepare the next source-less units.
         if sources:
             (project.root / 'objdiff.json').write_text(json.dumps(cfg, indent=2) + '\n', encoding='utf-8')
     except BaseException:

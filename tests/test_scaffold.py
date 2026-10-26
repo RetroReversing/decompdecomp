@@ -99,3 +99,79 @@ def test_upstream_draft_pipeline_keeps_imported_compiler_hint(tmp_path, monkeypa
     result = list(forkengine.ForkEngine._autopilot_drafts(fake, {}, fp, {'platform': 'n64'}, {'name': 'demo'}, unit))
     assert seen == ['IDO 5.3']
     assert len(result) == 1 and 'void demo(void)' in result[0][1]
+
+
+def test_rebuilt_targets_use_original_assembly_for_candidates_and_drafts(tmp_path, monkeypatch):
+    from decompnet.forks.drafts import find_asm
+
+    ref = tmp_path / '.decomp-wtf/objdiff-references/targets/asm'
+    ref.mkdir(parents=True)
+    (ref / 'demo.s.o').write_bytes(b'verified linked reference')
+    assembly = tmp_path / 'edition/asm/demo.s'
+    assembly.parent.mkdir(parents=True)
+    assembly.write_text('glabel demo\njr $ra\nnop\n')
+    cfg = {'units': [{'name': 'edition/asm/demo',
+                     'target_path': '.decomp-wtf/objdiff-references/targets/asm/demo.s.o',
+                     'metadata': {'assembly_source': 'edition/asm/demo.s'}}]}
+    (tmp_path / 'objdiff.json').write_text(json.dumps(cfg))
+    fp = ForkProject(tmp_path)
+    def build(unit):
+        unit.base.parent.mkdir(parents=True)
+        unit.base.write_bytes(b'empty compiled candidate')
+        return True, 'ok'
+    monkeypatch.setattr(fp, 'build_unit', build)
+    made = prepare(fp)
+    assert len(made) == 1
+    assert made[0].startswith('src/decompdecomp/candidates/demo_')
+    assert fp.safe_path(made[0], write=True).is_file()
+    assert find_asm(tmp_path, 'edition/asm/demo', 'demo', None) == assembly
+    assert (ref / 'demo.s.o').read_bytes() == b'verified linked reference'
+    assert assembly.read_text().startswith('glabel demo')
+
+
+def test_scaffold_batches_continue_without_replacing_existing_sources(tmp_path, monkeypatch):
+    fp = project(tmp_path)
+    cfg = json.loads((tmp_path / 'objdiff.json').read_text())
+    entry = dict(cfg['units'][0], name='asm/other',
+                 target_path='.decomp-wtf/objdiff-references/objects/other.o')
+    cfg['units'].append(entry)
+    ref = tmp_path / '.decomp-wtf/objdiff-references'
+    (ref / 'objects/other.o').write_bytes(b'other reference')
+    (ref / 'asm/other.s').write_text('glabel other\njr $ra\nnop\n')
+    (tmp_path / 'objdiff.json').write_text(json.dumps(cfg))
+    def build(unit):
+        unit.base.parent.mkdir(parents=True, exist_ok=True)
+        unit.base.write_bytes(b'empty candidate')
+        return True, 'ok'
+    monkeypatch.setattr(fp, 'build_unit', build)
+    assert prepare(fp, limit=1) == ['src/decompdecomp/demo.c']
+    assert prepare(fp, limit=1) == ['src/decompdecomp/other.c']
+    assert prepare(fp, limit=1) == []
+
+
+def test_draft_assembly_metadata_cannot_escape_checkout(tmp_path):
+    from decompnet.forks.drafts import find_asm
+
+    (tmp_path / 'objdiff.json').write_text(json.dumps({'units': [
+        {'name': 'demo', 'metadata': {'draft_assembly': '../outside.s'}}]}))
+    assert find_asm(tmp_path, 'demo', 'demo', None) is None
+
+
+def test_numeric_mips_registers_are_normalized_without_changing_data_or_coprocessors():
+    from decompnet.arch.mips import abi_register_names
+
+    text = ('glabel demo\n addiu $2, $4, 1 # keep $31 in comments\n jr $31\n'
+            ' mfc0 $2, $12\n ctc1 $4, $31\n add.s $f1, $f2, $f3\n .ascii "$31"\n')
+    assert abi_register_names(text) == (
+        'glabel demo\n addiu $v0, $a0, 1 # keep $31 in comments\n jr $ra\n'
+        ' mfc0 $v0, $12\n ctc1 $a0, $31\n add.s $f1, $f2, $f3\n .ascii "$31"\n')
+
+
+def test_numeric_return_register_produces_a_real_machine_draft():
+    from decompnet import seeds
+
+    if not seeds.available():
+        pytest.skip('m2c is not installed')
+    text = '.text\nglabel demo\n addiu $2, $4, 1\n jr $31\n nop\n'
+    draft = seeds.run_m2c(text, 'demo', 'mips-gcc-c', valid=True, strict=True)
+    assert draft and 'demo(' in draft and 'return' in draft
