@@ -84,6 +84,28 @@ its string literal with an external pointer can hide the length and change gener
 literal visible and let the judge verify its linked data references. Do not count matching relocation-masked
 instructions as a verified match.
 
+### Use the diff to separate layout changes from missing behaviour
+
+A same-sized candidate can still combine several independent source-revision differences. Resolve them in
+small steps and keep the comparison from each step:
+
+- Missing calls or branches indicate missing behaviour, not just register allocation. A port may replace a
+  disc check with a constant, suppress a pickup sound lookup, or add a state reset absent from the retail
+  executable. Consult the available revisions and call targets before changing those statements.
+- If several accesses through one structure differ by the same number of bytes, compare their field positions
+  against earlier accesses that still agree. Correct the candidate-local layout at the first affected field;
+  do not shift the entire structure or patch every instruction's immediate independently. If the field's
+  meaning is unknown, label the recovered space as unknown rather than inventing an original field name.
+- Rendering helpers that still call a later platform's primitive-submission function need the PS1 ordering
+  table macro from the corresponding SDK headers. Preserve its bitfield form: a manually rewritten mask can
+  change register allocation even when it appears equivalent.
+
+An SDK object signature can identify an entry hidden inside a larger detected function. Treat its relocation
+mask as identity and boundary evidence only. Compile recovered C independently, compare every linked byte,
+and test the SDK compiler version on that function when an otherwise identical wrapper only differs in
+instruction scheduling. Keep any successful compiler override confined to the verified range and recheck
+all existing matches before importing it.
+
 ### Repair only what the evidence supports
 
 Text enums can differ between source revisions. Propose candidate-local corrections using the target's
