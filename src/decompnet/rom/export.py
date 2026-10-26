@@ -103,6 +103,40 @@ def _segments(config: dict) -> list[dict]:
     return out
 
 
+def _export_segments(config: dict, functions) -> dict:
+    """Keep known function tails out of data when regenerating the export's split.
+
+    An inferred text boundary can land on a return's delay slot. The importer
+    already recovered that word in the function; exporting the old boundary
+    would put it in both the compiled function and a data object.
+    """
+    config = json.loads(json.dumps(config))
+    for segment in _segments(config):
+        if segment.get('type') != 'code' or 'vram' not in segment:
+            continue
+        subs = segment.get('subsegments', [])
+        for index, sub in enumerate(subs):
+            start = sub[0] if isinstance(sub, list) else sub.get('start')
+            kind = sub[1] if isinstance(sub, list) else sub.get('type')
+            if start is None or kind not in ('data', 'rodata', '.data', '.rodata'):
+                continue
+            address = segment['vram'] + start - segment['start']
+            ends = [f['vram'] + f['size'] for f in functions
+                    if f['vram'] is not None and f['vram'] < address < f['vram'] + f['size']]
+            if not ends:
+                continue
+            end = start + max(ends) - address
+            following = [s[0] if isinstance(s, list) else s.get('start') for s in subs[index + 1:]]
+            limit = next((offset for offset in following if offset is not None), segment['end'])
+            if limit is None or end >= limit:
+                raise ExportError('a known function overlaps a complete data segment; review its boundaries before exporting')
+            if isinstance(sub, list):
+                sub[0] = end
+            else:
+                sub['start'] = end
+    return config
+
+
 def export_rom(net, slug: str, out: Path, console, log=print) -> dict:
     """Write the rebuildable tree to `out`, build it once and report: {"path", "identical", "matched", ...}.
     `console` (consoles/) says its processor's assembler flags, the image's extension, its assembly's preamble."""
@@ -128,7 +162,9 @@ def export_rom(net, slug: str, out: Path, console, log=print) -> dict:
 
     # 1. splat again, with the project's names
     log("writing the assembly with the project's names (splat)")
-    shutil.copyfile(configs[0], out / "splat.yaml")
+    split_config = yaml.safe_load(configs[0].read_text(encoding='utf-8'))
+    known = net.store.all('SELECT vram,size FROM functions WHERE project_id=?', proj['id'])
+    (out / 'splat.yaml').write_text(yaml.safe_dump(_export_segments(split_config, known), sort_keys=False), encoding='utf-8')
     shutil.copyfile(work / image_name, out / image_name)
     for extra in ("reloc_addrs.txt",):
         if (work / extra).exists():

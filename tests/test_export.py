@@ -245,3 +245,24 @@ def test_generated_address_references_link_across_objects(tmp_path):
     linked = subprocess.run([linker, "-EB", "-T", "game.ld", "-o", "game.elf", "first.o", "second.o"],
                             cwd=tmp_path, capture_output=True, text=True)
     assert linked.returncode != 0 and "unknown_data" in linked.stderr
+
+
+def test_export_moves_data_boundary_past_known_function_tail():
+    from decompnet.rom.export import _export_segments
+
+    config = {'segments': [{'type': 'code', 'start': 0x100, 'vram': 0x80000000,
+                            'subsegments': [[0x100, 'c', 'code'], [0x118, 'data', 'data'],
+                                            {'type': 'bss', 'vram': 0x80000100}]}, [0x140]]}
+    result = _export_segments(config, [{'vram': 0x80000010, 'size': 12}])
+    assert result['segments'][0]['subsegments'][1][0] == 0x11c
+    assert config['segments'][0]['subsegments'][1][0] == 0x118  # the project's config stays unchanged
+    assert _export_segments(config, [{'vram': 0x80000010, 'size': 8}]) == config
+
+
+def test_export_refuses_to_consume_an_entire_data_segment():
+    from decompnet.rom.export import ExportError, _export_segments
+
+    config = {'segments': [{'type': 'code', 'start': 0x100, 'vram': 0x80000000,
+                            'subsegments': [[0x100, 'c', 'code'], {'start': 0x118, 'type': 'data'}]}, [0x11c]]}
+    with pytest.raises(ExportError, match='review its boundaries'):
+        _export_segments(config, [{'vram': 0x80000010, 'size': 12}])
