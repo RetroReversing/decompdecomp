@@ -718,7 +718,3 @@ adaptive routing. Configured queues do not batch unfiltered neighbours.
   exchanges by session, with paged access and reported token usage. API requests capture
   the actual trimmed context. CLI internal system prompts, hidden reasoning, shell
   output and provider compaction remain outside the app's observable interface.
-
-- Done: verified Splat rebuild imports also support implicit segment addresses and
-  cartridge FF padding, with the complete original-image SHA-1 required before
-  publishing reference objects. Assembly-only units stay target-only.

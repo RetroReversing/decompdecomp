@@ -167,6 +167,16 @@ Guides: {guides}. Be brief in your messages: work, don't narrate.
 """
 
 
+REPAIR_GUIDANCE = """\
+When a candidate makes a specific repair, optionally include a one-sentence repair_note, repair_category and
+repair_automation in compile_and_diff (single function only). These are saved only on a verified new match.
+Explain what changed and how a deterministic repair could do it; omit uncertain explanations. No extra compile
+is needed. report_repair can annotate your captured match afterwards. These are review ideas, never live rules.
+"""
+WORK_PROMPT += "\n" + REPAIR_GUIDANCE
+FORK_PROMPT += "\n" + REPAIR_GUIDANCE
+
+
 def _console_guides() -> dict:
     """topic -> file of the guides consoles keep in their packages (consoles/<id>/guides/<topic>.md)."""
     return {path.stem: path for folder in consoles.guide_dirs() for path in sorted(folder.glob("*.md"))}
@@ -271,12 +281,27 @@ def _claim(net: RomNetwork, agent: Agent, slug: str, function: str, strategy: st
         return f"({e}. Here's the next free function instead.)\n\n" + net.claim(agent, slug, None, strategy)
 
 
-def _compile(net: RomNetwork, agent: Agent, slug: str, function: str, source: str) -> str:
-    """compile_and_diff; several names ("a, b, c") judge several definitions sent together."""
+def _compile(net: RomNetwork, agent: Agent, slug: str, function: str, source: str,
+             repair_note: str = '', repair_category: str = 'other', repair_automation: str = '') -> str:
+    """Optional repair notes ride along with a candidate, saving a separate explanation round trip."""
+    from ..repair_feedback import CATEGORIES
     names = [n.strip() for n in function.split(",") if n.strip()]
+    if repair_note and (len(names) != 1 or repair_category not in CATEGORIES):
+        raise NetworkError('Repair notes require one function and a valid category. Use report_repair after a batch.')
+    previous = net.store.one('SELECT MAX(id) AS id FROM repair_examples')['id'] or 0
     if len(names) <= 1:
-        return net.compile_and_diff(agent, names[0] if names else function, source, slug)
-    return net.attempt_many(agent, [net.resolve_function(agent, slug, n) for n in names], source, slug)
+        result = net.compile_and_diff(agent, names[0] if names else function, source, slug)
+    else:
+        result = net.attempt_many(agent, [net.resolve_function(agent, slug, n) for n in names], source, slug)
+    if repair_note:
+        fn = net._function(names[0], slug)
+        case = net.store.one('SELECT e.id FROM repair_examples e JOIN attempts a ON a.id=e.attempt_id '
+                             'WHERE e.function_id=? AND e.agent_id=? AND e.id>? AND a.source=? '
+                             'ORDER BY e.id DESC LIMIT 1', fn['id'], agent.id, previous, source)
+        if case:
+            net.repair_feedback.report(agent, slug, names[0], repair_note, repair_category, repair_automation, case_id=case['id'])
+            result += f"\nRepair example #{case['id']} and your explanation saved for review."
+    return result
 
 
 def _add_note(net: RomNetwork, agent: Agent, slug: str, text: str, function: str = "") -> str:
@@ -294,7 +319,10 @@ HANDLERS: dict[str, Callable[..., str]] = {
     "claim_function": lambda net, agent, slug, function="", strategy="", count=1:
         _claim(net, agent, slug, function, strategy, count),
     "get_function": lambda net, agent, slug, function: net.get_function(function, slug, agent),
-    "compile_and_diff": lambda net, agent, slug, function, source: _compile(net, agent, slug, function, source),
+    "compile_and_diff": lambda net, agent, slug, function, source, repair_note='', repair_category='other', repair_automation='':
+        _compile(net, agent, slug, function, source, repair_note, repair_category, repair_automation),
+    "report_repair": lambda net, agent, slug, function, change, category='other', automation='':
+        net.repair_feedback.report(agent, slug, function, change, category, automation),
     "last_diff": lambda net, agent, slug, function, context=2: net.last_diff(agent, function, slug, context),
     "release_function": lambda net, agent, slug, function, notes, needs="", not_c=False:
         net.release_function(agent, function, notes, slug, needs or "", bool(not_c)),
@@ -441,7 +469,8 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
         return await run(ctx, "get_function", function=function)
 
     @mcp.tool(meta=ALWAYS_LOAD)
-    async def compile_and_diff(ctx: Context, function: str, source: str) -> str:
+    async def compile_and_diff(ctx: Context, function: str, source: str, repair_note: str = '',
+                               repair_category: str = 'other', repair_automation: str = '') -> str:
         """Compile your code for `function` and diff it against the original; score 0 = byte-identical.
 
         ROM projects: compiled with the game's compiler (context.h included), linked at the function's
@@ -449,7 +478,17 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
         prototypes, externs or #pragma lines it needs); it replaces the function in its source file, which is
         built with the project's build system and diffed with objdiff. Several functions ("a, b, c"): send all
         their definitions in one source; each is judged on its own."""
-        return await run(ctx, "compile_and_diff", function=function, source=source)
+        return await run(ctx, "compile_and_diff", function=function, source=source, repair_note=repair_note,
+                         repair_category=repair_category, repair_automation=repair_automation)
+
+    @mcp.tool(meta=ALWAYS_LOAD)
+    async def report_repair(ctx: Context, function: str, change: str, category: str = 'other', automation: str = '') -> str:
+        """Annotate your captured verified match: the decisive change and how a deterministic rule could make it.
+        Optional after-the-fact alternative to compile_and_diff's repair_note. One sentence is enough; do not
+        guess. This collects review evidence and never enables a rule. Categories: types, casts, constants,
+        addresses, signatures, layout, temporaries, expression_order, control_flow, compiler_settings, other.
+        """
+        return await run(ctx, 'report_repair', function=function, change=change, category=category, automation=automation)
 
     @mcp.tool(meta=ALWAYS_LOAD)
     async def last_diff(ctx: Context, function: str, context: int = 2) -> str:

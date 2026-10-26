@@ -319,6 +319,30 @@ and redacts known credentials. It contains source and can grow with long session
 older sessions recorded before this feature cannot be reconstructed. Token counts and
 dollar costs are shown only when reported, not estimated or assumed to be zero.
 
+**Agents → Repair examples** collects evidence for improving autopilot, the permuter,
+and other deterministic repairs. New verified matches save the winning candidate,
+the closest compiled failed attempt (when present), available headers, configured
+compiler settings and judge provenance. Agents can include `repair_note`,
+`repair_category` and `repair_automation` with a single-function `compile_and_diff`
+request; these notes survive only if that candidate produces a new verified match.
+`report_repair` can add an explanation afterwards. No additional model call is
+needed when the note travels with the candidate.
+
+Filter by category and review state, browse one or all projects, add review notes,
+and download summaries or full examples as local JSON. Full exports include code,
+assembly and available headers; summaries omit those fields and the code diff,
+although notes can still quote code. Nothing uploads automatically or becomes a
+live rule. The comparison is against the best saved failed attempt, which can
+involve other edits, another agent, or changed settings: explanations are hypotheses,
+not proof of which individual edit caused the match. First-try matches can be shown
+by clearing **Only with a failed candidate**. Imported-project examples record
+objdiff verification, symbols and source paths, but do not pretend to capture the
+build system's per-file flags/includes. Old compiler settings are unknown when
+not captured at the attempt. Existing attempt/context rows are reused to avoid
+duplicating large source and header snapshots. Recording starts with new matches
+after this update; historical score-zero attempts are not retroactively labelled
+as verified matches.
+
 You can also continue a community decomp: paste the address of its repository and pick your own copy of its game.
 
 Some community projects do not provide `objdiff.json`. After you supply the matching game and the project's build
