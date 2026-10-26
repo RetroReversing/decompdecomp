@@ -457,3 +457,17 @@ agent lost the source. Full submissions remain available for rewrites. Claims ke
 compiler facts and declarations; supporting notes, similarity details, layouts and attempt history
 are available through `get_function` when needed. Codex errors rejecting a reasoning effort pause
 the helper immediately; change the model or effort before restarting it.
+
+### Agent names, history and estimated costs
+
+Use **Rename** on an agent card to give it a display name. Its internal identity, claims and
+credited work stay unchanged, and the name survives app restarts. **Add agents** creates fresh
+identities with fresh counts; **Start again** resumes a stopped agent and keeps its history.
+Removing a card preserves historical project and model totals.
+
+Codex cards can show **API-equivalent** dollars and dollars per match, calculated from separately
+recorded input, cached-input and output tokens. These estimates use Standard API rates checked
+on 26 October 2026 ([OpenAI pricing](https://developers.openai.com/api/docs/pricing), with older
+models' model pages). They are not subscription charges or additional money owed. Cache-write,
+long-context, Fast-mode and regional premiums are excluded. Unknown models or incomplete legacy
+token breakdowns have no estimate; reported provider charges remain separate.

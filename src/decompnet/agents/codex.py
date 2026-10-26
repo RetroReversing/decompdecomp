@@ -42,6 +42,24 @@ class Codex(Agent):
         return ('unsupported_value' in error and 'reasoning.effort' in error
                 or bool(re.search(r"(?:unsupported value|not supported).*(?:reasoning|effort)|(?:reasoning|effort).*not supported", error, re.I)))
 
+    def estimate_cost(self, model: str, usage: dict) -> float | None:
+        # Standard API USD / million tokens, checked 2026-10-26:
+        # https://developers.openai.com/api/docs/pricing
+        # An estimate of equivalent API usage, never subscription billing. Cache writes,
+        # long-context premiums, fast mode and regional pricing are not reported by this CLI.
+        rates = {
+            "gpt-6-astra": (10, 1, 50), "gpt-6.1-sol": (2, .1, 10),
+            "gpt-6.1-terra": (1, .05, 5), "gpt-6-luna": (.1, .01, .5),
+            "gpt-6-sol": (2, .2, 10), "gpt-5.6-sol": (4, .4, 20),
+            "gpt-5.6-terra": (2, .2, 12), "gpt-5.6-luna": (.2, .02, 1.2),
+            "gpt-5.3-codex": (1.75, .175, 14),
+        }
+        rate = rates.get(model.partition("#")[0])
+        counts = [usage.get(k, 0) or 0 for k in ("input", "cache_read", "output")]
+        if rate is None or usage.get("cache_write") or sum(counts) != (usage.get("tokens") or 0) or not sum(counts):
+            return None
+        return sum(n * price for n, price in zip(counts, rate)) / 1_000_000
+
     def config_model(self) -> str | None:
         return codex_config().get("model") or None
 

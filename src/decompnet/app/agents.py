@@ -546,9 +546,12 @@ class Manager:
                            (kind, s.model, label, json.dumps(kept), s.id))
             return s
         with self.net.store.tx() as db:
-            rid = db.execute("INSERT INTO helpers(project, kind, model, name, label, options, state, started_at) "
-                             "VALUES(?,?,?,?,?,?,?,?)", (slug, kind, str(options.get("model") or ""), name, label,
-                                                         json.dumps(kept), "starting", time.time())).lastrowid
+            # helper_sessions survives Remove; never recycle its helper_id for a new record.
+            rid = db.execute("SELECT MAX(id) + 1 FROM (SELECT id FROM helpers UNION ALL "
+                             "SELECT helper_id AS id FROM helper_sessions)").fetchone()[0] or 1
+            db.execute("INSERT INTO helpers(id, project, kind, model, name, label, options, state, started_at) "
+                             "VALUES(?,?,?,?,?,?,?,?,?)", (rid, slug, kind, str(options.get("model") or ""), name, label,
+                                                         json.dumps(kept), "starting", time.time()))
         s = self.sessions[str(rid)] = Session(str(rid), kind, label, slug, name, dict(options))
         return s
 
@@ -581,12 +584,28 @@ class Manager:
                 model = options.get("model") or agent.config_model() or ""
                 if options.get("effort") and "#" not in model:  # an effort is a record of its own, as with the others
                     model = f"{model}#{options['effort']}"
-                name = helper_name(kind, model, self._taken())
+                # A new helper must never inherit attempts credited to an old identity.
+                reserved = self._taken() | {x.agent_name for x in self.sessions.values()}
+                reserved |= {r['name'] for r in self.net.store.all('SELECT name FROM agents')}
+                reserved |= {r['agent'] for r in self.net.store.all('SELECT DISTINCT agent FROM helper_sessions')}
+                name = helper_name(kind, model, reserved)
                 s = self._record(slug, kind, name, self._label(kind, name, options), options)
                 s.restarts = 0
                 self._launch(s)
                 ids.append(s.id)
         return ids
+
+    def rename(self, sid: str, label: str) -> str:
+        """Change the display name without changing tokens, claims or attribution."""
+        if not isinstance(label, str) or not label.strip() or len(label.strip()) > 80 or any(ord(c) < 32 for c in label):
+            raise ValueError("Enter an agent name of 1–80 characters without control characters.")
+        with self._lock:
+            s = self.sessions.get(sid)
+            if s is None:
+                raise ValueError("This agent no longer exists. Refresh the agents list.")
+            s.label = label.strip()
+            self._save(s)
+            return s.label
 
     def set_selection(self, sid: str, policy: dict, per_session: int | None = None) -> dict:
         with self._lock:
@@ -801,7 +820,24 @@ class Manager:
 
     def snapshot(self, since: dict | None = None) -> list[dict]:
         since = since or {}
-        return [s.snapshot(int(since.get(s.id, 0))) for s in self.sessions.values()]
+        out = []
+        for s in self.sessions.values():
+            row = s.snapshot(int(since.get(s.id, 0)))
+            records = self.net.store.all("SELECT * FROM helper_sessions WHERE helper_id=? AND agent=? AND ended_at IS NOT NULL",
+                                         s.id, s.agent_name)
+            estimates = [agents.get(s.kind).estimate_cost(r["model"], {
+                k: r[k + "_tokens"] for k in TOKEN_KINDS} | {"tokens": r["tokens"]}) for r in records if r["tokens"]]
+            if s.record and s.session_id not in {r["id"] for r in records} and s.usage["tokens"]:
+                active = self.net.store.one("SELECT model FROM helper_sessions WHERE id=?", s.session_id)
+                model = active["model"] if active else s.model
+                estimates.append(agents.get(s.kind).estimate_cost(model, s.usage))
+            recorded_tokens = sum(r["tokens"] for r in records)
+            if s.record and s.session_id not in {r["id"] for r in records}:
+                recorded_tokens += s.usage["tokens"]
+            row["estimated_cost"] = (sum(estimates) if estimates and all(x is not None for x in estimates)
+                                     and recorded_tokens == s.tokens else None)
+            out.append(row)
+        return out
 
     def project_of(self, agent_id: int) -> str | None:
         return self.assignments.get(agent_id)

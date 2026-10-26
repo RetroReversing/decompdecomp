@@ -128,6 +128,17 @@ def register(app: App) -> None:
         settings.save()
         return JSONResponse({"started": ids})
 
+    @mcp.custom_route("/api/agents/rename", methods=["POST"])
+    async def api_agents_rename(request: Request) -> Response:
+        if (bad := guard(request, write=True)):
+            return bad
+        data = await body(request)
+        try:
+            label = manager.rename(str(data.get("id", "")), data.get("label", ""))
+        except ValueError as e:
+            return fail(e)
+        return JSONResponse({"label": label})
+
     @mcp.custom_route("/api/agents/selection", methods=["POST"])
     async def api_agents_selection(request: Request) -> Response:
         if (bad := guard(request, write=True)):
