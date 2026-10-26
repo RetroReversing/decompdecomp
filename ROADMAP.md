@@ -784,3 +784,10 @@ tokens per match (unavailable rates show a dash). They can be sorted by status, 
 model or token efficiency. Work settings expose the effective functions-per-session value and can save a new
 value for the next session without restarting the current function. The shared scheduler supports least-tried
 first alongside the existing selection strategies, in ROM and imported project mode.
+
+N64 ROM matching now offers SN64 GCC 2.8.1/ASN64 2.78 and 2.7.2 build 0001/ASN64 2.56.
+The original preprocessor, compiler and assembler feed the shared ELF judge through a pinned, source-built
+PCSX-Redux converter. The same profiles reach flag search, compiler-map evidence, GCC permuter weights and
+exported builds. Their packaged driver is staged read-only with compiler dependencies, including WSL.
+Compiler installation still requires license acceptance; no existing project's default is changed.
+See [SN64 compiler integration](docs/sn64-compilers.md) for setup and the bounded local comparison.

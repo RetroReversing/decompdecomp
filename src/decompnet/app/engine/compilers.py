@@ -562,7 +562,7 @@ class CompilerMixin:
     @staticmethod
     def debug_flag_variants(toolchain: str, base: list[str]) -> list[list[str]]:
         """Old GCC's debug labels affect assembler scheduling: try no debug, -g and -g3 independently."""
-        if not toolchain.startswith(("gcc", "ee-gcc")):
+        if not toolchain.startswith(("gcc", "ee-gcc")) and toolchains.compiler_family(toolchain) != "gcc":
             return [base]
         plain = [f for f in base if not re.fullmatch(r"-g[0-3]?", f)]
         out = [base]
@@ -575,7 +575,7 @@ class CompilerMixin:
         """The flags worth trying for a function on this compiler: its optimisation levels, small data on and off
         (MIPS GCC's -G; CodeWarrior's -sdatathreshold), and the few options that change the shape of code most.
         Each variant changes the project's flags in one place, so what matches says which flag it was."""
-        family = next((f for prefix, f in FLAG_FAMILIES if toolchain.startswith(prefix)), "gcc")
+        family = toolchains.compiler_family(toolchain) or next((f for prefix, f in FLAG_FAMILIES if toolchain.startswith(prefix)), "gcc")
         levels, extras = FLAG_LEVELS[family], FLAG_EXTRAS[family]
         current = next((f for f in base if f in levels), None)
         out = [base]

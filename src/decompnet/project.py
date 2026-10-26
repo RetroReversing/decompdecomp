@@ -37,6 +37,9 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         if linux and not (ok := wsl.status())[0]:
             raise toolchains.ToolchainError(f"{tc.name} is a Linux program: on Windows it runs in WSL 2. {ok[1]}")
         dirs = toolchains.runtime_dirs(tc.id)
+        driver = Path(__file__).parent / tc.driver if tc.driver else None
+        if driver:
+            dirs = (*dirs, driver.parent)
         try:
             where_tools = wsl.prepare_tools(dirs) if linux else tuple(str(directory) for directory in dirs)
         except (OSError, subprocess.SubprocessError) as error:
@@ -56,6 +59,8 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         # Linux sandboxes and WSL use their own python3, not a host interpreter outside their mounts.
         python = sys.executable if sys.platform == "darwin" else "python3"
         cmd = [a.replace("{tc}", tc_dir).replace("{python}", python) for a in base]
+        if driver:
+            cmd = [a.replace("{driver}", where_tools[-1] + "/" + driver.name) for a in cmd]
         for dep, where in zip(tc.requires, where_tools[1:]):  # {tc:<id>} is another toolchain this one needs
             cmd = [a.replace(f"{{tc:{dep}}}", where) for a in cmd]
     else:

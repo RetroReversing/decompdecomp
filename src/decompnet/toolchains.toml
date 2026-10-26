@@ -1061,28 +1061,95 @@ subdir = "dtk-template-95a941f755919ebe50c1725a4ce73524470e7a02"
 
 
 ["sn-n64-281"]
+family = "gcc"
 name = "SN Systems N64 GCC 2.8.1"
-kind = "compiler-pack"
+arch = "mips"
 platform = "N64"
 license = "proprietary"
 source = "marijnvdwerf/sn64 release 1,0,0,2"
-description = "Preserved Windows N64 compiler for public project builds; run using wibo."
-requires = ["wibo"]
+description = "Original SN64 GCC 2.8.1, preprocessor and ASN64 2.78. Matching uses wibo and the pinned PsyQ-to-ELF converter."
+requires = ["wibo", "psyq-obj-parser"]
+driver = "consoles/n64/sn64.py"
+flags = ["-G0", "-mips3", "-O2", "-mgas", "-meb", "-mcpu=VR4300", "-mhard-float", "-mfp64"]
+cmd = ["{python}", "{driver}", "--cc", "{tc}/cc1n64.exe", "--cpp", "{tc}/cppn64.exe", "--assembler", "{tc}/asn64.exe", "--converter", "{tc:psyq-obj-parser}/psyq-obj-parser", "--runner", "{tc:wibo}/wibo", "{src}", "{obj}", "{include}", "{flags}"]
 [["sn-n64-281".parts]]
 url = "https://github.com/marijnvdwerf/sn64/releases/download/1%2C0%2C0%2C2/cc1n64.exe"
 sha256 = "d90df1028c46d826e37146dbcc3e3385f78c59e05a9ddd952daa94c9ad379d9c"
 binary = "cc1n64.exe"
 platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
 
+[["sn-n64-281".parts]]
+url = "https://github.com/marijnvdwerf/sn64/releases/download/1%2C0%2C0%2C2/asn64.exe"
+sha256 = "53e3a9f8b7b9a06c8f5a781f01074441df3469e6bbe2df5438ba4e2d8fcf3819"
+binary = "asn64.exe"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
+[["sn-n64-281".parts]]
+url = "https://github.com/marijnvdwerf/sn64/releases/download/1%2C0%2C0%2C2/cppn64.exe"
+sha256 = "277f1db571ab963df68a07af8b128995493208776dd68a69979809e45d912595"
+binary = "cppn64.exe"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
+
 ["sn-n64-272-0001"]
+family = "gcc"
 name = "SN Systems N64 GCC 2.7.2 (0001)"
-kind = "compiler-pack"
+arch = "mips"
 platform = "N64"
 license = "proprietary"
 source = "decompme/compilers n64_sn272_0001"
-description = "Preserved Windows N64 compiler, preprocessor and assembler for public project builds; run using wibo."
-requires = ["wibo"]
+description = "Original SN64 GCC 2.7.2 build 0001 and ASN64 2.56. Matching uses wibo and the pinned PsyQ-to-ELF converter."
+requires = ["wibo", "psyq-obj-parser"]
+driver = "consoles/n64/sn64.py"
+flags = ["-G0", "-mips3", "-O2", "-mgas", "-meb", "-mhard-float"]
+cmd = ["{python}", "{driver}", "--cc", "{tc}/cc1n64.exe", "--cpp", "{tc}/cppn64.exe", "--assembler", "{tc}/asn64.exe", "--converter", "{tc:psyq-obj-parser}/psyq-obj-parser", "--runner", "{tc:wibo}/wibo", "{src}", "{obj}", "{include}", "{flags}"]
 [["sn-n64-272-0001".parts]]
 url = "https://github.com/decompme/compilers/releases/download/compilers/n64_sn272_0001.tar.gz"
 sha256 = "17c57ccd5f2305fe5445c576d4cc2c1fea681dd78b29dd3d1f15c5ca0fdf2cea"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
+
+[psyq-obj-parser]
+name = "PsyQ object to ELF converter"
+kind = "tool"
+license = "GPL-2.0-or-later"
+source = "PCSX-Redux 8a86b7e and its pinned header dependencies"
+description = "Converts SN Systems objects to ELF; built locally with a C++20 compiler and zlib headers."
+build = "psyq-obj-parser"
+
+[[psyq-obj-parser.parts]]
+url = "https://codeload.github.com/grumpycoders/pcsx-redux/tar.gz/8a86b7ec1d246eb5ae9b213cac27aa2f7854a176"
+sha256 = "bebf3b6c67315a33191d1c338ad04297d1a3e10a5e8049bb4409492d489372a7"
+file = "psyq-pcsx-8a86b7ec1d246eb5ae9b213cac27aa2f7854a176.tar.gz"
+subdir = "pcsx-redux-8a86b7ec1d246eb5ae9b213cac27aa2f7854a176"
+into = "source/pcsx"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
+
+[[psyq-obj-parser.parts]]
+url = "https://codeload.github.com/fmtlib/fmt/tar.gz/407c905e45ad75fc29bf0f9bb7c5c2fd3475976f"
+sha256 = "2bc1fe4a5b6d5d6a614239b4ca1d520e66e152a02d3d262684d26dfd6ab3438a"
+file = "psyq-fmt-407c905e45ad75fc29bf0f9bb7c5c2fd3475976f.tar.gz"
+subdir = "fmt-407c905e45ad75fc29bf0f9bb7c5c2fd3475976f"
+into = "source/fmt"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
+
+[[psyq-obj-parser.parts]]
+url = "https://codeload.github.com/serge1/ELFIO/tar.gz/8ae6cec5d60495822ecd57d736f66149da9b1830"
+sha256 = "71c1a72e3fac6c9db3d4126c8f9b84bbda902e8dfb563f6dfcbed454636fa1c5"
+file = "psyq-elfio-8ae6cec5d60495822ecd57d736f66149da9b1830.tar.gz"
+subdir = "ELFIO-8ae6cec5d60495822ecd57d736f66149da9b1830"
+into = "source/elfio"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
+
+[[psyq-obj-parser.parts]]
+url = "https://codeload.github.com/Taywee/args/tar.gz/794f2dc7caa306984cf385cbb8e7176146514959"
+sha256 = "009aad8e019da87322cea8feaee68f8b2d1d5434511b23743292bdf474cdd983"
+file = "psyq-args-794f2dc7caa306984cf385cbb8e7176146514959.tar.gz"
+subdir = "args-794f2dc7caa306984cf385cbb8e7176146514959"
+into = "source/args"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
+
+[[psyq-obj-parser.parts]]
+url = "https://codeload.github.com/Neargye/magic_enum/tar.gz/e55b9b54d5cf61f8e117cafb17846d7d742dd3b4"
+sha256 = "bdb15ee58b44988a493b514194ca7e770b7c69d8af0c93d4447bcfa5fc044e3a"
+file = "psyq-magic_enum-e55b9b54d5cf61f8e117cafb17846d7d742dd3b4.tar.gz"
+subdir = "magic_enum-e55b9b54d5cf61f8e117cafb17846d7d742dd3b4"
+into = "source/magic_enum"
 platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
