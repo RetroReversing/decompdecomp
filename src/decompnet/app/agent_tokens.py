@@ -7,6 +7,7 @@ import time
 
 from .. import scoring
 from ..network import NetworkError
+from . import agent_targets
 
 
 def candidate(net, agent, slug, function):
@@ -26,16 +27,15 @@ def get_candidate(net, agent, slug, function):
     return f'Candidate revision {revision}\n```c\n{source}\n```'
 
 
-def patch(net, agent, slug, function, revision, old, new, repair_note='', repair_category='other', repair_automation=''):
+def patch(net, agent, slug, function, revision, old, new, repair_note='', repair_category='other', repair_automation='', occurrence=0):
     fn = net._function(function, slug)
     with net.attempt_turn(agent, fn):
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
             raise NetworkError('Candidate changed. Call get_candidate and apply the patch to its current revision.')
-        if not old or source.count(old) != 1:
-            raise NetworkError('Patch old text must occur exactly once. Call get_candidate to check the current source.')
+        edited = agent_targets.replace_anchor(source, old, new, occurrence)
         from .tools import _compile
-        return _compile(net, agent, slug, function, source.replace(old, new, 1), repair_note, repair_category, repair_automation)
+        return _compile(net, agent, slug, function, edited, repair_note, repair_category, repair_automation)
 
 
 def remember(net, agent, fn, before):
@@ -86,18 +86,37 @@ def brief(net, text, slug=None, agent=None):
                   lambda m: ('### '+m[1]+'\nSupporting details: get_function(function).\n'
                              if any(m[1].startswith(title) for title in optional) else m[0]),
                   text, flags=re.M | re.S)
+    seen_next = set()
+    def next_step(m):
+        if m[0] in seen_next:
+            return 'Next: follow the compilation instructions above.'
+        seen_next.add(m[0])
+        return m[0]
+    text = re.sub(r'^Next: (?:read context.h with get_context|write C for this function \(the declarations it uses are above)[^\n]*context.h is included automatically\.$', next_step, text, flags=re.M)
+    seen_declarations = set()
+    def shared(m):
+        block = m[2]
+        if block in seen_declarations:
+            return m[1]+'Shared declarations are identical to an earlier section in this claim.\n'
+        seen_declarations.add(block)
+        if len(block.splitlines()) > 16:
+            return m[1]+'Shared declarations: get_function(function, section="declarations") or get_context(function). Candidate C is retained below.\n'
+        return m[0]
+    text = re.sub(r'(^### Declarations it uses[^\n]*\n)(```c\n.*?\n```)',shared,text,flags=re.M|re.S)
     # A batch can contain more than one claimed function. Resolve each stored name from its brief header.
     for name in re.findall(r'^## CLAIMED: (.+?)(?:  \([^\n]*\))?$', text, re.M):
         if slug and name.startswith(slug + '/'):
             name = name[len(slug)+1:]
         try:
             fn = net._function(name.strip(), slug)
-            text += '\n' + tried_summary(net, fn)
-            text += f"\n{fn['name']}: supporting attempt history: get_function(section=\"history\").\n"
+            summary = tried_summary(net, fn, compact=True)
+            text += f"\n{fn['name']}: {summary}" if summary else ''
+            text += f"\n{fn['name']}: history: get_function(section=\"history\").\n"
             if agent is not None:
                 source, revision = candidate(net, agent, slug, fn['name'])
                 # Only attach a revision when the exact candidate is present in the claim.
                 if source and source.strip() in text:
+                    text += agent_targets.suggestions(source)
                     text += f"{fn['name']}: candidate revision {revision}; use compile_patch directly on the candidate above.\n"
         except NetworkError:
             pass
@@ -204,12 +223,15 @@ def outcome(net, agent, fn, source, text):
     return value
 
 
-def tried_summary(net, fn):
+def tried_summary(net, fn, compact=False):
     rows = net.store.all('SELECT family,SUM(trials) AS trials,MIN(best_score) AS best FROM '
                          '(SELECT * FROM agent_variant_runs WHERE function_id=? ORDER BY id DESC LIMIT 20) '
                          'GROUP BY family ORDER BY trials DESC LIMIT 4', fn['id'])
     if not rows:
         return ''
+    if compact:
+        return ('Already tried: '+ '; '.join(f"{r['family']} {r['trials']} trials (best {r['best']})" for r in rows[:2])
+                + '. Historical settings may differ; full history on request.\n')
     return ('Already tried (recent recorded batches): ' + '; '.join(
         f"{r['family']}: {r['trials']} trials, best score {r['best'] if r['best'] is not None else 'unknown'}" for r in rows)
         + '. Historical settings may differ; families are not exhausted. Details: get_function(section="history").\n')
@@ -225,10 +247,10 @@ def family_patches(family, old):
         pairs = {'int': 'unsigned int', 'short': 'unsigned short', 'char': 'unsigned char',
                  'long': 'unsigned long', 's8': 'u8', 's16': 'u16', 's32': 'u32', 's64': 'u64'}
         pairs.update({v:k for k,v in list(pairs.items())})
-        match = re.match(r'('+'|'.join(re.escape(k) for k in sorted(pairs,key=len,reverse=True))+r')\b', old)
+        match = re.match(r'(\s*)('+'|'.join(re.escape(k) for k in sorted(pairs,key=len,reverse=True))+r')\b', old)
         if not match:
             raise NetworkError('signedness needs an anchor starting with a supported integer type.')
-        return [{'old':old, 'new':pairs[match[1]]+old[match.end():]}]
+        return [{'old':old, 'new':match[1]+pairs[match[2]]+old[match.end():]}]
     if family == 'declaration_order':
         lines = old.splitlines()
         if len(lines) != 2 or not all(re.fullmatch(r'\s*(?:unsigned\s+|signed\s+)?(?:int|short|long|char|float|double|[su](?:8|16|32|64))\s+\*?\s*[A-Za-z_]\w*\s*;\s*', line) for line in lines):
@@ -237,8 +259,27 @@ def family_patches(family, old):
     raise NetworkError('Choose family casts, signedness or declaration_order.')
 
 
-def local_family(net, agent, slug, function, revision, family, old):
-    return variants(net, agent, slug, function, revision, family_patches(family, old), family)
+def local_family(net, agent, slug, function, revision, family, old='', declaration='', occurrence=0):
+    fn = net._function(function, slug)
+    with net.attempt_turn(agent, fn):
+        source, actual = candidate(net, agent, slug, function)
+        if revision != actual:
+            raise NetworkError('Candidate changed. Call get_candidate before trying families.')
+        if declaration:
+            if family not in ('signedness','declaration_order'):
+                raise NetworkError('Use declaration with signedness or declaration_order; casts needs old expression and optional occurrence.')
+            if old or occurrence:
+                raise NetworkError('Use declaration alone, or old with optional occurrence.')
+            old = agent_targets.named_anchor(source, declaration, family)
+        if not old:
+            raise NetworkError('Supply old or declaration. '+agent_targets.choices(source))
+        try:
+            patches = family_patches(family, old)
+        except NetworkError as e:
+            raise NetworkError(str(e)+' '+agent_targets.choices(source)) from e
+        for p in patches:
+            p['occurrence'] = occurrence
+        return variants(net, agent, slug, function, revision, patches, family)
 
 
 def variants(net, agent, slug, function, revision, patches, family="explicit patches"):
@@ -253,10 +294,9 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             raise NetworkError('Candidate changed. Call get_candidate before trying variants.')
         candidates = []
         for p in patches:
-            if (not isinstance(p, dict) or not isinstance(p.get('old'), str) or not p['old']
-                    or not isinstance(p.get('new'), str) or source.count(p['old']) != 1):
-                raise NetworkError('Every patch needs old text occurring exactly once and new replacement text.')
-            candidates.append(source.replace(p['old'], p['new'], 1))
+            if not isinstance(p,dict):
+                raise NetworkError('Every patch needs old and new text.')
+            candidates.append(agent_targets.replace_anchor(source,p.get('old'),p.get('new'),p.get('occurrence',0)))
         results = ['Independent variants against revision '+revision+' (not cumulative):']
         last = None
         groups = {}

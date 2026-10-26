@@ -508,3 +508,25 @@ Claims include a bounded summary of recent recorded batch families and their bes
 shared across agents. `get_function(section="history")` includes this summary. These records are
 observations, not a permanent exhausted-family blacklist; later headers and compiler settings may
 make another trial useful. Records contain family names and summary metrics, not game source.
+
+
+### Choosing local experiment targets
+
+For `compile_family`, use `declaration="counter"` with `signedness` or `declaration_order` to
+select a unique simple uninitialized declaration by name. The latter swaps it with the immediately
+following supported declaration. Initialized, complex, duplicate-name and comment-only examples
+are excluded. Claims suggest at most two applicable declaration experiments. Missing or invalid
+targets return at most six declaration choices with line numbers instead of requiring a full-source read.
+
+For repeated expressions, use `old="value"` and `occurrence=2` to change only the second exact,
+nonoverlapping occurrence. Occurrences count literal text throughout the candidate, including
+comments and declarations: use a larger anchor for surrounding context when needed. This applies
+to `compile_family`, `compile_patch`, and each patch in `compile_variants`. Omitted/zero occurrence
+still requires a unique anchor; all edits retain revision checks and the normal judge. Ambiguous
+anchors return occurrence counts and up to six line numbers.
+
+Compact claims defer shared-header declaration fences longer than 16 lines to
+`get_function(section="declarations")` / `get_context(function)`, and reference identical declaration
+blocks once within a batch. Candidate C and user instructions remain intact. Repeated generated
+compilation instructions are shown once, and the recent-family summary is limited to two families;
+full function and history reads remain available.
