@@ -171,6 +171,10 @@ Pointer loads can be staged through a previously unused ordinary void-pointer lo
 overwritten before its next read. This keeps evaluation in place and uses the same ROM/imported judge.
 Free template/library/address candidate captures identify their automatic strategy and origin; their review
 state still requires an explicit decision.
+Debug-enabled MIPS ROM builds also try a bounded coupled pointer-to-integer storage and sibling-scope
+hypothesis. Both edits are submitted together, including cases where a separate intermediate worsens
+the score. Imported builds currently omit this family because their per-file debug flags are not available
+to the shared repair scheduler; forwarding verified per-file settings remains planned.
 
 Deterministic candidates also split field/address expressions into pointer temporaries, materialize small
 arithmetic/comparison literals, and materialize both floating comparison loads in either load order without
