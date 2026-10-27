@@ -242,6 +242,11 @@ def add_segments(config: Path, workdir: Path, image: str, log=print) -> str:
 
     import yaml
 
+    from . import overlays
+
+    if result := overlays.add(config, workdir, image, log):
+        return result
+
     original = image
     rom = (workdir / image).read_bytes()
     packed = unpack_code(rom)

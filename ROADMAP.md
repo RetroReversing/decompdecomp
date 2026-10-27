@@ -797,3 +797,14 @@ adaptive routing. Configured queues do not batch unfiltered neighbours.
 
 
 - Debug-line text repairs for imported builds: feed effective per-file compiler/debug flags into the text-layout phase; ROM projects already gate these variants on their known debug flags.
+
+### Table-defined compressed overlay banks
+
+ROM imports decode bounded, checksummed zlib images from cartridge overlay tables and retain independent
+function identities for banks sharing RAM. Reimport preserves verified matches by unit and address; unsupported
+storage entries are excluded with visible coverage notes. Function discovery uses an inferred text boundary,
+so the included population is not a claim of complete game coverage.
+
+Rebuildable export for overlapping banks: **—**. The current exporter assumes one function per RAM address
+and cannot yet reproduce bank-specific relocations and linker symbols reliably. It rejects these exports
+explicitly; implement bank-aware assembly boundaries, gap objects and relocation contexts before enabling it.

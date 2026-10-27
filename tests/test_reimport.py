@@ -154,3 +154,43 @@ def test_reimport_still_blocks_projects_with_an_active_room(tmp_path):
     net.rooms["game"] = object()
     with pytest.raises(NetworkError, match="leave the shared room"):
         net.import_split(console, Picked("n64", b"rom", "game.z64", {}, True), reimport_slug="game")
+
+
+def test_reimport_pairs_saved_matches_by_overlay_and_address(tmp_path, monkeypatch):
+    from decompnet import consoles
+
+    root = tmp_path / 'banks'
+    root.mkdir()
+    net = RomNetwork(tmp_path / 'banks.db', tmp_path)
+    cfg = {'kind': 'rom', 'platform': 'n64', 'big_endian': True,
+           'compiler': {'toolchain': 'gcc-2.7.2-kmc', 'flags': ['-O2']},
+           'rom': {'file': 'rom.z64', 'sha1': 'same'}, 'segments': []}
+    originals = {}
+    with net.store.tx() as db:
+        pid = db.execute('INSERT INTO projects(slug,name,root,arch,config) VALUES(?,?,?,?,?)',
+                         ('banks', 'Banks', str(root), 'mips', json.dumps(cfg))).lastrowid
+        for index in [1, 2]:
+            name = f'renamed_bank_{index}'
+            body = bytes.fromhex(f'2402000{index}')
+            fid = db.execute('INSERT INTO functions(project_id,name,unit,vram,size,n_insns,target,relocs,status,matched_source) '
+                             'VALUES(?,?,?,?,?,?,?,?,?,?)', (pid, name, f'overlay_{index:03d}', 0x80300000,
+                              4, 1, body, '[]', 'matched', f'int {name}(void) {{ return {index}; }}')).lastrowid
+            originals[fid] = (name, body)
+
+    def replacement(work, *a, **kw):
+        functions = []
+        # Reverse order to catch accidental address-only pairing and stolen match identities.
+        for index in [2, 1]:
+            unit = f'overlay_{index:03d}'
+            line = split.AsmLine(index * 4, 0x80300000, 0x24020000 + index, 'addiu', f'v0, zero, {index}')
+            functions.append(split.RomFunction(f'func_80300000_{unit}', 0x80300000, index * 4, unit,
+                                                [line], work / (unit + '.s')))
+        return split.SplitResult(functions, [], [], {}, work / 'splat.yaml', 'KMC', '')
+    monkeypatch.setattr(split, 'split_rom', replacement)
+    picked = Picked('n64', bytes(16), 'rom.z64', {'title': 'Banks', 'size': 16, 'sha1': 'same',
+                    'game_code': 'DEMO', 'region': 'Test', 'compiler_guess': 'KMC'}, True)
+    net.import_split(consoles.get('n64'), picked, reimport_slug='banks', log=lambda *_: None)
+    for fid, (name, body) in originals.items():
+        row = net.store.one('SELECT * FROM functions WHERE id=?', fid)
+        assert row['name'] == name and row['target'] == body and row['status'] == 'matched'
+    assert len(net.store.all('SELECT * FROM functions WHERE project_id=?', pid)) == 2
