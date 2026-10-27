@@ -3,6 +3,7 @@
 import shlex
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -94,6 +95,7 @@ def test_preserved_archives_are_extracted_inside_wsl_before_publish(tool_cache):
     (directories[0] / toolchains.MANIFEST).write_text('{"archive_parts":[{"archive":".archives/0.tar.gz"}]}')
     wsl.prepare_tools(directories)
     script = calls[0][-1]
-    assert 'linuxvm_worker.py hydrate "$stage"' in script
+    helper = shlex.quote(wsl.path(Path(wsl.__file__).with_name('linuxvm_worker.py')))
+    assert f'python3 {helper} hydrate "$stage"' in script
     assert script.index(' hydrate ') < script.index('touch "$stage/.ready"')
     assert 'runtime-i386' in script

@@ -3,6 +3,7 @@ import base64
 import hashlib
 import io
 import json
+import shlex
 import subprocess
 import sys
 import tarfile
@@ -338,7 +339,11 @@ def test_guest_cache_wraps_compiler_but_never_the_runtime_library(vm, monkeypatc
     root.mkdir()
     linuxvm_worker.prepare('testkey', '1', root)
     assert (root / 'testkey/0/binary.i386').read_bytes() == binary
-    assert str(root / 'testkey/1/ld-linux.so.2') in (root / 'testkey/0/binary').read_text()
+    # The worker runs on Linux, but this structural test also runs on Windows. Parse the
+    # quoted shell arguments before comparing paths rather than assuming one separator style.
+    command = shlex.split((root / 'testkey/0/binary').read_text().splitlines()[1])
+    assert command[0] == 'exec' and Path(command[1]) == root / 'testkey/1/ld-linux.so.2'
+    assert command[2] == '--library-path' and Path(command[3]) == root / 'testkey/1'
     assert (root / 'testkey/1/binary').read_bytes() == binary
     assert not (root / 'testkey/1/binary.i386').exists()
     if sys.platform != 'win32':
