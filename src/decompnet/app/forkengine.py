@@ -934,8 +934,18 @@ class ForkEngine:
         measured its broken build again and again."""
         proj, fp, cfg = self.get(slug)
         if not (fp.root / "objdiff.json").exists():
-            raise NetworkError("no objdiff.json yet. The project's build creates it (often `python configure.py` "
-                               "or `make`); see its README")
+            log("Preparing the project's missing objdiff configuration from verified original code")
+            if build:
+                # A manual build may already have succeeded. Retry reference generation through the
+                # same path as import, rather than requiring the user to select their ROM again.
+                with self._tree(proj).exclusive(), self._build_locks[proj["id"]]:
+                    fp.generate_objdiff(version=cfg.get("version"), log=log)
+            else:
+                fp.generate_objdiff(version=cfg.get("version"), log=log)
+            if not (fp.root / "objdiff.json").exists():
+                raise NetworkError("This project still has no objdiff.json. Automatic reference generation needs "
+                                   "a supported Splat layout and its original game image; finish its README setup "
+                                   "and click Check again.")
         cfg["ready"] = True
         self._save_cfg(proj, cfg)
         if build:

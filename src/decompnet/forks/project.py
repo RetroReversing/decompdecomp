@@ -668,6 +668,13 @@ class ForkProject:
             if not isinstance(config, dict) or not isinstance(config.get("options"), dict):
                 raise ForkError("automatic objdiff setup needs a supported splat configuration")
             console = consoles.get(config["options"].get("platform"))
+            segments = config.get('segments')
+            if (isinstance(segments, list) and not any(
+                    isinstance(segment, dict) and segment.get('type') == 'code' for segment in segments)
+                    and any(self.root.glob('*/Makefile'))):
+                from .splatnested import generate
+
+                return generate(self, path, config, console, version=version, log=log)
             return console.generate_objdiff(self, path, config, log=log)
         except (OSError, ValueError, ELFError, yaml.YAMLError, subprocess.TimeoutExpired, toolchains.ToolchainError) as error:
             raise ForkError(f"automatic objdiff setup could not finish: {error}. Check the project's setup manually.") from None
