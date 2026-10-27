@@ -212,3 +212,29 @@ def test_least_tried_sorts_actual_attempt_counts(net, kind):
     agent, _ = net.local_agent('least-worker')
     net.set_selection('game', agent.name, {'strategy': 'least_tried'})
     assert net.claim_row(agent, 'game')['name'] == 'middle'
+
+
+def test_worker_stall_override_is_independent_persistent_and_resettable(net,tmp_path):
+    from decompnet.network import move_on_brief
+    a,_=net.local_agent('patient');b,_=net.local_agent('automatic')
+    fn=net._function('large','game')
+    net.set_selection('game',a.name,{'stall_compiles':30,'max_tries':80})
+    assert net.stall_status(fn['id'],a.id)['after']==30
+    assert net.stall_status(fn['id'],b.id)['after']==10
+    assert 'move on after 30' in move_on_brief(fn,net.agent_stall_budget(fn,a))
+    for _ in range(35):
+        net._record(fn,a,100,'int large(){return 1;}',1)
+    state=net.stall_status(fn['id'],a.id)
+    assert state['no_better']>=30 and state['after']==30
+    reopened=RomNetwork(tmp_path / 'app.db',tmp_path)
+    assert reopened.selection('game',a.name)['stall_compiles']==30
+    net._record(fn,a,90,'int large(){return 2;}',1)
+    assert net.stall_status(fn['id'],a.id)['no_better']==0
+    net.set_selection('game',a.name,{})
+    assert net.stall_status(fn['id'],a.id)['after']==10
+
+
+@pytest.mark.parametrize('value',[True,False,0,-1,1.5,1001,'invalid',float('inf'),float('nan')])
+def test_stall_budget_validation(net,value):
+    with pytest.raises(NetworkError,match='No-improvement'):
+        net.set_selection('game','a',{'stall_compiles':value})
