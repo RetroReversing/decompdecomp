@@ -60,9 +60,9 @@ def next_action(net, agent, fn, source, revision):
         targets = agent_targets.valid_targets(source,family)
         if any(not target_tried(net,fn,revision,family,t['old']) for t in targets):
             return f'Next valid local experiment: compile_family(function="{fn["name"]}", revision="{revision}", family="{family}", target="next").'
-    for family,_ in pattern_repairs.variants(source,fn['name']):
+    for family,proposal in pattern_repairs.variants(source,fn['name']):
         used = net.store.one('SELECT 1 FROM agent_variant_runs WHERE function_id=? AND revision=? AND family=?',fn['id'],revision,family)
-        if not used:
+        if not used and not target_tried(net,fn,revision,'local:'+family,proposal):
             return f'Next applicable repair: compile_family(function="{fn["name"]}", revision="{revision}", family="{family}").'
     return 'Next: inspect the first differing region with last_diff; fix structure, calls or types rather than repeating ineffective edits.'
 
@@ -229,6 +229,8 @@ def feedback(net, agent, slug, function, text, previous):
 
 def function_view(net, agent, slug, function, section='all'):
     """Small supporting reads without replaying the candidate and assembly."""
+    if section == 'source':
+        section = 'candidate'
     if section == 'history':
         fn = net._function(function, slug)
         return tried_summary(net, fn) + (history(net, fn) or 'No attempt history.')
@@ -342,7 +344,7 @@ def local_family(net, agent, slug, function, revision, family, old='', declarati
         if revision != actual:
             raise stale(net,agent,fn,revision,source,actual)
         if family in ('typed_temporary','branch_orientation','narrowing','source_lines','address_temporary','constant_local','comparison_load','stack_array','loop_induction','parameter_width','value_lifetime','sum_shape','call_result_inline'):
-            if old or declaration or occurrence or target:
+            if old or declaration or occurrence or target not in ('','next'):
                 raise NetworkError('Pattern families use function and revision only; omit target/old/declaration/occurrence.')
             proj = net._project(slug)
             cfg = json.loads(proj['config'])
@@ -476,7 +478,7 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
         for indices, summary in groups.values():
             results.append('Variants '+','.join(map(str,indices))+': '+summary)
         if baseline:
-            results.append('Baseline is a previously observed compile of the starting C; settings may have changed. Grouping uses displayed diffs, not proof of byte identity.')
+            results.append('Baseline: historical score; not reverified. Diff grouping is diagnostic only.')
         with net.store.tx() as db:
             db.execute('INSERT INTO agent_variant_runs(function_id,family,revision,trials,best_score,created_at) VALUES(?,?,?,?,?,?)',
                        (fn['id'],family,revision,last or 0,min(scores) if scores else None,time.time()))
@@ -503,13 +505,12 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             else:
                 net._last_diffs.pop((agent.id,fn['id']),None)
             results.append('Continuation: '+('starting candidate retained' if selected_index==0 else f'best scored variant {selected_index}')+
-                           '. No extra compile; selection is not a fresh verification under changed settings.')
-            if selected != candidates[(last or 1)-1]:
+                           '. No extra compile.')
+            if selected != source and selected != candidates[(last or 1)-1]:
                 delta = list(difflib.unified_diff(source.splitlines(),selected.splitlines(),n=1))
                 results.append('Selected changes from starting C (bounded):\n'+'\n'.join(delta[:35])[:2000])
         current_source, current = candidate(net, agent, slug, function)
         current_index = next((i for i, src in enumerate(candidates, 1) if src == current_source), None)
         results.append(f'Current candidate revision {current}; last submitted variant {last}; current source variant {current_index or "retained candidate"}. '
-                       'Use this selected candidate and revision for the next edit. last_diff refers to the selected candidate when available; get_candidate recovers its full C. '
-                       'Trials and best attempts remain saved; no game files were restored by continuation selection.')
+                       'Patch this continuation. last_diff follows it when available; get_candidate recovers C.')
         return '\n'.join(results)
