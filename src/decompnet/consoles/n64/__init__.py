@@ -36,13 +36,13 @@ class Nintendo64(Console):
         Compiler("gcc-2.8.1-pm", "GCC 2.8.1 (PM matching)", "patched GCC with its paired GNU assembler"),
         Compiler("gcc-egcs-2.91.66", "EGCS 1.1.2 / GCC 2.91.66", "later iQue rebuild toolchains"),
         Compiler("sn-n64-272-970404", "Reconstructed SN64 GCC 2.7.2 (970404)", "reconstructed SN codegen with compatibility assembly"),
-        Compiler("ido-5.3-cxx", "IDO 5.3 C++", "separate SGI C++ frontend; Linux/WSL", automatic=False),
-        Compiler("ido-5.2", "IDO 5.2", "experimental SGI comparison; Linux/WSL", automatic=False),
-        Compiler("ido-6.0", "IDO 6.0", "experimental SGI comparison; Linux/WSL", automatic=False),
-        Compiler("ido-4.1", "IDO 4.1", "experimental early SGI comparison; Linux/WSL", automatic=False),
-        Compiler("mipspro-7.4.4", "MIPSpro 7.4.4", "experimental; retail N64 use unconfirmed; Linux/WSL", automatic=False),
+        Compiler("ido-5.3-cxx", "IDO 5.3 C++", "separate SGI C++ frontend; Linux, WSL or macOS VM", automatic=False),
+        Compiler("ido-5.2", "IDO 5.2", "experimental SGI comparison; Linux, WSL or macOS VM", automatic=False),
+        Compiler("ido-6.0", "IDO 6.0", "experimental SGI comparison; Linux, WSL or macOS VM", automatic=False),
+        Compiler("ido-4.1", "IDO 4.1", "experimental early SGI comparison; Linux, WSL or macOS VM", automatic=False),
+        Compiler("mipspro-7.4.4", "MIPSpro 7.4.4", "experimental; retail N64 use unconfirmed; Linux, WSL or macOS VM", automatic=False),
         Compiler("gcc-egcs-1.1.2-4", "Original EGCS 1.1.2-4", "original Linux release; iQue toolchain comparison"),
-        Compiler("gcc-4.4.0-n64", "GCC 4.4.0 (MIPS64 ELF)", "experimental modern toolchain; Linux/WSL", automatic=False),
+        Compiler("gcc-4.4.0-n64", "GCC 4.4.0 (MIPS64 ELF)", "experimental modern toolchain; Linux, WSL or macOS VM", automatic=False),
     )
     guides = ("mips",)
     m2c = "mips-gcc"

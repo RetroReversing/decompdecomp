@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import toolchains, wsl
+from . import linuxvm, toolchains, wsl
 from .compiler import CompilerConfig
 
 
@@ -29,10 +29,12 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     ro_paths = [str((root / p).resolve()) for p in c.get("ro_paths", [])]
     runtime32 = None
     linux = False
+    vm = False
     prelude, cplusplus, intrinsics = "", False, ""
     if "toolchain" in c:
         tc = toolchains.get(c["toolchain"])
         prelude, cplusplus, intrinsics = tc.prelude, tc.cplusplus, tc.intrinsics
+        vm = tc.via_vm
         linux = tc.via_wsl  # Windows: a Linux toolchain, run inside WSL 2
         if linux and not (ok := wsl.status())[0]:
             raise toolchains.ToolchainError(f"{tc.name} is a Linux program: on Windows it runs in WSL 2. {ok[1]}")
@@ -41,12 +43,17 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         if driver:
             dirs = (*dirs, driver.parent)
         try:
-            where_tools = wsl.prepare_tools(dirs) if linux else tuple(str(directory) for directory in dirs)
-        except (OSError, subprocess.SubprocessError) as error:
-            raise toolchains.ToolchainError(f"{tc.name} couldn't be prepared in WSL: {error}") from None
+            if vm:
+                where_tools = linuxvm.prepare_tools(dirs)
+            elif linux:
+                where_tools = wsl.prepare_tools(dirs)
+            else:
+                where_tools = tuple(str(directory) for directory in dirs)
+        except (OSError, subprocess.SubprocessError, linuxvm.VMError) as error:
+            raise toolchains.ToolchainError(f"{tc.name} couldn't prepare its compiler runtime: {error}") from None
         tc_dir = where_tools[0]
         ro_paths += [str(d) for d in dirs]
-        if "runtime-i386" in tc.requires and not linux:  # in WSL its programs bring the runtime themselves
+        if "runtime-i386" in tc.requires and not linux and not vm:  # in WSL its programs bring the runtime themselves
             runtime32 = str(toolchains.require("runtime-i386"))
         flags = c.get("flags", tc.flags)
         if c.get("cmd"):
@@ -57,7 +64,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
             base = [*tc.cc, *flags, "-I{include}", "{src}", "-o", "{obj}"]
         # The bundled Mac app owns a supported Python; /usr/bin/python3 may still be 3.9 and cannot run maspsx.
         # Linux sandboxes and WSL use their own python3, not a host interpreter outside their mounts.
-        python = sys.executable if sys.platform == "darwin" else "python3"
+        python = sys.executable if sys.platform == "darwin" and not vm else "python3"
         cmd = [a.replace("{tc}", tc_dir).replace("{python}", python) for a in base]
         if driver:
             cmd = [a.replace("{driver}", where_tools[-1] + "/" + driver.name) for a in cmd]
@@ -74,6 +81,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         include_dirs=tuple(str((root / p).resolve()) for p in c.get("include_dirs", [])),
         runtime32=runtime32,
         wsl=linux,
+        linux_vm=vm,
         prelude=prelude,
         intrinsics=intrinsics,
         cplusplus=cplusplus,

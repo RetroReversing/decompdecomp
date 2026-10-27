@@ -244,3 +244,10 @@ def test_compiler_results_apply_selected_profile_and_guard_function():
         pytest.skip('needs node to run GUI scripts')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_compiler_results.js'))], check=True,
                    capture_output=True, text=True, encoding="utf-8", timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_linux_vm_setup_shows_readiness_and_uses_progress():
+    if NODE is None:
+        pytest.skip('needs node to run GUI scripts')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_linuxvm.js'))], check=True,
+                   capture_output=True, text=True, encoding='utf-8', timeout=GUI_TIMEOUT_SECONDS)

@@ -674,13 +674,13 @@ async function installAllCompilers(owned) {
   } catch (e) { toast(esc(e.message), "err"); }
 }
 
-async function installToolchain(id, proprietary) {
+async function installToolchain(id, proprietary, force = false) {
   if (proprietary && !confirm("This downloads a proprietary compiler, kept by the decomp community. Install it only if you accept that. Continue?")) return;
   const body = dialog("Install compiler or tool", `<pre class="joblog tall" id="toolLog"></pre>`);
   const log = body.querySelector("#toolLog");
   const finish = beginWork(log, "Installing compiler or tool", [], "Compiler or tool installed.");
   try {
-    const { job } = await api("/api/toolchain", { method: "POST", body: { id, accept_license: proprietary } });
+    const { job } = await api("/api/toolchain", { method: "POST", body: { id, accept_license: proprietary, force } });
     await followJob(job, log);
     toast("Installed.", "match");
     await loadState();

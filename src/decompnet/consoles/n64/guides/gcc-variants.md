@@ -20,6 +20,6 @@ reconstructed `gcc-egcs-2.91.66` profile. It needs the pinned i386 runtime.
 `gcc-4.4.0-n64` is an experimental later MIPS64 ELF compiler configured for
 the 32-bit big-endian N64 ABI, with pinned host GMP/MPFR libraries. Retail-era
 use is unconfirmed, so it is available explicitly but excluded from routine
-installed-profile comparisons. These two packs are Linux-only (Windows via
-WSL), without native macOS binaries. Do not substitute a different host build
+installed-profile comparisons. These two packs run on Linux, Windows via WSL, or macOS through the optional
+local Linux VM. They have no native macOS binaries. Do not substitute a different host build
 and assume it has identical target code generation.

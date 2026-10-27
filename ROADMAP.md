@@ -32,9 +32,14 @@ projects keep their own build scripts. See [compiler coverage](docs/sn64-compile
 
 Additional Linux/WSL N64 comparisons now include original EGCS, GCC 4.4 and
 SGI IDO 4.1/5.2/6.0, IDO 5.3 C++ and MIPSpro 7.4.4. GNU profiles have compile
-and linked byte checks in an emulated Linux environment. SGI execution awaits
-license acceptance; macOS runtimes for these additional packs, physical x86
-Linux and WSL verification remain gaps. Experimental SGI/GCC 4.4 profiles are
+and linked byte checks in an emulated Linux environment. All five SGI packs now
+pass real C compile/link checks after license acceptance,
+including early ECOFF conversion; the C++ pack also passes a class test. Physical
+x86 Linux and WSL verification remain gaps. macOS
+now has an optional shared local Linux runner, with real GNU compilation, engine
+byte checks, export-style builds and cancellation verified on Apple Silicon.
+Native original-toolchain Mac builds and automatic VM execution of arbitrary
+imported-project builds remain gaps; see [Linux VM coverage](docs/linux-compiler-vm.md). Experimental SGI/GCC 4.4 profiles are
 explicit selections, excluded from routine installed-compiler comparisons.
 
 ## What works where

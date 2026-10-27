@@ -47,7 +47,8 @@ Source line layout (observed; mechanism unconfirmed)
 `ido-5.3-cxx` uses the separate old C++ frontend. `ido-4.1`, `ido-5.2`,
 `ido-6.0` and `mipspro-7.4.4` are experimental comparisons, not evidence of
 which compiler a retail game used. Their pinned packs run through their bundled
-IRIX emulator on Linux x86_64 or Windows/WSL; they do not run natively on macOS.
+IRIX emulator on Linux x86_64, Windows/WSL or the optional macOS Linux VM.
+They do not run natively on macOS; the VM uses its own Python for the adapter.
 IDO 4.1's ECOFF output is converted to big-endian ELF before the same byte judge.
 
 These experimental profiles are omitted from routine installed-profile searches.

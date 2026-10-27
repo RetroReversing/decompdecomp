@@ -832,3 +832,23 @@ def test_agent_rename_route_keeps_identity_and_checks_input(app):
     assert invalid.status_code == 400
     assert session.label == 'SDK hunter'
     assert client.post('/api/agents/rename', json={'id': session.id, 'label': 'No header'}).status_code == 403
+
+
+def test_toolchain_reinstall_keeps_explicit_license_acceptance(app, monkeypatch, tmp_path):
+    client, _, _ = app
+    calls = []
+    def install(tid, **kwargs):
+        calls.append((tid, kwargs))
+        return tmp_path
+    monkeypatch.setattr(toolchains, 'install', install)
+    response = client.post('/api/toolchain', json={'id': 'ido-5.2', 'accept_license': True, 'force': True},
+                           headers={'X-Decomp': '1'})
+    assert response.status_code == 200
+    for _ in range(200):
+        job = client.get('/api/job', params={'id': response.json()['job']}).json()
+        if job['state'] != 'running':
+            break
+        time.sleep(0.01)
+    assert job['state'] == 'done', job
+    assert calls[0][0] == 'ido-5.2'
+    assert calls[0][1]['force'] is True and calls[0][1]['accept_license'] is True

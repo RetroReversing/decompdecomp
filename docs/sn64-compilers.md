@@ -88,13 +88,13 @@ compilation checks, including exact linked byte comparisons. Build 0006's
 preprocessor requires an absolute include directory under wibo; the driver
 normalizes that path, with a regression test for relative sandbox inputs.
 
-## Additional Linux comparison profiles
+## Additional comparison profiles
 
 The picker also offers original EGCS 1.1.2-4, GCC 4.4.0, IDO 4.1/5.2/6.0,
 IDO 5.3's separate C++ frontend and MIPSpro 7.4.4. These downloads contain
-Linux x86 executables. Windows uses WSL; macOS cannot install these packs.
-Native macOS builds of the additional SGI emulator and original GNU releases
-remain a gap. Existing native IDO 5.3/7.1 and reconstructed EGCS remain available
+Linux x86 executables. Windows uses WSL; macOS can use the optional
+[local Linux VM runner](linux-compiler-vm.md). Native macOS builds of the additional
+SGI emulator and original GNU releases remain a gap. Existing native IDO 5.3/7.1 and reconstructed EGCS remain available
 on macOS. A listed compiler is not evidence that a retail game used it.
 
 Original EGCS uses the pinned 32-bit runtime. GCC 4.4 includes pinned Debian
