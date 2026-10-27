@@ -3,6 +3,7 @@
 import re
 
 from ..forks.csource import _blank, find
+from . import temporary_repairs
 
 IDENT = r'[A-Za-z_]\w*'
 TYPE = r'(?:void\s*\*|[su](?:8|16|32)|unsigned\s+(?:char|short|int)|char|short|int)'
@@ -127,6 +128,10 @@ def variants(source, name, debug_lines=False):
     for _,edits in sorted(branches,key=lambda item:item[0])[:4]:
         add('branch_orientation',edits)
 
+    for candidate in temporary_repairs.variants(source,name):
+        if candidate not in [v for _,v in result]:
+            result.append(('typed_temporary',candidate))
+
     # Narrow stores: introduce a same-width local in the existing block rather than retain an inline cast.
     store = re.compile(r'(?P<lhs>\*\s*\(\s*(?P<t>[su](?:8|16)|unsigned\s+(?:char|short))\s*\*\s*\)\s*'+IDENT+r')\s*=\s*(?P<rhs>[^;{}]+);')
     for m in list(store.finditer(body))[:2]:
@@ -177,7 +182,10 @@ def variants(source, name, debug_lines=False):
                 at = m.end()+use.start()
                 statement = source[opening+m.start():opening+m.end()].strip()
                 add('source_lines',[(m.start(),m.end(),''),(at,at,statement+' ')])
+        # Debug line boundaries can affect branch delay-slot scheduling without changing tokens.
+        for m in list(re.finditer(r';[ \t]*\n[ \t]*(?=}\s*else\b)',body))[:4]:
+            add('source_lines',[(m.start(),m.end(),'; ')])
         # Join/split adjacent statement lines without changing token order.
         for m in list(re.finditer(r';[ \t]*\n[ \t]*(?='+IDENT+r'\s*=)',body))[:2]:
             add('source_lines',[(m.start(),m.end(),'; ')])
-    return result[:10]
+    return result[:16]

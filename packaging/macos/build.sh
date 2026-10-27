@@ -8,7 +8,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 uv python install 3.12 >/dev/null
-PYTHON="$(uv python find --managed-python 3.12)"
+PYTHON="$(uv python find --system --managed-python 3.12)"
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/pyproject.toml")"
 ARCH="$(uname -m)"
 case "$ARCH" in arm64|x86_64) ;; *) echo "Unsupported Mac architecture: $ARCH" >&2; exit 1 ;; esac
@@ -19,7 +19,7 @@ CONTENTS="$APP/Contents"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$OUT"
 # Copy the entire managed interpreter so its standard library and shared libraries stay together.
 ditto "$(dirname "$(dirname "$PYTHON")")" "$CONTENTS/Runtime"
-"$CONTENTS/Runtime/bin/python3.12" -c 'import sys; assert sys.prefix.endswith("Runtime")'
+"$CONTENTS/Runtime/bin/python3.12" -c 'import sys; assert sys.prefix.endswith("Runtime") and sys.prefix == sys.base_prefix'
 uv pip install --break-system-packages --python "$CONTENTS/Runtime/bin/python3.12" "$WORK"/wheel/*.whl >/dev/null
 
 cat > "$CONTENTS/MacOS/decompdecomp" <<'LAUNCH'

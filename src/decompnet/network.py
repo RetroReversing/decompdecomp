@@ -652,6 +652,12 @@ class Network:
                           if any(v is not None and v != "" for v in policy.values()) else "")
         lines = [f"Nothing to claim in {proj['slug']} right now: {n_open} function{'s' * (n_open != 1)} "
                  f"{'are' if n_open != 1 else 'is'} open, but none is free for you.{selection_note}"]
+        from . import claim_stalls
+        paused = claim_stalls.blocked(self,proj)
+        if paused:
+            lines.append(f'{len(paused)} unchanged candidates are paused after repeated releases. They retry when '
+                         'source, build context, symbols or repair rules change. Explicit claim_function(function=name) '
+                         'can still select one; do not loop on automatic claims.')
         if held:
             shown = ", ".join(f"{r['name']} ({r['agent'] or '?'}, {max(0, int(r['expires_at'] - now)) // 60} min left)"
                               for r in held[:10])
@@ -765,6 +771,8 @@ class Network:
             raise NetworkError(f"strategy must be one of {', '.join(STRATEGIES)}")
         proj = self._project(project) if (project or function is None) else None
         sdk = self.sdk_functions(proj) if proj is not None and not function else {}
+        from . import claim_stalls
+        blocked = claim_stalls.blocked(self,proj) if proj is not None and not function else []
         now = time.time()
         with self.store.tx() as db:
             self._expire_claims(db)
@@ -820,6 +828,7 @@ class Network:
                         AND (:tries IS NULL OR (SELECT COUNT(*) FROM attempts a
                              WHERE a.function_id=f.id AND a.agent_id=:agent) < :tries)
                         AND f.id NOT IN (SELECT function_id FROM claims)
+                        AND f.id NOT IN (SELECT value FROM json_each(:stalled))
                         AND f.name NOT IN (SELECT detail FROM events WHERE project_id=:pid AND agent_id=:agent
                                            AND kind='release' AND created_at > :mine)
                         ORDER BY CASE WHEN :custom THEN 0 ELSE f.id IN (SELECT value FROM json_each(:sdk)) END,
@@ -835,7 +844,7 @@ class Network:
                                  CASE WHEN :custom THEN 0 ELSE f.id IN ({READY}) END DESC, CASE WHEN :custom THEN 0 ELSE f.id IN ({WANTED}) END DESC,
                                  :strong AND f.abandons >= :escalate DESC, {STRATEGIES[strategy]} LIMIT 1""")
                 escalate = self._escalation(db, proj["id"]) if route else ESCALATE_AFTER
-                args = {"sdk": json.dumps(list(sdk)), "pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
+                args = {"stalled":json.dumps(blocked), "sdk": json.dumps(list(sdk)), "pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
                         "overall": overall, "escalate": escalate, "weak": route == "weak", "strong": route == "strong",
                         "mine": self._own_release_cutoff(db, agent.id, now), "custom": custom,
                         "below": policy.get("match_below"), "tries": policy.get("max_tries")}
@@ -910,6 +919,8 @@ class Network:
                            (fn["project_id"], fn["id"], agent.id, notes.strip(), time.time()))
             self._event(db, fn["project_id"], agent.id, "release", fn["name"])
             said = self._not_c(db, fn, agent, notes.strip()) if not_c else ""
+        from . import claim_stalls
+        claim_stalls.released(self,fn)
         return (f"Released {fn['name']}. Your best attempt and notes are saved so the next agent starts "
                 f"where you left off.{said} Call claim_function for a new one.")
 

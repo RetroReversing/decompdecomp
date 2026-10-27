@@ -326,3 +326,16 @@ def test_more_ps1_source_builds_are_pinned_for_mac(version):
     assert not toolchains.get("gcc-2.5.7-psx").parts_for("macos-arm64")
     assert not toolchains.get("gcc-2.91.66-psx").parts_for("macos-arm64")
     assert not toolchains.get("gcc-2.95.2-psx").parts_for("macos-arm64")
+
+
+def test_macos_bundle_check_rejects_checkout_virtual_environment(tmp_path):
+    # A venv copied to Runtime can import the app yet still depend on the developer's Python.
+    # Exercise the build script's actual check against such a runtime, without downloads/building.
+    script = (Path(__file__).resolve().parents[1]/'packaging/macos/build.sh').read_text()
+    check = next(line for line in script.splitlines() if 'sys.prefix.endswith' in line)
+    command = shlex.split(check)
+    runtime = tmp_path/'Runtime'
+    subprocess.run([sys.executable,'-m','venv','--without-pip',str(runtime)],check=True)
+    python = runtime/('Scripts/python.exe' if sys.platform=='win32' else 'bin/python')
+    result = subprocess.run([str(python),'-c',command[-1]],capture_output=True,text=True)
+    assert result.returncode != 0 and 'AssertionError' in result.stderr

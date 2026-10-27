@@ -137,6 +137,16 @@ remain planned. Dynamic addends, ambiguous mappings and named-field reconstructi
 still need deeper analysis. Candidate-local padding repair now handles simple struct definitions in the
 candidate itself, with bounded proposals from aligned load/store offsets. Shared-header layout reconstruction,
 complex/nested types and field reordering remain planned.
+Bounded scheduling repairs include debug-flag-gated statement/else line joins, floating-expression
+hoisting before stores, and scalar parameter assignments split through compatible locals. After an agent
+releases a tried function, a separate machine pass tries at most six candidates with an eight-second
+scheduling budget (an in-flight compiler may finish later), before another agent edits it. It uses the
+ordinary ROM/project judge, leases, per-candidate cache and repair provenance; room clients defer to their host.
+Automatic claims pause a candidate after three releases in the same state. Source, context, symbol, compiler
+or repair-rule changes reopen it, and explicit selection remains available. Imported builds also observe
+source, include headers and common build configuration files; custom generated dependencies outside those
+paths still need richer per-file dependency records.
+
 Saved near misses now have a persistent three-round, width-three repair search, disabled by default with a separate
 configurable budget after normal autopilot, a persistent round-robin cursor, and cached failed compilations.
 It retains improving/equal-score candidates and chains local repairs. This uses
