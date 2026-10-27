@@ -8,11 +8,13 @@ import json
 import logging
 import threading
 import time
+from itertools import chain
 
 from ... import m2cfix, scoring, seeds
 from ...network import Agent, NetworkError
 from ...project import compiler_for
 from ...repair_feedback import trial as repair_trial
+from ..draft_context import candidate_context
 
 
 class AutopilotMixin:
@@ -184,8 +186,34 @@ class AutopilotMixin:
                 if array := m2cfix.stack_array(draft,fn['name'],canonical):
                     family = 'stack_array_indexed' if canonical else 'stack_array'
                     candidates.append((family, f"{note}{seeds.M2C_MACROS}\n{array}\n"))
-            outcomes = []
-            for family, source in candidates:
+            def local_candidates():
+                # Lazy fallback: successful normal drafts never pay for another m2c invocation.
+                # Imported projects use their file-context drafting route; forwarding their saved
+                # declarations here remains planned (ROADMAP).
+                if not fn['best_source']:
+                    return
+                roots = self._current_names(proj, seeds.asm_names(fn['asm'] or ''))
+                alternative = candidate_context(ctx['header'], fn['best_source'], roots, fn['name'])
+                if not alternative:
+                    return
+                try:
+                    local = seeds.generate_from_asm(self._asm_text(fn, proj), fn['name'], toolchain,
+                                                   alternative, data_asm, valid=True, strict=True)
+                except seeds.DraftError:
+                    return
+                if not local:
+                    return
+                yield 'local_context_m2c', f"{note}{seeds.M2C_MACROS}\n{local}\n"
+                if (seeds.m2c_target(toolchain) or '').startswith('mips'):
+                    refined = m2cfix.refine_draft(local, fn['name'], fn['asm'] or '')
+                    if refined and refined != local:
+                        yield 'local_context_refined', f"{note}{seeds.M2C_MACROS}\n{refined}\n"
+
+            outcomes, seen = [], set()
+            for family, source in chain(candidates, local_candidates()):
+                if source in seen:
+                    continue
+                seen.add(source)
                 if self.store.one("SELECT 1 FROM attempts WHERE function_id=? AND agent_id=? AND context_version=? "
                                   "AND source=?", fid, agent.id, ctx["version"], source):
                     outcomes.append("skip")

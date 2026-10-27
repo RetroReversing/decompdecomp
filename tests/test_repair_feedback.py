@@ -240,7 +240,7 @@ def test_repair_detail_explains_comment_only_changes_without_automatic_dismissal
     assert 'source' not in summary['evidence']['before']
 
 
-@pytest.mark.parametrize('path',['quiet_transfer','machine_draft','machine_refined','machine_buffer','machine_buffer_indexed'])
+@pytest.mark.parametrize('path',['quiet_transfer','machine_draft','machine_refined','machine_buffer','machine_buffer_indexed','machine_local_context'])
 def test_autopilot_capture_uses_actual_compile_settings_instead_of_project_snapshot(setup,monkeypatch,path):
     from decompnet import scoring
     from decompnet.app.engine import autopilot
@@ -263,6 +263,22 @@ def test_autopilot_capture_uses_actual_compile_settings_instead_of_project_snaps
         monkeypatch.setattr(net,'cfg',lambda p:json.loads(p['config']),raising=False)
         monkeypatch.setattr(net,'_asm_text',lambda *args:'',raising=False)
         monkeypatch.setattr(autopilot.seeds,'generate_from_asm',lambda *args,**kwargs:'int target(void){return 0;}')
+        if path!='machine_local_context':
+            with net.store.tx() as db:
+                db.execute('UPDATE functions SET best_source=? WHERE id=?',('short sample(int);',fid))
+            def unexpected_fallback(*args):
+                raise AssertionError('successful standard drafts must not generate the fallback')
+            monkeypatch.setattr(autopilot,'candidate_context',unexpected_fallback)
+        if path=='machine_local_context':
+            with net.store.tx() as db:
+                db.execute('UPDATE functions SET best_source=? WHERE id=?',
+                           ('short sample(int); int target(void){return sample(0);}',fid))
+            monkeypatch.setattr(net,'_current_names',lambda *args:{'sample','target'},raising=False)
+            monkeypatch.setattr(autopilot.seeds,'generate_from_asm',
+                                lambda *args,**kwargs:('/* LOCAL */ int target(void){return 0;}'
+                                                      if kwargs.get('strict') else 'int target(void){return 1;}'))
+            monkeypatch.setattr(autopilot.m2cfix,'refine_draft',lambda *args:None)
+            monkeypatch.setattr(net,'_compile',lambda *args:result if 'LOCAL' in args[2] else SimpleNamespace(ok=False,obj=None))
         if path=='machine_refined':
             monkeypatch.setattr(autopilot.m2cfix,'refine_draft',lambda *args:'/* REPAIRED */ int target(void){return 0;}')
             monkeypatch.setattr(net,'_compile',lambda *args:result if 'REPAIRED' in args[2] else SimpleNamespace(ok=False,obj=None))
@@ -275,7 +291,7 @@ def test_autopilot_capture_uses_actual_compile_settings_instead_of_project_snaps
     detail=net.repair_feedback.detail('demo',case)
     settings=detail['evidence']['after']['settings']
     if path!='quiet_transfer':
-        family={'machine_draft':'raw_m2c','machine_refined':'refined_m2c','machine_buffer':'stack_array','machine_buffer_indexed':'stack_array_indexed'}[path]
+        family={'machine_draft':'raw_m2c','machine_refined':'refined_m2c','machine_buffer':'stack_array','machine_buffer_indexed':'stack_array_indexed','machine_local_context':'local_context_m2c'}[path]
         assert detail['evidence']['provenance']=={'kind':'machine draft','family':family}
         assert detail['status']=='new'
     assert settings['compiler']==effective['compiler']

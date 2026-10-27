@@ -175,6 +175,11 @@ Debug-enabled MIPS ROM builds also try a bounded coupled pointer-to-integer stor
 hypothesis. Both edits are submitted together, including cases where a separate intermediate worsens
 the score. Imported builds currently omit this family because their per-file debug flags are not available
 to the shared repair scheduler; forwarding verified per-file settings remains planned.
+ROM autopilot has a lazy saved-context fallback after its ordinary draft variants fail: reachable local
+prototypes/types and the target's signature can supplement or replace shared declarations. Function bodies,
+macros and initializers are excluded, strict m2c parsing is required, and at most raw/refined alternatives
+reach the normal exact judge. Existing successful drafts incur no extra generation. Candidate-local context
+for imported projects' separate file-context drafting route remains planned.
 
 Deterministic candidates also split field/address expressions into pointer temporaries, materialize small
 arithmetic/comparison literals, and materialize both floating comparison loads in either load order without
