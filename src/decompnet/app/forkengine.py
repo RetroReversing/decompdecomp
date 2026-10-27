@@ -1733,11 +1733,13 @@ class ForkEngine:
                                f"Rename {old} to {new}\n\n{message.strip() or 'Named'} by "
                                f"{agent.name if agent else 'decompdecomp'} with decompdecomp; the game still builds as it "
                                "did and every match still matches.")
-        self.sync(slug, log=lambda *_: None, rep=rep)
-        from .function_names import record
-        with self.net.store.tx() as db:
-            for fid in renamed_ids:
-                record(db, fid, old, new)
+            # Publishing the report and naming history is part of the rename. Another rename's
+            # sync could otherwise read old metadata, then overwrite history recorded meanwhile.
+            self.sync(slug, log=lambda *_: None, rep=rep)
+            from .function_names import record
+            with self.net.store.tx() as db:
+                for fid in renamed_ids:
+                    record(db, fid, old, new)
         return f"✅ {old} is {new} now, in the game's symbols and in {len(saved)} file(s); every match still matches."
 
     def _commit_paths(self, proj, fp: ForkProject, paths: list[str], message: str) -> None:

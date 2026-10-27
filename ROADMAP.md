@@ -803,3 +803,6 @@ SDK indexing/selection and during the free matching pass. ROM batches use normal
 imported projects use their normal config/source rename and rebuild validation (four names per pass).
 Meaningful/user-assigned names, active claims, duplicate targets, ambiguous identities, compiler builtins
 and collisions are preserved. Names retain SDK provenance and never count as verified C matches.
+
+Imported-project renames now keep report synchronization and naming-history publication inside the
+project's exclusive lock, preventing concurrent renames from overwriting each other's provenance.
