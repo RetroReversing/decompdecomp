@@ -347,6 +347,8 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
                 log(f"  no pinned checksum in the registry; pinning on first use: sha256 {digest}")
             if part.get("build") == "mips-binutils":
                 _build_mips_binutils(archive, dest, part.get("subdir"), log)
+            elif part.get("build") == "sn64-gcc":
+                _build_sn64_gcc(archive, dest, part.get("subdir"), log)
             elif part.get("build") in ("psx-gcc-2.6.3", "psx-gcc"):
                 _build_psx_gcc(archive, dest, part, log)
                 for url_key, hash_key, _ in (
@@ -450,6 +452,36 @@ def _build_mips_binutils(archive: Path, dest: Path, subdir: str | None, log) -> 
                                      "Check Xcode Command Line Tools and try again.")
             shutil.copy2(build / binary, target)
             target.chmod(0o755)
+
+
+def _build_sn64_gcc(archive: Path, dest: Path, subdir: str | None, log) -> None:
+    """Build the checksum-pinned reconstructed SN compiler natively on macOS."""
+    if not shutil.which("clang") or not shutil.which("make"):
+        raise ToolchainError("Building reconstructed SN64 GCC needs Xcode Command Line Tools: run `xcode-select --install`, then try again.")
+    with tempfile.TemporaryDirectory(prefix="decomp-sn64-gcc-") as tmp:
+        source = Path(tmp)
+        _extract(archive, source, subdir)
+        # Old GCC's bundled assert.h expects a libgcc host helper absent from Apple's
+        # runtime. Supply that diagnostic routine only; target codegen is untouched.
+        host = source / "getpwd.c"
+        host.write_text(host.read_text(encoding="latin-1") +
+                        '\n#include <stdio.h>\nvoid __eprintf(const char *fmt, const char *expr, unsigned int line, '
+                        'const char *file) { fprintf(stderr, fmt, expr, line, file); abort(); }\n', encoding="latin-1")
+        flags = "-DDARWIN -std=gnu89 -O2 -DHAVE_VPRINTF -Wno-return-type -Wno-error -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types"
+        argv = ["make", "-j" + str(min(4, os.cpu_count() or 1)), "cpp", "cc1", "CC=/usr/bin/clang", "CFLAGS=" + flags]
+        log("  building pinned reconstructed SN64 GCC (first install only)")
+        try:
+            result = subprocess.run(limits.capped(argv), cwd=source, capture_output=True, text=True,
+                                    errors="replace", timeout=900)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            raise ToolchainError(f"Couldn't build reconstructed SN64 GCC: {e}. Check Xcode Command Line Tools and try again.") from e
+        if result.returncode:
+            raise ToolchainError("Couldn't build reconstructed SN64 GCC.\n" + (result.stdout + result.stderr)[-4000:])
+        for name in ("cpp", "cc1"):
+            if not (source / name).is_file():
+                raise ToolchainError(f"The reconstructed SN64 GCC build did not produce {name}.")
+            shutil.copyfile(source / name, dest / name)
+            (dest / name).chmod(0o755)
 
 
 def _build_psx_gcc(archive: Path, dest: Path, part: dict, log) -> None:

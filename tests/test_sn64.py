@@ -14,7 +14,7 @@ from decompnet.elfobj import extract_function
 from decompnet.project import compiler_config
 
 
-@pytest.mark.parametrize('tid', ['sn-n64-281', 'sn-n64-272-0001'])
+@pytest.mark.parametrize('tid', ['sn-n64-281', 'sn-n64-272-0001', 'sn-n64-272-0004', 'sn-n64-272-0006'])
 def test_sn64_registered_as_full_n64_compiler(tid):
     tc = toolchains.get(tid)
     assert tid in [c.id for c in N64.compilers]
@@ -59,7 +59,7 @@ def test_sn64_pipeline_order_and_failed_steps(tmp_path, monkeypatch):
         sn_compile(**tools, source=src, output=out, include=inc, flags=[])
 
 
-@pytest.mark.parametrize('tid', ['sn-n64-281', 'sn-n64-272-0001'])
+@pytest.mark.parametrize('tid', ['sn-n64-281', 'sn-n64-272-0001', 'sn-n64-272-0004', 'sn-n64-272-0006'])
 def test_original_sn64_compiles_and_preserves_relocations(tmp_path, tid):
     required = [tid, 'wibo', 'psyq-obj-parser', 'sn-n64-272-0001']
     if any(toolchains.installed(t) is None for t in required):
@@ -84,7 +84,7 @@ def test_original_sn64_compiles_and_preserves_relocations(tmp_path, tid):
 def test_sn64_uses_gcc_flag_search_and_permuter_weights():
     from decompnet.app.engine.compilers import CompilerMixin
     from decompnet.app.permute import weight_family
-    for tid in ['sn-n64-281', 'sn-n64-272-0001']:
+    for tid in ['sn-n64-281', 'sn-n64-272-0001', 'sn-n64-272-0004', 'sn-n64-272-0006']:
         assert weight_family({'compiler': {'toolchain': tid}}, None, False) == 'gcc'
         assert ['-O2', '-g3'] in CompilerMixin.debug_flag_variants(tid, ['-O2'])
 

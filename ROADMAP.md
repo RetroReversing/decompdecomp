@@ -24,6 +24,12 @@ Kimi Code 2.x helpers use the same MCP tools and session controls as other CLI h
 configuration and request token breakdowns. Live integration checked on macOS; Windows and Linux
 launcher behavior is covered by portable tests but still needs physical host verification.
 
+N64 additionally lists PM matching GCC 2.8.1, EGCS 1.1.2, reconstructed SN64
+970404 and original SN64 builds 0004/0006. The three free profiles have real
+compile/link checks on macOS. Original-pack execution awaits explicit license
+acceptance; physical Linux and Windows/WSL checks remain outstanding. Imported
+projects keep their own build scripts. See [compiler coverage](docs/sn64-compilers.md).
+
 ## What works where
 
 Each feature and the platforms it covers today. A — is a gap: pick one up (the notes under the table say where to
