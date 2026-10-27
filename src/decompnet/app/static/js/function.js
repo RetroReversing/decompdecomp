@@ -398,7 +398,7 @@ function searchFunctions(fns, q, fork) {
 
 function sdkBadge(f) {
   if (!f.sdk) return "";
-  const hint = "Identified from SDK signatures: " + f.sdk.corpora.join("; ") + ". Agents try game code first; this is not a verified C match.";
+  const hint = ((f.sdk.names || []).length ? "Library identity: " + f.sdk.names.join(", ") + ". " : "") + "Identified from SDK signatures: " + f.sdk.corpora.join("; ") + ". Agents try game code first; this is not a verified C match.";
   return ` <span class="sdk-badge" title="${esc(hint)}">SDK library</span>`;
 }
 

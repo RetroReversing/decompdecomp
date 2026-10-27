@@ -542,7 +542,7 @@ class Twins:
             from .iterative_repairs import optional_phase
             job.matched += optional_phase(self, slug, job)
             self.reuse_names(slug, job)
-            from .libultra import name_functions
+            from .sdk_names import name_functions
             name_functions(self.net, slug, job)
             self.update_boosts(self.net.project_row(slug))
         finally:

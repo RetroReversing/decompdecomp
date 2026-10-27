@@ -1074,3 +1074,29 @@ details.more[open] > summary::before { content: "− "; }
 .agent-metrics span { font-size: 11px; color: var(--muted); }
 .agent-message summary { font-size: 12px; color: var(--ink-2); cursor: pointer; }
 .session .facts-line { line-height: 1.7; }
+
+/* Keep compiler progress readable while detailed output grows independently. */
+.compiler-progress { border: 1px solid var(--line); border-radius: var(--r); background: var(--raise); padding: 16px; display: grid; gap: 14px; }
+.compiler-progress[hidden] { display: none; }
+.compiler-progress-heading { display: grid; gap: 4px; }
+.compiler-progress-heading b { font-size: 15px; overflow-wrap: anywhere; }
+.compiler-progress-count { display: grid; gap: 8px; font-size: 12px; }
+.compiler-progress progress { width: 100%; height: 8px; accent-color: var(--match); }
+.compiler-progress-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0; }
+.compiler-progress-stats dt { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.compiler-progress-stats dd { margin: 0; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.compiler-progress[data-improved="true"] { border-color: var(--hl); }
+.compiler-progress p { margin: 0; line-height: 1.6; }
+.compiler-progress-profile { overflow-wrap: anywhere; }
+#compilerLogDetails .more-body { min-width: 0; }
+#installedCompilerLog { height: 220px; overflow: auto; overflow-anchor: none; font-size: 11px; }
+
+.compiler-progress-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.compiler-progress-stats > div { grid-column: span 2; }
+.compiler-progress-stats > .compiler-percent { grid-column: span 3; }
+.compiler-stat { display: grid; gap: 4px; padding: 4px 0; width: 100%; border: 0; background: transparent; text-align: left; color: inherit; font: inherit; }
+.compiler-stat:not(:disabled):hover { background: var(--hl-soft); }
+.compiler-stat:not(:disabled) .compiler-stat-action { text-decoration: underline; text-underline-offset: 3px; }
+.compiler-stat-action { color: var(--muted); font-size: 11px; font-weight: 400; }
+.compiler-stat:disabled { opacity: .6; cursor: default; }
+.compiler-stat [data-exact] { color: var(--match); }
