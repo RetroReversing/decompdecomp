@@ -377,7 +377,8 @@
           <div id="compilerWaiting"></div>
           <label class="check" id="autoAdjustRow"><input type="checkbox" id="autoAdjust"><span><b>Apply proven changes by themselves.</b> When agents prove a part of the game was built with another compiler (its code matches with it, and its neighbours agree), the app uses it without asking you.</span></label>
           <div id="installedCompilerTest">
-            <button class="ghost" type="button" id="testInstalledCompilers">Test untested functions</button>
+            <div class="row"><button class="ghost" type="button" id="testInstalledCompilers">Test untested functions</button><button class="ghost" type="button" id="stopInstalledCompilers" hidden>Stop comparison</button></div>
+            <p class="small" id="compilerStopError" role="alert" hidden></p>
             <label class="check"><input type="checkbox" id="compilerRetest"><span>Include previously tested functions</span></label>
             <p class="small muted">Compare saved C against installed compilers. Results are saved; settings change only when you apply them.</p>
             <details class="more"><summary>What gets tested?</summary><div class="more-body small muted">Up to 400 unmatched functions per run. Unchanged completed comparisons are skipped, so another run continues with the remaining functions. Tests optimization, small-data and debug variants, using no AI tokens or downloads. This is a bounded search, not every possible flag combination.</div></details>

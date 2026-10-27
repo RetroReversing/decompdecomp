@@ -100,7 +100,7 @@ class Jobs:
         self.log_path = log_path
         self.logger = file_log(log_path) if log_path else logging.getLogger("decompdecomp")
 
-    def start(self, kind: str, fn) -> str:
+    def start(self, kind: str, fn, *, cancel_message="Opening the saved project was cancelled.") -> str:
         jid = uuid.uuid4().hex[:JOB_ID_CHARS]
         job = {"id": jid, "kind": kind, "state": "running", "log": [], "result": None, "error": None, "t": time.time()}
         cancel = self.cancel_events[jid] = threading.Event()
@@ -115,7 +115,7 @@ class Jobs:
 
         def check_cancel() -> None:
             if cancel.is_set():
-                raise RuntimeError("opening the saved project was cancelled")
+                raise RuntimeError(cancel_message)
 
         def progress(value: dict) -> None:
             check_cancel()
@@ -135,7 +135,7 @@ class Jobs:
                 logger.info("job %s %s done in %.0fs", kind, jid, time.time() - job["t"])
             except BaseException as e:  # noqa: BLE001  a job must end, whatever went wrong
                 if cancel.is_set():
-                    job["error"] = "Opening the saved project was cancelled."
+                    job["error"] = cancel_message
                     job["state"] = "cancelled"
                     logger.info("job %s %s cancelled", kind, jid)
                     return

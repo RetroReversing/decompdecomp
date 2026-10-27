@@ -824,3 +824,8 @@ Compiler comparison totals are actionable: finished, improved and exact-match co
 completed results during the batch, with guarded per-function Apply actions. Exact matches have the same
 prominent numeric treatment as the other totals. Explicit result refresh preserves reading/apply state
 while new completed comparisons arrive; applying a profile still requires the user's action and recheck.
+
+Installed-compiler batch comparisons have a Stop control. Cancellation reaches active native/WSL/VM
+compiler subprocesses and compiler-slot waits, preserves completed per-function comparisons, and releases
+the comparison lock so the next untested-only run resumes with unfinished inputs. Stopping is presented
+as a normal stopped state; result counters and Apply actions for completed functions remain available.
