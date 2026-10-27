@@ -694,6 +694,22 @@ $("testInstalledCompilers").onclick = async () => {
   const slug = S.slug;
   const button = $("testInstalledCompilers"), log = $("installedCompilerLog");
   const work = $("installedCompilerWork");
+  const stop = $("stopInstalledCompilers"), stopError = $("compilerStopError");
+  let jobId = null;
+  stop.hidden = false; stop.disabled = true; stop.textContent = "Stop comparison";
+  stopError.hidden = true; stopError.textContent = "";
+  stop.onclick = async () => {
+    if (!jobId) return;
+    stop.disabled = true; stop.textContent = "Stopping…";
+    stopError.hidden = true; stopError.textContent = "";
+    try {
+      await api("/api/job/cancel", {method: "POST", body: {id: jobId}});
+    } catch (e) {
+      if (!jobId) return;
+      stop.disabled = false; stop.textContent = "Stop comparison";
+      stopError.textContent = `Could not stop: ${e.message}. Try again.`; stopError.hidden = false;
+    }
+  };
   const finish = beginWork(work, "Testing installed compilers", [button], "Compiler comparison finished.");
   $("compilerLogDetails").hidden = false;
   $("compilerLogDetails").open = false;
@@ -717,6 +733,7 @@ $("testInstalledCompilers").onclick = async () => {
   showJobError(work, "");
   try {
     const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, untested_only: !$("compilerRetest").checked } });
+    jobId = job; stop.disabled = false;
     const result = await followJob(job, log, (_lines, snapshot) => {
       if (S.slug === slug && snapshot.progress) renderCompilerProgress(snapshot.progress);
     });
@@ -724,7 +741,15 @@ $("testInstalledCompilers").onclick = async () => {
     renderCompilerProgress(null, result);
     if (!$("compilerImprovements").dataset.filter) renderCompilerImprovements(slug, result.improvements || []);
     log.textContent += `\n${result.tried} functions tested; ${result.skipped || 0} completed comparisons skipped. Results saved.`;
-  } catch (e) { showJobError(work, e.message); } finally { finish(); }
+  } catch (e) {
+    if (e.job?.state === "cancelled") {
+      if (work._workStatus) { work._workStatus.textContent = "Comparison stopped. Completed results are saved."; work._workStatus.dataset.state = "stopped"; }
+      if (S.slug === slug) {
+        $("compilerProgress").querySelector("[data-current]").textContent = "Comparison stopped";
+        $("compilerProgress").querySelector("[data-profile]").textContent = "Completed results remain available. Test untested functions resumes with the unfinished work.";
+      }
+    } else showJobError(work, e.message);
+  } finally { stop.hidden = true; stop.onclick = null; jobId = null; finish(); }
 };
 
 function renderCompilerImprovements(slug, rows, filter = "improved") {

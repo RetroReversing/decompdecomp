@@ -11,7 +11,7 @@ import re
 import threading
 import time
 
-from ... import arch, compilermap, consoles, toolchains
+from ... import arch, compiler, compilermap, consoles, toolchains
 from ...network import Agent, NetworkError
 from ...project import compiler_for
 from .common import parse_ranges
@@ -215,8 +215,12 @@ class CompilerMixin:
         if not lock.acquire(blocking=False):
             raise NetworkError("A compiler comparison is already running for this project. Wait for it to finish.")
         try:
-            return self.survey_compilers(slug, log=log, all_installed=True, function=function,
-                                         untested_only=untested_only and not function)
+            check = getattr(log, 'check_cancel', None)
+            with compiler.cancellable(check):
+                if check:
+                    check()
+                return self.survey_compilers(slug, log=log, all_installed=True, function=function,
+                                             untested_only=untested_only and not function)
         finally:
             lock.release()
 
@@ -256,10 +260,12 @@ class CompilerMixin:
         rows.sort(key=lambda f: (f["vram"] not in cmap.contradicted, f["best_score"] if f["best_score"] is not None else 1 << 30))
         state = state if state is not None else {}
         comparison = None
+        check_cancel = getattr(log, "check_cancel", lambda: None)
         improvements = []
         results = []
         n = found = skipped = 0
         for fn in rows:
+            check_cancel()
             if n >= limit:
                 break
             source = self._source_of(fn)
@@ -290,6 +296,7 @@ class CompilerMixin:
                             "skipped": skipped, "results": list(results)}
                 report(progress)
                 for index, (tc, flags) in enumerate(candidates, 1):
+                    check_cancel()
                     ok, diff, _ = self._judge_with(proj, fn, tc, list(flags), source)
                     percent = 100.0 if ok else diff.percent if diff is not None else None
                     if all_installed:
@@ -325,6 +332,7 @@ class CompilerMixin:
                 completed = {"before": baseline, "best": best, "profile": best_profile,
                              "tested": len(candidates), "exact_matches": len(matches),
                              "improved": improved, "ranked": ranked}
+                check_cancel()
                 with self.store.tx() as db:
                     db.execute("INSERT OR REPLACE INTO compiler_tests VALUES(?,?,?,?)",
                                (fn["id"], input_digest, time.time(), json.dumps(completed)))
