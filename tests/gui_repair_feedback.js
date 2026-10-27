@@ -31,7 +31,7 @@ const context = { S: {slug: 'demo'}, document: {body, createElement: (tag) => ne
     if (opts?.method === 'POST') { state = opts.body.status; return {message: 'Saved'}; }
     const query = new URL(url, 'http://test').searchParams;
     if (query.get('id')) return {...row(), explanation: 'Changed a type.', automation: 'Try signedness.',
-      evidence: {diff: '- old\n+ <script>neverExecute()</script>', after: {source: '<script>neverExecute()</script>'}}, review_note: ''};
+      evidence: {source_change_label: 'C tokens changed', diff: '- old\n+ <script>neverExecute()</script>', after: {source: '<script>neverExecute()</script>'}}, review_note: ''};
     return {examples: [row()], categories: ['unclassified', 'types'], states: ['new', 'reviewed'],
       groups: [{category: 'types', status: state, count: 1}], more: false};
   }};
@@ -45,7 +45,9 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   const statusFilter = dialog.querySelector('[data-status]'); statusFilter.value = ''; await statusFilter.onchange();
   assert(requests.at(-1).url.includes('status='));
   const details = list.children[0]; details.open = true; await details.listeners.toggle();
-  const evidence = details.children[1], pre = evidence.children[5].children[1];
+  const evidence = details.children[1], evidencePanel = evidence.children[5];
+  const pre = evidencePanel.children.find((child) => child.tag === 'pre');
+  assert(evidencePanel.children.some((child) => child.tag === 'p' && child.textContent === 'C tokens changed'));
   assert(pre.textContent.includes('<script>neverExecute()</script>'));
   const advanced = evidence.children[6];
   const review = advanced.children[1], kind = advanced.children[2], note = advanced.children[3], save = advanced.children[4];

@@ -11,7 +11,7 @@ from tests.test_permute import AGENT, FakeNet, ScriptedPermuter
 
 def test_address_conversion_and_commutation_are_combined():
     src = 'int f(int i) { return *(int *)((u8 *)table + i); }'
-    assert variants(src, 'f', 'mips') == ['int f(int i) { return *(int *)(i + (int)table); }']
+    assert 'int f(int i) { return *(int *)(i + (int)table); }' in variants(src, 'f', 'mips')
     assert not variants(src, 'f', 'x86_64')
     assert not variants(src, 'f', 'unknown')
 
@@ -19,9 +19,8 @@ def test_address_conversion_and_commutation_are_combined():
 @pytest.mark.parametrize('arch', ['mips', 'ppc', 'x86', 'x86_64', 'arm', 'thumb', 'unknown'])
 def test_early_return_is_shared_and_keeps_expression(arch):
     src = 'int f(int x) { int result; result = 0; if (x >= 0) { result = (int)root((float)x); } return result; }'
-    out, = variants(src, 'f', arch)
-    assert 'if (x < 0) return 0;' in out
-    assert 'return (int)root((float)x);' in out
+    outputs = variants(src, 'f', arch)
+    assert any('if (x < 0) return 0;' in out and 'return (int)root((float)x);' in out for out in outputs)
 
 
 def test_nested_call_argument_boundary_and_opaque_text():
@@ -42,7 +41,7 @@ def test_only_requested_definition_and_no_directives():
     # Extra statements and references to the accumulator must not be discarded.
     for expr in ('result + x', 'x'):
         src = f'int f(int x) {{ int result; result=0; side(); if(x>=0){{result={expr};}} return result; }}'
-        assert not variants(src, 'f', 'mips')
+        assert all('side();' in out and (f'result={expr};' in out or (expr=='result + x' and 'result = result; result += x;' in out)) for out in variants(src, 'f', 'mips'))
 
 
 def setup_repair_net(count=1):
@@ -158,4 +157,87 @@ def test_member_address_cast_with_optional_parentheses(pointer, wrapped):
 def test_member_rule_excludes_calls_and_increments():
     for expr in ['get()->base', 'obj[i++].base', 'obj->base++']:
         src = f'int f(int i) {{ return *(int *)(((u8 *) {expr}) + i); }}'
-        assert not variants(src, 'f', 'mips')
+        assert all('side();' in out and (f'result={expr};' in out or (expr=='result + x' and 'result = result; result += x;' in out)) for out in variants(src, 'f', 'mips'))
+
+
+@pytest.mark.parametrize('imported', [False,True])
+def test_scaled_pointer_candidate_reaches_the_normal_mode_judge(imported):
+    net=setup_repair_net()
+    source='void f1(){q=(u16 *)a+i;}'
+    expected='void f1(){q=(u16 *)(i * 2 + (int)a);}'
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    if imported:
+        net.fork_slug=lambda slug:'fork'
+        class Fork:
+            def permuter_header(self,slug,function):
+                assert (slug,function)==('fork','f1')
+                return 'typedef unsigned short u16; typedef int s32;'
+        net.forks=Fork()
+    perm=ScriptedPermuter(net,{expected:0});state=State()
+    perm._repair_round(AGENT,net.project_row('game'),state)
+    assert expected in perm.judged and state.matched==1
+    assert not net.store.all('SELECT * FROM claims')
+
+
+@pytest.mark.parametrize('imported', [False,True])
+def test_linked_byte_chain_reaches_normal_judge_without_accepting_intermediate_steps(imported):
+    from decompnet.app import narrow_chains
+    source='void f1(){s32 wide;s32 copy;u8 narrow;wide=read();copy=wide;copy=(u16)copy&0xFF;narrow=wide&0xFF;if(narrow)return;send(wide&0xFF);}'
+    expected=narrow_chains.variants(source,'f1')[0]
+    net=setup_repair_net()
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    if imported:
+        net.fork_slug=lambda slug:'fork'
+        class Fork:
+            def permuter_header(self,slug,function):
+                assert (slug,function)==('fork','f1')
+                return 'typedef unsigned char u8; typedef unsigned short u16; typedef int s32;'
+        net.forks=Fork()
+    perm=ScriptedPermuter(net,{expected:0});state=State()
+    perm._repair_round(AGENT,net.project_row('game'),state)
+    assert expected in perm.judged and state.matched==1
+    assert not net.store.all('SELECT * FROM claims')
+
+
+@pytest.mark.parametrize('imported',[False,True])
+def test_inline_expression_candidate_is_kept_only_by_the_normal_mode_judge(imported):
+    from decompnet.app import expression_repairs
+    source='void f1(){int x;int a;int b;x=a+b;}'
+    expected=next(c for c in expression_repairs.variants(source,'f1','mips') if c.startswith('static inline'))
+    net=setup_repair_net()
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    if imported:
+        net.fork_slug=lambda slug:'fork'
+        class Fork:
+            def permuter_header(self,slug,function):
+                assert (slug,function)==('fork','f1')
+                return ''
+        net.forks=Fork()
+    perm=ScriptedPermuter(net,{expected:0});state=State()
+    perm._repair_round(AGENT,net.project_row('game'),state)
+    assert expected in perm.judged and state.matched==1
+    assert not net.store.all('SELECT * FROM claims')
+
+
+@pytest.mark.parametrize('imported',[False,True])
+def test_spare_pointer_staging_uses_the_normal_mode_judge(imported):
+    from decompnet.app import temporary_repairs
+    source='void f1(){void *spare;u8 *p;p=*((void **)(base+4));send(p);spare=next();use(spare);}'
+    expected=temporary_repairs.variants(source,'f1')[0]
+    net=setup_repair_net()
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    if imported:
+        net.fork_slug=lambda slug:'fork'
+        class Fork:
+            def permuter_header(self,slug,function):
+                assert (slug,function)==('fork','f1')
+                return ''
+        net.forks=Fork()
+    perm=ScriptedPermuter(net,{expected:0});state=State()
+    perm._repair_round(AGENT,net.project_row('game'),state)
+    assert expected in perm.judged and state.matched==1
+    assert not net.store.all('SELECT * FROM claims')

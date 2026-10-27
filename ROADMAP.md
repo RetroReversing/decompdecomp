@@ -143,6 +143,36 @@ remain planned. Dynamic addends, ambiguous mappings and named-field reconstructi
 still need deeper analysis. Candidate-local padding repair now handles simple struct definitions in the
 candidate itself, with bounded proposals from aligned load/store offsets. Shared-header layout reconstruction,
 complex/nested types and field reordering remain planned.
+Repair evidence now describes whether the selected pair changes C tokens, layout, comments/spacing,
+no source text, or lacks a saved failed source. These labels preserve source-line boundaries and string
+literals; they do not auto-dismiss or implement suggestions. Bounded source hypotheses also include
+masked/narrow-store integer parameter widths, reusing an unused scalar local for a pointer's final integer
+live range, and splitting/commuting selected addition shapes. All go through the ordinary ROM/imported judge.
+Fixed-width typed-pointer additions also get a scaled integer-address alternative on supported 32-bit
+processors. Calls, increments, complex indices and unknown/64-bit targets are excluded; exact verification
+is still required. Definition lookup keeps neighbouring functions on the same source line out of these edits.
+Repeated byte masks through an ordinary local also get a bounded linked width/cast/reuse hypothesis,
+optionally collapsing an earlier copy-and-mask of the same value. This submits the related edits together
+even when individual steps worsen the score; escaped, qualified or subsequently modified locals are skipped.
+ROM autopilot machine drafts and quiet transfer trials now retain the actual compile-invocation settings
+in repair evidence, including range/temporary overrides. Historical project snapshots remain explicitly
+weaker evidence; imported-project per-file build flags are still not recorded by this ROM-only compile path.
+Fresh machine-draft captures identify their raw, refined or stack-buffer generating variant, without
+automatically approving review records. Simple signed-local additions can also be tested through an inline
+helper on supported 32-bit targets; ordinary exact verification must reject any helper left as a real call.
+Pointer loads can be staged through a previously unused ordinary void-pointer local, provided it is
+overwritten before its next read. This keeps evaluation in place and uses the same ROM/imported judge.
+Free template/library/address candidate captures identify their automatic strategy and origin; their review
+state still requires an explicit decision.
+
+Deterministic candidates also split field/address expressions into pointer temporaries, materialize small
+arithmetic/comparison literals, and materialize both floating comparison loads in either load order without
+inverting the comparison. Saved drafts and fresh m2c autopilot try explicitly bounded byte stack buffers,
+including canonical indexed fill loops. Guarded induction alternatives translate simple typed-pointer
+loops to indexed accesses and back, plus a narrow string-loop latch repair. All five families reach the
+same ROM/imported judge and agent-local family tools; unsupported syntax is skipped. Families rotate within
+the candidate cap. These are bounded hypotheses, not general C control-flow reconstruction or semantic proofs.
+
 Bounded scheduling repairs include debug-flag-gated statement/else line joins, floating-expression
 hoisting before stores, and scalar parameter assignments split through compatible locals. After an agent
 releases a tried function, a separate machine pass tries at most six candidates with an eight-second

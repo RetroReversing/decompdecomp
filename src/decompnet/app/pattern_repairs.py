@@ -2,8 +2,9 @@
 
 import re
 
+from .. import m2cfix
 from ..forks.csource import _blank, find
-from . import temporary_repairs
+from . import expression_locals, loop_repairs, temporary_repairs, value_repairs
 
 IDENT = r'[A-Za-z_]\w*'
 TYPE = r'(?:void\s*\*|[su](?:8|16|32)|unsigned\s+(?:char|short|int)|char|short|int)'
@@ -188,4 +189,12 @@ def variants(source, name, debug_lines=False):
         # Join/split adjacent statement lines without changing token order.
         for m in list(re.finditer(r';[ \t]*\n[ \t]*(?='+IDENT+r'\s*=)',body))[:2]:
             add('source_lines',[(m.start(),m.end(),'; ')])
-    return result[:16]
+    for family,candidate in expression_locals.variants(source,name):
+        if candidate not in [v for _,v in result]:
+            result.append((family,candidate))
+    for canonical in (False,True):
+        if candidate := m2cfix.stack_array(source,name,canonical):
+            result.append(('stack_array',candidate))
+    result += [('loop_induction',candidate) for candidate in loop_repairs.variants(source,name)]
+    result += value_repairs.variants(source,name)
+    return result[:44]
