@@ -1498,3 +1498,27 @@ url = "https://deb.debian.org/debian/pool/main/g/gcc-12/libatomic1_12.2.0-14+deb
 sha256 = "fbd4e154a6b444229ea002cc209df099209c0adc09102e5fd21239a3d2b55e2d"
 subdir = "usr/lib/x86_64-linux-gnu"
 platforms = ["linux-x86_64"]
+
+["gcc-2.8.1-pm-sn-as"]
+family = "gcc"
+name = "GCC 2.8.1 + SN ASN64 2.56"
+platform = "N64"
+arch = "mips"
+license = "proprietary"
+source = "pmret/gcc-papermario and preserved SN64 0001 assembler"
+description = "GCC 2.8.1 PM code generation paired with original SN ASN64 2.56. Tests assembler macro encodings and scheduling independently; not proof of a game's original toolchain."
+requires = ["sn-n64-272-0001", "wibo", "psyq-obj-parser"]
+driver = "consoles/n64/sn64.py"
+flags = ["-G0", "-mips3", "-mgp32", "-mfp32", "-O2"]
+cmd = ["{python}", "{driver}", "--gcc", "{tc}/gcc", "--assembler", "{tc:sn-n64-272-0001}/asn64.exe", "--converter", "{tc:psyq-obj-parser}/psyq-obj-parser", "--runner", "{tc:wibo}/wibo", "{src}", "{obj}", "{include}", "{flags}"]
+[["gcc-2.8.1-pm-sn-as".parts]]
+url = "https://github.com/pmret/gcc-papermario/releases/download/master/linux.tar.gz"
+sha256 = "1156cf0d6a88a64c20e2a10fc9445d99cb9a38518f432b1669528dfa82ebb45f"
+file = "pm-gcc-linux.tar.gz"
+platforms = ["linux-x86_64"]
+[["gcc-2.8.1-pm-sn-as".parts]]
+url = "https://github.com/pmret/gcc-papermario/releases/download/master/mac.tar.gz"
+sha256 = "772efc8272a992401f9a9a3faef58ef2f4b6028e792afa0015d894de96fe584e"
+file = "pm-gcc-mac.tar.gz"
+platforms = ["macos-x86_64", "macos-arm64"]
+rosetta = true

@@ -41,6 +41,7 @@ class Insn:
     mnemonic: str
     operands: str
     text: str  # normalized "mnemonic operands" with reloc targets symbolized
+    encoding: bytes = b""  # relocation-masked bytes; aliases can hide different machine instructions
 
 
 def percent_text(p: float | None) -> str:
@@ -84,7 +85,7 @@ def disassemble(fn: FunctionObj, cpu: str | None = None) -> list[Insn]:
             ops = _symbolize(ins, ops, rel.offset - address, target, fn.arch)
         elif ins is not None and ins.id and ins.group(capstone.CS_GRP_JUMP) and _NUM.match(ops.strip()):
             ops = f".L{int(ops, 16):x}"  # intra-function branch: keep it position-relative
-        out.append(Insn(address, mnemonic, ops, f"{mnemonic} {ops}".strip()))
+        out.append(Insn(address, mnemonic, ops, f"{mnemonic} {ops}".strip(), code[address:address + size]))
     return out
 
 
@@ -277,7 +278,13 @@ def diff(target: FunctionObj, candidate: FunctionObj) -> DiffResult:
             for a, b in zip(t_ins[a0:a1], c_ins[b0:b1]):
                 pen, mark = _classify(a, b)
                 score += pen
-                rows.append((mark, a.text, b.text))
+                if not bytes_match and a.text == b.text and a.encoding != b.encoding:
+                    # e.g. 32-bit addu and 64-bit daddu both disassemble as "move".
+                    # Keep the existing score; make the strict judge's byte disagreement visible.
+                    rows.append(("|", f"{a.text} [bytes {a.encoding.hex()}]",
+                                 f"{b.text} [bytes {b.encoding.hex()}]"))
+                else:
+                    rows.append((mark, a.text, b.text))
             continue
         ta, cb = t_ins[a0:a1], c_ins[b0:b1]
         for k in range(max(len(ta), len(cb))):
