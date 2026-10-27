@@ -27,6 +27,8 @@ def test_comparison_profiles_have_pins_host_limits_and_matching_guides(tid, monk
     assert tc.family == ('ido' if tid in SGI else 'gcc')
     assert N64.m2c_target(tid) == ('mips-ido' if tid in SGI else 'mips-gcc')
     assert N64.up_front_guide(tid)
+    # Host simulation must isolate WSL too: on Windows the real wanted() is otherwise true.
+    monkeypatch.setattr(toolchains.wsl, 'wanted', lambda: False)
     monkeypatch.setattr(toolchains, 'current_platform', lambda: 'macos-arm64')
     assert not tc.supported
     monkeypatch.setattr(toolchains, 'current_platform', lambda: 'windows-x86_64')
