@@ -802,15 +802,3 @@ adaptive routing. Configured queues do not batch unfiltered neighbours.
 - **Polish in the drafts.** Methods of known classes are drafted as `Class::method` in the brief; the polishing pass
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
-
-### Paired overlay banks
-
-Table-defined zlib overlays can have a second bank represented by cumulative u16 byte offsets, u8
-replacement values and padding, at four-byte strides. Import reconstructs these images from the
-checksummed bases after validating the complete paired size sequence, separate load slot, record shape
-and bounds. The extra bank has independent function identities and target bytes, including when its
-RAM overlaps another image. These are runtime instances; the count is not a count of unique game logic.
-
-All nonempty records in the tested cartridge table now decode. Text boundaries are still inferred;
-complete table decoding does not establish complete function discovery. Rebuildable export of overlapping
-banks remains **—** until bank-specific assembly, linker symbols, gap objects and relocations are supported.

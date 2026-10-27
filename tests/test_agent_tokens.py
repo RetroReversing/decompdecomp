@@ -441,9 +441,12 @@ def test_blank_redraft_is_actionable_and_does_not_invoke_drafter(tmp_path, monke
 
 
 @pytest.mark.parametrize('mode',['rom','fork'])
-def test_pattern_family_uses_normal_judge_and_captures_provenance(tmp_path, monkeypatch,mode):
+@pytest.mark.parametrize('family,source,expected',[
+    ('typed_temporary','void f(u16 *d,u32 w){*(u16*)d=(u16)(w>>16);}','__repair_narrow'),
+    ('call_result_inline','int f(u8*a,u8*b){u8 x,y;x=read(*a);y=read(*b);if(x>y)return 1;return 0;}','(u8)read(*a)'),
+])
+def test_pattern_family_uses_normal_judge_and_captures_provenance(tmp_path, monkeypatch,mode,family,source,expected):
     net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
-    source='void f(u16 *d,u32 w){*(u16*)d=(u16)(w>>16);}'
     with net.store.tx() as db:
         db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode,'compiler':{'toolchain':'example','flags':[]}}),))
         db.execute('UPDATE functions SET best_source=?',(source,))
@@ -452,7 +455,7 @@ def test_pattern_family_uses_normal_judge_and_captures_provenance(tmp_path, monk
         seen.append(source);net._record(fn,agent,0,source,1,matched=True);return 'MATCH!'
     monkeypatch.setattr(net,'compile_and_diff',compile)
     _,rev=agent_tokens.candidate(net,a,'game','f')
-    out=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'typed_temporary'})
-    assert len(seen)==1 and '__repair_narrow' in seen[0] and 'MATCH!' in out
+    out=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':family})
+    assert len(seen)==1 and expected in seen[0] and 'MATCH!' in out
     case=net.repair_feedback.listing('game')['examples'][0]['id']
-    assert net.repair_feedback.detail('game',case)['evidence']['provenance']['family']=='typed_temporary'
+    assert net.repair_feedback.detail('game',case)['evidence']['provenance']['family']==family
