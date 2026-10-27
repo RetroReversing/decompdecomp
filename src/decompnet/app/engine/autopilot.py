@@ -12,6 +12,7 @@ import time
 from ... import m2cfix, scoring, seeds
 from ...network import Agent, NetworkError
 from ...project import compiler_for
+from ...repair_feedback import trial as repair_trial
 
 
 class AutopilotMixin:
@@ -173,17 +174,18 @@ class AutopilotMixin:
                 return "fail"
             # (its compiler named in it: the same draft is worth judging again with another compiler)
             note = f"/* machine draft (m2c) for {toolchain} {' '.join(own.get('flags', []))}, tried by autopilot */\n"
-            candidates = [f"{note}{seeds.M2C_MACROS}\n{draft}\n"]
+            candidates = [('raw_m2c', f"{note}{seeds.M2C_MACROS}\n{draft}\n")]
             if (seeds.m2c_target(toolchain) or "").startswith("mips"):
                 # next to m2c's own draft, the same with its usual mistakes undone (m2cfix.py): few lines change
                 refined = m2cfix.refine_draft(draft, fn["name"], fn["asm"] or "")
                 if refined:
-                    candidates.append(f"{note}{seeds.M2C_MACROS}\n{refined}\n")
+                    candidates.append(('refined_m2c', f"{note}{seeds.M2C_MACROS}\n{refined}\n"))
             for canonical in (False,True):
                 if array := m2cfix.stack_array(draft,fn['name'],canonical):
-                    candidates.append(f"{note}{seeds.M2C_MACROS}\n{array}\n")
+                    family = 'stack_array_indexed' if canonical else 'stack_array'
+                    candidates.append((family, f"{note}{seeds.M2C_MACROS}\n{array}\n"))
             outcomes = []
-            for source in candidates:
+            for family, source in candidates:
                 if self.store.one("SELECT 1 FROM attempts WHERE function_id=? AND agent_id=? AND context_version=? "
                                   "AND source=?", fid, agent.id, ctx["version"], source):
                     outcomes.append("skip")
@@ -196,8 +198,11 @@ class AutopilotMixin:
                 d = scoring.diff(self._target_obj(fn, proj), cand)
                 if verdict is not None:
                     d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
-                self._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match,
-                             effective_settings=getattr(result, 'effective_settings', None))
+                # Keep the generating path visible: an already automatic match need not be mistaken
+                # for an unimplemented agent repair when this record is reviewed later.
+                with repair_trial({'kind': 'machine draft', 'family': family}):
+                    self._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match,
+                                 effective_settings=getattr(result, 'effective_settings', None))
                 outcomes.append("match" if d.bytes_match else "near" if d.percent >= 90 else "far")
                 if d.bytes_match:
                     break

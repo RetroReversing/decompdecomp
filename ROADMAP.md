@@ -151,6 +151,9 @@ even when individual steps worsen the score; escaped, qualified or subsequently 
 ROM autopilot machine drafts and quiet transfer trials now retain the actual compile-invocation settings
 in repair evidence, including range/temporary overrides. Historical project snapshots remain explicitly
 weaker evidence; imported-project per-file build flags are still not recorded by this ROM-only compile path.
+Fresh machine-draft captures identify their raw, refined or stack-buffer generating variant, without
+automatically approving review records. Simple signed-local additions can also be tested through an inline
+helper on supported 32-bit targets; ordinary exact verification must reject any helper left as a real call.
 
 Deterministic candidates also split field/address expressions into pointer temporaries, materialize small
 arithmetic/comparison literals, and materialize both floating comparison loads in either load order without

@@ -116,4 +116,21 @@ def variants(source: str, name: str, arch: str) -> list[str]:
             break
         if len(result) >= LIMIT:
             break
+    # Inlining even a simple sum can change old compilers' register allocation. Only ordinary
+    # signed integer locals qualify: no loads, calls, pointer arithmetic or floating expressions.
+    # A compiler which leaves a call instead will fail the normal exact judge.
+    helper = '__repair_inline_sum'
+    if arch in {'mips', 'ppc', 'x86', 'arm', 'thumb'} and not re.search(r'\b' + helper + r'\b', clean):
+        locals_ = {m[1] for m in re.finditer(r'(?:^|(?<=[;{}]))\s*(?:s32|int)\s+(' + IDENT + r')\s*;', body)}
+        for m in re.finditer(r'\b(?P<lhs>' + IDENT + r')\s*=\s*(?P<a>' + IDENT + r')\s*\+\s*'
+                             r'(?P<b>' + IDENT + r')\s*;', body):
+            if not {m['lhs'], m['a'], m['b']} <= locals_:
+                continue
+            prefix = f'static inline int {helper}(int left, int right)\n{{\n  return left + right;\n}}\n\n'
+            candidate = (prefix + source[:opening+m.start()] +
+                         f'{m["lhs"]} = {helper}({m["a"]}, {m["b"]});' + source[opening+m.end():])
+            if candidate not in result:
+                result.append(candidate)
+            if len(result) >= LIMIT:
+                break
     return result[:LIMIT]

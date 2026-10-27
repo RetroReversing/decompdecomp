@@ -86,3 +86,32 @@ def test_scaled_pointer_addition_skips_unknown_and_64_bit_targets_and_opaque_tex
     for arch in ('x86_64','aarch64','unknown'):
         assert not expression_repairs.variants(source,'f',arch)
     assert not expression_repairs.variants('void f(){/* q=(u16 *)a+i; */say("(u16 *)a+i;");}','f','mips')
+
+
+def test_inline_sum_candidate_keeps_single_evaluation_and_definition_boundaries():
+    source='void g(){int x;int a;int b;x=a+b;} void f(){int x;int a;int b;x=a+b;}'
+    candidates=expression_repairs.variants(source,'f','mips')
+    wrapped=[c for c in candidates if '__repair_inline_sum' in c]
+    assert len(wrapped)==1
+    assert wrapped[0].startswith('static inline int __repair_inline_sum(int left, int right)')
+    assert 'void g(){int x;int a;int b;x=a+b;} void f(){int x;int a;int b;x = __repair_inline_sum(a, b);}' in wrapped[0]
+    assert wrapped[0] in draft_repairs.variants(source,'f','mips')
+
+
+@pytest.mark.parametrize('source',[
+    'void f(){int x;volatile int a;int b;x=a+b;}',
+    'void f(){int x;int *a;int b;x=a+b;}',
+    'void f(){float x;float a;float b;x=a+b;}',
+    'void f(){unsigned int x;unsigned int a;unsigned int b;x=a+b;}',
+    'void f(){int x;int a;int b;x=next()+b;}',
+    'void f(){int x;int a;int b;x=a+++b;}',
+    'void f(){int x;int a;int b;x=*a+b;}',
+    'int __repair_inline_sum(int,int);void f(){int x;int a;int b;x=a+b;}'])
+def test_inline_sum_skips_unsupported_operands_types_and_helper_collisions(source):
+    assert not any(c.startswith('static inline int __repair_inline_sum') for c in expression_repairs.variants(source,'f','mips'))
+
+
+def test_inline_sum_skips_unknown_and_64_bit_architectures():
+    source='void f(){int x;int a;int b;x=a+b;}'
+    for arch in ('unknown','x86_64','aarch64'):
+        assert not any('__repair_inline_sum' in c for c in expression_repairs.variants(source,'f',arch))
