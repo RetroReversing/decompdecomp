@@ -66,10 +66,33 @@ def compile_native_source(cc: Path, cpp: Path, assembler: Path, wrapper: Path,
         raise ValueError('The SN64 compatibility assembler did not produce a big-endian ELF32 object.')
 
 
+def compile_gcc_source(gcc: Path, assembler: Path, converter: Path, runner: Path,
+                       source: Path, output: Path, include: Path, flags: list[str]) -> None:
+    """Keep GCC code generation and SN assembly separate; neither instruction stream is rewritten."""
+    for tool in (gcc, assembler, converter, runner):
+        if not tool.is_file():
+            raise ValueError(f'Missing {tool.name}: reinstall the GCC/SN pairing and its dependencies.')
+    # ASN under wibo must receive absolute host/guest paths in exported relative builds.
+    source, output, include = source.resolve(), output.resolve(), include.resolve()
+    assembly, obj = output.with_suffix('.sn.s'), output.with_suffix('.sn.obj')
+    commands = [
+        [gcc, '-B' + str(gcc.parent) + '/', '-S', *flags, '-I' + str(include.resolve()), source, '-o', assembly],
+        [runner, assembler, '-mips3', '-I', include, '-o', obj, assembly],
+        [converter, obj, '-o', output, '-b', '-n'],
+    ]
+    for index, argv in enumerate(commands):
+        subprocess.run([str(a) for a in argv], check=True, timeout=30)
+        if index == 0:
+            assembly.write_bytes(assembler_input(assembly.read_text(encoding='utf-8')).encode('utf-8'))
+    if not output.is_file() or output.read_bytes()[:6] != b'\x7fELF\x01\x02':
+        raise ValueError('The GCC/SN pairing did not produce a big-endian ELF32 object.')
+
+
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--gcc', type=Path)
     for option in ('cc', 'cpp', 'assembler'):
-        parser.add_argument('--' + option, type=Path, required=True)
+        parser.add_argument('--' + option, type=Path)
     for option in ('converter', 'runner', 'wrapper'):
         parser.add_argument('--' + option, type=Path)
     parser.add_argument('--native', action='store_true')
@@ -79,7 +102,14 @@ def main():
     parser.add_argument('flags', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     try:
-        if args.native:
+        if args.gcc:
+            if not all((args.assembler, args.converter, args.runner)):
+                raise ValueError('The GCC/SN pairing needs its assembler, converter and runner.')
+            compile_gcc_source(args.gcc, args.assembler, args.converter, args.runner,
+                               args.source, args.output, args.include, args.flags)
+        elif not all((args.cc, args.cpp, args.assembler)):
+            raise ValueError('The SN64 profile needs its compiler, preprocessor and assembler.')
+        elif args.native:
             if args.wrapper is None:
                 raise ValueError('The reconstructed SN64 profile needs its pinned assembler wrapper.')
             compile_native_source(args.cc, args.cpp, args.assembler, args.wrapper,

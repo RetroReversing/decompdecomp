@@ -47,6 +47,14 @@ Native original-toolchain Mac builds and automatic VM execution of arbitrary
 imported-project builds remain gaps; see [Linux VM coverage](docs/linux-compiler-vm.md). Experimental SGI/GCC 4.4 profiles are
 explicit selections, excluded from routine installed-compiler comparisons.
 
+GCC 2.8.1 code generation can now be paired with original SN ASN64 2.56 through
+an explicit compiler profile. Real macOS checks cover arithmetic, calls/data
+relocations, floats, branches, and seven byte-exact functions from an isolated
+retail-game sample. The new C-only profile uses the same compiler selection,
+comparison, per-function settings and export paths. Physical Linux/WSL checks
+remain outstanding. Shared instruction diffs expose encoding-only disagreements
+hidden behind identical disassembly aliases without weakening the byte judge.
+
 ## What works where
 
 Each feature and the platforms it covers today. A — is a gap: pick one up (the notes under the table say where to
