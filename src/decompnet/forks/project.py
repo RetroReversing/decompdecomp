@@ -260,8 +260,11 @@ class ForkProject:
                 return manual
             return {"what": f"your copy of the game ({Path(path).name})", "path": path,
                     "sha1": sha1.group(1).lower() if sha1 else None, "auto": True,
-                    "help": "Checked against the sha1 in the project's splat config. A PlayStation disc image works "
-                            "too: the file is taken from it."}
+                    "help": ("An N64 ROM in .z64, .v64 or .n64 byte order works: decompdecomp checks its "
+                             "normalized SHA-1 and saves a .z64 copy for the project."
+                             if path.lower().endswith(".z64") and sha1 else
+                             "Checked against the sha1 in the project's splat config. A PlayStation disc image "
+                             "works too: the file is taken from it.")}
         return manual
 
     # ------------------------------------------------------------------ setup
@@ -274,6 +277,19 @@ class ForkProject:
             raise ForkError("decompdecomp doesn't know where this project expects the game; follow its README")
         src = Path(src)
         if need.get("sha1") and _sha1(src) != need["sha1"]:
+            if need["path"].lower().endswith(".z64"):
+                from ..consoles.n64.rom import copy_z64_file, z64_file_sha1
+                from ..rom import RomError
+
+                try:
+                    normalized = z64_file_sha1(src)
+                except RomError as error:
+                    raise ForkError(str(error)) from error
+                if normalized and normalized[0] == need["sha1"]:
+                    dest = self.root / need["path"]
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    copy_z64_file(src, dest)
+                    return dest
             inner = self._from_disc(src.read_bytes(), Path(need["path"]).name) if src.stat().st_size < 1 << 30 else None
             if inner is None or hashlib.sha1(inner).hexdigest() != need["sha1"]:
                 raise ForkError("that file isn't the version this project decompiles (its sha1 doesn't match the "
