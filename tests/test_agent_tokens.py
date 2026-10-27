@@ -167,7 +167,7 @@ def test_codex_invalid_effort_is_fatal_but_transient_errors_are_not():
 
 
 @pytest.mark.parametrize('mode', ['rom', 'fork'])
-def test_independent_variants_use_normal_judge_and_leave_last_candidate(tmp_path, monkeypatch, mode):
+def test_independent_variants_use_normal_judge_and_select_best_candidate(tmp_path, monkeypatch, mode):
     net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
     with net.store.tx() as db:
         db.execute('UPDATE projects SET config=?', (json.dumps({'kind':mode}),))
@@ -183,12 +183,12 @@ def test_independent_variants_use_normal_judge_and_leave_last_candidate(tmp_path
         {'old':'return 1','new':'return 2'}, {'old':'return 1','new':'return 3'}]})
     assert seen==['int f(){return 2;}','int f(){return 3;}']
     assert 'last submitted variant 2' in result
-    assert agent_tokens.candidate(net,a,'game','f')[0]==seen[-1]
+    assert agent_tokens.candidate(net,a,'game','f')[0]==seen[0]
     with pytest.raises(NetworkError,match='Candidate changed'):
         agent_tokens.variants(net,a,'game','f',rev,[{'old':'return 1','new':'return 5'}])
     _,rev=agent_tokens.candidate(net,a,'game','f')
     with pytest.raises(NetworkError,match='exactly once'):
-        agent_tokens.variants(net,a,'game','f',rev,[{'old':'return 3','new':'return 5'}, {'old':'absent','new':'x'}])
+        agent_tokens.variants(net,a,'game','f',rev,[{'old':'return 2','new':'return 5'}, {'old':'absent','new':'x'}])
     assert len(seen)==2  # validate the whole batch before compiling anything
 
 
@@ -342,7 +342,8 @@ def test_named_and_occurrence_family_targets_use_normal_judge(tmp_path, monkeypa
     assert len(seen)==7 and 'return a + (int)(a)' in seen[1]
     _,rev=agent_tokens.candidate(net,a,'game','f')
     out=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'signedness'})
-    assert 'Valid signedness targets:' in out and 'a (line' in out and len(seen)==7
+    assert 'Selected declaration' in out and len(seen)==8
+    _,rev=agent_tokens.candidate(net,a,'game','f')
     out=tools.call(net,a,'game','compile_patch',{'function':'f','revision':rev,'old':'a','new':'other','occurrence':1})
     assert 'int other;' in seen[-1]  # occurrence counts exact nonoverlapping text, including declarations
 
@@ -459,3 +460,48 @@ def test_pattern_family_uses_normal_judge_and_captures_provenance(tmp_path, monk
     assert len(seen)==1 and expected in seen[0] and 'MATCH!' in out
     case=net.repair_feedback.listing('game')['examples'][0]['id']
     assert net.repair_feedback.detail('game',case)['evidence']['provenance']['family']==family
+
+
+@pytest.mark.parametrize('mode',['rom','fork'])
+@pytest.mark.parametrize('scores,expected', [([20,30],1),([5,30],2),([None,None],1)])
+def test_batch_continuation_keeps_baseline_or_best_without_extra_attempt(tmp_path,monkeypatch,mode,scores,expected):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a');fn=net._function('f','game')
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode}),))
+    net.claim_row(a,'game','f');net._record(fn,a,10,'int f(){return 1;}',1)
+    seen=[]
+    def compile(agent,function,source,slug):
+        score=scores[len(seen)];seen.append(source);net._record(fn,agent,score,source,1)
+        net.keep_diff(agent.id,fn['id'],[('i',str(score),'target')])
+        return 'COMPILE ERROR' if score is None else 'score '+str(score)
+    monkeypatch.setattr(net,'compile_and_diff',compile)
+    _,rev=agent_tokens.candidate(net,a,'game','f')
+    out=agent_tokens.variants(net,a,'game','f',rev,[{'old':'return 1','new':'return 2'},{'old':'return 1','new':'return 3'}])
+    selected,newrev=agent_tokens.candidate(net,a,'game','f')
+    assert f'return {expected}' in selected
+    assert net.store.one('SELECT COUNT(*) AS n FROM attempts')['n']==3
+    assert 'Continuation:' in out and newrev in out
+    assert net._function('f','game')['status']=='open'
+    # A stale request rejects without spending another compile and supplies the current state/delta.
+    if newrev!=rev:
+        with pytest.raises(NetworkError,match='Current candidate revision') as error:
+            agent_tokens.patch(net,a,'game','f',rev,'return 1','return 7')
+        assert 'Current changes' in str(error.value)
+        assert len(seen)==2
+    # The next edit starts from the selected C; selection is invalidated by the new attempt.
+    def next_compile(agent,function,source,slug):
+        net._record(fn,agent,4,source,1)
+        return 'score 4'
+    monkeypatch.setattr(net,'compile_and_diff',next_compile)
+    agent_tokens.patch(net,a,'game','f',newrev,f'return {expected}','return 7')
+    assert 'return 7' in agent_tokens.candidate(net,a,'game','f')[0]
+
+
+def test_no_effect_streak_suggests_applicable_untried_family(tmp_path):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a');fn=net._function('f','game')
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET best_source=?',('int f(){\nint x;\nreturn x;}',))
+    net.claim_row(a,'game','f');rows=[('i','one','two')];net.keep_diff(a.id,fn['id'],rows)
+    for _ in range(3):
+        text=agent_tokens.feedback(net,a,'game','f','score 10\nmarkers: i=operand',rows)
+    assert 'Next valid local experiment' in text and 'family="signedness"' in text and 'target="next"' in text

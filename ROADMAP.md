@@ -803,3 +803,5 @@ adaptive routing. Configured queues do not batch unfiltered neighbours.
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
 
+
+Agent batches select the best scored continuation (baseline wins ties; all errors retain the starting C). Selection changes only the agent snapshot and displayed diff, never game files, attempts or judge verdicts, and is invalidated by the next submission, claim or context/settings change. Bounded stale-revision deltas avoid unnecessary full-source rereads; same-function edits remain serialized and stale edits never compile. Missing signedness/declaration-order selectors choose the next untried valid target. Compile/release feedback gives the remaining move-on budget, and repeated identical diffs recommend an applicable local family before another ineffective edit. Shared across ROM/imported modes.
