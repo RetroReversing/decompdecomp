@@ -48,7 +48,9 @@ def test_sn64_pipeline_order_and_failed_steps(tmp_path, monkeypatch):
         output.write_bytes(b'\x7fELF\x01\x02' if argv[0] == str(tools['converter']) else b'.text\n')
         return SimpleNamespace(returncode=0)
     monkeypatch.setattr(subprocess, 'run', run)
-    sn_compile(**tools, source=src, output=out, include=inc, flags=['-O2', '-DTEST=1'])
+    monkeypatch.chdir(tmp_path)
+    sn_compile(**tools, source=src, output=out, include=Path('include'), flags=['-O2', '-DTEST=1'])
+    assert '-I' + str(inc) in seen[0]
     assert [Path(a[1]).name if a[0] == str(tools['runner']) else Path(a[0]).name for a in seen] == ['cpp', 'cc', 'assembler', 'converter']
     assert '-DTEST=1' in seen[0] and '-DTEST=1' not in seen[1]
     assert seen[-1][-2:] == ['-b', '-n']
@@ -61,7 +63,7 @@ def test_sn64_pipeline_order_and_failed_steps(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize('tid', ['sn-n64-281', 'sn-n64-272-0001', 'sn-n64-272-0004', 'sn-n64-272-0006'])
 def test_original_sn64_compiles_and_preserves_relocations(tmp_path, tid):
-    required = [tid, 'wibo', 'psyq-obj-parser', 'sn-n64-272-0001']
+    required = [tid, 'wibo', 'psyq-obj-parser']
     if any(toolchains.installed(t) is None for t in required):
         pytest.skip('needs accepted local SN64 compilers, wibo and the pinned converter')
     if not all((toolchains.require(tid) / name).is_file() for name in ['cc1n64.exe', 'cppn64.exe', 'asn64.exe']):

@@ -34,7 +34,7 @@ def compile_source(cc: Path, cpp: Path, assembler: Path, converter: Path, runner
     defines = [f for f in flags if f.startswith(('-D', '-U', '-I'))]
     compiler_flags = [f for f in flags if f not in defines]
     run([runner, cpp, '-P', '-undef', '-nostdinc', '-D_LANGUAGE_C', '-D__GNUC__=2',
-         '-I' + str(include), *defines, source, '-o', preprocessed])
+         '-I' + str(include.resolve()), *defines, source, '-o', preprocessed])
     run([runner, cc, '-quiet', *compiler_flags, preprocessed, '-o', assembly])
     assembly.write_bytes(assembler_input(assembly.read_text(encoding='utf-8', errors='replace')).encode('utf-8'))
     run([runner, assembler, '-mips3', '-I', include, '-o', obj, assembly])
