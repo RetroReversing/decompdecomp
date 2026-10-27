@@ -107,4 +107,6 @@ def scan(net, folders, log=lambda *_: None):
             db.execute('DELETE FROM sdk_sources WHERE corpus=?', (corpus,))
         db.execute('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)',
                    (KEY, json.dumps({'folders': [str(p) for p in roots], 'files': records})))
+    from .sdk_names import name_projects
+    name_projects(net)
     return {'files': len(records), 'signatures': imported, 'unchanged': sum(old['files'].get(p) == r for p, r in records.items())}

@@ -796,3 +796,10 @@ adaptive routing. Configured queues do not batch unfiltered neighbours.
 Compiler comparisons now publish structured live progress and show the current function, per-function
 settings count, saved/best percentages and completed/improved totals outside a collapsed detailed log.
 Log polling preserves a reader's scroll position; compiler logs follow the tail only when explicitly enabled.
+
+Automatic SDK naming now uses the same full-size unambiguous signatures as the library badge across
+selected SDK corpora, rather than only version-labelled libultra archives. It runs at app startup, after
+SDK indexing/selection and during the free matching pass. ROM batches use normal matched-code checks;
+imported projects use their normal config/source rename and rebuild validation (four names per pass).
+Meaningful/user-assigned names, active claims, duplicate targets, ambiguous identities, compiler builtins
+and collisions are preserved. Names retain SDK provenance and never count as verified C matches.
