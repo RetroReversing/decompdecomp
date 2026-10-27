@@ -10,6 +10,7 @@ import re
 import shutil
 import tempfile
 import time
+from collections import Counter
 from pathlib import Path
 
 from ... import consoles, scoring, seeds, toolchains
@@ -132,6 +133,7 @@ class ImportMixin:
             "kind": "rom", "platform": console.id, "big_endian": picked.big_endian, "gp": res.gp,
             "rom": {**info, "file": res.image or picked.filename, "program": picked.filename},
             "segments": [vars(s) for s in res.segments],
+            "coverage_notes": getattr(res, 'coverage_notes', []),
             "compiler": {"toolchain": toolchain, "flags": flags, "timeout": 20},
             "legal": {"basis": "personal-copy", "license": "personal use only",
                       "statement": "imported by the owner of this copy of the game, who confirmed it was legally obtained",
@@ -142,7 +144,7 @@ class ImportMixin:
         if reimport is not None:
             old_cfg = json.loads(reimport["config"])
             for key, value in old_cfg.items():
-                if key not in {"kind", "platform", "big_endian", "gp", "rom", "segments", "legal"}:
+                if key not in {"kind", "platform", "big_endian", "gp", "rom", "segments", "legal", "coverage_notes"}:
                     cfg[key] = value
             cfg["compiler"] = old_cfg.get("compiler", cfg["compiler"])
             cfg.pop("export", None)
@@ -155,7 +157,7 @@ class ImportMixin:
             symbols.add(Symbol(name, addr, 0, "func"), reindex=False)
         for fn in res.functions:
             check_cancel()
-            symbols.add(Symbol(fn.name, fn.vram, fn.size, "func"), reindex=False)
+            symbols.add(Symbol(fn.name, fn.vram, fn.size, "func"), reindex=False, alias=True)
         rom_bytes, segs = rom, res.segments
 
         def read(addr, n):
@@ -170,8 +172,10 @@ class ImportMixin:
             check_cancel()
             if d.name in symbols.by_name:
                 continue
-            symbols.add(Symbol(d.name, d.vram, d.size, d.kind), reindex=False)
-            data_rows.append((d.name, d.vram, d.size, d.kind, data_preview(read(d.vram, min(d.size, 48)), d.kind) if d.kind != "bss" else ""))
+            symbols.add(Symbol(d.name, d.vram, d.size, d.kind), reindex=False, alias=True)
+            preview = (rom_bytes[d.rom:d.rom + min(d.size, 48)] if d.rom is not None
+                       else read(d.vram, min(d.size, 48)))
+            data_rows.append((d.name, d.vram, d.size, d.kind, data_preview(preview, d.kind) if d.kind != "bss" else ""))
         symbols.reindex_symbols()
 
         root = Path(reimport["root"]) if reimport is not None else workdir
@@ -203,13 +207,17 @@ class ImportMixin:
                 else:
                     pid = reimport["id"]
                     rows = db.execute("SELECT * FROM functions WHERE project_id=?", (pid,)).fetchall()
-                    # by address first: a function renamed since (rename_symbol, polishing) has its old name nowhere
-                    # in the new split, and paired by name it lost its matched C
-                    by_vram = {r["vram"]: r for r in rows if r["vram"] is not None}
+                    # A bank and address identify renamed functions. A bare address is safe only when
+                    # unique on both sides; mutually exclusive overlays share their RAM slots.
+                    old_counts = Counter(r['vram'] for r in rows)
+                    new_counts = Counter(fn.vram for fn in res.functions)
+                    by_vram = {r["vram"]: r for r in rows if r["vram"] is not None
+                               and old_counts[r['vram']] == new_counts[r['vram']] == 1}
+                    by_unit = {(r['unit'], r['vram']): r for r in rows}
                     by_name = {r["name"]: r for r in rows}
                     old_functions = {}
                     for fn in res.functions:
-                        old = by_vram.get(fn.vram) or by_name.get(fn.name)
+                        old = by_unit.get((fn.segment, fn.vram)) or by_name.get(fn.name) or by_vram.get(fn.vram)
                         if old is not None and old["id"] not in {o["id"] for o in old_functions.values()}:
                             old_functions[fn.name] = old
                     paired = {o["id"] for o in old_functions.values()}

@@ -143,6 +143,9 @@ def export_rom(net, slug: str, out: Path, console, log=print) -> dict:
     from ..consoles import EXPORT
 
     proj = net._project(slug)
+    if net.store.one("SELECT vram FROM functions WHERE project_id=? GROUP BY vram HAVING COUNT(*)>1 LIMIT 1", proj["id"]):
+        raise ExportError("Rebuildable export does not yet support overlapping overlay banks. "
+                          "Your matches remain saved; continue working in the app until bank-aware export is available.")
     cfg = net.cfg(proj)
     if EXPORT not in console.features:
         raise ExportError(f"exporting a rebuildable project isn't supported for {console.name or 'this console'} yet")

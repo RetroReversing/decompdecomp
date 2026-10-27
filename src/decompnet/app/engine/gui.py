@@ -99,6 +99,7 @@ class GuiMixin:
             "set_aside_bytes": agg["set_aside_bytes"] or 0, "attempts": agg["attempts"] or 0,
             "context_version": self._context(proj["id"])["version"],
             "folder": proj["root"],
+            "coverage_notes": cfg.get('coverage_notes', []),
             "export": cfg.get("export"),
             "exportable": consoles.EXPORT in console.features,
             "room": self._room_info(proj["slug"]),
