@@ -14,6 +14,11 @@ Public projects with a verified full source image can protect partial units with
 identical, in addition to passing the function judge. This shared project-mode check works with any console.
 Verified Splat imports also support assembly-only checkouts and maps at the checkout root;
 references still require the complete original image hash, and assembly contributes no recovered C.
+Imports and Check again can also generate references for version-matched assembly images declared by nested
+Splat Makefiles, including extracted compressed programs with their own original SHA-1 files. Each code section
+is linked at its original address and checked against that image before the combined objdiff configuration is
+published. Coverage notes identify the images included; opaque binary sections are not counted as functions.
+Nested C builds still need their own objdiff configuration or a single supported top-level Splat layout.
 
 ROM-mode compiler comparisons save the complete ranked results per function. Any compiled row can be
 applied after revalidation. Bulk comparisons skip completed tests while their source, context, target,

@@ -469,10 +469,12 @@ def generate(project, config_path: Path, config: dict, console, log=print) -> bo
         candidates = matching
     elif len(candidates) == 1:
         log('The source rebuild is incomplete; deriving and verifying references independently from the original image.')
+    elif all(unit['source'] is None for unit in units) and not candidates:
+        log('Deriving assembly-only references directly from the original image; no C candidates are marked matched.')
     else:
         raise ForkError("automatic objdiff setup needs one linked ELF beside a rebuilt image with the original SHA-1")
     try:
-        definitions = symbols(candidates[0])
+        definitions = symbols(candidates[0]) if candidates else {}
     except ELFError:
         raise ForkError('automatic objdiff setup needs a readable linked ELF for unresolved symbols') from None
     tid, assembler_name, linker_name = console.reference_tools
