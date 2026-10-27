@@ -103,10 +103,45 @@ function sortAgentCards(sessions, board, mode, now = Date.now() / 1000) {
     return (a.task === "readable") - (b.task === "readable") || value || a.label.localeCompare(b.label);
   });
 }
+async function showAgentResults(session, kind) {
+  const slug = S.slug, panel = document.createElement('dialog');
+  panel.className = 'transcript-dialog agent-results-dialog';
+  panel.setAttribute('aria-labelledby', 'agent-results-title');
+  panel.innerHTML = `<header><div><h2 id="agent-results-title">${kind === 'matched' ? 'Matched' : 'Improved'} functions</h2>
+    <p>${esc(session.label || session.agent)}</p></div><button data-close type="button" class="ghost">Close</button></header>
+    <p class="muted small">${kind === 'matched' ? 'Current matches credited to this agent.' : 'Distinct functions where this agent beat the previous best. Includes matches, even if another agent finished them.'} Click a function to inspect it.</p>
+    <div data-results></div><button data-more type="button" class="ghost" hidden>More functions</button>`;
+  document.body.append(panel); panel.showModal();
+  panel.querySelector('[data-close]').onclick = () => panel.close();
+  panel.addEventListener('close', () => panel.remove(), {once:true});
+  const list = panel.querySelector('[data-results]'), more = panel.querySelector('[data-more]');
+  let before = 0;
+  async function load() {
+    const done = beginWork(list, 'Loading agent results', [more]);
+    try {
+      const data = await api(`/api/agent-results?slug=${encodeURIComponent(slug)}&agent=${encodeURIComponent(session.agent)}&kind=${kind}&before=${before}`);
+      if (!panel.isConnected) return;
+      if (!before && !data.functions.length) list.textContent = 'No functions to show yet.';
+      for (const fn of data.functions) {
+        const row = document.createElement('div'); row.className = 'agent-result-row';
+        const link = document.createElement('button'); link.type = 'button'; link.className = 'link-btn'; link.textContent = fn.name;
+        link.onclick = () => { panel.close(); openFn(fn.name); };
+        const state = document.createElement('span'); state.className = 'muted small';
+        const pct = pctOf(fn.best_score,fn.n_insns);
+        state.textContent = fn.status === 'matched' ? 'Matched · 100%' : pct == null ? fn.status : `${pct.toFixed(1)}% current best`;
+        row.append(link,state); list.append(row); before = fn.id;
+      }
+      more.hidden = !data.more;
+    } catch (error) { toast(esc(error.message),'err'); }
+    finally { done(); }
+  }
+  more.onclick = load; await load();
+}
 function agentMetrics(s, stats) {
   const elapsed = agentRuntime(s), rate = agentTokenRate(s, stats);
   const runtime = LIVE.includes(s.state) ? `${Math.floor(elapsed / 3600)}h ${Math.floor(elapsed % 3600 / 60)}m` : "Not running";
-  return `<div class="agent-metrics"><div><strong>${s.task === "readable" ? stats?.polished || 0 : stats?.matched || 0}</strong><span>${s.task === "readable" ? "polished" : "matched"}</span></div><div><strong>${stats?.improved || 0}</strong><span title="Distinct functions improved; includes matches">improved</span></div><div><strong>${runtime}</strong><span>since latest start</span></div><div><strong>${rate == null ? "—" : (rate / 1000).toFixed(1) + "k"}</strong><span title="Recorded lifetime total tokens, including cache reads, divided by lifetime matches; not a dollar cost">tokens / match</span></div></div>`;
+  const metric = (kind,count) => `<button type="button" class="agent-metric-link" data-agent-results="${esc(s.id)}" data-result-kind="${kind}" ${count ? '' : 'disabled'} aria-label="View ${count} ${kind} functions for ${esc(s.label)}"><strong>${count}</strong><span>${kind} <span aria-hidden="true">↗</span></span></button>`;
+  return `<div class="agent-metrics">${s.task === 'readable' ? `<div><strong>${stats?.polished || 0}</strong><span>polished</span></div>` : metric('matched',stats?.matched || 0)}${metric('improved',stats?.improved || 0)}<div><strong>${runtime}</strong><span>since latest start</span></div><div><strong>${rate == null ? "—" : (rate / 1000).toFixed(1) + "k"}</strong><span title="Recorded lifetime total tokens, including cache reads, divided by lifetime matches; not a dollar cost">tokens / match</span></div></div>`;
 }
 $("agentSort").onchange = () => { agentSort = $("agentSort").value; renderSessions(S.sessions || []); };
 
@@ -143,6 +178,9 @@ function renderSessions(sessions) {
       <button class="link-btn" data-log="${id}" type="button" aria-pressed="${S.logFor === s.id}">${S.logFor === s.id ? "Back to everything" : "What it said and did"}</button></div>`;
   }).join("");
   setHtml(box, html);
+  box.querySelectorAll('[data-agent-results]').forEach(button => {
+    button.onclick = () => showAgentResults(sessions.find(s => String(s.id) === button.dataset.agentResults), button.dataset.resultKind);
+  });
   box.querySelectorAll(".fn").forEach((x) => { x.onclick = () => openFn(x.dataset.fn); });
   $("noSessions").hidden = sessions.length > 0;
   renderRoomAgents();
