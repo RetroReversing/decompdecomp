@@ -220,3 +220,24 @@ def test_inline_expression_candidate_is_kept_only_by_the_normal_mode_judge(impor
     perm._repair_round(AGENT,net.project_row('game'),state)
     assert expected in perm.judged and state.matched==1
     assert not net.store.all('SELECT * FROM claims')
+
+
+@pytest.mark.parametrize('imported',[False,True])
+def test_spare_pointer_staging_uses_the_normal_mode_judge(imported):
+    from decompnet.app import temporary_repairs
+    source='void f1(){void *spare;u8 *p;p=*((void **)(base+4));send(p);spare=next();use(spare);}'
+    expected=temporary_repairs.variants(source,'f1')[0]
+    net=setup_repair_net()
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    if imported:
+        net.fork_slug=lambda slug:'fork'
+        class Fork:
+            def permuter_header(self,slug,function):
+                assert (slug,function)==('fork','f1')
+                return ''
+        net.forks=Fork()
+    perm=ScriptedPermuter(net,{expected:0});state=State()
+    perm._repair_round(AGENT,net.project_row('game'),state)
+    assert expected in perm.judged and state.matched==1
+    assert not net.store.all('SELECT * FROM claims')

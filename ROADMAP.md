@@ -154,6 +154,10 @@ weaker evidence; imported-project per-file build flags are still not recorded by
 Fresh machine-draft captures identify their raw, refined or stack-buffer generating variant, without
 automatically approving review records. Simple signed-local additions can also be tested through an inline
 helper on supported 32-bit targets; ordinary exact verification must reject any helper left as a real call.
+Pointer loads can be staged through a previously unused ordinary void-pointer local, provided it is
+overwritten before its next read. This keeps evaluation in place and uses the same ROM/imported judge.
+Free template/library/address candidate captures identify their automatic strategy and origin; their review
+state still requires an explicit decision.
 
 Deterministic candidates also split field/address expressions into pointer temporaries, materialize small
 arithmetic/comparison literals, and materialize both floating comparison loads in either load order without

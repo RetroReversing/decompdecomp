@@ -261,3 +261,19 @@ def test_sdk_symbol_map_rejects_alias_even_with_another_unique_variant():
         {'name': 'alias', 'fingerprint': 'two', 'size': 32},
     ]
     assert free.sdk_symbol_map(signatures, {'one': {'a'}, 'two': {'a'}}) == {}
+
+
+def test_free_candidate_capture_identifies_its_automatic_origin_without_reviewing_it(pair,monkeypatch):
+    from decompnet.repair_feedback import _TRIAL
+    with pair.store.tx() as db:
+        db.execute('UPDATE functions SET target=?,size=8,n_insns=2 WHERE id=2',(fn([0x03e00008,0x24020007])['target'],))
+    monkeypatch.setattr(pair,'on_match',lambda *args:None)
+    def judge(agent,proj,function,source):
+        pair._record(function,agent,0,source,1,matched=True)
+        return {'matched':True,'score':0}
+    monkeypatch.setattr(pair,'try_quietly',judge)
+    assert free.run(pair.twins,'destination',Job())==1
+    case=pair.repair_feedback.listing('destination')['examples'][0]['id']
+    detail=pair.repair_feedback.detail('destination',case)
+    assert detail['evidence']['provenance']=={'kind':'automatic candidate','family':'template','origin':'MIPS leaf template'}
+    assert detail['status']=='new' and _TRIAL.get() is None
