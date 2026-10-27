@@ -803,6 +803,3 @@ adaptive routing. Configured queues do not batch unfiltered neighbours.
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
 
-Cursor Agent helpers support isolated MCP sessions, account model discovery, streamed
-activity and reported input/output/cache usage. Live macOS checks cover a homemade
-compile-and-match target and denied shell access; physical Linux/Windows checks remain.

@@ -348,10 +348,12 @@ def stall_budget_text() -> str:
             "every compile_and_diff result shows where you stand, as in \"no better in 2/6 compiles (move on at 6)\"")
 
 
-def move_on_brief(fn) -> str:
+def move_on_brief(fn, after=None) -> str:
     """The brief's line naming the function's own move-on number (the one compile_and_diff counts against)."""
-    after = stall_budget(fn["n_insns"] or 0)
-    return (f"move on after {after} compiles in a row without a better score (this function's number, by its size; "
+    custom = after is not None
+    after = after if custom else stall_budget(fn["n_insns"] or 0)
+    basis = "your worker setting" if custom else "this function’s size"
+    return (f"move on after {after} compiles in a row without a better score ({basis}; "
             f"each compile_and_diff result shows the count)")
 
 
@@ -701,6 +703,15 @@ class Network:
             if isinstance(limit, bool) or not 1 <= value <= 10000 or not value.is_integer():
                 raise NetworkError("Max tries must be a whole number from 1 to 10000")
             result["max_tries"] = int(value)
+        stall = policy.get("stall_compiles")
+        if stall is not None and stall != "":
+            try:
+                value = float(stall)
+            except (ValueError, TypeError):
+                raise NetworkError("No-improvement compiles must be a whole number from 1 to 1000") from None
+            if isinstance(stall, bool) or not 1 <= value <= 1000 or not value.is_integer():
+                raise NetworkError("No-improvement compiles must be a whole number from 1 to 1000")
+            result["stall_compiles"] = int(value)
         return result
 
     def set_selection(self, project: str, agent: str, policy: dict | None) -> dict:
@@ -712,6 +723,16 @@ class Network:
     def selection(self, project: str, agent: str) -> dict:
         row = self.store.one("SELECT policy FROM agent_selection WHERE project=? AND agent=?", project, agent)
         return json.loads(row["policy"]) if row else {}
+
+    def agent_stall_budget(self, fn, agent=None, agent_id=None):
+        """A worker override shared by briefs, compile feedback and release checks."""
+        if agent is None and agent_id is not None:
+            agent = self.store.one("SELECT name FROM agents WHERE id=?", agent_id)
+        if agent is None:
+            return None
+        name = agent.name if isinstance(agent, Agent) else agent['name']
+        project = self.store.one("SELECT slug FROM projects WHERE id=?", fn['project_id'])
+        return self.selection(project['slug'], name).get('stall_compiles')
 
     def attempt_limit(self, agent: Agent, fn) -> tuple[int | None, int]:
         slug = self.store.one("SELECT slug FROM projects WHERE id=?", fn["project_id"])["slug"]
@@ -1074,7 +1095,7 @@ class Network:
             lines.append(f"claimed by {who}, lease expires in {int(claim['expires_at'] - time.time()) // 60} min "
                          f"(each compile_and_diff renews it)")
         if fn["status"] != "matched":
-            lines.append(move_on_brief(fn))
+            lines.append(move_on_brief(fn, self.agent_stall_budget(fn, agent)))
         if fn["status"] == "matched":
             lines += [f"MATCHED by {self._agent_name(fn['matched_agent_id'])} {_ago(fn['matched_at'])}:",
                       "```c", fn["matched_source"].strip(), "```"]
@@ -1252,8 +1273,9 @@ class Network:
         counted the claim's and said "no better in 8 compiles in a row" whatever the count was: in one project a
         release was refused with the last 4 of 7 no better, then let through after exactly one more compile, so
         agents spent a compile to get past the check (446 push-backs, 36 of them improved after it)."""
-        row = self.store.one("SELECT n_insns FROM functions WHERE id=?", function_id)
-        after = stall_budget((row["n_insns"] if row else 0) or 0)
+        row = self.store.one("SELECT n_insns, project_id FROM functions WHERE id=?", function_id)
+        custom = self.agent_stall_budget(row, agent_id=agent_id) if row else None
+        after = custom if custom is not None else stall_budget((row["n_insns"] if row else 0) or 0)
         claim = self.store.one("SELECT claimed_at FROM claims WHERE function_id=? AND agent_id=?", function_id, agent_id)
         if claim is not None:
             start = claim["claimed_at"] or 0
@@ -1263,7 +1285,7 @@ class Network:
         else:
             start = None
             rows = self.store.all(f"SELECT score FROM attempts WHERE function_id=? AND agent_id=? ORDER BY id DESC "
-                                  f"LIMIT {STALL_LOOKBACK}", function_id, agent_id)
+                                  f"LIMIT {max(STALL_LOOKBACK, after + 1)}", function_id, agent_id)
             scores = [r["score"] for r in reversed(rows)]
         return {"claimed_at": start, "compiles": len(scores), "no_better": _no_better(scores), "after": after,
                 "best": min((s for s in scores if s is not None), default=None)}

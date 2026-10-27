@@ -139,7 +139,7 @@ function renderSessions(sessions) {
       ${agentMetrics(s, b)}
       <span class="facts-line">${facts.join(" · ")}</span>
       ${s.estimated_cost != null ? `<span class="small muted" title="Standard API rates checked 26 Oct 2026, using recorded input, cached input and output. Excludes cache-write, long-context, fast-mode and regional premiums. This is not your subscription bill.">≈ ${money(s.estimated_cost)} API-equivalent${b?.matched ? ` · ≈ ${money(s.estimated_cost / b.matched)} / match` : ""}</span>` : ""}
-      <button class="link-btn" data-queue="${id}" type="button">Work settings · ${s.per_session || 8} functions/session${s.task === "readable" ? "" : ` · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}`}</button>
+      <button class="link-btn" data-queue="${id}" type="button">Work settings · ${s.per_session || 8} functions/session${s.task === "readable" ? "" : ` · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.stall_compiles ? ` · move on after ${esc(s.selection.stall_compiles)} without improvement` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}`}</button>
       <button class="link-btn" data-log="${id}" type="button" aria-pressed="${S.logFor === s.id}">${S.logFor === s.id ? "Back to everything" : "What it said and did"}</button></div>`;
   }).join("");
   setHtml(box, html);
@@ -207,9 +207,10 @@ function selectionFields(policy = {}) {
     `<option value="${v}" ${(policy.strategy || "") === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
     <label class="field"><span>Only functions below match % (optional)</span><input data-selection-below type="number" min="0" max="100" step="any" placeholder="No limit" value="${esc(policy.match_below ?? "")}"></label>
     <label class="field"><span>Max tries per function (optional)</span><input data-selection-tries type="number" min="1" max="10000" step="1" placeholder="Unlimited" value="${esc(policy.max_tries ?? "")}"></label>
-    <p class="muted small">Max tries counts this worker's candidate submissions, including compile errors, across sessions and restarts. At the limit its best attempt is saved and the function is released for another worker. Compiler/flag searches are separate.
+    <label class="field"><span>Move on after compiles without improvement (optional)</span><input data-selection-stall type="number" min="1" max="1000" step="1" placeholder="Automatic: 3–10 by function size" value="${esc(policy.stall_compiles ?? "")}"></label>
+    <p class="muted small">Without improvement counts consecutive submissions that do not improve this claim's best score; an improvement resets the count. Blank uses 3–10 depending on function size. This is a move-on threshold, not a total compile cap. Max tries counts this worker's candidate submissions, including compile errors, across sessions and restarts. At the limit its best attempt is saved and the function is released for another worker. Compiler/flag searches are separate.
     Unscored functions are included. Untried first favours functions with no compile attempts.
-    An explicit strategy overrides adaptive model routing. A change applies after the current function; the percentage filter also applies to named claims.</p>`;
+    Changes to the no-improvement threshold take effect on the next compile or release check. An explicit strategy overrides adaptive model routing. A change applies after the current function; the percentage filter also applies to named claims.</p>`;
 }
 function readSelection(box) {
   const raw = box.querySelector("[data-selection-below]").value.trim();
@@ -218,7 +219,11 @@ function readSelection(box) {
   const tries = box.querySelector("[data-selection-tries]").value.trim();
   const max = tries === "" ? null : Number(tries);
   if (max !== null && (!Number.isInteger(max) || max < 1 || max > 10000)) throw new Error("Use a whole number from 1 to 10000 for max tries.");
+  const stallRaw = box.querySelector("[data-selection-stall]").value.trim();
+  const stall = stallRaw === "" ? null : Number(stallRaw);
+  if (stall !== null && (!Number.isInteger(stall) || stall < 1 || stall > 1000)) throw new Error("Use a whole number from 1 to 1000 for no-improvement compiles.");
   return { strategy: box.querySelector("[data-selection-strategy]").value, match_below: below,
+    ...(stall === null ? {} : { stall_compiles: stall }),
     ...(max === null ? {} : { max_tries: max }) };
 }
 const EFFORT_NAMES = { minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };

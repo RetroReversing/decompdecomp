@@ -210,6 +210,9 @@ def test_transfer_results_filter_successes_and_explain_mismatch_scores():
 
 
 def test_work_selection_attempt_cap_is_optional_and_requires_whole_number(gui):
+    assert gui["checks"]["selectionStall"] == [
+        {"strategy": "", "match_below": None, "stall_compiles": 30},
+        {"strategy": "", "match_below": None}, True, True]
     assert gui["checks"]["selectionCap"] == [{"strategy": "hardest", "match_below": None, "max_tries": 12}, True, True]
 
 
