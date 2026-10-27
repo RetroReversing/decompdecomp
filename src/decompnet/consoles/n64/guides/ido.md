@@ -41,3 +41,16 @@ Source line layout (observed; mechanism unconfirmed)
 - Keep formatting variants as separate attempts and rejudge after formatting matched C.
   A per-function match must still pass the complete image/cartridge rebuild. Never change the
   target bytes or judge to accommodate a formatting variant.
+
+## Additional SGI comparison profiles
+
+`ido-5.3-cxx` uses the separate old C++ frontend. `ido-4.1`, `ido-5.2`,
+`ido-6.0` and `mipspro-7.4.4` are experimental comparisons, not evidence of
+which compiler a retail game used. Their pinned packs run through their bundled
+IRIX emulator on Linux x86_64 or Windows/WSL; they do not run natively on macOS.
+IDO 4.1's ECOFF output is converted to big-endian ELF before the same byte judge.
+
+These experimental profiles are omitted from routine installed-profile searches.
+Use `try_compiler` explicitly with existing C and context. A configured compiler
+or range remains in comparisons. Check nontrivial functions before suggesting a
+range. Do not infer compiler identity from a trivial arithmetic match.

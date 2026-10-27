@@ -36,6 +36,13 @@ class Nintendo64(Console):
         Compiler("gcc-2.8.1-pm", "GCC 2.8.1 (PM matching)", "patched GCC with its paired GNU assembler"),
         Compiler("gcc-egcs-2.91.66", "EGCS 1.1.2 / GCC 2.91.66", "later iQue rebuild toolchains"),
         Compiler("sn-n64-272-970404", "Reconstructed SN64 GCC 2.7.2 (970404)", "reconstructed SN codegen with compatibility assembly"),
+        Compiler("ido-5.3-cxx", "IDO 5.3 C++", "separate SGI C++ frontend; Linux/WSL", automatic=False),
+        Compiler("ido-5.2", "IDO 5.2", "experimental SGI comparison; Linux/WSL", automatic=False),
+        Compiler("ido-6.0", "IDO 6.0", "experimental SGI comparison; Linux/WSL", automatic=False),
+        Compiler("ido-4.1", "IDO 4.1", "experimental early SGI comparison; Linux/WSL", automatic=False),
+        Compiler("mipspro-7.4.4", "MIPSpro 7.4.4", "experimental; retail N64 use unconfirmed; Linux/WSL", automatic=False),
+        Compiler("gcc-egcs-1.1.2-4", "Original EGCS 1.1.2-4", "original Linux release; iQue toolchain comparison"),
+        Compiler("gcc-4.4.0-n64", "GCC 4.4.0 (MIPS64 ELF)", "experimental modern toolchain; Linux/WSL", automatic=False),
     )
     guides = ("mips",)
     m2c = "mips-gcc"
@@ -82,12 +89,12 @@ class Nintendo64(Console):
 
     def up_front_guide(self, compiler: str) -> str:
         compiler = compiler.lower()  # (a fork of a public decomp: "project", its own build's)
-        if compiler in ("gcc-2.8.1-pm", "gcc-egcs-2.91.66"):
+        if compiler in ("gcc-2.8.1-pm", "gcc-egcs-2.91.66", "gcc-egcs-1.1.2-4", "gcc-4.4.0-n64"):
             return "gcc-variants"
-        return "ido" if "ido" in compiler else "sn64" if compiler.startswith("sn-n64") else "gcc-kmc" if "gcc" in compiler else ""
+        return "ido" if "ido" in compiler or "mipspro" in compiler else "sn64" if compiler.startswith("sn-n64") else "gcc-kmc" if "gcc" in compiler else ""
 
     def m2c_target(self, compiler: str = "") -> str:
-        return "mips-ido" if "ido" in compiler.lower() else "mips-gcc"
+        return "mips-ido" if "ido" in compiler.lower() or "mipspro" in compiler.lower() else "mips-gcc"
 
     def export_asm(self, text: str) -> str:
         text = super().export_asm(text)

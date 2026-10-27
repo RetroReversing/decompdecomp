@@ -70,8 +70,8 @@ The application was not reinstalled and no live compiler ranges were applied.
 | `gcc-2.8.1-pm` | Matching GCC fork and paired assembler | Real C compilation and linked byte checks on macOS |
 | `gcc-egcs-2.91.66` | EGCS 1.1.2 and paired binutils | Real C compilation and linked byte checks on macOS |
 | `sn-n64-272-970404` | Reconstructed native GCC, modern-asn64, GNU assembler | Native Apple Silicon source build, real C compilation and linked byte checks |
-| `sn-n64-272-0004` | Original SN compiler/assembler, preserved-pack conversion | Registry and shared integration tests; live test requires license acceptance |
-| `sn-n64-272-0006` | Original SN compiler/assembler, preserved-pack conversion | Registry and shared integration tests; live test requires license acceptance |
+| `sn-n64-272-0004` | Original SN compiler/assembler, preserved-pack conversion | Real C compilation and linked byte checks on macOS |
+| `sn-n64-272-0006` | Original SN compiler/assembler, preserved-pack conversion | Real C compilation and linked byte checks on macOS |
 
 Downloads and the reconstructed source commit are checksum pinned. The source
 build adds only a host assertion-reporting helper required by Apple's runtime;
@@ -81,3 +81,38 @@ but physical-host verification remains outstanding. These profiles enter the
 shared compiler picker, flag comparisons, GCC drafts and permuter selection;
 imported projects continue using their own build scripts. No live app or game
 project was changed during validation.
+
+After explicit license acceptance, builds 0004 and 0006 were installed and
+passed real arithmetic, call/data relocation, floating-point and branch
+compilation checks, including exact linked byte comparisons. Build 0006's
+preprocessor requires an absolute include directory under wibo; the driver
+normalizes that path, with a regression test for relative sandbox inputs.
+
+## Additional Linux comparison profiles
+
+The picker also offers original EGCS 1.1.2-4, GCC 4.4.0, IDO 4.1/5.2/6.0,
+IDO 5.3's separate C++ frontend and MIPSpro 7.4.4. These downloads contain
+Linux x86 executables. Windows uses WSL; macOS cannot install these packs.
+Native macOS builds of the additional SGI emulator and original GNU releases
+remain a gap. Existing native IDO 5.3/7.1 and reconstructed EGCS remain available
+on macOS. A listed compiler is not evidence that a retail game used it.
+
+Original EGCS uses the pinned 32-bit runtime. GCC 4.4 includes pinned Debian
+GMP/MPFR host libraries, without requiring system package installation. Both
+profiles passed arithmetic, calls/data relocations, floating point and branches
+in an isolated x86 Linux container on an Apple Silicon VM; the ordinary linked
+byte judge passed arithmetic and call/data relocation checks. i386 translation
+used a smaller QEMU guest reservation to stay inside the unchanged compiler
+memory cap. Physical x86 Linux and WSL remain untested.
+
+The SGI profiles execute their checksum-pinned bundled IRIX emulator, preserving
+32-bit big-endian output. IDO 4.1 emits ECOFF: the bundled converter's ELF writer
+is adapted to big-endian metadata without changing code bytes or relocation
+semantics. IDO 5.3 C++ uses the separate `CC` frontend. SGI installation requires
+explicit acceptance; real compiler execution is pending that acceptance.
+
+The SGI profiles and GCC 4.4 are marked experimental and omitted from routine
+installed-profile comparisons. Select one explicitly for a project or function
+with `try_compiler`; a project's explicitly configured profile/ranges still
+participate in bulk comparisons. This avoids expanding every routine search
+with speculative toolchains. Imported projects keep their own build scripts.

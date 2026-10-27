@@ -177,7 +177,7 @@ class CompilerMixin:
             # Only this console's installed, usable compilers: never download tools or call an AI provider.
             candidates = sorted({(c.id, tuple(consoles.default_flags(cfg, c.id)))
                                  for c in consoles.of(cfg).compilers
-                                 if toolchains.installed(c.id) and toolchains.get(c.id).supported
+                                 if c.automatic and toolchains.installed(c.id) and toolchains.get(c.id).supported
                                  and not toolchains.runtime_error(c.id)} | set(candidates))
             candidates = [(tc, flags) for tc, flags in candidates if toolchains.installed(tc)
                           and toolchains.get(tc).supported and not toolchains.runtime_error(tc)]
