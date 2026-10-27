@@ -803,4 +803,3 @@ adaptive routing. Configured queues do not batch unfiltered neighbours.
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
 
-Each worker can override its consecutive no-improvement move-on threshold in Work settings (1–1000, blank retains size-based 3–10). This is separate from the existing total max-tries cap. ROM/project briefs, compile feedback and release checks share the persisted override; improvements reset the consecutive count.

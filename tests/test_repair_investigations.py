@@ -15,12 +15,12 @@ def test_choices_only_locate_programs_without_running_them(monkeypatch):
     looked = []
     monkeypatch.setattr(investigations, '_which', lambda name: looked.append(name) or '/agent')
     result = investigations.choices()
-    assert {r['id'] for r in result} == {'codex', 'claude'}
+    assert {r['id'] for r in result} == {'codex', 'claude', 'cursor-cli'}
     assert all(r['installed'] for r in result)
-    assert set(looked) == {'codex', 'claude'}
+    assert set(looked) == {'codex', 'claude', agents.get('cursor-cli').command}
 
 
-@pytest.mark.parametrize('kind', ['codex', 'claude'])
+@pytest.mark.parametrize('kind', ['codex', 'claude', 'cursor-cli'])
 def test_launch_is_private_and_keeps_evidence_outside_checkout(tmp_path, monkeypatch, kind):
     monkeypatch.setattr(investigations, '_which', lambda name: '/bin/coding-agent')
     monkeypatch.setattr(investigations.shutil, 'which', lambda name: '/bin/git')
