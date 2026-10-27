@@ -802,5 +802,3 @@ adaptive routing. Configured queues do not batch unfiltered neighbours.
 - **Polish in the drafts.** Methods of known classes are drafted as `Class::method` in the brief; the polishing pass
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
-
-Repair review now uses a bounded scrolling card dialog with separate filters, highlighted source diffs, and persistent export controls. Narrow unsigned call-result comparisons can inline isolated two-local pairs as a bounded hypothesis in ROM and imported-project draft repairs and compile_family. Only the ordinary exact judge accepts a candidate; extra uses, intervening statements, volatile accesses and complex call arguments are excluded.
