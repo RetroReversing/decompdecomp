@@ -1,4 +1,4 @@
-"""Cartridge-resident overlay tables with independently checksummed zlib program images.
+"""Cartridge-resident overlay tables with zlib program images and paired byte-patch banks.
 
 The marker and records describe load addresses explicitly, including mutually exclusive RAM slots. Unknown
 storage formats remain opaque and are reported, rather than guessed to contain executable instructions.
@@ -28,6 +28,7 @@ class Overlay:
     address: int
     size: int
     data: bytes | None
+    storage: str = "zlib"
 
 
 def read(rom: bytes) -> list[Overlay]:
@@ -42,7 +43,7 @@ def read(rom: bytes) -> list[Overlay]:
             raise RomError('The overlay table is truncated; the current project was retained')
         cart, packed, address, end = struct.unpack_from('>4I', rom, at)
         if not (0xB0000000 <= cart < 0xC0000000 and 0x80000000 <= address < 0x80800000):
-            return entries
+            return _patches(entries, rom)
         size, offset = end - address, cart & 0x0FFFFFFF
         if packed == 0 and size == 0:
             continue
@@ -64,6 +65,40 @@ def read(rom: bytes) -> list[Overlay]:
     raise RomError('The overlay table has no bounded terminator')
 
 
+def _patches(entries: list[Overlay], rom: bytes) -> list[Overlay]:
+    """A second bank can reuse the preceding bank through cumulative-offset byte replacements.
+
+    The loader reads big-endian u16 deltas and u8 values at four-byte strides. Identify the paired
+    bank by its complete size sequence and distinct uniform load slot, not by fixed cartridge offsets.
+    """
+    first = next((i for i, entry in enumerate(entries) if entry.data is None), len(entries))
+    count = len(entries) - first
+    if not count or first < count:
+        return entries
+    bases, patches = entries[first - count:first], entries[first:]
+    if (any(e.data is None for e in bases) or any(e.data is not None for e in patches)
+            or len({e.address for e in bases}) != 1 or len({e.address for e in patches}) != 1
+            or bases[0].address == patches[0].address
+            or [e.size for e in bases] != [e.size for e in patches]):
+        return entries
+    for base, entry in zip(bases, patches):
+        payload = rom[entry.offset:entry.offset + entry.packed]
+        if len(payload) % 4 or any(payload[3::4]):
+            return entries  # not the recognized padded patch-record format
+    decoded = []
+    for base, entry in zip(bases, patches):
+        data, position = bytearray(base.data), 0
+        for delta, value, _ in struct.iter_unpack('>HBB', rom[entry.offset:entry.offset + entry.packed]):
+            position += delta
+            if position >= len(data):
+                raise RomError(f'Overlay {entry.index} has a byte patch outside its base image')
+            data[position] = value
+        decoded.append(bytes(data))
+    for entry, data in zip(patches, decoded):
+        entry.data, entry.storage = data, 'byte-patches'
+    return entries
+
+
 def add(config: Path, workdir: Path, image: str, log) -> str | None:
     """Append verified program images and give overlapping banks distinct symbols and Splat contexts."""
     import yaml
@@ -75,7 +110,7 @@ def add(config: Path, workdir: Path, image: str, log) -> str | None:
     cfg = yaml.safe_load(config.read_text(encoding='utf-8'))
     expanded = bytearray(rom)
     segments = [s for s in cfg['segments'] if not (isinstance(s, list) and len(s) == 1)]
-    decoded, skipped = 0, []
+    decoded, patched, skipped = 0, 0, []
     for entry in entries:
         if entry.data is None:
             skipped.append(entry.index)
@@ -99,6 +134,7 @@ def add(config: Path, workdir: Path, image: str, log) -> str | None:
                          'symbol_name_format_no_rom': f'$VRAM_{name}', 'subsegments': parts})
         segments.append({'type': 'bin', 'start': len(expanded)})
         decoded += 1
+        patched += entry.storage == 'byte-patches'
     if not decoded:
         raise RomError('No supported executable overlay images were decoded from the table')
     # The last bin begins exactly at EOF; keep only the single end marker there.
@@ -110,7 +146,9 @@ def add(config: Path, workdir: Path, image: str, log) -> str | None:
     cfg['sha1'] = hashlib.sha1(expanded).hexdigest()
     cfg['segments'] = segments
     config.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding='utf-8')
-    notes = [f'Includes {decoded} independently checksummed overlay program images.']
+    notes = [f'Includes {decoded} overlay program images: {decoded - patched} checksummed zlib images and '
+             f'{patched} images reconstructed from bounded byte patches against those bases.',
+             'Text boundaries are inferred; decoded table coverage does not establish complete game-function coverage.']
     if skipped:
         notes.append(f'{len(skipped)} overlay-table entries use unsupported storage or have no identified '
                      'executable text and are excluded: ' + ', '.join(map(str, skipped)) + '.')
