@@ -251,3 +251,10 @@ def test_linux_vm_setup_shows_readiness_and_uses_progress():
         pytest.skip('needs node to run GUI scripts')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_linuxvm.js'))], check=True,
                    capture_output=True, text=True, encoding='utf-8', timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_compiler_summary_and_job_log_respect_reader_scroll():
+    if NODE is None:
+        pytest.skip("needs node to run the GUI's scripts")
+    subprocess.run([NODE, str(Path(__file__).with_name("gui_compiler_progress.js"))], check=True,
+                   capture_output=True, text=True, encoding="utf-8", timeout=GUI_TIMEOUT_SECONDS)

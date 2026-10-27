@@ -14,7 +14,7 @@ from decompnet.project import compiler_config
 from decompnet.rom.match import RomTarget, link
 from decompnet.rom.symbols import Symbol, SymbolTable
 
-EXTRA = ['gcc-2.8.1-pm', 'gcc-egcs-2.91.66', 'sn-n64-272-0004', 'sn-n64-272-0006', 'sn-n64-272-970404']
+EXTRA = ['gcc-2.8.1-pm-sn-as', 'gcc-2.8.1-pm', 'gcc-egcs-2.91.66', 'sn-n64-272-0004', 'sn-n64-272-0006', 'sn-n64-272-970404']
 
 
 @pytest.mark.parametrize('tid', EXTRA)
@@ -100,3 +100,45 @@ def test_native_sn_driver_keeps_preprocessor_defines_and_small_data_consistent(t
     assert '-DTEST=1' in calls[0] and '-DTEST=1' not in calls[1]
     assert '-G8' in calls[1] and '-G8' in calls[2]
     assert '-EB' in calls[2] and str(tools['wrapper']) in calls[2]
+
+
+def test_gcc_sn_pair_preserves_generated_instructions_and_uses_explicit_tools(tmp_path, monkeypatch):
+    from decompnet.consoles.n64 import sn64
+
+    tools = [tmp_path / name for name in ['gcc', 'asn64.exe', 'converter', 'wibo']]
+    for tool in tools:
+        tool.touch()
+    calls = []
+    original = '.type probe,@function\nprobe:\n\tjr $ra\n\taddu $v0,$a0,$a1\n'
+    output = tmp_path / 'probe.o'
+    def run(argv, **kwargs):
+        calls.append(argv)
+        assert kwargs['check'] and kwargs['timeout'] == 30
+        if len(calls) == 1:
+            assert '-S' in argv and '-O2' in argv
+            (tmp_path / 'probe.sn.s').write_text(original)
+        elif len(calls) == 2:
+            assert (tmp_path / 'probe.sn.s').read_bytes() == sn64.assembler_input(original).encode()
+        else:
+            output.write_bytes(b'\x7fELF\x01\x02')
+    monkeypatch.setattr(sn64.subprocess, 'run', run)
+    sn64.compile_gcc_source(*tools, tmp_path / 'probe.c', output, tmp_path, ['-O2'])
+    assert calls[1][:3] == [str(tools[3]), str(tools[1]), '-mips3']
+    assert calls[2][0] == str(tools[2])
+
+
+def test_installed_pair_supports_export_style_relative_builds(tmp_path):
+    from decompnet.compiler import run_in
+
+    tid = 'gcc-2.8.1-pm-sn-as'
+    if any(toolchains.installed(t) is None for t in [tid, *toolchains.get(tid).requires]):
+        pytest.skip('requires accepted local compiler/assembler pairing')
+    cfg = compiler_config(tmp_path, {'compiler': {'toolchain': tid}})
+    (tmp_path / 'include').mkdir()
+    (tmp_path / 'source.c').write_text('int probe(int a,int b){return a+b;}\n')
+    subst = {'{src}': 'source.c', '{obj}': 'source.o', '{include}': 'include'}
+    argv = [subst.get(arg, arg) for arg in cfg.cmd]
+    result = run_in(cfg, tmp_path, argv, inputs=['source.c'], outputs=['source.o'])
+    assert result.returncode == 0, result.stderr
+    fn = extract_function((tmp_path / 'source.o').read_bytes(), 'probe')
+    assert fn.code == bytes.fromhex('03e0000800851021')

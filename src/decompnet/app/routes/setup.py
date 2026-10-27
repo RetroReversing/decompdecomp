@@ -35,6 +35,8 @@ def register(app: App) -> None:
             data = await body(request)
             if data.get('slug'):
                 await call(lambda: sdk_library.choose(net, str(data['slug']), data.get('selection')))
+                from .. import sdk_names, workers
+                workers.pool().submit(lambda: sdk_names.name_functions(net, str(data['slug'])))
                 return JSONResponse(await call(lambda: sdk_library.state(net, str(data['slug']))))
             folders = data.get('folders', [])
             return JSONResponse({'job': jobs.start('sdk-library', lambda log: sdk_library.scan(net, folders, log))})

@@ -81,6 +81,9 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     # rooms this computer belongs to reconnect (members keep their place; their agents wait while the host is away)
     net.restore_links()
 
+    from .sdk_names import name_projects
+    threading.Thread(target=lambda: name_projects(net), daemon=True, name="sdk-names").start()
+
     def consoles_start() -> None:  # what each console does for its projects at start (Console.on_start)
         for row in net.store.all("SELECT slug, config FROM projects"):
             try:

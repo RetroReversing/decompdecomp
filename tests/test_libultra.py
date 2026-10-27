@@ -49,3 +49,28 @@ def test_local_library_names_need_one_unambiguous_signature(built, tmp_path, con
     data[:4] = b"nope"
     path.write_bytes(data)
     assert report(net, proj) is None
+
+
+def test_non_libultra_sdk_name_preserves_a_real_linked_match(built, tmp_path):  # noqa: F811
+    from decompnet.app.sdk_names import name_functions as name_sdk_functions
+
+    from .test_app_engine import CLAMP
+
+    net = RomNetwork(tmp_path / 'decomp.db', tmp_path)
+    slug = net.import_rom(ROM, confirmed=True, log=lambda *_: None)
+    agent, _ = net.local_agent('tester')
+    net.split_function(agent, slug, 'func_800007C4', '0x800007D0')
+    assert net.compile_and_diff(agent, 'func_800007D0', CLAMP, slug).startswith('✅ MATCH')
+    proj = net.project_row(slug)
+    fn = net._function('func_800007D0', slug)
+    p = net.twins.prints(proj)[fn['id']]
+    with net.store.tx() as db:
+        db.execute('INSERT INTO sdk_signatures(corpus,arch,big_endian,name,fingerprint,size) VALUES(?,?,?,?,?,?)',
+                   ('Example SDK / support.a', 'mips', 1, 'sdkClamp', p.key, p.size))
+    assert name_sdk_functions(net, slug) == 1
+    renamed = net._function('sdkClamp', slug)
+    assert renamed['status'] == 'matched' and renamed['best_score'] == 0
+    assert 'sdkClamp' in renamed['matched_source']
+    current = net.project_row(slug)
+    compiler = net.cfg(current)['compiler']
+    assert net._judge_with(current, renamed, compiler['toolchain'], compiler['flags'], renamed['matched_source'])[0]

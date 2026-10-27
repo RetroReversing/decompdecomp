@@ -117,6 +117,12 @@ class Jobs:
             if cancel.is_set():
                 raise RuntimeError("opening the saved project was cancelled")
 
+        def progress(value: dict) -> None:
+            check_cancel()
+            # Replace the snapshot so polling never sees a partially updated set of counters.
+            job["progress"] = dict(value)
+
+        log.progress = progress
         log.check_cancel = check_cancel
 
         def run():

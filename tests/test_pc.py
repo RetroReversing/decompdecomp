@@ -228,6 +228,13 @@ def test_two_renames_at_once_both_reach_every_file(tmp_path, monkeypatch):
     net.forks.sync("p", log=lambda *_: None)
     agent, _ = net.local_agent("claude-1")
     said = {}
+    sync = net.forks.sync
+    def rename_sync(*args, **kwargs):
+        # Even when files are correct, publishing outside this lock can overwrite another
+        # rename's naming history. Make that previously intermittent race fail deterministically.
+        assert net.forks._tree(net.project_row("p"))._writer == threading.get_ident()
+        return sync(*args, **kwargs)
+    monkeypatch.setattr(net.forks, "sync", rename_sync)
     first = threading.Thread(target=lambda: said.update(a=net.rename_symbol(agent, "p", "_func_00401000", "Identity")))
     second = threading.Thread(target=lambda: said.update(b=net.rename_symbol(agent, "p", "_func_00401010", "Pass")))
     with net.forks._tree(net.project_row("p")).exclusive():  # a build holds the project while both start
@@ -242,7 +249,7 @@ def test_two_renames_at_once_both_reach_every_file(tmp_path, monkeypatch):
     assert names == {"func_00401000": "Identity", "func_00401010": "Pass"}
     for fn in net.store.all("SELECT name,meta FROM functions WHERE project_id=?", net.project_row("p")["id"]):
         assert json.loads(fn["meta"])["naming"]["name"] == json.loads(fn["meta"])["real"]
-    net.forks.sync("p", log=lambda *_: None)
+    sync("p", log=lambda *_: None)
     assert all(json.loads(fn["meta"]).get("naming") for fn in net.store.all(
         "SELECT meta FROM functions WHERE project_id=?", net.project_row("p")["id"]))
 

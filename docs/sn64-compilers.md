@@ -116,3 +116,26 @@ installed-profile comparisons. Select one explicitly for a project or function
 with `try_compiler`; a project's explicitly configured profile/ranges still
 participate in bulk comparisons. This avoids expanding every routine search
 with speculative toolchains. Imported projects keep their own build scripts.
+
+## GCC code generation with original SN assembly
+
+**GCC 2.8.1 + SN ASN64 2.56** (`gcc-2.8.1-pm-sn-as`) is a separate C matching
+profile. It compiles to assembly with the pinned PM GCC build, then uses the
+preserved SN64 0001 pack's ASN64 2.56 and the pinned PsyQ-to-ELF converter. It
+reuses the existing SN adapter's metadata cleanup and CRLF conversion; generated
+instructions are not patched. The ordinary linker still requires exact bytes.
+
+Install it in **Compilers & tools** after accepting the proprietary assembler's
+license. It becomes available in compiler selection and installed-compiler
+comparisons. Native macOS and Linux use the pinned tools; Windows uses the
+existing WSL path. Physical Linux/Windows validation remains outstanding.
+
+This pairing can reproduce instruction scheduling and macro encodings that
+neither original profile reproduces alone. It does not establish which compiler
+release a retail game used. Prefer function-level settings when only individual
+functions have been verified; do not infer whole-game settings from a few matches.
+
+Instruction diffs now show `[bytes ...]` when two instructions have identical
+printed aliases but different relocation-masked encodings. For example, MIPS
+`addu` and `daddu` may both print as `move`. These differences remain non-matches;
+relocated address fields are still ignored in this diagnostic comparison.
