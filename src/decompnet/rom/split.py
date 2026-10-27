@@ -96,6 +96,7 @@ class SplitResult:
     platform: str = "n64"
     gp: int = 0  # value of $gp for $gp-relative data (PlayStation), 0 if unused
     image: str = ""  # the flat image splat reads (the ROM itself, or one made from an ELF)
+    coverage_notes: list[str] = field(default_factory=list)
 
 
 def segments_from_config(path: Path) -> list[Segment]:
@@ -590,7 +591,7 @@ def split_rom(workdir: Path, rom_name: str = "rom.z64", console=None, picked: Pi
     seen: dict[str, int] = {}  # name -> where it is in the image
     unique = []
     rom = (workdir / image).read_bytes()
-    for fn in sorted(functions, key=lambda f: f.vram):
+    for fn in sorted(functions, key=lambda f: (f.segment, f.vram)):
         if fn.name in seen:  # overlays loaded at the same address: the same name in another overlay
             if seen[fn.name] == fn.rom:
                 continue
@@ -609,4 +610,8 @@ def split_rom(workdir: Path, rom_name: str = "rom.z64", console=None, picked: Pi
     segments = segments_from_config(config)
     gp = gp or console.find_gp(rom, (workdir / rom_name).read_bytes(), segments)
     log(f"found {len(unique)} functions and {len(data)} data symbols")
-    return SplitResult(unique, data, segments, named_symbols(workdir), config, compiler, out, console.id, gp, image)
+    import json
+
+    coverage = workdir / 'analysis-coverage.json'
+    notes = json.loads(coverage.read_text(encoding='utf-8')) if coverage.is_file() else []
+    return SplitResult(unique, data, segments, named_symbols(workdir), config, compiler, out, console.id, gp, image, notes)
