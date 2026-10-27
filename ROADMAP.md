@@ -30,6 +30,13 @@ license acceptance for the original packs. Physical Linux and Windows/WSL
 checks remain outstanding. Imported
 projects keep their own build scripts. See [compiler coverage](docs/sn64-compilers.md).
 
+Additional Linux/WSL N64 comparisons now include original EGCS, GCC 4.4 and
+SGI IDO 4.1/5.2/6.0, IDO 5.3 C++ and MIPSpro 7.4.4. GNU profiles have compile
+and linked byte checks in an emulated Linux environment. SGI execution awaits
+license acceptance; macOS runtimes for these additional packs, physical x86
+Linux and WSL verification remain gaps. Experimental SGI/GCC 4.4 profiles are
+explicit selections, excluded from routine installed-compiler comparisons.
+
 ## What works where
 
 Each feature and the platforms it covers today. A — is a gap: pick one up (the notes under the table say where to

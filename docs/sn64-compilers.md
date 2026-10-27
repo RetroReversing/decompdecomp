@@ -87,3 +87,32 @@ passed real arithmetic, call/data relocation, floating-point and branch
 compilation checks, including exact linked byte comparisons. Build 0006's
 preprocessor requires an absolute include directory under wibo; the driver
 normalizes that path, with a regression test for relative sandbox inputs.
+
+## Additional Linux comparison profiles
+
+The picker also offers original EGCS 1.1.2-4, GCC 4.4.0, IDO 4.1/5.2/6.0,
+IDO 5.3's separate C++ frontend and MIPSpro 7.4.4. These downloads contain
+Linux x86 executables. Windows uses WSL; macOS cannot install these packs.
+Native macOS builds of the additional SGI emulator and original GNU releases
+remain a gap. Existing native IDO 5.3/7.1 and reconstructed EGCS remain available
+on macOS. A listed compiler is not evidence that a retail game used it.
+
+Original EGCS uses the pinned 32-bit runtime. GCC 4.4 includes pinned Debian
+GMP/MPFR host libraries, without requiring system package installation. Both
+profiles passed arithmetic, calls/data relocations, floating point and branches
+in an isolated x86 Linux container on an Apple Silicon VM; the ordinary linked
+byte judge passed arithmetic and call/data relocation checks. i386 translation
+used a smaller QEMU guest reservation to stay inside the unchanged compiler
+memory cap. Physical x86 Linux and WSL remain untested.
+
+The SGI profiles execute their checksum-pinned bundled IRIX emulator, preserving
+32-bit big-endian output. IDO 4.1 emits ECOFF: the bundled converter's ELF writer
+is adapted to big-endian metadata without changing code bytes or relocation
+semantics. IDO 5.3 C++ uses the separate `CC` frontend. SGI installation requires
+explicit acceptance; real compiler execution is pending that acceptance.
+
+The SGI profiles and GCC 4.4 are marked experimental and omitted from routine
+installed-profile comparisons. Select one explicitly for a project or function
+with `try_compiler`; a project's explicitly configured profile/ranges still
+participate in bulk comparisons. This avoids expanding every routine search
+with speculative toolchains. Imported projects keep their own build scripts.

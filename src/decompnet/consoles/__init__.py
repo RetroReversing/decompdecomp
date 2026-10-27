@@ -47,6 +47,7 @@ class Compiler:
     name: str  # what the app shows: "KMC GCC 2.7.2"
     built: str = ""  # which games it built, for Setup: "many third-party N64 games"
     guess: str = ""  # what read_game calls it when a program looks built by it ("KMC", "EEGCC-2.95.2")
+    automatic: bool = True  # routine comparisons; experimental profiles remain available by explicit selection
 
 
 class Console:
