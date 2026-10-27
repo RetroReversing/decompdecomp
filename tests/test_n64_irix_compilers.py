@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from decompnet import consoles, toolchains
+from decompnet import consoles, linuxvm, toolchains
 from decompnet.app.engine.compilers import CompilerMixin
 from decompnet.compiler import compile_source
 from decompnet.consoles.n64 import N64
@@ -28,7 +28,9 @@ def test_comparison_profiles_have_pins_host_limits_and_matching_guides(tid, monk
     assert N64.m2c_target(tid) == ('mips-ido' if tid in SGI else 'mips-gcc')
     assert N64.up_front_guide(tid)
     monkeypatch.setattr(toolchains, 'current_platform', lambda: 'macos-arm64')
-    assert not tc.supported
+    monkeypatch.setattr(linuxvm, "wanted", lambda: True)
+    monkeypatch.setattr(toolchains.wsl, 'wanted', lambda: False)
+    assert tc.supported and tc.via_vm
     monkeypatch.setattr(toolchains, 'current_platform', lambda: 'windows-x86_64')
     monkeypatch.setattr(toolchains.wsl, 'wanted', lambda: True)
     assert tc.via_wsl

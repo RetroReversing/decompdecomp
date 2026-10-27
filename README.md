@@ -75,6 +75,13 @@ data and unidentified regions are excluded. These special image snapshots are re
 sources through the project's promotion/build workflow and use **Check again**. Ordinary object units keep their
 existing agent workflow. See [the export contract](docs/linked-image-progress.md).
 
+## Linux-only compilers on macOS
+
+In **Compilers & tools**, choose **Prepare Linux runner**, then install a compiler
+marked **Linux VM**. This optional local Colima runner uses a pinned Linux image;
+compiler jobs have no network or host-folder mounts. Native compilers still run
+directly. See [setup, coverage and resource limits](docs/linux-compiler-vm.md).
+
 ## Imported project builds
 
 Builds use an existing `.venv` or `venv` in the project for its Python tools and dependencies. The app does not

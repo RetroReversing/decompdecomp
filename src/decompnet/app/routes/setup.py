@@ -13,7 +13,7 @@ from starlette.responses import JSONResponse, Response
 from decompnet.hostenv import NO_WINDOW
 
 from ... import agents as kinds
-from ... import toolchains
+from ... import linuxvm, toolchains
 from ...network import NetworkError
 from .. import agents
 from ..support import session_options, spread_sessions
@@ -40,6 +40,12 @@ def register(app: App) -> None:
             return JSONResponse({'job': jobs.start('sdk-library', lambda log: sdk_library.scan(net, folders, log))})
         except (NetworkError, ValueError, OSError) as e:
             return fail(e)
+
+    @mcp.custom_route("/api/linux-vm", methods=["POST"])
+    async def api_linux_vm(request: Request) -> Response:
+        if (bad := guard(request, write=True)):
+            return bad
+        return JSONResponse({'job': jobs.start('linux-vm', lambda log: linuxvm.setup(log=log))})
 
     @mcp.custom_route("/api/toolchain", methods=["POST"])
     async def api_toolchain(request: Request) -> Response:

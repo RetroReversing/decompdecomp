@@ -13,6 +13,7 @@
 # macOS uses its pinned builds directly; Intel-only parts need Rosetta on Apple Silicon.
 
 [runtime-i386]
+linux_vm = true
 name = "32-bit x86 C runtime (glibc 2.44)"
 kind = "runtime"
 license = "LGPL-2.1-or-later"
@@ -1309,13 +1310,14 @@ platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
 # Additional comparison profiles: Linux packs, Windows via WSL.
 
 ["gcc-egcs-1.1.2-4"]
+linux_vm = true
 name = "Original EGCS 1.1.2-4"
 platform = "N64"
 arch = "mips"
 family = "gcc"
 license = "GPL-2.0-or-later"
 source = "https://github.com/AngheloAlf/egcs_1.1.2-4/releases/download/latest/egcs_1.1.2-4.tar.gz"
-description = "Linux executable pack; Windows through WSL. No native macOS release. Explicit comparison does not establish retail N64 use."
+description = "Linux executable pack; Windows through WSL; macOS through the optional local Linux VM. Explicit comparison does not establish retail N64 use."
 cc = ["{tc}/mips-linux-gcc", "-B{tc}/", "-c"]
 flags = ["-G0", "-mips3", "-mgp32", "-mfp32", "-mcpu=4300", "-O2", "-fno-PIC", "-mno-abicalls"]
 requires = ["runtime-i386"]
@@ -1325,13 +1327,14 @@ sha256 = "c8d0adeecbe655db1631df5dea58781f4aa738f9762b907f58a6e70740d1815a"
 platforms = ["linux-x86_64"]
 
 ["gcc-4.4.0-n64"]
+linux_vm = true
 name = "GCC 4.4.0 (MIPS64 ELF)"
 platform = "N64"
 arch = "mips"
 family = "gcc"
 license = "GPL-2.0-or-later"
 source = "https://github.com/devwizard64/gcc4.4.0-mips64-elf/releases/download/latest/gcc4.4.0-mips64-elf.tar.gz"
-description = "Linux executable pack; Windows through WSL. No native macOS release. Explicit comparison does not establish retail N64 use."
+description = "Linux executable pack; Windows through WSL; macOS through the optional local Linux VM. Explicit comparison does not establish retail N64 use."
 cc = ["{tc}/bin/mips64-elf-gcc", "-c"]
 flags = ["-G0", "-march=vr4300", "-mabi=32", "-mno-abicalls", "-fno-pic", "-O2"]
 requires = ["runtime-gcc-math"]
@@ -1342,6 +1345,7 @@ sha256 = "d1a9815f730582ff65f8c14371c62436790655b20a21a5f8ee8b39b4fafa2f58"
 platforms = ["linux-x86_64"]
 
 [runtime-gcc-math]
+linux_vm = true
 name = "GCC host math libraries (GMP and MPFR)"
 kind = "runtime"
 license = "LGPL-3.0-or-later"
@@ -1359,13 +1363,14 @@ subdir = "usr/lib/x86_64-linux-gnu"
 platforms = ["linux-x86_64"]
 
 ["ido-4.1"]
+linux_vm = true
 name = "IDO 4.1 (IRIX emulation)"
 platform = "N64"
 arch = "mips"
 family = "ido"
 license = "proprietary"
 source = "https://github.com/decompme/compilers/releases/download/compilers/ido4.1.tar.gz"
-description = "Explicit SGI comparison profile. Bundled emulator is a Linux x86_64 program; Windows uses WSL. No native macOS runtime. Install only after license acceptance."
+description = "Explicit SGI comparison profile. Bundled emulator is a Linux x86_64 program; Windows uses WSL; macOS uses the optional local Linux VM. Install only after license acceptance."
 driver = "consoles/n64/irix.py"
 flags = ["-O2", "-mips2", "-G", "0"]
 cmd = ["{python}", "{driver}", "--root", "{tc}", "--profile", "ido-4.1", "{src}", "{obj}", "{include}", "{flags}"]
@@ -1375,13 +1380,14 @@ sha256 = "16008087602fe1a39cdd7880a3c6987891ddb594cce4416670f2e96456e9b4d4"
 platforms = ["linux-x86_64"]
 
 ["ido-5.2"]
+linux_vm = true
 name = "IDO 5.2 (IRIX emulation)"
 platform = "N64"
 arch = "mips"
 family = "ido"
 license = "proprietary"
 source = "https://raw.githubusercontent.com/LLONSIT/qemu-irix-helpers/n/qemu/ido5.2.tar.xz"
-description = "Explicit SGI comparison profile. Bundled emulator is a Linux x86_64 program; Windows uses WSL. No native macOS runtime. Install only after license acceptance."
+description = "Explicit SGI comparison profile. Bundled emulator is a Linux x86_64 program; Windows uses WSL; macOS uses the optional local Linux VM. Install only after license acceptance."
 driver = "consoles/n64/irix.py"
 flags = ["-O2", "-mips2", "-G", "0", "-32", "-non_shared", "-Xcpluscomm", "-woff", "649,838,712"]
 cmd = ["{python}", "{driver}", "--root", "{tc}", "--profile", "ido-5.2", "{src}", "{obj}", "{include}", "{flags}"]
@@ -1391,13 +1397,14 @@ sha256 = "870cd946d31d6abee24d47926328d15909771520240a0a4f5cb7d27aea90e1ad"
 platforms = ["linux-x86_64"]
 
 ["ido-5.3-cxx"]
+linux_vm = true
 name = "IDO 5.3 C++ (IRIX emulation)"
 platform = "N64"
 arch = "mips"
 family = "ido"
 license = "proprietary"
 source = "https://raw.githubusercontent.com/LLONSIT/qemu-irix-helpers/n/qemu/ido5.3_c++.tar.xz"
-description = "Explicit SGI comparison profile. Bundled emulator is a Linux x86_64 program; Windows uses WSL. No native macOS runtime. Install only after license acceptance."
+description = "Explicit SGI comparison profile. Bundled emulator is a Linux x86_64 program; Windows uses WSL; macOS uses the optional local Linux VM. Install only after license acceptance."
 driver = "consoles/n64/irix.py"
 flags = ["-O2", "-mips2", "-G", "0", "-32", "-non_shared", "-Xcpluscomm", "-woff", "649,838,712"]
 cmd = ["{python}", "{driver}", "--root", "{tc}", "--profile", "ido-5.3-cxx", "{src}", "{obj}", "{include}", "{flags}"]
@@ -1408,13 +1415,14 @@ sha256 = "851426c63ffb0688c702793113c2d9aa3c703c7a4e9d4240fc99d1862f79e4b9"
 platforms = ["linux-x86_64"]
 
 ["ido-6.0"]
+linux_vm = true
 name = "IDO 6.0 (IRIX emulation)"
 platform = "N64"
 arch = "mips"
 family = "ido"
 license = "proprietary"
 source = "https://raw.githubusercontent.com/LLONSIT/qemu-irix-helpers/n/qemu/ido6.0.tar.xz"
-description = "Explicit SGI comparison profile. Bundled emulator is a Linux x86_64 program; Windows uses WSL. No native macOS runtime. Install only after license acceptance."
+description = "Explicit SGI comparison profile. Bundled emulator is a Linux x86_64 program; Windows uses WSL; macOS uses the optional local Linux VM. Install only after license acceptance."
 driver = "consoles/n64/irix.py"
 flags = ["-O2", "-mips2", "-G", "0", "-32", "-non_shared", "-Xcpluscomm", "-woff", "649,838,712"]
 cmd = ["{python}", "{driver}", "--root", "{tc}", "--profile", "ido-6.0", "{src}", "{obj}", "{include}", "{flags}"]
@@ -1424,13 +1432,14 @@ sha256 = "c56d4be020bdaf76310ceec455ebc0d443fb7a46c740491f74898b04f6a60356"
 platforms = ["linux-x86_64"]
 
 ["mipspro-7.4.4"]
+linux_vm = true
 name = "MIPSpro 7.4.4 (IRIX emulation)"
 platform = "N64"
 arch = "mips"
 family = "ido"
 license = "proprietary"
 source = "https://raw.githubusercontent.com/LLONSIT/qemu-irix-helpers/n/qemu/mipspro7.4.4.tar.xz"
-description = "Explicit SGI comparison profile. Bundled emulator is a Linux x86_64 program; Windows uses WSL. No native macOS runtime. Install only after license acceptance."
+description = "Explicit SGI comparison profile. Bundled emulator is a Linux x86_64 program; Windows uses WSL; macOS uses the optional local Linux VM. Install only after license acceptance."
 driver = "consoles/n64/irix.py"
 flags = ["-O2", "-mips3", "-G", "0", "-32", "-non_shared", "-Xcpluscomm", "-woff", "649,838,712"]
 cmd = ["{python}", "{driver}", "--root", "{tc}", "--profile", "mipspro-7.4.4", "{src}", "{obj}", "{include}", "{flags}"]

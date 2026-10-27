@@ -21,7 +21,7 @@ from pathlib import Path
 
 from decompnet.hostenv import NO_WINDOW, stop_process_tree
 
-from . import wsl
+from . import linuxvm, wsl
 
 MAX_SOURCE_BYTES = 64 * 1024
 # Per-compile resource caps (address space, CPU seconds, output file size) and a global
@@ -82,6 +82,7 @@ class CompilerConfig:
     intrinsics: str = ""  # module selected by the pinned toolchain, never by submitted source
     prelude: str = ""  # the toolchain's prelude (Toolchain.prelude)
     cplusplus: bool = False  # it compiles C++ too: what doesn't compile as C is tried as C++ (Toolchain.cplusplus)
+    linux_vm: bool = False  # Linux-only compiler on macOS, isolated local VM jobs
 
 
 @dataclass
@@ -94,6 +95,8 @@ class CompileResult:
 
 
 def _sandbox_mode(cfg: CompilerConfig) -> str:
+    if cfg.linux_vm:
+        return "linux-vm"
     if cfg.wsl:
         return "wsl"
     if cfg.sandbox != "auto":
@@ -104,7 +107,7 @@ def _sandbox_mode(cfg: CompilerConfig) -> str:
 def _root(cfg: CompilerConfig, work: Path) -> str:
     """How the compiler sees the work folder (in WSL it works on a copy, see wsl.run)."""
     mode = _sandbox_mode(cfg)
-    return "/work" if mode == "bwrap" else wsl.stage_dir() if mode == "wsl" else str(work)
+    return "/work" if mode in ("bwrap", "linux-vm") else wsl.stage_dir() if mode == "wsl" else str(work)
 
 
 def _wrap(cfg: CompilerConfig, work: Path, argv: list[str]) -> list[str]:
@@ -134,6 +137,12 @@ def _wrap(cfg: CompilerConfig, work: Path, argv: list[str]) -> list[str]:
 
 def _exec(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float, cwd: Path | None = None, **stage):
     """`stage`: in WSL, run on a copy in WSL's own file system (wsl.run's outputs, inputs and stage)."""
+    if _sandbox_mode(cfg) == "linux-vm":
+        check = _CANCEL_CHECK.get()
+        try:
+            return linuxvm.run(argv, cwd or work, timeout, **stage, **({'check_cancel': check} if check else {}))
+        except linuxvm.VMError as error:
+            return subprocess.CompletedProcess(argv, 1, '', str(error))
     if _sandbox_mode(cfg) == "wsl":
         check = _CANCEL_CHECK.get()
         return wsl.run(argv, cwd or work, timeout, **stage, **({"check_cancel": check} if check else {}))
@@ -227,7 +236,7 @@ def _compile_as(cfg: CompilerConfig, work: Path, root: str, source: str, ext: st
             if check:
                 check()
             proc = _exec(cfg, work, argv, cfg.timeout,
-                         **({"outputs": ["func.o"], "stage": root} if _sandbox_mode(cfg) == "wsl" else {}))
+                         **({"outputs": ["func.o"], "stage": root} if _sandbox_mode(cfg) in ("wsl", "linux-vm") else {}))
         finally:
             _SLOTS.release()
     except subprocess.TimeoutExpired:

@@ -27,7 +27,7 @@ from pathlib import Path
 
 from decompnet.hostenv import NO_WINDOW, find_uv
 
-from . import limits, wsl
+from . import limits, linuxvm, wsl
 
 MANIFEST = ".decompnet-toolchain.json"
 LINUX = "linux-x86_64"
@@ -65,6 +65,7 @@ class Toolchain:
     driver: str = ""  # packaged, console-owned compiler adapter, staged read-only with the tools
     build: str = ""  # native source-built tools, after checksum-verified parts are extracted
     family: str = ""  # backend family when the registry id doesn't carry its compiler's name
+    linux_vm: bool = False  # this Linux pack may use the optional macOS VM runner
 
     @property
     def proprietary(self) -> bool:
@@ -79,13 +80,18 @@ class Toolchain:
         """A Linux-only toolchain on Windows: installed from its Linux build and run inside WSL 2 (see wsl.py)."""
         return wsl.wanted() and not self.git and not self.parts_for() and bool(self.parts_for(LINUX))
 
+    @property
+    def via_vm(self) -> bool:
+        return (self.linux_vm and not self.via_wsl and current_platform().startswith("macos-")
+                and linuxvm.wanted() and not self.parts_for() and bool(self.parts_for(LINUX)))
+
     def linux_parts(self) -> list[dict]:
         return [p for p in self.parts if WSL_PLATFORM in p.get("platforms", [])] or self.parts_for(LINUX)
 
     @property
     def supported(self) -> bool:
         """Whether this toolchain can be installed on this computer (on Windows, Linux ones through WSL 2)."""
-        return bool(self.git) or bool(self.parts_for()) or self.via_wsl
+        return bool(self.git) or bool(self.parts_for()) or self.via_wsl or self.via_vm
 
 
 def current_platform() -> str:
@@ -143,15 +149,19 @@ def root() -> Path:
     return Path(env).expanduser() if env else data_dir() / "toolchains"
 
 
-def path(tid: str, linux: bool | None = None) -> Path:
-    """Where a toolchain is installed. `linux`: its Linux build for WSL (default: when that's how it runs here)."""
+def path(tid: str, linux: bool | None = None, *, vm: bool | None = None) -> Path:
+    """Where a toolchain is installed; VM and WSL copies are separate from native installations."""
+    if vm is None:
+        vm = linux is None and tid in _registry_data() and get(tid).via_vm
+    if vm:
+        return root() / 'linux-vm' / tid
     if linux is None:
         linux = tid in _registry_data() and get(tid).via_wsl
     return root() / "wsl" / tid if linux else root() / tid
 
 
-def installed(tid: str, linux: bool | None = None) -> dict | None:
-    m = path(tid, linux) / MANIFEST
+def installed(tid: str, linux: bool | None = None, *, vm: bool | None = None) -> dict | None:
+    m = path(tid, linux, vm=vm) / MANIFEST
     return json.loads(m.read_text(encoding="utf-8")) if m.exists() else None
 
 
@@ -164,7 +174,10 @@ def _intel_mac_runtime_ready() -> bool:
 
 
 def runtime_error(tid: str) -> str | None:
-    """Intel-only Mac compiler archives need Apple's translation runtime on Apple Silicon."""
+    """Why an installed compiler cannot start: native translation or the optional Linux runner."""
+    if get(tid).via_vm:
+        ok, why = linuxvm.status()
+        return None if ok else why
     if current_platform() != "macos-arm64" or not any(p.get("rosetta") for p in get(tid).parts_for()):
         return None
     if _intel_mac_runtime_ready():
@@ -174,19 +187,21 @@ def runtime_error(tid: str) -> str | None:
             "Run `softwareupdate --install-rosetta` in Terminal, accept Apple's license if you agree, then try again.")
 
 
-def require(tid: str, linux: bool | None = None) -> Path:
+def require(tid: str, linux: bool | None = None, *, vm: bool | None = None) -> Path:
     """Directory of an installed toolchain, or a clear error telling the operator how to install it."""
-    if installed(tid, linux) is None:
+    if installed(tid, linux, vm=vm) is None:
         raise ToolchainError(f"toolchain {tid!r} is not installed: install it in decompdecomp, under Compilers & tools")
     if why := runtime_error(tid):
         raise ToolchainError(why)
-    return path(tid, linux)
+    return path(tid, linux, vm=vm)
 
 
 def runtime_dirs(tid: str) -> tuple[Path, ...]:
     """The toolchain plus everything it requires, for mounting into the sandbox (all Linux builds for WSL)."""
     tc = get(tid)
     linux = tc.via_wsl
+    if tc.via_vm:
+        return (require(tid, vm=True), *(require(dep, vm=True) for dep in tc.requires))
     return (require(tid, linux), *(require(dep, linux) for dep in tc.requires))
 
 
@@ -290,28 +305,35 @@ def _extract(archive: Path, dest: Path, subdir: str | None, keep: dict[str, str]
             shutil.move(str(item), target)
 
 
-def install(tid: str, *, accept_license: bool = False, force: bool = False, log=print, linux: bool | None = None) -> Path:
-    """Install a toolchain (and what it requires). `linux`: its Linux build, to run inside WSL (default: when
-    that's how it runs on this computer)."""
+def install(tid: str, *, accept_license: bool = False, force: bool = False, log=print, linux: bool | None = None, vm: bool | None = None) -> Path:
+    """Install a toolchain (and what it requires). `linux`: its Linux build for WSL; `vm`: the macOS
+    Linux runner. Both default to the profile's host routing."""
     tc = get(tid)
-    linux = tc.via_wsl if linux is None else linux
+    vm = tc.via_vm if vm is None else vm
+    linux = (tc.via_wsl or vm) if linux is None else linux
+    location = {'vm': True} if vm else {}
     _intel_mac_runtime_ready.cache_clear()  # Rosetta may have been installed since the last setup attempt
-    if why := runtime_error(tid):
+    if not vm and (why := runtime_error(tid)):
         raise ToolchainError(why)
-    if tc.proprietary and not accept_license and (force or installed(tid, linux) is None):
+    if tc.proprietary and not accept_license and (force or installed(tid, linux, **location) is None):
         raise ToolchainError(
             f"{tid} ({tc.name}) is proprietary software. Running it on your coordinator is your own licensing "
             f"decision; re-run with --accept-license if you accept that.")
-    if linux:
+    if vm:
+        try:
+            linuxvm.setup(log=log)
+        except linuxvm.VMError as error:
+            raise ToolchainError(str(error)) from error
+    elif linux:
         ok, why = wsl.status()
         if not ok:
             raise ToolchainError(f"{tc.name} is a Linux program: on Windows it runs in WSL 2. {why}")
     for dep in tc.requires:
-        if installed(dep, linux) is None or force:
-            install(dep, accept_license=accept_license, force=force, log=log, linux=linux)
-    if installed(tid, linux) and not force:
-        log(f"{tid}: already installed at {path(tid, linux)}")
-        return path(tid, linux)
+        if installed(dep, linux, **location) is None or force:
+            install(dep, accept_license=accept_license, force=force, log=log, linux=linux, **location)
+    if installed(tid, linux, **location) and not force:
+        log(f"{tid}: already installed at {path(tid, linux, **location)}")
+        return path(tid, linux, **location)
     parts = tc.linux_parts() if linux else tc.parts_for()
     if not parts and not tc.git:
         why = unsupported_cpu()
@@ -324,11 +346,11 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
             f"{tid} ({tc.name}) is proprietary software. Running it on your coordinator is your own licensing "
             f"decision; re-run with --accept-license if you accept that.")
 
-    dest = path(tid, linux)
+    dest = path(tid, linux, **location)
     if dest.exists():
         shutil.rmtree(dest)
     dest.mkdir(parents=True)
-    log(f"{tid}: installing {tc.name} [{tc.license}]" + (" (Linux build, runs in WSL 2)" if linux else ""))
+    log(f"{tid}: installing {tc.name} [{tc.license}]" + (" (Linux build, runs in local VM)" if vm else " (Linux build, runs in WSL 2)" if linux else ""))
     pinned = []
     try:
         if tc.git or tc.pip_extra:
@@ -371,7 +393,7 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
             pinned.append({"url": part["url"], "sha256": digest})
         if tc.build == "psyq-obj-parser":
             _build_psyq_parser(dest, linux, log)
-        if linux and "runtime-i386" in tc.requires:  # WSL systems rarely have a 32-bit loader: bring ours
+        if linux and not vm and "runtime-i386" in tc.requires:  # WSL systems rarely have a 32-bit loader: bring ours
             n = wsl.wrap_i386(dest, wsl.path(path("runtime-i386", linux=True)))
             log(f"  {n} 32-bit programs start through the pinned 32-bit runtime")
     except BaseException:
@@ -380,7 +402,7 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
     (dest / MANIFEST).write_text(json.dumps({
         "id": tid, "name": tc.name, "license": tc.license, "source": tc.source,
         "parts": pinned, "commit": tc.commit or None, "installed_at": time.time(),
-        "license_accepted": bool(tc.proprietary and accept_license), "wsl": linux,
+        "license_accepted": bool(tc.proprietary and accept_license), "wsl": linux and not vm, "linux_vm": vm,
     }, indent=2), encoding="utf-8")
     log(f"{tid}: installed at {dest}")
     return dest
@@ -756,6 +778,6 @@ def status() -> list[dict]:
         m = installed(tc.id)
         rows.append({"id": tc.id, "name": tc.name, "kind": tc.kind, "platform": tc.platform, "license": tc.license,
                      "installed": m is not None, "supported": tc.supported, "description": tc.description,
-                     "wsl": tc.via_wsl,
+                     "wsl": tc.via_wsl, "linux_vm": tc.via_vm,
                      "pinned": all(p.get("sha256") for p in tc.parts) or bool(tc.commit)})
     return rows
