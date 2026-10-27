@@ -31,6 +31,11 @@ class Nintendo64(Console):
         Compiler("ido-5.3", "IDO 5.3", "early N64 games (1996-97)"),
         Compiler("sn-n64-281", "SN64 GCC 2.8.1", "SN Systems toolchains used by some third-party games"),
         Compiler("sn-n64-272-0001", "SN64 GCC 2.7.2 (0001)", "earlier SN Systems N64 toolchains"),
+        Compiler("sn-n64-272-0004", "SN64 GCC 2.7.2 (0004)", "preserved SN compiler and assembler build"),
+        Compiler("sn-n64-272-0006", "SN64 GCC 2.7.2 (0006)", "later SN 2.7.2 build used in some boot code"),
+        Compiler("gcc-2.8.1-pm", "GCC 2.8.1 (PM matching)", "patched GCC with its paired GNU assembler"),
+        Compiler("gcc-egcs-2.91.66", "EGCS 1.1.2 / GCC 2.91.66", "later iQue rebuild toolchains"),
+        Compiler("sn-n64-272-970404", "Reconstructed SN64 GCC 2.7.2 (970404)", "reconstructed SN codegen with compatibility assembly"),
     )
     guides = ("mips",)
     m2c = "mips-gcc"
@@ -77,6 +82,8 @@ class Nintendo64(Console):
 
     def up_front_guide(self, compiler: str) -> str:
         compiler = compiler.lower()  # (a fork of a public decomp: "project", its own build's)
+        if compiler in ("gcc-2.8.1-pm", "gcc-egcs-2.91.66"):
+            return "gcc-variants"
         return "ido" if "ido" in compiler else "sn64" if compiler.startswith("sn-n64") else "gcc-kmc" if "gcc" in compiler else ""
 
     def m2c_target(self, compiler: str = "") -> str:

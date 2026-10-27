@@ -62,3 +62,22 @@ Validation ran the normal `try_compiler` API, source preprocessing, integer arit
 calls/data relocations, floating-point constants, the pinned native converter build, GCC flag
 search/permuter-family selection, read-only driver staging for WSL, and the exported rebuild.
 The application was not reinstalled and no live compiler ranges were applied.
+
+## Additional profiles
+
+| Profile | Pipeline | Validation in this change |
+| --- | --- | --- |
+| `gcc-2.8.1-pm` | Matching GCC fork and paired assembler | Real C compilation and linked byte checks on macOS |
+| `gcc-egcs-2.91.66` | EGCS 1.1.2 and paired binutils | Real C compilation and linked byte checks on macOS |
+| `sn-n64-272-970404` | Reconstructed native GCC, modern-asn64, GNU assembler | Native Apple Silicon source build, real C compilation and linked byte checks |
+| `sn-n64-272-0004` | Original SN compiler/assembler, preserved-pack conversion | Registry and shared integration tests; live test requires license acceptance |
+| `sn-n64-272-0006` | Original SN compiler/assembler, preserved-pack conversion | Registry and shared integration tests; live test requires license acceptance |
+
+Downloads and the reconstructed source commit are checksum pinned. The source
+build adds only a host assertion-reporting helper required by Apple's runtime;
+it does not patch target code generation. PM and EGCS Intel binaries require
+Rosetta on Apple Silicon. Linux packs and Windows through WSL are configured,
+but physical-host verification remains outstanding. These profiles enter the
+shared compiler picker, flag comparisons, GCC drafts and permuter selection;
+imported projects continue using their own build scripts. No live app or game
+project was changed during validation.

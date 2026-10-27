@@ -1153,3 +1153,155 @@ file = "psyq-magic_enum-e55b9b54d5cf61f8e117cafb17846d7d742dd3b4.tar.gz"
 subdir = "magic_enum-e55b9b54d5cf61f8e117cafb17846d7d742dd3b4"
 into = "source/magic_enum"
 platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
+
+["gcc-2.8.1-pm"]
+family = "gcc"
+name = "GCC 2.8.1 (PM matching)"
+platform = "N64"
+arch = "mips"
+license = "GPL-2.0-or-later"
+source = "pmret/gcc-papermario and pmret/binutils-papermario master releases"
+description = "Distinct matching compiler and paired GNU assembler; not an SN64 compiler alias."
+cc = ["{tc}/gcc", "-B{tc}/", "-c"]
+flags = ["-G0", "-mips3", "-mgp32", "-mfp32", "-O2"]
+cplusplus = true
+[["gcc-2.8.1-pm".parts]]
+url = "https://github.com/pmret/gcc-papermario/releases/download/master/linux.tar.gz"
+sha256 = "1156cf0d6a88a64c20e2a10fc9445d99cb9a38518f432b1669528dfa82ebb45f"
+file = "pm-gcc-linux.tar.gz"
+platforms = ["linux-x86_64"]
+[["gcc-2.8.1-pm".parts]]
+url = "https://github.com/pmret/binutils-papermario/releases/download/master/linux.tar.gz"
+sha256 = "c3cd88db47ac41f78b557042c7e7ad47ac9c04cee6f0d1069a489c1c9e8c103c"
+file = "pm-as-linux.tar.gz"
+platforms = ["linux-x86_64"]
+[["gcc-2.8.1-pm".parts]]
+url = "https://github.com/pmret/gcc-papermario/releases/download/master/mac.tar.gz"
+sha256 = "772efc8272a992401f9a9a3faef58ef2f4b6028e792afa0015d894de96fe584e"
+file = "pm-gcc-mac.tar.gz"
+platforms = ["macos-x86_64", "macos-arm64"]
+rosetta = true
+[["gcc-2.8.1-pm".parts]]
+url = "https://github.com/pmret/binutils-papermario/releases/download/master/mac.tar.gz"
+sha256 = "7c1680dbbd207bc6e85d113da601dd75d93e1f982282b1f4bef0b25c15c5432c"
+file = "pm-as-mac.tar.gz"
+platforms = ["macos-x86_64", "macos-arm64"]
+rosetta = true
+
+
+["gcc-egcs-2.91.66"]
+family = "gcc"
+name = "EGCS 1.1.2 / GCC 2.91.66"
+platform = "N64"
+arch = "mips"
+license = "GPL-2.0-or-later"
+source = "decompals EGCS 0.7 and binutils 0.6"
+description = "Distinct matching compiler and paired GNU assembler; not an SN64 compiler alias."
+cc = ["{tc}/gcc", "-B{tc}/", "-c"]
+flags = ["-G0", "-mips3", "-mgp32", "-mfp32", "-O2", "-mno-abicalls", "-fno-pic"]
+cplusplus = true
+[["gcc-egcs-2.91.66".parts]]
+url = "https://github.com/decompals/mips-gcc-egcs-2.91.66/releases/download/0.7/mips-gcc-egcs-2.91.66-linux.tar.gz"
+sha256 = "47b8cfccbad18fba40daa3fb01f4d71da7895d9183ab3ab91d6d7b1d27a715ab"
+file = "egcs-gcc-linux.tar.gz"
+platforms = ["linux-x86_64"]
+[["gcc-egcs-2.91.66".parts]]
+url = "https://github.com/decompals/mips-binutils-egcs-2.9.5/releases/download/0.6/mips-binutils-egcs-2.9.5-linux.tar.gz"
+sha256 = "54eb249ccfbc9956048de5c740ff41d6ab6137cfc3a872739e465349327bbcbf"
+file = "egcs-as-linux.tar.gz"
+platforms = ["linux-x86_64"]
+[["gcc-egcs-2.91.66".parts]]
+url = "https://github.com/decompals/mips-gcc-egcs-2.91.66/releases/download/0.7/mips-gcc-egcs-2.91.66-macos.tar.gz"
+sha256 = "ceb26826e708ce484a120b002680dff9f13fd3f71a4b4c51e991994107b29542"
+file = "egcs-gcc-mac.tar.gz"
+platforms = ["macos-x86_64", "macos-arm64"]
+rosetta = true
+[["gcc-egcs-2.91.66".parts]]
+url = "https://github.com/decompals/mips-binutils-egcs-2.9.5/releases/download/0.6/mips-binutils-egcs-2.9.5-macos.tar.gz"
+sha256 = "71d16bb4a0e537ff76421fd5d26aaad44d073dfc0d0ee66344250169500d4706"
+file = "egcs-as-mac.tar.gz"
+platforms = ["macos-x86_64", "macos-arm64"]
+rosetta = true
+
+
+["modern-asn64"]
+name = "SN64 assembler compatibility wrapper"
+kind = "tool"
+license = "Unlicense"
+source = "RocketRet/modern-asn64 20d21729ce6a2e7bc8a4a91ec9505cab0d6e50f9"
+description = "Reproduces SN assembler expansion and scheduling before the pinned GNU assembler."
+[["modern-asn64".parts]]
+url = "https://raw.githubusercontent.com/RocketRet/modern-asn64/20d21729ce6a2e7bc8a4a91ec9505cab0d6e50f9/modern-asn64.py"
+sha256 = "7e6815e2c2c0ae0b4581ace1c5adab3d1d567f0fc729f674fc52bdd77e2240bc"
+binary = "modern-asn64.py"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
+
+
+["sn-n64-272-970404"]
+family = "gcc"
+name = "Reconstructed SN64 GCC 2.7.2 (970404)"
+platform = "N64"
+arch = "mips"
+license = "GPL-2.0-or-later"
+source = "decompals/SN64-gcc 2c037f330a99b514e5b53c66f1c63f90d8a15302"
+description = "Reconstructed SN compiler, with modern-asn64 compatibility assembly. Native source build on macOS."
+requires = ["modern-asn64", "binutils-mips"]
+driver = "consoles/n64/sn64.py"
+flags = ["-G0", "-mips3", "-O2", "-mgas", "-meb", "-mhard-float", "-fno-exceptions"]
+cmd = ["{python}", "{driver}", "--native", "--cc", "{tc}/cc1", "--cpp", "{tc}/cpp", "--assembler", "{tc:binutils-mips}/mips-ps2-decompals-as", "--wrapper", "{tc:modern-asn64}/modern-asn64.py", "{src}", "{obj}", "{include}", "{flags}"]
+[["sn-n64-272-970404".parts]]
+url = "https://github.com/decompals/SN64-gcc/releases/download/gcc-2.7.2-970404/SN64-gcc-2.7.2-970404-linux.tar.gz"
+sha256 = "60abe17c2562f5ae28444fe4f783fa8217d84b73e59e29cf39c41f7551d968f4"
+platforms = ["linux-x86_64"]
+[["sn-n64-272-970404".parts]]
+url = "https://codeload.github.com/decompals/SN64-gcc/tar.gz/2c037f330a99b514e5b53c66f1c63f90d8a15302"
+sha256 = "51ddf17004bd74e738941c71fe6532e0dfe2d02822e0029c3624620a02da3eb7"
+file = "sn64-gcc-2c037f330a99b514e5b53c66f1c63f90d8a15302.tar.gz"
+subdir = "SN64-gcc-2c037f330a99b514e5b53c66f1c63f90d8a15302/2.7.2-970404"
+build = "sn64-gcc"
+platforms = ["macos-x86_64", "macos-arm64"]
+
+["sn-n64-272-0004"]
+family = "gcc"
+name = "SN Systems N64 GCC 2.7.2 (0004)"
+arch = "mips"
+platform = "N64"
+license = "proprietary"
+source = "Mr-Wiseguy/pcsx-redux n64 preserved build 0004; SN64 2.8.1 preprocessor"
+description = "Preserved SN64 build 0004 with its paired ASN64 assembler. Distinct from build 0001."
+requires = ["wibo", "psyq-obj-parser"]
+driver = "consoles/n64/sn64.py"
+flags = ["-G0", "-mips3", "-O2", "-mgas", "-meb", "-mhard-float"]
+cmd = ["{python}", "{driver}", "--cc", "{tc}/cc1n64.exe", "--cpp", "{tc}/cppn64.exe", "--assembler", "{tc}/asn64.exe", "--converter", "{tc:psyq-obj-parser}/psyq-obj-parser", "--runner", "{tc:wibo}/wibo", "{src}", "{obj}", "{include}", "{flags}"]
+[["sn-n64-272-0004".parts]]
+url = "https://github.com/Mr-Wiseguy/pcsx-redux/releases/download/n64/cc1n64.exe"
+sha256 = "17b0d9dc6a80b2aaec90f912bb442321ec8bc5cecaf7071f5bd187e1d6525d49"
+binary = "cc1n64.exe"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
+[["sn-n64-272-0004".parts]]
+url = "https://github.com/Mr-Wiseguy/pcsx-redux/releases/download/n64/asn64.exe"
+sha256 = "1e04e1195f6504fe711c3db67ad94eb50d47f2a0f21e87dbbe20cbac4d83db39"
+binary = "asn64.exe"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
+[["sn-n64-272-0004".parts]]
+url = "https://github.com/marijnvdwerf/sn64/releases/download/1%2C0%2C0%2C2/cppn64.exe"
+sha256 = "277f1db571ab963df68a07af8b128995493208776dd68a69979809e45d912595"
+binary = "cppn64.exe"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
+
+["sn-n64-272-0006"]
+family = "gcc"
+name = "SN Systems N64 GCC 2.7.2 (0006)"
+arch = "mips"
+platform = "N64"
+license = "proprietary"
+source = "decompme/compilers n64_sn272_0006"
+description = "Preserved SN64 build 0006 with its paired ASN64 assembler. Distinct from build 0001."
+requires = ["wibo", "psyq-obj-parser"]
+driver = "consoles/n64/sn64.py"
+flags = ["-G0", "-mips3", "-O2", "-mgas", "-meb", "-mhard-float"]
+cmd = ["{python}", "{driver}", "--cc", "{tc}/cc1n64.exe", "--cpp", "{tc}/cppn64.exe", "--assembler", "{tc}/asn64.exe", "--converter", "{tc:psyq-obj-parser}/psyq-obj-parser", "--runner", "{tc:wibo}/wibo", "{src}", "{obj}", "{include}", "{flags}"]
+[["sn-n64-272-0006".parts]]
+url = "https://github.com/decompme/compilers/releases/download/compilers/n64_sn272_0006.tar.gz"
+sha256 = "1a35a875278f38bfc285c2bd80b782cec38859dedfd925d8b8a2f1733ba9acad"
+platforms = ["linux-x86_64", "macos-x86_64", "macos-arm64"]
