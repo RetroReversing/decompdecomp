@@ -1,24 +1,25 @@
 /* Captured match evidence and proposed rules stay local until the user downloads them. */
 $("repairExamples").onclick = async () => {
   const slug = S.slug, dialog = document.createElement("dialog");
-  dialog.className = "transcript-dialog";
-  dialog.innerHTML = `<h2>Repair examples</h2>
-    <p>Help the app learn which successful fixes could save future AI calls.</p>
-    <ol><li>Expand an example to see what changed before it matched.</li>
-    <li>Send it to a coding agent to investigate a reusable fix in decompdecomp, or export examples and copy the analysis prompt.</li>
-    <li>Review and test the proposed app change before enabling it. Examples do not teach the permuter automatically.</li></ol>
-    <p class="muted small">New captures prefer a comparable-settings failure and retain the agent’s preceding trial in the technical evidence; other edits may also matter.
-    Review categories are optional developer tools.</p>
-    <div class="transcript-controls"><label><input type="checkbox" data-all> Across all projects</label>
-    <label><input type="checkbox" data-comparable checked> Only with a failed candidate</label>
-    <select data-category aria-label="Repair category"><option value="">All categories</option></select>
-    <select data-status aria-label="Review state"><option value="new" selected>New (not yet reviewed)</option><option value="">All review states</option></select>
-    <button data-refresh type="button">Refresh</button><button data-close type="button">Close</button></div>
-    <p data-count></p><div data-list></div><button data-more hidden type="button">Older examples</button>
-    <p class="muted small">Full examples include source and available headers. Summaries omit these and the code diff; review notes may still quote code.
-    Downloads stay on your computer until you share them with a coding agent.</p><button data-export type="button">Export summaries</button>
-    <button data-export-full type="button">Export for improving automatic matching</button>
-    <button data-prompt type="button">Copy analysis prompt</button>`;
+  dialog.className = "transcript-dialog repair-dialog";
+  dialog.setAttribute('aria-labelledby', 'repair-dialog-title');
+  dialog.innerHTML = `<header class="repair-header"><div><span class="repair-eyebrow">Improve automatic matching</span>
+    <h2 id="repair-dialog-title">Repair examples</h2><p>Review what changed when a function matched. Turn useful patterns into automatic repairs.</p></div>
+    <button data-close type="button" aria-label="Close repair examples">Close</button></header>
+    <div class="repair-scroll"><div class="repair-filters">
+    <div class="repair-filter-selects"><label>Category<select data-category aria-label="Repair category"><option value="">All categories</option></select></label>
+    <label>Review state<select data-status aria-label="Review state"><option value="new" selected>New (not yet reviewed)</option><option value="">All review states</option></select></label>
+    <button data-refresh type="button">Refresh</button></div>
+    <div class="repair-filter-checks"><label><input type="checkbox" data-all> Across all projects</label>
+    <label><input type="checkbox" data-comparable checked> Only with a failed candidate</label></div></div>
+    <p data-count class="repair-count" role="status"></p><div data-list class="repair-list"></div>
+    <button data-more hidden type="button">Older examples</button>
+    <details class="repair-help"><summary>How to use these examples</summary><p>Expand a card to compare the failed candidate with the match.
+    Send promising examples to a coding agent, or export them for analysis. Review and test any proposed app changes: examples do not teach the permuter automatically.</p>
+    <p class="muted small">Captures prefer comparable compiler settings. Headers, compiler changes and other edits may also matter; the diff alone does not prove the cause.</p></details></div>
+    <footer class="repair-footer"><div class="repair-export-actions"><button data-export-full type="button">Export full examples</button>
+    <button data-export type="button">Export summaries</button><button data-prompt type="button">Copy analysis prompt</button></div>
+    <p class="muted small">Full examples include game source and headers. Downloads stay local until you share them. Review notes may also contain code.</p></footer>`;
   document.body.append(dialog);
   const get = (selector) => dialog.querySelector(selector);
   const list = get('[data-list]'), category = get('[data-category]'), status = get('[data-status]'), all = get('[data-all]');
@@ -34,8 +35,15 @@ $("repairExamples").onclick = async () => {
   }
   function card(row, states, categories) {
     const details = document.createElement('details'), summary = document.createElement('summary');
-    summary.textContent = `#${row.id} · ${row.project} · ${row.function} · ${row.category.replaceAll('_', ' ')} · ${row.status}`;
-    const body = document.createElement('div'); details.append(summary, body);
+    details.className = 'repair-card';
+    const title = document.createElement('span'); title.className = 'repair-card-title'; title.textContent = row.function;
+    const meta = document.createElement('span'); meta.className = 'repair-card-meta'; meta.textContent = `#${row.id} · ${row.project}${row.agent ? ' · ' + row.agent : ''}`;
+    const badges = document.createElement('span'); badges.className = 'repair-badges';
+    for (const value of [row.category.replaceAll('_', ' '), row.status]) {
+      const badge = document.createElement('span'); badge.className = 'repair-badge'; badge.textContent = value; badges.append(badge);
+    }
+    summary.append(title, meta, badges);
+    const body = document.createElement('div'); body.className = 'repair-card-body'; details.append(summary, body);
     details.addEventListener('toggle', async () => {
       if (!details.open || details.loaded) return;
       const finish = beginWork(body, 'Loading repair evidence');
@@ -43,10 +51,15 @@ $("repairExamples").onclick = async () => {
         const data = await api(`/api/repair-examples?${scope()}&id=${row.id}`);
         const explanation = document.createElement('p');
         explanation.textContent = `${data.explanation || 'No agent explanation supplied.'}${data.automation ? ' Suggested automation: ' + data.automation : ''}`;
-        const pre = document.createElement('pre');
+        const pre = document.createElement('pre'); pre.className = 'repair-diff'; pre.setAttribute('tabindex', '0'); pre.setAttribute('aria-label', 'Source changes');
         const change = document.createElement('p'); change.className = 'muted small';
         change.textContent = data.evidence.source_change_label || '';
-        pre.textContent = data.evidence.diff || 'No comparable failed source is available. Use the full technical evidence to check settings and context.';
+        const diff = data.evidence.diff || 'No comparable failed source is available. Check the full technical evidence for settings and context.';
+        for (const line of diff.split('\n')) {
+          const span = document.createElement('span');
+          span.className = line.startsWith('@@') ? 'diff-range' : line.startsWith('+') ? 'diff-added' : line.startsWith('-') ? 'diff-removed' : 'diff-context';
+          span.textContent = line; pre.append(span);
+        }
         const raw = document.createElement('details'), rawTitle = document.createElement('summary'), rawText = document.createElement('pre');
         rawTitle.textContent = 'Full technical evidence'; rawText.textContent = JSON.stringify(data.evidence, null, 2);
         raw.append(rawTitle, rawText);
@@ -66,6 +79,7 @@ $("repairExamples").onclick = async () => {
           finally { done(); }
         };
         const providers = document.createElement('select');
+        providers.className = 'repair-provider';
         providers.setAttribute('aria-label', `Coding agent for example ${row.id}`);
         const config = await investigationConfig();
         for (const agent of config.agents) {
@@ -75,7 +89,7 @@ $("repairExamples").onclick = async () => {
         }
         const installed = config.agents.find((agent) => agent.installed);
         if (installed) providers.value = installed.id;
-        const send = document.createElement('button'); send.type = 'button'; send.textContent = 'Send to agent to investigate';
+        const send = document.createElement('button'); send.type = 'button'; send.textContent = 'Investigate with agent'; send.className = 'repair-investigate';
         send.disabled = !installed;
         const hint = document.createElement('p'); hint.className = 'muted small';
         hint.textContent = 'Opens a terminal with a fresh decompdecomp checkout and this example, including game source and headers. '
@@ -94,7 +108,8 @@ $("repairExamples").onclick = async () => {
           finally { done(); }
         };
         const advanced = document.createElement('details'), advancedTitle = document.createElement('summary');
-        advancedTitle.textContent = 'Developer review (optional)'; advanced.append(advancedTitle, review, kind, note, save);
+        advanced.className = 'repair-review';
+        advancedTitle.textContent = 'Classify and save review'; advanced.append(advancedTitle, review, kind, note, save);
         const evidence = document.createElement('details'), evidenceTitle = document.createElement('summary');
         evidenceTitle.textContent = 'Before/after evidence and compiler settings'; evidence.append(evidenceTitle, change, pre, raw); evidence.open = true;
         body.append(explanation, providers, send, hint, log, evidence, advanced); details.loaded = true;
@@ -110,7 +125,8 @@ $("repairExamples").onclick = async () => {
       if (!dialog.isConnected) return;
       if (reset) list.replaceChildren();
       options(category, data.categories); options(status, data.states);
-      get('[data-count]').textContent = data.groups.map((group) => `${group.count} ${group.category.replaceAll('_', ' ')} (${group.status})`).join(' · ') || 'No examples captured yet.';
+      get('[data-count]').textContent = data.groups.map((group) => `${group.count} ${group.category.replaceAll('_', ' ')} (${group.status})`).join(' · ') || 'No examples for these filters.';
+      if (reset && !data.examples.length) { const empty = document.createElement('p'); empty.className = 'repair-empty'; empty.textContent = 'No examples match these filters. Try another review state or include examples without a failed candidate.'; list.append(empty); }
       for (const row of data.examples) { list.append(card(row, data.states, data.categories)); before = row.id; }
       get('[data-more]').hidden = !data.more;
     } catch (error) { toast(esc(error.message), 'err'); }

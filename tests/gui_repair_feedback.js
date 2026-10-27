@@ -48,7 +48,11 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   const evidence = details.children[1], evidencePanel = evidence.children[5];
   const pre = evidencePanel.children.find((child) => child.tag === 'pre');
   assert(evidencePanel.children.some((child) => child.tag === 'p' && child.textContent === 'C tokens changed'));
-  assert(pre.textContent.includes('<script>neverExecute()</script>'));
+  assert(pre.children.some((line) => line.textContent.includes('<script>neverExecute()</script>')));
+  assert(pre.children.some((line) => line.className === 'diff-added'));
+  assert(dialog.className.includes('repair-dialog'));
+  assert(details.className === 'repair-card');
+  assert(details.children[0].children[1].textContent.includes('<b>demo</b>'));
   const advanced = evidence.children[6];
   const review = advanced.children[1], kind = advanced.children[2], note = advanced.children[3], save = advanced.children[4];
   const send = evidence.children[2]; await send.onclick();
