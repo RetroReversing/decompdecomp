@@ -178,6 +178,9 @@ class AutopilotMixin:
                 refined = m2cfix.refine_draft(draft, fn["name"], fn["asm"] or "")
                 if refined:
                     candidates.append(f"{note}{seeds.M2C_MACROS}\n{refined}\n")
+            for canonical in (False,True):
+                if array := m2cfix.stack_array(draft,fn['name'],canonical):
+                    candidates.append(f"{note}{seeds.M2C_MACROS}\n{array}\n")
             outcomes = []
             for source in candidates:
                 if self.store.one("SELECT 1 FROM attempts WHERE function_id=? AND agent_id=? AND context_version=? "

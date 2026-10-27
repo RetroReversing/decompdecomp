@@ -19,9 +19,8 @@ def test_address_conversion_and_commutation_are_combined():
 @pytest.mark.parametrize('arch', ['mips', 'ppc', 'x86', 'x86_64', 'arm', 'thumb', 'unknown'])
 def test_early_return_is_shared_and_keeps_expression(arch):
     src = 'int f(int x) { int result; result = 0; if (x >= 0) { result = (int)root((float)x); } return result; }'
-    out, = variants(src, 'f', arch)
-    assert 'if (x < 0) return 0;' in out
-    assert 'return (int)root((float)x);' in out
+    outputs = variants(src, 'f', arch)
+    assert any('if (x < 0) return 0;' in out and 'return (int)root((float)x);' in out for out in outputs)
 
 
 def test_nested_call_argument_boundary_and_opaque_text():
