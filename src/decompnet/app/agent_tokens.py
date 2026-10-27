@@ -15,14 +15,28 @@ from . import agent_targets, expression_repairs, pattern_repairs
 
 def candidate(net, agent, slug, function):
     fn = net._function(function, slug)
-    row = net.store.one('SELECT source,created_at FROM attempts WHERE function_id=? AND agent_id=? ORDER BY id DESC LIMIT 1', fn['id'], agent.id)
+    row = net.store.one('SELECT id,source,created_at FROM attempts WHERE function_id=? AND agent_id=? ORDER BY id DESC LIMIT 1', fn['id'], agent.id)
     claim = net.store.one('SELECT claimed_at FROM claims WHERE function_id=? AND agent_id=?', fn['id'], agent.id)
     row = row if row and claim and row['created_at'] >= claim['claimed_at'] else None
     source = row['source'] if row else fn['matched_source'] or fn['best_source'] or fn['seed'] or ''
     if not source and net.fork_slug(slug):
         _, fp, _ = net.forks.get(slug)
         source = net.forks._current_source(fp, fn) or ''
-    return source, hashlib.sha256(source.encode()).hexdigest()[:20]
+    stamp = (row['id'] if row else None, claim['claimed_at'] if claim else None, target_scope(net,fn,''))
+    selected = getattr(net,'_agent_selected',{}).get((agent.id,fn['id']))
+    if selected and selected['stamp'] == stamp and fn['status']=='open':
+        source = selected['source']
+    revision = hashlib.sha256(source.encode()).hexdigest()[:20]
+    snapshots = getattr(net,'_agent_snapshots',None)
+    if snapshots is None:
+        snapshots = net._agent_snapshots = {}
+    history = snapshots.setdefault((agent.id,fn['id']),{})
+    while len(snapshots)>64:
+        del snapshots[next(iter(snapshots))]
+    history[revision] = source
+    while len(history)>8:
+        del history[next(iter(history))]
+    return source, revision
 
 
 def get_candidate(net, agent, slug, function):
@@ -30,12 +44,35 @@ def get_candidate(net, agent, slug, function):
     return f'Candidate revision {revision}\n```c\n{source}\n```'
 
 
+def stale(net, agent, fn, submitted, source, actual):
+    old = getattr(net,'_agent_snapshots',{}).get((agent.id,fn['id']),{}).get(submitted)
+    change = ''
+    if old is not None:
+        lines = list(difflib.unified_diff(old.splitlines(),source.splitlines(),fromfile='submitted revision',tofile='current revision',n=1))
+        change = '\nCurrent changes (bounded):\n'+'\n'.join(lines[:35])[:2000]
+    return NetworkError(f'Candidate changed. Current candidate revision {actual}. No compile run. '
+                        'Same-function edits are serialized; wait for each response before sending the next edit. '
+                        'Apply your next patch to the current revision; get_candidate only if these changes are insufficient.'+change)
+
+
+def next_action(net, agent, fn, source, revision):
+    for family in ('signedness','declaration_order'):
+        targets = agent_targets.valid_targets(source,family)
+        if any(not target_tried(net,fn,revision,family,t['old']) for t in targets):
+            return f'Next valid local experiment: compile_family(function="{fn["name"]}", revision="{revision}", family="{family}", target="next").'
+    for family,_ in pattern_repairs.variants(source,fn['name']):
+        used = net.store.one('SELECT 1 FROM agent_variant_runs WHERE function_id=? AND revision=? AND family=?',fn['id'],revision,family)
+        if not used:
+            return f'Next applicable repair: compile_family(function="{fn["name"]}", revision="{revision}", family="{family}").'
+    return 'Next: inspect the first differing region with last_diff; fix structure, calls or types rather than repeating ineffective edits.'
+
+
 def patch(net, agent, slug, function, revision, old, new, repair_note='', repair_category='other', repair_automation='', occurrence=0):
     fn = net._function(function, slug)
     with net.attempt_turn(agent, fn):
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
-            raise NetworkError('Candidate changed. Call get_candidate and apply the patch to its current revision.')
+            raise stale(net,agent,fn,revision,source,actual)
         edited = agent_targets.replace_anchor(source, old, new, occurrence)
         from .tools import _compile
         return _compile(net, agent, slug, function, edited, repair_note, repair_category, repair_automation)
@@ -180,6 +217,8 @@ def feedback(net, agent, slug, function, text, previous):
             detail += (' Multiple edits produced identical instructions. Change approach: inspect the differing '
                        'region, try a local permutation search, or test independent alternatives with compile_variants; '
                        'avoid repeating edits the compiler optimizes away.')
+            current_source, revision = candidate(net,agent,slug,function)
+            detail += '\n'+next_action(net,agent,fn,current_source,revision)
     else:
         getattr(net, '_agent_unchanged', {}).pop((agent.id, fn['id']), None)
         # Show newly changed differing rows first, with ordinary first-region fallback.
@@ -219,7 +258,7 @@ def outcome(net, agent, fn, source, text):
     kept = net._last_diffs.get((agent.id, fn['id'])) if score is not None else None
     offsets = [text.index(mark) for mark in ('\ncompiler output:', '\nwhen linking your code') if mark in text]
     warnings = text[min(offsets):] if offsets else ''
-    value = {'source': source, 'score': score, 'rows': list(kept[0]) if kept else None, 'warnings': warnings}
+    value = {'source': source, 'score': score, 'rows': list(kept[0]) if kept else None, 'legend': kept[1] if kept else scoring.LEGEND, 'warnings': warnings}
     if not hasattr(net, '_agent_outcomes'):
         net._agent_outcomes = {}
     net._agent_outcomes[agent.id, fn['id']] = value
@@ -301,7 +340,7 @@ def local_family(net, agent, slug, function, revision, family, old='', declarati
     with net.attempt_turn(agent, fn):
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
-            raise NetworkError('Candidate changed. Call get_candidate before trying families.')
+            raise stale(net,agent,fn,revision,source,actual)
         if family in ('typed_temporary','branch_orientation','narrowing','source_lines','address_temporary','constant_local','comparison_load','stack_array','loop_induction','parameter_width','value_lifetime','sum_shape','call_result_inline'):
             if old or declaration or occurrence or target:
                 raise NetworkError('Pattern families use function and revision only; omit target/old/declaration/occurrence.')
@@ -319,6 +358,8 @@ def local_family(net, agent, slug, function, revision, family, old='', declarati
             if not generated:
                 return 'No applicable '+family+' variants for this candidate. No compile run.'
             return variants(net,agent,slug,function,revision,[{'old':source,'new':s} for s in generated[:6]],family)
+        if not target and not old and not declaration and not occurrence and family in ('signedness','declaration_order'):
+            target = 'next'
         if target:
             if target != 'next'  or old or declaration or occurrence:
                 raise NetworkError('Use target=next alone with family and revision; do not combine other selectors.')
@@ -359,7 +400,7 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
     with net.attempt_turn(agent, fn):
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
-            raise NetworkError('Candidate changed. Call get_candidate before trying variants.')
+            raise stale(net,agent,fn,revision,source,actual)
         candidates = []
         for p in patches:
             if not isinstance(p,dict):
@@ -369,6 +410,7 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
         last = None
         groups = {}
         scores = []
+        choices = []
         baseline = getattr(net, '_agent_outcomes', {}).get((agent.id, fn['id']))
         if baseline and baseline['source'] != source:
             baseline = None
@@ -376,6 +418,10 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             prior = net.store.one('SELECT score FROM attempts WHERE function_id=? AND source=? ORDER BY id DESC LIMIT 1', fn['id'],source)
             if prior and prior['score'] is not None:
                 baseline = {'score':prior['score'], 'rows':None}
+        if baseline and baseline['score'] is not None:
+            choices.append((baseline['score'],source,baseline,0))
+        else:
+            choices.append((float('inf'),source,{'score':None,'rows':None},0))
         if family != 'explicit patches':
             results.append('Generated replacements: '+ '; '.join(f"{i}: {p['new'][:100]}" for i,p in enumerate(patches,1)))
         began = time.monotonic()
@@ -396,6 +442,7 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             rows = measured['rows'] if measured else None
             if score is not None:
                 scores.append(score)
+                choices.append((score,src,measured,i))
             # Group only successful, identical displayed diffs AND scores. Errors stay distinct;
             # identical text does not prove byte identity and never skips a compile.
             key = (score, repr(rows), measured.get('warnings',''), 'MATCH!' in result) if rows is not None else ('unavailable', i)
@@ -433,8 +480,36 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
         with net.store.tx() as db:
             db.execute('INSERT INTO agent_variant_runs(function_id,family,revision,trials,best_score,created_at) VALUES(?,?,?,?,?,?)',
                        (fn['id'],family,revision,last or 0,min(scores) if scores else None,time.time()))
+        selected_index = None
+        if last is not None and choices and net._function(function,slug)['status']=='open':
+            # Stable min keeps the baseline on ties. This selects an agent continuation, never a new
+            # judge verdict, attempt, file write or match. The next compile still uses the normal judge.
+            _,selected,measurement,selected_index = min(choices,key=lambda choice:choice[0])
+            latest = net.store.one('SELECT id,created_at FROM attempts WHERE function_id=? AND agent_id=? ORDER BY id DESC LIMIT 1',fn['id'],agent.id)
+            claim = net.store.one('SELECT claimed_at FROM claims WHERE function_id=? AND agent_id=?',fn['id'],agent.id)
+            stamp = (latest['id'] if latest and claim and latest['created_at']>=claim['claimed_at'] else None,
+                     claim['claimed_at'] if claim else None,target_scope(net,fn,''))
+            if not hasattr(net,'_agent_selected'):
+                net._agent_selected = {}
+            net._agent_selected[agent.id,fn['id']] = {'stamp':stamp,'source':selected}
+            while len(net._agent_selected)>64:
+                del net._agent_selected[next(iter(net._agent_selected))]
+            if not hasattr(net,'_agent_outcomes'):
+                net._agent_outcomes = {}
+            net._agent_outcomes[agent.id,fn['id']] = dict(measurement,source=selected)
+            rows = measurement.get('rows')
+            if rows is not None:
+                net.keep_diff(agent.id,fn['id'],rows,measurement.get('legend',scoring.LEGEND))
+            else:
+                net._last_diffs.pop((agent.id,fn['id']),None)
+            results.append('Continuation: '+('starting candidate retained' if selected_index==0 else f'best scored variant {selected_index}')+
+                           '. No extra compile; selection is not a fresh verification under changed settings.')
+            if selected != candidates[(last or 1)-1]:
+                delta = list(difflib.unified_diff(source.splitlines(),selected.splitlines(),n=1))
+                results.append('Selected changes from starting C (bounded):\n'+'\n'.join(delta[:35])[:2000])
         current_source, current = candidate(net, agent, slug, function)
         current_index = next((i for i, src in enumerate(candidates, 1) if src == current_source), None)
         results.append(f'Current candidate revision {current}; last submitted variant {last}; current source variant {current_index or "retained candidate"}. '
-                       'Best attempts are saved normally. last_diff shows the last completed trial; get_candidate recovers the current C. Cached or rejected trials may retain the earlier candidate.')
+                       'Use this selected candidate and revision for the next edit. last_diff refers to the selected candidate when available; get_candidate recovers its full C. '
+                       'Trials and best attempts remain saved; no game files were restored by continuation selection.')
         return '\n'.join(results)

@@ -296,7 +296,11 @@ class JudgeMixin:
                 f"Not released yet: {n} compile{'s' if n != 1 else ''} of {fn['name']} since you claimed it, "
                 f"{stall_line(streak, after)}.")
         x86 = self.console(self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])).arch == "x86"
+        from .. import agent_tokens
+        source, revision = agent_tokens.candidate(self,agent,project,fn['name'])
         lines = [head,
+                 f"No-improvement budget remaining: {max(0,after-streak)}/{after}; improvements reset it.",
+                 agent_tokens.next_action(self,agent,fn,source,revision),
                  "Compile the next step your notes name first, and act on what the diff shows"
                  + (": a target that reads `this` or a pointer from the stack ([esp+4]) and ends in `ret N` is a "
                     "function taking it as a stack parameter (__stdcall; __cdecl with a plain `ret`), not a member "
