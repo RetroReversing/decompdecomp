@@ -13,6 +13,7 @@ def test_cursor_private_home_and_permissions_do_not_import_user_mcp(tmp_path, mo
     (config / 'cli-config.json').write_text('{"permissions":{"allow":["Shell(*)"]},"network":{"useHttp1ForAgent":true}}')
     (config / 'auth.json').write_text('{"accessToken":"login-material"}')
     monkeypatch.setenv('HOME', str(original))
+    monkeypatch.setenv('USERPROFILE', str(original))
     monkeypatch.delenv('CURSOR_CONFIG_DIR', raising=False)
     monkeypatch.delenv('XDG_CONFIG_HOME', raising=False)
     work = tmp_path / 'worker'
