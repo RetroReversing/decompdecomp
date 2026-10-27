@@ -25,9 +25,9 @@ configuration and request token breakdowns. Live integration checked on macOS; W
 launcher behavior is covered by portable tests but still needs physical host verification.
 
 N64 additionally lists PM matching GCC 2.8.1, EGCS 1.1.2, reconstructed SN64
-970404 and original SN64 builds 0004/0006. The three free profiles have real
-compile/link checks on macOS. Original-pack execution awaits explicit license
-acceptance; physical Linux and Windows/WSL checks remain outstanding. Imported
+970404 and original SN64 builds 0004/0006. All five profiles have real compile/link checks on macOS, with explicit
+license acceptance for the original packs. Physical Linux and Windows/WSL
+checks remain outstanding. Imported
 projects keep their own build scripts. See [compiler coverage](docs/sn64-compilers.md).
 
 ## What works where

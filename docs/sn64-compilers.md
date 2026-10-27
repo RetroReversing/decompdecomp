@@ -70,8 +70,8 @@ The application was not reinstalled and no live compiler ranges were applied.
 | `gcc-2.8.1-pm` | Matching GCC fork and paired assembler | Real C compilation and linked byte checks on macOS |
 | `gcc-egcs-2.91.66` | EGCS 1.1.2 and paired binutils | Real C compilation and linked byte checks on macOS |
 | `sn-n64-272-970404` | Reconstructed native GCC, modern-asn64, GNU assembler | Native Apple Silicon source build, real C compilation and linked byte checks |
-| `sn-n64-272-0004` | Original SN compiler/assembler, preserved-pack conversion | Registry and shared integration tests; live test requires license acceptance |
-| `sn-n64-272-0006` | Original SN compiler/assembler, preserved-pack conversion | Registry and shared integration tests; live test requires license acceptance |
+| `sn-n64-272-0004` | Original SN compiler/assembler, preserved-pack conversion | Real C compilation and linked byte checks on macOS |
+| `sn-n64-272-0006` | Original SN compiler/assembler, preserved-pack conversion | Real C compilation and linked byte checks on macOS |
 
 Downloads and the reconstructed source commit are checksum pinned. The source
 build adds only a host assertion-reporting helper required by Apple's runtime;
@@ -81,3 +81,9 @@ but physical-host verification remains outstanding. These profiles enter the
 shared compiler picker, flag comparisons, GCC drafts and permuter selection;
 imported projects continue using their own build scripts. No live app or game
 project was changed during validation.
+
+After explicit license acceptance, builds 0004 and 0006 were installed and
+passed real arithmetic, call/data relocation, floating-point and branch
+compilation checks, including exact linked byte comparisons. Build 0006's
+preprocessor requires an absolute include directory under wibo; the driver
+normalizes that path, with a regression test for relative sandbox inputs.
