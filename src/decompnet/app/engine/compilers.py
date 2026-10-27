@@ -257,6 +257,7 @@ class CompilerMixin:
         state = state if state is not None else {}
         comparison = None
         improvements = []
+        results = []
         n = found = skipped = 0
         for fn in rows:
             if n >= limit:
@@ -286,7 +287,7 @@ class CompilerMixin:
                 progress = {"function": fn["name"], "tested": 0, "combinations": len(candidates),
                             "before": baseline, "best": best, "profile": best_profile,
                             "completed": n - 1, "improved": len(improvements), "exact": found,
-                            "skipped": skipped}
+                            "skipped": skipped, "results": list(results)}
                 report(progress)
                 for index, (tc, flags) in enumerate(candidates, 1):
                     ok, diff, _ = self._judge_with(proj, fn, tc, list(flags), source)
@@ -327,6 +328,8 @@ class CompilerMixin:
                 with self.store.tx() as db:
                     db.execute("INSERT OR REPLACE INTO compiler_tests VALUES(?,?,?,?)",
                                (fn["id"], input_digest, time.time(), json.dumps(completed)))
+                results.append({"function": fn["name"], "before": baseline, "best": best,
+                                "profile": best_profile, "improved": improved, "exact": bool(matches)})
                 if function:
                     comparison = completed
                 if matches:
@@ -336,7 +339,8 @@ class CompilerMixin:
                     log(f"{fn['name']}: no exact matches among the tested combinations.")
                 report({"function": fn["name"], "tested": len(candidates), "combinations": len(candidates),
                         "before": baseline, "best": best, "profile": best_profile,
-                        "completed": n, "improved": len(improvements), "exact": found, "skipped": skipped})
+                        "completed": n, "improved": len(improvements), "exact": found, "skipped": skipped,
+                        "results": list(results)})
                 state.update(tried=n, confirmed=found)
                 if n % 25 == 0:
                     log(f"{n} functions tried, {found} with exact matches")
@@ -362,7 +366,7 @@ class CompilerMixin:
                 log("All eligible saved attempts already have up-to-date comparisons." if skipped else
                     "No eligible unmatched C attempts yet. Run the free matching pass or agents first.")
             return {"tried": n, "skipped": skipped, "confirmed": found, "matches": confirmed, "comparison": comparison,
-                    "improvements": sorted(improvements, key=lambda r: -r["best"])}
+                    "improvements": sorted(improvements, key=lambda r: -r["best"]), "results": results}
         self._update_cfg(slug, lambda c: c.__setitem__("compiler_survey", {"tried": tried, "confirmed": confirmed,
                                                                            "t": time.time()}))
         suggested = self._suggest_from_map(proj, confirmed)

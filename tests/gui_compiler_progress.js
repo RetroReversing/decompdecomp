@@ -5,8 +5,12 @@ const path = require("node:path");
 const vm = require("node:vm");
 const read = (name) => fs.readFileSync(path.join(__dirname, "../src/decompnet/app/static/js", name + ".js"), "utf8");
 const fields = new Map();
-const box = { hidden: true, dataset: {}, querySelector(key) { if (!fields.has(key)) fields.set(key, {}); return fields.get(key); } };
-const ctx = { $: () => box };
+const counts = ["completed", "improved", "exact"].map((filter) => ({dataset: {resultsFilter: filter}, attrs: {}, setAttribute(key, value) { this.attrs[key] = value; }}));
+let shown, scrolled = 0, focused = 0;
+const list = { scrollIntoView() { scrolled++; }, focus() { focused++; } };
+const box = { hidden: true, dataset: {slug: "demo"}, querySelectorAll() { return counts; }, querySelector(key) { if (!fields.has(key)) fields.set(key, {}); return fields.get(key); } };
+const ctx = { $: (id) => id === "compilerImprovements" ? list : box, S: {slug: "demo"},
+  renderCompilerImprovements(slug, rows, filter) { shown = {slug, rows, filter}; } };
 vm.createContext(ctx);
 vm.runInContext(read("compiler-progress"), ctx);
 ctx.renderCompilerProgress(null);
@@ -18,12 +22,37 @@ assert.equal(fields.get("[data-best]").textContent, "99.94%");
 assert.equal(fields.get("[data-bar]").value, 80);
 assert.equal(fields.get("[data-bar]").max, 196);
 assert.equal(box.dataset.improved, "true");
+assert.equal(fields.get("[data-exact]").textContent, 1);
+const results = [
+ {function: "exact", before: 99, best: 100, improved: true, exact: true},
+ {function: "near", before: 90, best: 99, improved: true, exact: false},
+ {function: "same", before: 95, best: 95, improved: false, exact: false},
+ {function: "failed", before: 50, best: null, improved: false, exact: false}];
+ctx.renderCompilerProgress({function: "next", tested: 0, combinations: 196, before: 90, best: null,
+ completed: 4, improved: 2, exact: 1, results});
+assert.equal(ctx.compilerResultRows([{best: 100, exact: false, improved: true}], "exact").length, 0);
+assert.equal(scrolled, 0); // Polling never scrolls; only a user's count click does.
+counts[1].onclick();
+assert.equal(shown.filter, "improved");
+assert.equal(shown.rows.map((r) => r.function).join(","), "exact,near");
+assert.equal(counts[1].attrs["aria-expanded"], "true");
+assert.equal(scrolled, 1); assert.equal(focused, 1);
+counts[2].onclick();
+assert.equal(shown.rows.map((r) => r.function).join(","), "exact");
+counts[0].onclick();
+assert.equal(shown.rows.length, 4);
+ctx.S.slug = "other";
+counts[1].onclick();
+assert.equal(scrolled, 3); // An old project's panel cannot navigate the new project.
+ctx.S.slug = "demo";
+
 ctx.renderCompilerProgress(null, { tried: 4, skipped: 2, improvements: [{}, {}], confirmed: 1 });
 assert.equal(fields.get("[data-current]").textContent, "Comparison finished");
 assert.equal(fields.get("[data-completed]").textContent, 4);
 assert.ok(fields.get("[data-profile]").textContent.includes("Nothing has been applied"));
 ctx.renderCompilerProgress(null);
 assert.equal(box.dataset.improved, "false");
+assert.ok(counts.every((button) => button.disabled));
 
 async function checkScroll() {
   const base = read("base");
@@ -45,3 +74,40 @@ async function checkScroll() {
   }
 }
 checkScroll().catch((error) => { console.error(error); process.exitCode = 1; });
+
+async function checkResultActions() {
+  list.dataset = {};
+  ctx.esc = (s) => String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
+  ctx.setHtml = (element, html) => { element.html = html; };
+  let sent = 0, opened;
+  ctx.openFn = (name) => { opened = name; };
+  ctx.beginWork = () => () => {};
+  ctx.refreshMap = async () => {};
+  ctx.api = async (url, options) => {
+    sent++; assert.equal(url, '/api/compiler'); assert.equal(options.body.function, 'exact');
+    assert.equal(options.body.toolchain, 'Example GCC');
+  };
+  const steering = read('steering');
+  vm.runInContext(steering.slice(steering.indexOf('function renderCompilerImprovements(')), ctx);
+  const rows = [
+    {function: 'exact', before: 99, best: 100, improved: true, exact: true, profile: ['Example GCC', ['-O2']]},
+    {function: 'same', before: 95, best: 95, improved: false, exact: false, profile: ['Example GCC', ['-O2']]},
+    {function: 'failed', before: 50, best: null, improved: false, exact: false, profile: null}];
+  box._compilerRows = rows;
+  ctx.renderCompilerImprovements('demo', rows, 'completed');
+  assert.equal(sent, 0); // Opening results never changes compiler settings.
+  assert.ok(list.html.includes('Finished functions'));
+  assert.ok(list.html.includes('No compiled result'));
+  assert.equal((list.html.match(/data-apply-improvement=/g) || []).length, 1);
+  const functionButton = {dataset: {resultFunction: '0'}};
+  await list.onclick({target: {closest(selector) { return selector === 'button[data-result-function]' ? functionButton : null; }}});
+  assert.equal(opened, 'exact');
+  const applyButton = {dataset: {applyImprovement: '0'}, nextElementSibling: {}};
+  await list.onclick({target: {closest(selector) { return selector === 'button[data-apply-improvement]' ? applyButton : null; }}});
+  assert.equal(sent, 1);
+  assert.equal(applyButton.nextElementSibling.textContent, 'Applied and rechecked');
+  ctx.renderCompilerImprovements('demo', rows, 'exact');
+  assert.ok(list.html.includes('Applied and rechecked'));
+  assert.ok(!list.html.includes('data-apply-improvement="0"'));
+}
+checkResultActions().catch((error) => { console.error(error); process.exitCode = 1; });

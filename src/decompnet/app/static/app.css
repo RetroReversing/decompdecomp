@@ -1090,3 +1090,13 @@ details.more[open] > summary::before { content: "− "; }
 .compiler-progress-profile { overflow-wrap: anywhere; }
 #compilerLogDetails .more-body { min-width: 0; }
 #installedCompilerLog { height: 220px; overflow: auto; overflow-anchor: none; font-size: 11px; }
+
+.compiler-progress-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.compiler-progress-stats > div { grid-column: span 2; }
+.compiler-progress-stats > .compiler-percent { grid-column: span 3; }
+.compiler-stat { display: grid; gap: 4px; padding: 4px 0; width: 100%; border: 0; background: transparent; text-align: left; color: inherit; font: inherit; }
+.compiler-stat:not(:disabled):hover { background: var(--hl-soft); }
+.compiler-stat:not(:disabled) .compiler-stat-action { text-decoration: underline; text-underline-offset: 3px; }
+.compiler-stat-action { color: var(--muted); font-size: 11px; font-weight: 400; }
+.compiler-stat:disabled { opacity: .6; cursor: default; }
+.compiler-stat [data-exact] { color: var(--match); }

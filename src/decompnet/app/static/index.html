@@ -385,11 +385,16 @@
             <section class="compiler-progress" id="compilerProgress" aria-label="Compiler comparison progress" hidden>
               <div class="compiler-progress-heading"><span class="small muted">Current function</span><b class="mono" data-current>Preparing…</b></div>
               <div class="compiler-progress-count"><span data-tested>Waiting for the first result</span><progress data-bar max="1" value="0" aria-label="Settings tested for current function"></progress></div>
-              <dl class="compiler-progress-stats"><div><dt>Saved match</dt><dd data-before>—</dd></div><div><dt>Best tested</dt><dd data-best>—</dd></div><div><dt>Functions finished</dt><dd data-completed>0</dd></div><div><dt>Better settings found</dt><dd data-improved>0</dd></div></dl>
+              <dl class="compiler-progress-stats">
+                <div class="compiler-percent"><dt>Saved match</dt><dd data-before>—</dd></div>
+                <div class="compiler-percent"><dt>Best tested</dt><dd data-best>—</dd></div>
+                <div><dt>Functions finished</dt><dd><button class="compiler-stat" type="button" data-results-filter="completed" aria-label="View finished function results" aria-controls="compilerImprovements" aria-expanded="false" disabled><span data-completed>0</span><span class="compiler-stat-action">View functions</span></button></dd></div>
+                <div><dt>Better settings found</dt><dd><button class="compiler-stat" type="button" data-results-filter="improved" aria-label="View functions with better settings" aria-controls="compilerImprovements" aria-expanded="false" disabled><span data-improved>0</span><span class="compiler-stat-action">Review &amp; apply</span></button></dd></div>
+                <div><dt>Exact matches found</dt><dd><button class="compiler-stat" type="button" data-results-filter="exact" aria-label="View exact match results" aria-controls="compilerImprovements" aria-expanded="false" disabled><span data-exact>0</span><span class="compiler-stat-action">Review &amp; apply</span></button></dd></div>
+              </dl>
               <p class="small muted compiler-progress-profile" data-profile>Comparing the saved C. Compiler settings stay unchanged.</p>
-              <p class="small muted" data-exact>0 functions with an exact match</p>
             </section>
-            <div id="compilerImprovements"></div>
+            <div id="compilerImprovements" tabindex="-1" aria-label="Compiler comparison function results"></div>
             <details class="more" id="compilerLogDetails" hidden><summary>Detailed output</summary><div class="more-body">
               <label class="check"><input type="checkbox" id="compilerFollowLog"><span>Follow latest output</span></label>
               <pre class="joblog" id="installedCompilerLog" aria-label="Compiler comparison results" aria-live="off"></pre>

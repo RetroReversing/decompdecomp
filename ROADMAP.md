@@ -806,3 +806,8 @@ and collisions are preserved. Names retain SDK provenance and never count as ver
 
 Imported-project renames now keep report synchronization and naming-history publication inside the
 project's exclusive lock, preventing concurrent renames from overwriting each other's provenance.
+
+Compiler comparison totals are actionable: finished, improved and exact-match counts open filtered
+completed results during the batch, with guarded per-function Apply actions. Exact matches have the same
+prominent numeric treatment as the other totals. Explicit result refresh preserves reading/apply state
+while new completed comparisons arrive; applying a profile still requires the user's action and recheck.

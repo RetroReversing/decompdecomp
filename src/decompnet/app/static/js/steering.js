@@ -711,6 +711,7 @@ $("testInstalledCompilers").onclick = async () => {
     }
   };
   $("compilerImprovements").replaceChildren();
+  delete $("compilerImprovements").dataset.filter;
   $("compilerProgress").dataset.slug = slug;
   renderCompilerProgress(null);
   showJobError(work, "");
@@ -721,23 +722,35 @@ $("testInstalledCompilers").onclick = async () => {
     });
     if (S.slug !== slug) return;
     renderCompilerProgress(null, result);
-    renderCompilerImprovements(slug, result.improvements || []);
+    if (!$("compilerImprovements").dataset.filter) renderCompilerImprovements(slug, result.improvements || []);
     log.textContent += `\n${result.tried} functions tested; ${result.skipped || 0} completed comparisons skipped. Results saved.`;
   } catch (e) { showJobError(work, e.message); } finally { finish(); }
 };
 
-function renderCompilerImprovements(slug, rows) {
+function renderCompilerImprovements(slug, rows, filter = "improved") {
   const list = $("compilerImprovements");
   list.dataset.slug = slug;
-  setHtml(list, `<h3>${rows.length} function${rows.length === 1 ? "" : "s"} with better settings</h3><p class="small muted">Highest resulting percentage first. Review and apply each function individually; the app revalidates before applying. These results are from this comparison.</p>`
-    + (rows.length ? `<div class="compiler-table"><table><thead><tr><th>Function</th><th>Before → tested</th><th>Compiler and flags</th><th>Action</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td class="mono">${esc(r.function)}</td><td>${r.before == null ? "—" : `${r.before.toFixed(2)}%`} → <b>${r.best.toFixed(2)}%</b></td><td>${esc(r.profile[0])}<br><span class="mono">${esc(r.profile[1].join(" "))}</span></td><td><button type="button" class="ghost small-btn" data-apply-improvement="${i}">Apply to function</button><span class="small" role="status"></span></td></tr>`).join("")}</tbody></table></div>` : ""));
+  list.dataset.filter = filter;
+  for (const button of $("compilerProgress").querySelectorAll("[data-results-filter]")) button.setAttribute("aria-expanded", String(button.dataset.resultsFilter === filter));
+  const applied = $("compilerProgress")._compilerApplied || new Set();
+  const title = { completed: "Finished functions", improved: "Better settings", exact: "Exact matches" }[filter];
+  setHtml(list, `<div class="row"><h3>${esc(title)} · ${rows.length}</h3><button type="button" class="ghost small-btn" data-refresh-results>Refresh results</button></div><p class="small muted">Completed comparisons from this run, highest percentage first. Apply settings individually; each function is rechecked before any change. Refresh to include newly finished functions.</p>`
+    + (rows.length ? `<div class="compiler-table"><table><thead><tr><th>Function</th><th>Before → tested</th><th>Compiler and flags</th><th>Action</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td><button type="button" class="ghost small-btn mono" data-result-function="${i}">${esc(r.function)}</button></td><td>${r.before == null ? "—" : `${r.before.toFixed(2)}%`} → <b>${r.best == null ? "—" : `${r.best.toFixed(2)}%`}</b></td><td>${r.profile ? `${esc(r.profile[0])}<br><span class="mono">${esc(r.profile[1].join(" "))}</span>` : "No compiled result"}</td><td>${applied.has(r.function) ? '<span class="small">Applied and rechecked</span>' : r.profile && (r.improved !== false || r.exact) ? `<button type="button" class="ghost small-btn" data-apply-improvement="${i}">Apply to function</button><span class="small" role="status"></span>` : '<span class="small muted">No improvement</span>'}</td></tr>`).join("")}</tbody></table></div>` : '<p class="small muted">No completed results in this group yet.</p>'));
   list.onclick = async (e) => {
+    if (S.slug !== slug) return;
+    if (e.target.closest("[data-refresh-results]")) {
+      renderCompilerImprovements(slug, compilerResultRows($("compilerProgress")._compilerRows || [], filter), filter);
+      return;
+    }
+    const fn = e.target.closest("button[data-result-function]");
+    if (fn) { openFn(rows[Number(fn.dataset.resultFunction)].function); return; }
     const button = e.target.closest("button[data-apply-improvement]");
     if (!button) return;
     const r = rows[Number(button.dataset.applyImprovement)], status = button.nextElementSibling;
     const finish = beginWork(status, `Applying settings to ${r.function}`, [button], "Function updated.");
     try {
       await api("/api/compiler", { method: "POST", body: { slug, function: r.function, toolchain: r.profile[0], flags: r.profile[1] } });
+      applied.add(r.function);
       button.hidden = true;
       status.textContent = "Applied and rechecked";
       if (S.slug === slug) await refreshMap(true);

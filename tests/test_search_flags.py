@@ -121,6 +121,10 @@ def test_installed_compiler_comparison_is_local_and_report_only(tmp_path, monkey
     assert snapshots[1]["tested"] == 1 and snapshots[1]["best"] == 100
     assert snapshots[-1]["tested"] == snapshots[-1]["combinations"]
     assert snapshots[-1]["completed"] == snapshots[-1]["improved"] == snapshots[-1]["exact"] == 1
+    assert snapshots[0]["results"] == []
+    assert snapshots[-1]["results"] == result["results"]
+    assert result["results"][0]["function"] == "f"
+    assert result["results"][0]["improved"] and result["results"][0]["exact"]
     assert result["confirmed"] == 1
     assert result["improvements"][0]["function"] == "f"
     assert result["improvements"][0]["best"] == 100
