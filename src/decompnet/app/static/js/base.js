@@ -133,8 +133,16 @@ function beginWork(log, label, controls = [], completed = "Finished.") {
 async function followJob(id, logEl, onUpdate) {
   for (;;) {
     const job = await api(`/api/job?id=${id}`);
-    if (logEl) { logEl.textContent = job.log.join("\n"); logEl.scrollTop = logEl.scrollHeight; }
-    if (onUpdate) onUpdate(job.log);
+    if (logEl) {
+      const text = job.log.join("\n");
+      if (logEl.textContent !== text) {
+        const top = logEl.scrollTop;
+        const follow = logEl._followTail !== false && logEl.scrollHeight - logEl.clientHeight - top < 32;
+        logEl.textContent = text;
+        logEl.scrollTop = follow ? logEl.scrollHeight : top;
+      }
+    }
+    if (onUpdate) onUpdate(job.log, job);
     if (job.state === "done") return job.result;
     if (job.state === "error" || job.state === "cancelled") {
       const err = new Error(job.error || (job.state === "cancelled" ? "Cancelled." : "The job failed. Try again."));

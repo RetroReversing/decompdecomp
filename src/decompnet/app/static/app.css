@@ -1074,3 +1074,19 @@ details.more[open] > summary::before { content: "− "; }
 .agent-metrics span { font-size: 11px; color: var(--muted); }
 .agent-message summary { font-size: 12px; color: var(--ink-2); cursor: pointer; }
 .session .facts-line { line-height: 1.7; }
+
+/* Keep compiler progress readable while detailed output grows independently. */
+.compiler-progress { border: 1px solid var(--line); border-radius: var(--r); background: var(--raise); padding: 16px; display: grid; gap: 14px; }
+.compiler-progress[hidden] { display: none; }
+.compiler-progress-heading { display: grid; gap: 4px; }
+.compiler-progress-heading b { font-size: 15px; overflow-wrap: anywhere; }
+.compiler-progress-count { display: grid; gap: 8px; font-size: 12px; }
+.compiler-progress progress { width: 100%; height: 8px; accent-color: var(--match); }
+.compiler-progress-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0; }
+.compiler-progress-stats dt { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.compiler-progress-stats dd { margin: 0; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.compiler-progress[data-improved="true"] { border-color: var(--hl); }
+.compiler-progress p { margin: 0; line-height: 1.6; }
+.compiler-progress-profile { overflow-wrap: anywhere; }
+#compilerLogDetails .more-body { min-width: 0; }
+#installedCompilerLog { height: 220px; overflow: auto; overflow-anchor: none; font-size: 11px; }

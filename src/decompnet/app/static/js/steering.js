@@ -433,6 +433,10 @@ function projectCompilerFacts(ov) {
 
 async function renderProjectSettings() {
   if ($("compilerImprovements").dataset.slug !== S.slug) $("compilerImprovements").replaceChildren();
+  if ($("compilerProgress").dataset.slug !== S.slug) {
+    $("compilerProgress").hidden = true;
+    $("compilerLogDetails").hidden = true;
+  }
   const ov = S.ov;
   if (!ov) return;
   const fork = ov.kind === "fork";
@@ -689,16 +693,37 @@ $("deleteBtn").onclick = () => {
 $("testInstalledCompilers").onclick = async () => {
   const slug = S.slug;
   const button = $("testInstalledCompilers"), log = $("installedCompilerLog");
-  const finish = beginWork(log, "Testing installed compilers", [button], "Compiler comparison finished.");
-  log.hidden = false;
-  showJobError(log, "");
+  const work = $("installedCompilerWork");
+  const finish = beginWork(work, "Testing installed compilers", [button], "Compiler comparison finished.");
+  $("compilerLogDetails").hidden = false;
+  $("compilerLogDetails").open = false;
+  $("compilerFollowLog").checked = false;
+  log._followTail = false;
+  log.textContent = "";
+  $("compilerFollowLog").onchange = (e) => {
+    log._followTail = e.target.checked;
+    if (log._followTail) log.scrollTop = log.scrollHeight;
+  };
+  log.onscroll = () => {
+    if (log.scrollHeight - log.clientHeight - log.scrollTop >= 32) {
+      log._followTail = false;
+      $("compilerFollowLog").checked = false;
+    }
+  };
+  $("compilerImprovements").replaceChildren();
+  $("compilerProgress").dataset.slug = slug;
+  renderCompilerProgress(null);
+  showJobError(work, "");
   try {
     const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, untested_only: !$("compilerRetest").checked } });
-    const result = await followJob(job, log);
+    const result = await followJob(job, log, (_lines, snapshot) => {
+      if (S.slug === slug && snapshot.progress) renderCompilerProgress(snapshot.progress);
+    });
     if (S.slug !== slug) return;
+    renderCompilerProgress(null, result);
     renderCompilerImprovements(slug, result.improvements || []);
     log.textContent += `\n${result.tried} functions tested; ${result.skipped || 0} completed comparisons skipped. Results saved.`;
-  } catch (e) { showJobError(log, e.message); } finally { finish(); }
+  } catch (e) { showJobError(work, e.message); } finally { finish(); }
 };
 
 function renderCompilerImprovements(slug, rows) {

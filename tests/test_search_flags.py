@@ -112,7 +112,15 @@ def test_installed_compiler_comparison_is_local_and_report_only(tmp_path, monkey
 
     monkeypatch.setattr(net, "_judge_with", judge)
     monkeypatch.setattr(net, "_suggest_from_map", lambda *a: pytest.fail("comparison must not apply suggestions"))
-    result = net.survey_compilers("demo", all_installed=True, function=function)
+    snapshots = []
+    def log(line):
+        pass
+    log.progress = snapshots.append
+    result = net.survey_compilers("demo", all_installed=True, function=function, log=log)
+    assert snapshots[0]["tested"] == 0 and snapshots[0]["completed"] == 0
+    assert snapshots[1]["tested"] == 1 and snapshots[1]["best"] == 100
+    assert snapshots[-1]["tested"] == snapshots[-1]["combinations"]
+    assert snapshots[-1]["completed"] == snapshots[-1]["improved"] == snapshots[-1]["exact"] == 1
     assert result["confirmed"] == 1
     assert result["improvements"][0]["function"] == "f"
     assert result["improvements"][0]["best"] == 100
