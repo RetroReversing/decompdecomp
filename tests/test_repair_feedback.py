@@ -225,3 +225,16 @@ def test_compile_failure_settings_are_recorded_without_a_repair_case(setup):
     case=net.repair_feedback.listing('demo')['examples'][0]['id']
     previous=net.repair_feedback.detail('demo',case)['evidence']['previous']
     assert previous['source']=='bad C' and previous['score'] is None
+
+
+def test_repair_detail_explains_comment_only_changes_without_automatic_dismissal(setup):
+    net,winner,_,_,fid=setup
+    net._record(fn(net,fid),winner,10,'/* compiler A */\nint target(){return 1;}',1)
+    net._record(fn(net,fid),winner,0,'/* compiler B */\nint target(){return 1;}',1,matched=True)
+    case=net.repair_feedback.listing('demo')['examples'][0]['id']
+    detail=net.repair_feedback.detail('demo',case)
+    assert detail['evidence']['source_change']=='comments_or_spacing'
+    assert 'source line boundaries preserved' in detail['evidence']['source_change_label']
+    assert detail['status']=='new'  # descriptive evidence never auto-approves a proposed rule
+    summary=net.repair_feedback.detail('demo',case,include_source=False)
+    assert 'source' not in summary['evidence']['before']

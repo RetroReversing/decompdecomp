@@ -3,7 +3,7 @@
 import re
 
 from ..forks.csource import _blank, find
-from . import temporary_repairs
+from . import temporary_repairs, value_repairs
 
 IDENT = r'[A-Za-z_]\w*'
 TYPE = r'(?:void\s*\*|[su](?:8|16|32)|unsigned\s+(?:char|short|int)|char|short|int)'
@@ -188,4 +188,5 @@ def variants(source, name, debug_lines=False):
         # Join/split adjacent statement lines without changing token order.
         for m in list(re.finditer(r';[ \t]*\n[ \t]*(?='+IDENT+r'\s*=)',body))[:2]:
             add('source_lines',[(m.start(),m.end(),'; ')])
-    return result[:16]
+    result += value_repairs.variants(source,name)
+    return result[:28]

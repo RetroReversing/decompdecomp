@@ -137,6 +137,12 @@ remain planned. Dynamic addends, ambiguous mappings and named-field reconstructi
 still need deeper analysis. Candidate-local padding repair now handles simple struct definitions in the
 candidate itself, with bounded proposals from aligned load/store offsets. Shared-header layout reconstruction,
 complex/nested types and field reordering remain planned.
+Repair evidence describes whether the selected pair changes C tokens, layout, comments/spacing,
+no source text, or lacks a saved failed source. These labels preserve source-line boundaries and string
+literals; they do not auto-dismiss or implement suggestions. Bounded source hypotheses also include
+masked/narrow-store integer parameter widths, reusing an unused scalar local for a pointer's final integer
+live range, and splitting/commuting selected addition shapes. All use the ordinary ROM/imported judge.
+
 Bounded scheduling repairs include debug-flag-gated statement/else line joins, floating-expression
 hoisting before stores, and scalar parameter assignments split through compatible locals. After an agent
 releases a tried function, a separate machine pass tries at most six candidates with an eight-second

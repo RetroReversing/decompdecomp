@@ -222,6 +222,9 @@ class RepairFeedback:
         if not include_source:
             evidence.pop('target_asm', None)
         if include_source:
+            from . import repair_changes
+            evidence['source_change'] = repair_changes.kind((evidence.get('before') or {}).get('source'),evidence['after'].get('source') or '')
+            evidence['source_change_label'] = repair_changes.LABELS[evidence['source_change']]
             old = (evidence.get('before') or {}).get('source') or ''
             new = evidence['after'].get('source') or ''
             if evidence.get('previous') and evidence['previous'].get('source') is not None:

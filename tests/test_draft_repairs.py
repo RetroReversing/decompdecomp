@@ -42,7 +42,7 @@ def test_only_requested_definition_and_no_directives():
     # Extra statements and references to the accumulator must not be discarded.
     for expr in ('result + x', 'x'):
         src = f'int f(int x) {{ int result; result=0; side(); if(x>=0){{result={expr};}} return result; }}'
-        assert not variants(src, 'f', 'mips')
+        assert all('side();' in out and (f'result={expr};' in out or (expr=='result + x' and 'result = result; result += x;' in out)) for out in variants(src, 'f', 'mips'))
 
 
 def setup_repair_net(count=1):
@@ -158,4 +158,4 @@ def test_member_address_cast_with_optional_parentheses(pointer, wrapped):
 def test_member_rule_excludes_calls_and_increments():
     for expr in ['get()->base', 'obj[i++].base', 'obj->base++']:
         src = f'int f(int i) {{ return *(int *)(((u8 *) {expr}) + i); }}'
-        assert not variants(src, 'f', 'mips')
+        assert all('side();' in out and (f'result={expr};' in out or (expr=='result + x' and 'result = result; result += x;' in out)) for out in variants(src, 'f', 'mips'))

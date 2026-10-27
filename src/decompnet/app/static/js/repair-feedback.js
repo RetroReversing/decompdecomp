@@ -44,6 +44,8 @@ $("repairExamples").onclick = async () => {
         const explanation = document.createElement('p');
         explanation.textContent = `${data.explanation || 'No agent explanation supplied.'}${data.automation ? ' Suggested automation: ' + data.automation : ''}`;
         const pre = document.createElement('pre');
+        const change = document.createElement('p'); change.className = 'muted small';
+        change.textContent = data.evidence.source_change_label || '';
         pre.textContent = data.evidence.diff || 'No comparable failed source is available. Use the full technical evidence to check settings and context.';
         const raw = document.createElement('details'), rawTitle = document.createElement('summary'), rawText = document.createElement('pre');
         rawTitle.textContent = 'Full technical evidence'; rawText.textContent = JSON.stringify(data.evidence, null, 2);
@@ -94,7 +96,7 @@ $("repairExamples").onclick = async () => {
         const advanced = document.createElement('details'), advancedTitle = document.createElement('summary');
         advancedTitle.textContent = 'Developer review (optional)'; advanced.append(advancedTitle, review, kind, note, save);
         const evidence = document.createElement('details'), evidenceTitle = document.createElement('summary');
-        evidenceTitle.textContent = 'Before/after evidence and compiler settings'; evidence.append(evidenceTitle, pre, raw); evidence.open = true;
+        evidenceTitle.textContent = 'Before/after evidence and compiler settings'; evidence.append(evidenceTitle, change, pre, raw); evidence.open = true;
         body.append(explanation, providers, send, hint, log, evidence, advanced); details.loaded = true;
       } catch (error) { toast(esc(error.message), 'err'); }
       finally { finish(); }

@@ -302,7 +302,7 @@ def local_family(net, agent, slug, function, revision, family, old='', declarati
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
             raise NetworkError('Candidate changed. Call get_candidate before trying families.')
-        if family in ('typed_temporary','branch_orientation','narrowing','source_lines'):
+        if family in ('typed_temporary','branch_orientation','narrowing','source_lines','parameter_width','value_lifetime','sum_shape'):
             if old or declaration or occurrence or target:
                 raise NetworkError('Pattern families use function and revision only; omit target/old/declaration/occurrence.')
             proj = net._project(slug)
