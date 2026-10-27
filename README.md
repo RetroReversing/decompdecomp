@@ -310,11 +310,25 @@ Type `decomp`, or open decompdecomp from your apps menu. It opens in a window of
    Demo Quest 64. For an N64, PlayStation or PlayStation 2 game, the app offers to install all of that console's
    compilers first. Then it tests which one built the game. Tick the box only if you accept the proprietary ones.
 2. **Start agents.** Any model with an API key (DeepSeek, OpenRouter, OpenAI, a local model), or Claude Code,
-   Codex, opencode and Antigravity CLI. Run several, and different models: they work on different functions at the
+   Codex, Cursor Agent, Kimi Code, opencode and Antigravity CLI. Run several, and different models: they work on different functions at the
    same time.
 3. **Watch the map.** Each square is a function. It turns green when its function matches. The autopilot matches
    the easy ones for free, before any agent starts.
 4. **Export** (in the project's header). You get a decomp project that builds your game again, byte for byte.
+
+### Cursor Agent
+
+Install the [Cursor CLI](https://cursor.com/docs/cli/overview), run `agent login` in Terminal,
+then choose **Cursor Agent** in **Start agents**. The model picker lists the exact IDs
+available on your Cursor account. Thinking/effort variants are separate model IDs, so
+there is no extra effort control. Your Cursor account's usage limits and billing apply.
+
+Each worker gets private settings and only the app's MCP server; it does not load your
+personal MCP servers. On macOS, the existing Keychain login is passed through the child
+process environment. Built-in shell, file and web tools are denied: workers use the app's
+judged tools. Reported input, output and cache tokens are tracked; missing usage or dollar
+costs remain unknown. Live MCP, compile-and-match and permission checks were tested on
+macOS; Linux and Windows launch settings have automated coverage.
 
 To inspect agent costs, open **What it said and did → Session transcript**. Each new
 session keeps the full app prompt (including guides and project instructions), exposed

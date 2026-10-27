@@ -802,3 +802,7 @@ adaptive routing. Configured queues do not batch unfiltered neighbours.
 - **Polish in the drafts.** Methods of known classes are drafted as `Class::method` in the brief; the polishing pass
   doesn't use them yet.
 - A Flatpak on the GNOME runtime.
+
+Cursor Agent helpers support isolated MCP sessions, account model discovery, streamed
+activity and reported input/output/cache usage. Live macOS checks cover a homemade
+compile-and-match target and denied shell access; physical Linux/Windows checks remain.

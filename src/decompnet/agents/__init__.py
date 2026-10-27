@@ -323,11 +323,12 @@ def _registry() -> list[Agent]:
     from .api import API
     from .claude import CLAUDE
     from .codex import CODEX
+    from .cursor import CURSOR
     from .kimi import KIMI
     from .opencode import OPENCODE
 
     # the order the Agents page lists them in (the launcher puts the recommended one first)
-    return [CLAUDE, CODEX, KIMI, ANTIGRAVITY, OPENCODE, API]
+    return [CLAUDE, CODEX, CURSOR, KIMI, ANTIGRAVITY, OPENCODE, API]
 
 
 AGENTS: list[Agent] = _registry()
