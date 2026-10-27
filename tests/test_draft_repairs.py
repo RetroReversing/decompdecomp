@@ -178,3 +178,24 @@ def test_scaled_pointer_candidate_reaches_the_normal_mode_judge(imported):
     perm._repair_round(AGENT,net.project_row('game'),state)
     assert expected in perm.judged and state.matched==1
     assert not net.store.all('SELECT * FROM claims')
+
+
+@pytest.mark.parametrize('imported', [False,True])
+def test_linked_byte_chain_reaches_normal_judge_without_accepting_intermediate_steps(imported):
+    from decompnet.app import narrow_chains
+    source='void f1(){s32 wide;s32 copy;u8 narrow;wide=read();copy=wide;copy=(u16)copy&0xFF;narrow=wide&0xFF;if(narrow)return;send(wide&0xFF);}'
+    expected=narrow_chains.variants(source,'f1')[0]
+    net=setup_repair_net()
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    if imported:
+        net.fork_slug=lambda slug:'fork'
+        class Fork:
+            def permuter_header(self,slug,function):
+                assert (slug,function)==('fork','f1')
+                return 'typedef unsigned char u8; typedef unsigned short u16; typedef int s32;'
+        net.forks=Fork()
+    perm=ScriptedPermuter(net,{expected:0});state=State()
+    perm._repair_round(AGENT,net.project_row('game'),state)
+    assert expected in perm.judged and state.matched==1
+    assert not net.store.all('SELECT * FROM claims')

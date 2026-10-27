@@ -141,7 +141,8 @@ class AutopilotMixin:
             d = scoring.diff(self._target_obj(fn, proj), cand)
             if verdict is not None:
                 d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
-            self._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match)
+            self._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match,
+                         effective_settings=getattr(result, 'effective_settings', None))
             return {"matched": d.bytes_match, "score": d.score, "max_score": d.max_score,
                     "percent": d.percent, "rows": d.rows,
                     "candidate_target": cand.code.hex(),
@@ -195,7 +196,8 @@ class AutopilotMixin:
                 d = scoring.diff(self._target_obj(fn, proj), cand)
                 if verdict is not None:
                     d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
-                self._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match)
+                self._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match,
+                             effective_settings=getattr(result, 'effective_settings', None))
                 outcomes.append("match" if d.bytes_match else "near" if d.percent >= 90 else "far")
                 if d.bytes_match:
                     break

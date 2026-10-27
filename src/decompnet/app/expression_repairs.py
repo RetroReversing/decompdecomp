@@ -3,6 +3,7 @@
 import re
 
 from ..forks.csource import _blank, find
+from . import narrow_chains
 
 IDENT = r'[A-Za-z_]\w*'
 LIMIT = 6
@@ -20,7 +21,7 @@ def variants(source: str, name: str, arch: str) -> list[str]:
     if '#' in clean[opening:span[1]]:
         return []
     body = clean[opening:span[1]]
-    result = []
+    result = narrow_chains.variants(source, name)
 
     def edit(start, end, replacement):
         candidate = source[:start] + replacement + source[end:]

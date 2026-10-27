@@ -145,6 +145,12 @@ live range, and splitting/commuting selected addition shapes. All go through the
 Fixed-width typed-pointer additions also get a scaled integer-address alternative on supported 32-bit
 processors. Calls, increments, complex indices and unknown/64-bit targets are excluded; exact verification
 is still required. Definition lookup keeps neighbouring functions on the same source line out of these edits.
+Repeated byte masks through an ordinary local also get a bounded linked width/cast/reuse hypothesis,
+optionally collapsing an earlier copy-and-mask of the same value. This submits the related edits together
+even when individual steps worsen the score; escaped, qualified or subsequently modified locals are skipped.
+ROM autopilot machine drafts and quiet transfer trials now retain the actual compile-invocation settings
+in repair evidence, including range/temporary overrides. Historical project snapshots remain explicitly
+weaker evidence; imported-project per-file build flags are still not recorded by this ROM-only compile path.
 
 Deterministic candidates also split field/address expressions into pointer temporaries, materialize small
 arithmetic/comparison literals, and materialize both floating comparison loads in either load order without
