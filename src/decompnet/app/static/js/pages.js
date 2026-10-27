@@ -85,9 +85,9 @@ function renderTools() {
   $("toolGrid").innerHTML = vmCard + rows.map((t) => `<div class="tool-card ${t.installed ? "ok" : ""}">
       <div class="tc-top"><b>${esc(t.name)}</b>${t.license === "proprietary" ? `<span class="chip-s warn">proprietary</span>` : ""}${t.platform ? `<span class="chip-s">${esc(t.platform)}</span>` : ""}${t.linux_vm ? `<span class="chip-s">Linux VM</span>` : ""}</div>
       <p class="muted small">${esc(t.use)}</p>
-      <div class="row">${!t.supported ? `<span class="muted small">not available for this computer</span>` : t.installed ? `<span class="ok-mark">✓ installed</span>` : `<button class="ghost small-btn" data-tc="${esc(t.id)}" data-prop="${t.license === "proprietary" ? 1 : ""}" type="button">Install</button>`}</div></div>`).join("");
+      <div class="row">${!t.supported ? `<span class="muted small">not available for this computer</span>` : t.installed ? `<span class="ok-mark">✓ installed</span>${t.linux_vm || t.wsl ? `<button class="ghost small-btn" data-tc="${esc(t.id)}" data-prop="${t.license === "proprietary" ? 1 : ""}" data-force="1" type="button">Reinstall</button>` : ""}` : `<button class="ghost small-btn" data-tc="${esc(t.id)}" data-prop="${t.license === "proprietary" ? 1 : ""}" type="button">Install</button>`}</div></div>`).join("");
   if ($("prepareLinuxVm")) $("prepareLinuxVm").onclick = prepareLinuxVm;
-  $("toolGrid").querySelectorAll("[data-tc]").forEach((b) => { b.onclick = () => { b.disabled = true; installToolchain(b.dataset.tc, !!b.dataset.prop).finally(() => { b.disabled = false; }); }; });
+  $("toolGrid").querySelectorAll("[data-tc]").forEach((b) => { b.onclick = () => { b.disabled = true; installToolchain(b.dataset.tc, !!b.dataset.prop, !!b.dataset.force).finally(() => { b.disabled = false; }); }; });
 }
 
 async function prepareLinuxVm() {

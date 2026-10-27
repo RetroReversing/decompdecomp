@@ -133,6 +133,7 @@ def _container(name: str, *, write_tools: bool = False) -> list[str]:
                '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--memory', '1g',
                '--memory-swap', '1g', '--pids-limit', '128', '--tmpfs', '/tmp:rw,nosuid,nodev,size=256m',
                '--tmpfs', '/work:rw,nosuid,nodev,mode=1777,size=192m',
+               '--tmpfs', '/var/tmp:rw,nosuid,nodev,mode=1777,size=128m',
                '--mount', 'type=volume,source=' + _volume() + ',target=/tools' + mode,
                '--env', 'QEMU_RESERVED_VA=0x60000000', '--env', 'PYTHONDONTWRITEBYTECODE=1']
     if not write_tools:

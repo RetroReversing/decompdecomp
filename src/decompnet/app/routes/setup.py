@@ -53,7 +53,7 @@ def register(app: App) -> None:
             return bad
         data = await body(request)
         tid, accept = str(data.get("id", "")), bool(data.get("accept_license"))
-        return JSONResponse({"job": jobs.start("toolchain", lambda log: (toolchains.install(tid, accept_license=accept, log=log)
+        return JSONResponse({"job": jobs.start("toolchain", lambda log: (toolchains.install(tid, accept_license=accept, force=bool(data.get("force")), log=log)
                                                                          and {"id": tid}))})
 
     @mcp.custom_route("/api/toolchain/all", methods=["POST"])

@@ -141,7 +141,7 @@ def test_vm_config_uses_guest_python_and_dependency_paths(vm, monkeypatch):
     monkeypatch.setattr(toolchains, 'runtime_dirs', lambda _: (vm / 'compiler', vm / 'dependency'))
     monkeypatch.setattr(linuxvm, 'prepare_tools', lambda dirs: tuple(f'/tools/cache/{i}' for i in range(len(dirs))))
     cfg = compiler_config(vm, {'compiler': {'toolchain': 'ido-5.2'}})
-    assert cfg.linux_vm and not cfg.wsl and cfg.cmd[0] == 'python3'
+    assert cfg.linux_vm and not cfg.wsl and cfg.cmd[:3] == ['/usr/bin/env', 'LD_LIBRARY_PATH=/tools/cache/1', 'python3']
     assert '/tools/cache/2/irix.py' in cfg.cmd and '/tools/cache/0' in cfg.cmd
     cfg = compiler_config(vm, {'compiler': {'toolchain': 'gcc-4.4.0-n64'}})
     assert 'LD_LIBRARY_PATH=/tools/cache/1' in cfg.cmd
@@ -305,7 +305,10 @@ def test_vm_installs_are_separate_and_keep_dependency_routing(vm, monkeypatch):
     installed = toolchains.install('gcc-4.4.0-n64', log=lambda *_: None)
     assert installed == vm / 'toolchains/linux-vm/gcc-4.4.0-n64'
     assert (native / 'preserved').read_text() == 'native install'
-    assert (vm / 'toolchains/linux-vm/runtime-gcc-math/example').read_bytes() == b'original pinned file'
+    metadata = toolchains.installed('runtime-gcc-math')
+    assert metadata['archive_parts'][0]['sha256'] == profiles['runtime-gcc-math'].parts[0]['sha256']
+    assert not (vm / 'toolchains/linux-vm/runtime-gcc-math/example').exists()
+    assert (vm / 'toolchains/linux-vm/runtime-gcc-math' / metadata['archive_parts'][0]['archive']).is_file()
     assert toolchains.installed('gcc-4.4.0-n64')['linux_vm'] is True
     assert toolchains.installed('gcc-4.4.0-n64')['wsl'] is False
 
@@ -344,3 +347,45 @@ def test_guest_cache_wraps_compiler_but_never_the_runtime_library(vm, monkeypatc
     (root / 'testkey/keep').write_text('active snapshot')
     linuxvm_worker.prepare('testkey', '1', root)
     assert (root / 'testkey/keep').read_text() == 'active snapshot'
+
+
+def test_proxy_installer_preserves_case_colliding_archive_without_extracting(vm, monkeypatch):
+    from dataclasses import replace
+
+    monkeypatch.setattr(toolchains, 'current_platform', lambda: 'macos-arm64')
+    monkeypatch.setattr(linuxvm, 'setup', lambda **_: {'ready': True})
+    monkeypatch.setattr(linuxvm, 'status', lambda: (True, ''))
+    archive = vm / 'compiler.tar.gz'
+    with tarfile.open(archive, 'w:gz') as tar:
+        for name, content in [('libC.so.1', b'C++ runtime'), ('libc.so.1', b'C runtime')]:
+            info = tarfile.TarInfo('usr/lib/' + name)
+            info.size = len(content)
+            tar.addfile(info, io.BytesIO(content))
+    profile = replace(toolchains.get('ido-5.2'), requires=[], parts=[{
+        'url': archive.as_uri(), 'sha256': hashlib.sha256(archive.read_bytes()).hexdigest(),
+        'platforms': ['linux-x86_64']}])
+    monkeypatch.setattr(toolchains, 'registry', lambda: {'ido-5.2': profile})
+    monkeypatch.setattr(toolchains, '_extract', lambda *_: pytest.fail('must extract on Linux'))
+    directory = toolchains.install('ido-5.2', accept_license=True, log=lambda *_: None)
+    metadata = toolchains.installed('ido-5.2')
+    saved = directory / metadata['archive_parts'][0]['archive']
+    assert saved.read_bytes() == archive.read_bytes()
+    assert toolchains.require('ido-5.2') == directory
+    metadata.pop('archive_parts')
+    (directory / '.decompnet-toolchain.json').write_text(json.dumps(metadata))
+    with pytest.raises(toolchains.ToolchainError, match='Reinstall'):
+        toolchains.require('ido-5.2')
+
+
+def test_guest_archive_checksum_and_escape_are_rejected(tmp_path):
+    archive = tmp_path / 'pack.tar'
+    with tarfile.open(archive, 'w') as tar:
+        info = tarfile.TarInfo('../escape')
+        info.size = 4
+        tar.addfile(info, io.BytesIO(b'bad!'))
+    part = {'archive': archive.name, 'sha256': '0' * 64}
+    with pytest.raises(ValueError, match='checksum'):
+        linuxvm_worker.unpack_part(tmp_path, part)
+    part['sha256'] = hashlib.sha256(archive.read_bytes()).hexdigest()
+    with pytest.raises(tarfile.FilterError):
+        linuxvm_worker.unpack_part(tmp_path, part)

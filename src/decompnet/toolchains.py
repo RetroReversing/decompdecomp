@@ -66,6 +66,7 @@ class Toolchain:
     build: str = ""  # native source-built tools, after checksum-verified parts are extracted
     family: str = ""  # backend family when the registry id doesn't carry its compiler's name
     linux_vm: bool = False  # this Linux pack may use the optional macOS VM runner
+    case_sensitive: bool = False  # proxy hosts must preserve archives until extraction on Linux
 
     @property
     def proprietary(self) -> bool:
@@ -189,8 +190,11 @@ def runtime_error(tid: str) -> str | None:
 
 def require(tid: str, linux: bool | None = None, *, vm: bool | None = None) -> Path:
     """Directory of an installed toolchain, or a clear error telling the operator how to install it."""
-    if installed(tid, linux, vm=vm) is None:
+    metadata = installed(tid, linux, vm=vm)
+    if metadata is None:
         raise ToolchainError(f"toolchain {tid!r} is not installed: install it in decompdecomp, under Compilers & tools")
+    if get(tid).case_sensitive and (metadata.get('linux_vm') or metadata.get('wsl')) and not metadata.get('archive_parts'):
+        raise ToolchainError(f'Reinstall {tid} in Compilers & tools so its case-sensitive Linux files are preserved.')
     if why := runtime_error(tid):
         raise ToolchainError(why)
     return path(tid, linux, vm=vm)
@@ -312,6 +316,10 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
     vm = tc.via_vm if vm is None else vm
     linux = (tc.via_wsl or vm) if linux is None else linux
     location = {'vm': True} if vm else {}
+    archive_only = vm or (linux and tc.case_sensitive)
+    existing = installed(tid, linux, **location)
+    if archive_only and existing and not existing.get('archive_parts'):
+        force = True  # explicit reinstall upgrades old host-extracted proxy packs
     _intel_mac_runtime_ready.cache_clear()  # Rosetta may have been installed since the last setup attempt
     if not vm and (why := runtime_error(tid)):
         raise ToolchainError(why)
@@ -351,7 +359,7 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
         shutil.rmtree(dest)
     dest.mkdir(parents=True)
     log(f"{tid}: installing {tc.name} [{tc.license}]" + (" (Linux build, runs in local VM)" if vm else " (Linux build, runs in WSL 2)" if linux else ""))
-    pinned = []
+    pinned, archive_parts = [], []
     try:
         if tc.git or tc.pip_extra:
             _install_python_env(tc, dest, log)
@@ -367,6 +375,19 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
                 raise ToolchainError(f"checksum mismatch for {part['url']}: expected {part['sha256']}, got {digest}")
             if not part.get("sha256"):
                 log(f"  no pinned checksum in the registry; pinning on first use: sha256 {digest}")
+            if archive_only:
+                if part.get('build') or tc.build or tc.git or tc.pip_extra:
+                    raise ToolchainError(f'{tid} needs a guest build recipe before it can use archive staging.')
+                # macOS and Windows can collapse libc.so.1/libC.so.1 into one file.
+                # Keep the verified bytes intact until the guest's case-sensitive filesystem.
+                folder = dest / '.archives'
+                folder.mkdir(exist_ok=True)
+                suffix = ''.join(archive.suffixes)
+                saved = folder / (str(len(archive_parts)) + suffix)
+                shutil.copyfile(archive, saved)
+                archive_parts.append({**part, 'archive': str(saved.relative_to(dest)).replace('\\', '/'), 'sha256': digest})
+                pinned.append({'url': part['url'], 'sha256': digest})
+                continue
             if part.get("build") == "mips-binutils":
                 _build_mips_binutils(archive, dest, part.get("subdir"), log)
             elif part.get("build") == "sn64-gcc":
@@ -393,7 +414,7 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
             pinned.append({"url": part["url"], "sha256": digest})
         if tc.build == "psyq-obj-parser":
             _build_psyq_parser(dest, linux, log)
-        if linux and not vm and "runtime-i386" in tc.requires:  # WSL systems rarely have a 32-bit loader: bring ours
+        if linux and not archive_only and "runtime-i386" in tc.requires:  # WSL systems rarely have a 32-bit loader: bring ours
             n = wsl.wrap_i386(dest, wsl.path(path("runtime-i386", linux=True)))
             log(f"  {n} 32-bit programs start through the pinned 32-bit runtime")
     except BaseException:
@@ -403,6 +424,7 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
         "id": tid, "name": tc.name, "license": tc.license, "source": tc.source,
         "parts": pinned, "commit": tc.commit or None, "installed_at": time.time(),
         "license_accepted": bool(tc.proprietary and accept_license), "wsl": linux and not vm, "linux_vm": vm,
+        "archive_parts": archive_parts,
     }, indent=2), encoding="utf-8")
     log(f"{tid}: installed at {dest}")
     return dest

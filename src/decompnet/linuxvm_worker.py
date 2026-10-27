@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import os
@@ -51,6 +52,81 @@ def wrap_i386(tree: Path, runtime: str) -> None:
             real.chmod(0o755)
 
 
+def deb_tar(path: Path) -> bytes:
+    with path.open('rb') as file:
+        if file.read(8) != b'!<arch>\n':
+            raise ValueError('The pinned runtime archive is not a Debian package.')
+        while header := file.read(60):
+            if len(header) != 60:
+                break
+            name = header[:16].decode().strip().rstrip('/')
+            size = int(header[48:58])
+            data = file.read(size)
+            if size & 1:
+                file.read(1)
+            if name.startswith('data.tar'):
+                return data
+    raise ValueError('The Debian runtime has no data archive.')
+
+
+def unpack_part(directory: Path, part: dict) -> None:
+    archive = work_path(directory, part['archive'])
+    if hashlib.sha256(archive.read_bytes()).hexdigest() != part['sha256']:
+        raise ValueError('The staged compiler archive checksum does not match; reinstall its pack.')
+    destination = work_path(directory, part.get('into', '.'))
+    destination.mkdir(parents=True, exist_ok=True)
+    if part.get('binary'):
+        target = work_path(destination, part['binary'])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(archive, target)
+        target.chmod(0o755)
+        return
+    with tempfile.TemporaryDirectory(prefix='unpack-', dir=directory.parent) as temporary:
+        root = Path(temporary)
+        if archive.name.endswith('.deb'):
+            with tarfile.open(fileobj=io.BytesIO(deb_tar(archive)), mode='r:*') as tar:
+                tar.extractall(root, filter='data')
+        else:
+            with tarfile.open(archive, mode='r:*') as tar:
+                tar.extractall(root, filter='data')
+        source = work_path(root, part.get('subdir') or '.')
+        keep = part.get('keep') or {str(item.relative_to(source)): str(item.relative_to(source)) for item in source.iterdir()}
+        for name, target in keep.items():
+            item, output = work_path(source, name), work_path(destination, target)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            if item.is_symlink():
+                output.unlink(missing_ok=True)
+                output.symlink_to(os.readlink(item))
+            elif item.is_dir():
+                shutil.copytree(item, output, dirs_exist_ok=True, symlinks=True)
+            else:
+                shutil.copy2(item, output)
+            if part.get('executable'):
+                for file in output.rglob('*') if output.is_dir() else [output]:
+                    if file.is_file() and not file.is_symlink():
+                        file.chmod(file.stat().st_mode | 0o111)
+
+
+def hydrate(stage: Path, final: Path, runtime_index: str) -> None:
+    """Extract preserved packs on Linux, then make the shared snapshot usable by unprivileged jobs."""
+    for directory in stage.iterdir():
+        manifest = directory / '.decompnet-toolchain.json'
+        if directory.is_dir() and manifest.is_file():
+            for part in json.loads(manifest.read_text()).get('archive_parts', []):
+                unpack_part(directory, part)
+            shutil.rmtree(directory / '.archives', ignore_errors=True)
+    if runtime_index:
+        runtime = str(final / runtime_index)
+        for directory in stage.iterdir():
+            if directory.is_dir() and directory.name != runtime_index:
+                wrap_i386(directory, runtime)
+    for path in stage.rglob('*'):
+        if not path.is_symlink():
+            mode = path.stat().st_mode
+            path.chmod(mode | (0o555 if path.is_dir() or mode & 0o111 else 0o444))
+    stage.chmod(0o755)
+
+
 def prepare(key: str, runtime_index: str, root: Path = Path('/tools')) -> None:
     final = root / key
     if (final / '.ready').is_file():
@@ -59,17 +135,7 @@ def prepare(key: str, runtime_index: str, root: Path = Path('/tools')) -> None:
     try:
         with tarfile.open(fileobj=io.BytesIO(sys.stdin.buffer.read()), mode='r:*') as archive:
             archive.extractall(stage, filter='data')
-        if runtime_index:
-            runtime = str(final / runtime_index)
-            for directory in stage.iterdir():
-                if directory.is_dir() and directory.name != runtime_index:
-                    wrap_i386(directory, runtime)
-        # Jobs run as an unprivileged user, even when an archive recorded owner-only permissions.
-        for path in stage.rglob('*'):
-            if not path.is_symlink():
-                mode = path.stat().st_mode
-                path.chmod(mode | (0o555 if path.is_dir() or mode & 0o111 else 0o444))
-        stage.chmod(0o755)
+        hydrate(stage, final, runtime_index)
         (stage / '.ready').touch()
         try:
             stage.rename(final)
@@ -128,6 +194,9 @@ def compile_job(payload: dict, root: Path = Path('/work')) -> dict:
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == 'hydrate':
+        hydrate(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4])
+        return
     if len(sys.argv) > 1 and sys.argv[1] == 'prepare':
         prepare(sys.argv[2], sys.argv[3])
         return

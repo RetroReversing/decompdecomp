@@ -61,8 +61,9 @@ def test_experimental_profiles_are_not_added_to_routine_comparisons(monkeypatch)
     assert consoles.default_flags(cfg, 'ido-5.2') == toolchains.get('ido-5.2').flags
 
 
-@pytest.mark.parametrize('profile,program', [('ido-4.1','usr/bin/cc'), ('ido-5.3-cxx','usr/lib/CC'), ('ido-6.0','usr/lib/driver')])
-def test_irix_driver_uses_pinned_root_and_checks_elf_endianness(tmp_path, monkeypatch, profile, program):
+@pytest.mark.parametrize('profile,program,suffix', [('ido-4.1','usr/bin/cc','.c'),
+    ('ido-5.3-cxx','usr/lib/driver','.c'), ('ido-5.3-cxx','usr/lib/CC','.cpp'), ('ido-6.0','usr/lib/driver','.c')])
+def test_irix_driver_uses_pinned_root_and_checks_elf_endianness(tmp_path, monkeypatch, profile, program, suffix):
     from decompnet.consoles.n64 import irix
 
     emulator = 'usr/bin/qemu-irix-4.0' if profile == 'ido-4.1' else 'usr/bin/qemu-irix'
@@ -71,6 +72,8 @@ def test_irix_driver_uses_pinned_root_and_checks_elf_endianness(tmp_path, monkey
         p.parent.mkdir(exist_ok=True, parents=True)
         p.touch()
     obj = tmp_path / 'probe.o'
+    source = Path('probe' + suffix)
+    (tmp_path / source).write_text('original source bytes')
     calls = []
     def run(argv, **kwargs):
         calls.append(argv)
@@ -79,14 +82,18 @@ def test_irix_driver_uses_pinned_root_and_checks_elf_endianness(tmp_path, monkey
     monkeypatch.setattr(irix.subprocess, 'run', run)
     monkeypatch.setattr(irix, 'convert_ecoff', lambda _, src, dest: dest.write_bytes(src.read_bytes()))
     monkeypatch.chdir(tmp_path)
-    compile_irix(tmp_path, profile, Path('probe.c'), obj, Path('include'), ['-O2'])
+    compile_irix(tmp_path, profile, source, obj, Path('include'), ['-O2'])
     assert calls[0][:5] == [str(tmp_path / emulator), '-silent', '-L', str(tmp_path), str(tmp_path / program)]
-    assert '-EB' in calls[0] and '-I' + str(tmp_path / 'include') in calls[0]
+    assert ('-EB' in calls[0]) == (program != 'usr/lib/CC')
+    if suffix == '.cpp':
+        assert (tmp_path / 'probe.C').read_bytes() == (tmp_path / source).read_bytes()
+        assert 'probe.C' in calls[0]
+    assert '-I' + str(tmp_path / 'include') in calls[0]
     def wrong(argv, **kwargs):
         Path(argv[argv.index('-o')+1]).write_bytes(b'\x7fELF\x01\x01')
     monkeypatch.setattr(irix.subprocess, 'run', wrong)
     with pytest.raises(ValueError, match='big-endian ELF32'):
-        compile_irix(tmp_path, profile, Path('probe.c'), obj, Path('include'), [])
+        compile_irix(tmp_path, profile, source, obj, Path('include'), [])
 
 
 def test_early_ecoff_adapter_serializes_elf_metadata_big_endian(tmp_path):
@@ -101,6 +108,9 @@ class EcoffFile:
 class ElfBuilder:
     ELFDATA2LSB = 1
 def save_as_elf(ecoff, path):
+    if ecoff.code_endian == Endian.BIG:
+        print("Only MIPS-EL files are supported")
+        return
     path.write_bytes(bytes([ElfBuilder.ELFDATA2LSB]) + struct.pack('<II', 0x12345678, 0x01020304))
 ''')
     output = tmp_path / 'probe.o'
