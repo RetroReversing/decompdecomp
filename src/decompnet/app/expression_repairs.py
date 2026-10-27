@@ -13,8 +13,11 @@ def variants(source: str, name: str, arch: str) -> list[str]:
     if not span:
         return []
     clean = _blank(source)
-    opening = clean.find('{', span[0], span[1])
-    if opening < 0 or '#' in clean[opening:span[1]]:
+    definition = re.search(r'\b' + re.escape(name) + r'\s*\([^{};]*\)\s*{', clean[span[0]:span[1]])
+    if not definition:
+        return []
+    opening = span[0] + definition.end() - 1
+    if '#' in clean[opening:span[1]]:
         return []
     body = clean[opening:span[1]]
     result = []
@@ -58,6 +61,21 @@ def variants(source: str, name: str, arch: str) -> list[str]:
         break
 
     if arch in {'mips', 'ppc', 'x86', 'arm', 'thumb'}:
+        # A scaled typed-pointer addition can schedule differently when written as integer address
+        # arithmetic. Only fixed-width element types and simple operands qualify, on 32-bit targets.
+        # Keep each operand evaluated once; the linked/objdiff judge must verify every hypothesis.
+        scaled = re.compile(r'\(\s*(?P<type>[su](?:8|16|32))\s*\*\s*\)\s*'
+                            rf'(?P<base>{IDENT})\s*\+\s*(?P<index>{IDENT})(?!\w|\s*\()')
+        for m in scaled.finditer(body):
+            tail = body[m.end():].lstrip()
+            if not tail.startswith((';', ')', ',', ']')) or tail.startswith(('++', '--')):
+                continue
+            scale = int(m['type'][1:]) // 8
+            edit(opening + m.start(), opening + m.end(),
+                 f'({m["type"]} *)({m["index"]} * {scale} + (int){m["base"]})')
+            if len(result) >= 4:
+                break
+
         # A symbol's address is different from reading its value. Only explicit &symbol or a declared
         # array decay qualifies. Never convert a scalar/pointer global load to its label's numeric address.
         arrays = set(re.findall(r'\bextern\s+(?:volatile\s+|const\s+)?(?:unsigned\s+)?\w+\s+'

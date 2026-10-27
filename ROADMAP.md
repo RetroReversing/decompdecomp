@@ -142,6 +142,9 @@ no source text, or lacks a saved failed source. These labels preserve source-lin
 literals; they do not auto-dismiss or implement suggestions. Bounded source hypotheses also include
 masked/narrow-store integer parameter widths, reusing an unused scalar local for a pointer's final integer
 live range, and splitting/commuting selected addition shapes. All go through the ordinary ROM/imported judge.
+Fixed-width typed-pointer additions also get a scaled integer-address alternative on supported 32-bit
+processors. Calls, increments, complex indices and unknown/64-bit targets are excluded; exact verification
+is still required. Definition lookup keeps neighbouring functions on the same source line out of these edits.
 
 Deterministic candidates also split field/address expressions into pointer temporaries, materialize small
 arithmetic/comparison literals, and materialize both floating comparison loads in either load order without

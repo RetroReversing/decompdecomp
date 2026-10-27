@@ -63,3 +63,26 @@ def test_saved_m2c_refinement_receives_real_assembly_for_forwarded_arguments():
     out = draft_repairs.variants(src, 'f', 'mips', 'glabel f\njal func_80002000\n addiu $a1, $zero, 7')[0]
     assert 'f(s32 arg0)' in out and 'func_80002000(arg0, 7)' in out
     assert not any('f(s32 arg0)' in c for c in draft_repairs.variants(src, 'f', 'arm', ''))
+
+
+@pytest.mark.parametrize('typ,scale', [('u8',1),('s16',2),('u32',4)])
+@pytest.mark.parametrize('arch', ['mips','ppc','x86','arm','thumb'])
+def test_scaled_pointer_addition_keeps_operands_once_and_other_definitions(typ,scale,arch):
+    source=f'void g(){{q=({typ} *)a+i;}} void f(){{q=({typ} *)a+i;}}'
+    candidates=expression_repairs.variants(source,'f',arch)
+    assert any(f'void f(){{q=({typ} *)(i * {scale} + (int)a);}}' in c for c in candidates)
+    assert all(c.startswith(f'void g(){{q=({typ} *)a+i;}}') for c in candidates)
+    assert any(f'i * {scale}' in c for c in draft_repairs.variants(source,'f',arch))
+
+
+@pytest.mark.parametrize('rhs', ['(u16 *)a+i++','(u16 *)a+next()', '(u16 *)next()+i',
+                                '(u16 *)a+i*2', '(u16 *)a+(i+1)', '(u64 *)a+i'])
+def test_scaled_pointer_addition_skips_complex_or_side_effecting_operands(rhs):
+    assert not expression_repairs.variants(f'void f(){{q={rhs};}}','f','mips')
+
+
+def test_scaled_pointer_addition_skips_unknown_and_64_bit_targets_and_opaque_text():
+    source='void f(){q=(u16 *)a+i;}'
+    for arch in ('x86_64','aarch64','unknown'):
+        assert not expression_repairs.variants(source,'f',arch)
+    assert not expression_repairs.variants('void f(){/* q=(u16 *)a+i; */say("(u16 *)a+i;");}','f','mips')

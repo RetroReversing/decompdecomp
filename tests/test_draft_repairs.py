@@ -11,7 +11,7 @@ from tests.test_permute import AGENT, FakeNet, ScriptedPermuter
 
 def test_address_conversion_and_commutation_are_combined():
     src = 'int f(int i) { return *(int *)((u8 *)table + i); }'
-    assert variants(src, 'f', 'mips') == ['int f(int i) { return *(int *)(i + (int)table); }']
+    assert 'int f(int i) { return *(int *)(i + (int)table); }' in variants(src, 'f', 'mips')
     assert not variants(src, 'f', 'x86_64')
     assert not variants(src, 'f', 'unknown')
 
@@ -158,3 +158,23 @@ def test_member_rule_excludes_calls_and_increments():
     for expr in ['get()->base', 'obj[i++].base', 'obj->base++']:
         src = f'int f(int i) {{ return *(int *)(((u8 *) {expr}) + i); }}'
         assert all('side();' in out and (f'result={expr};' in out or (expr=='result + x' and 'result = result; result += x;' in out)) for out in variants(src, 'f', 'mips'))
+
+
+@pytest.mark.parametrize('imported', [False,True])
+def test_scaled_pointer_candidate_reaches_the_normal_mode_judge(imported):
+    net=setup_repair_net()
+    source='void f1(){q=(u16 *)a+i;}'
+    expected='void f1(){q=(u16 *)(i * 2 + (int)a);}'
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    if imported:
+        net.fork_slug=lambda slug:'fork'
+        class Fork:
+            def permuter_header(self,slug,function):
+                assert (slug,function)==('fork','f1')
+                return 'typedef unsigned short u16; typedef int s32;'
+        net.forks=Fork()
+    perm=ScriptedPermuter(net,{expected:0});state=State()
+    perm._repair_round(AGENT,net.project_row('game'),state)
+    assert expected in perm.judged and state.matched==1
+    assert not net.store.all('SELECT * FROM claims')
