@@ -225,3 +225,60 @@ def test_compile_failure_settings_are_recorded_without_a_repair_case(setup):
     case=net.repair_feedback.listing('demo')['examples'][0]['id']
     previous=net.repair_feedback.detail('demo',case)['evidence']['previous']
     assert previous['source']=='bad C' and previous['score'] is None
+
+
+def test_repair_detail_explains_comment_only_changes_without_automatic_dismissal(setup):
+    net,winner,_,_,fid=setup
+    net._record(fn(net,fid),winner,10,'/* compiler A */\nint target(){return 1;}',1)
+    net._record(fn(net,fid),winner,0,'/* compiler B */\nint target(){return 1;}',1,matched=True)
+    case=net.repair_feedback.listing('demo')['examples'][0]['id']
+    detail=net.repair_feedback.detail('demo',case)
+    assert detail['evidence']['source_change']=='comments_or_spacing'
+    assert 'source line boundaries preserved' in detail['evidence']['source_change_label']
+    assert detail['status']=='new'  # descriptive evidence never auto-approves a proposed rule
+    summary=net.repair_feedback.detail('demo',case,include_source=False)
+    assert 'source' not in summary['evidence']['before']
+
+
+@pytest.mark.parametrize('path',['quiet_transfer','machine_draft','machine_refined','machine_buffer','machine_buffer_indexed'])
+def test_autopilot_capture_uses_actual_compile_settings_instead_of_project_snapshot(setup,monkeypatch,path):
+    from decompnet import scoring
+    from decompnet.app.engine import autopilot
+    from decompnet.app.engine.autopilot import AutopilotMixin
+    net,winner,_,pid,fid=setup
+    effective={'compiler':{'toolchain':'actual-compiler','flags':['-O2','-g3']},
+               'effective_command':['actual-cc','-g3','{src}'],'language':'c',
+               'settings_source':'compile invocation snapshot'}
+    result=SimpleNamespace(ok=True,obj=b'object',effective_settings=effective)
+    monkeypatch.setattr(net,'_compile',lambda *args:result)
+    monkeypatch.setattr(net,'_evaluate',lambda *args:(SimpleNamespace(code=b'code',relocs=[]),True,[]))
+    monkeypatch.setattr(net,'_target_obj',lambda *args:object())
+    monkeypatch.setattr(autopilot.scoring,'diff',lambda *args:scoring.DiffResult(0,4,[],True))
+    proj=net.store.one('SELECT * FROM projects WHERE id=?',pid)
+    if path=='quiet_transfer':
+        assert AutopilotMixin.try_quietly(net,winner,proj,fn(net,fid),'int target(void){return 0;}')['matched']
+    else:
+        monkeypatch.setattr(net,'_seed_for',lambda *args:None,raising=False)
+        monkeypatch.setattr(net,'_draft_plan',lambda *args,**kwargs:(None,'gcc-2.7.2-kmc',''),raising=False)
+        monkeypatch.setattr(net,'cfg',lambda p:json.loads(p['config']),raising=False)
+        monkeypatch.setattr(net,'_asm_text',lambda *args:'',raising=False)
+        monkeypatch.setattr(autopilot.seeds,'generate_from_asm',lambda *args,**kwargs:'int target(void){return 0;}')
+        if path=='machine_refined':
+            monkeypatch.setattr(autopilot.m2cfix,'refine_draft',lambda *args:'/* REPAIRED */ int target(void){return 0;}')
+            monkeypatch.setattr(net,'_compile',lambda *args:result if 'REPAIRED' in args[2] else SimpleNamespace(ok=False,obj=None))
+        if path in ('machine_buffer','machine_buffer_indexed'):
+            monkeypatch.setattr(autopilot.m2cfix,'refine_draft',lambda *args:None)
+            monkeypatch.setattr(autopilot.m2cfix,'stack_array',lambda source,name,canonical:'/* BUFFER */ int target(void){return 0;}' if canonical==(path=='machine_buffer_indexed') else None)
+            monkeypatch.setattr(net,'_compile',lambda *args:result if 'BUFFER' in args[2] else SimpleNamespace(ok=False,obj=None))
+        assert AutopilotMixin._autopilot_one(net,winner,proj,fid)=='match'
+    case=net.repair_feedback.listing('demo')['examples'][0]['id']
+    detail=net.repair_feedback.detail('demo',case)
+    settings=detail['evidence']['after']['settings']
+    if path!='quiet_transfer':
+        family={'machine_draft':'raw_m2c','machine_refined':'refined_m2c','machine_buffer':'stack_array','machine_buffer_indexed':'stack_array_indexed'}[path]
+        assert detail['evidence']['provenance']=={'kind':'machine draft','family':family}
+        assert detail['status']=='new'
+    assert settings['compiler']==effective['compiler']
+    assert settings['effective_command']==effective['effective_command']
+    assert settings['settings_source']=='compile invocation snapshot'
+    assert not net.store.all('SELECT * FROM claims')

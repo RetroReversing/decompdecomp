@@ -3,6 +3,7 @@
 import re
 
 from ..forks.csource import _blank, find
+from . import narrow_chains
 
 IDENT = r'[A-Za-z_]\w*'
 LIMIT = 6
@@ -13,11 +14,14 @@ def variants(source: str, name: str, arch: str) -> list[str]:
     if not span:
         return []
     clean = _blank(source)
-    opening = clean.find('{', span[0], span[1])
-    if opening < 0 or '#' in clean[opening:span[1]]:
+    definition = re.search(r'\b' + re.escape(name) + r'\s*\([^{};]*\)\s*{', clean[span[0]:span[1]])
+    if not definition:
+        return []
+    opening = span[0] + definition.end() - 1
+    if '#' in clean[opening:span[1]]:
         return []
     body = clean[opening:span[1]]
-    result = []
+    result = narrow_chains.variants(source, name)
 
     def edit(start, end, replacement):
         candidate = source[:start] + replacement + source[end:]
@@ -58,6 +62,21 @@ def variants(source: str, name: str, arch: str) -> list[str]:
         break
 
     if arch in {'mips', 'ppc', 'x86', 'arm', 'thumb'}:
+        # A scaled typed-pointer addition can schedule differently when written as integer address
+        # arithmetic. Only fixed-width element types and simple operands qualify, on 32-bit targets.
+        # Keep each operand evaluated once; the linked/objdiff judge must verify every hypothesis.
+        scaled = re.compile(r'\(\s*(?P<type>[su](?:8|16|32))\s*\*\s*\)\s*'
+                            rf'(?P<base>{IDENT})\s*\+\s*(?P<index>{IDENT})(?!\w|\s*\()')
+        for m in scaled.finditer(body):
+            tail = body[m.end():].lstrip()
+            if not tail.startswith((';', ')', ',', ']')) or tail.startswith(('++', '--')):
+                continue
+            scale = int(m['type'][1:]) // 8
+            edit(opening + m.start(), opening + m.end(),
+                 f'({m["type"]} *)({m["index"]} * {scale} + (int){m["base"]})')
+            if len(result) >= 4:
+                break
+
         # A symbol's address is different from reading its value. Only explicit &symbol or a declared
         # array decay qualifies. Never convert a scalar/pointer global load to its label's numeric address.
         arrays = set(re.findall(r'\bextern\s+(?:volatile\s+|const\s+)?(?:unsigned\s+)?\w+\s+'
@@ -97,4 +116,21 @@ def variants(source: str, name: str, arch: str) -> list[str]:
             break
         if len(result) >= LIMIT:
             break
+    # Inlining even a simple sum can change old compilers' register allocation. Only ordinary
+    # signed integer locals qualify: no loads, calls, pointer arithmetic or floating expressions.
+    # A compiler which leaves a call instead will fail the normal exact judge.
+    helper = '__repair_inline_sum'
+    if arch in {'mips', 'ppc', 'x86', 'arm', 'thumb'} and not re.search(r'\b' + helper + r'\b', clean):
+        locals_ = {m[1] for m in re.finditer(r'(?:^|(?<=[;{}]))\s*(?:s32|int)\s+(' + IDENT + r')\s*;', body)}
+        for m in re.finditer(r'\b(?P<lhs>' + IDENT + r')\s*=\s*(?P<a>' + IDENT + r')\s*\+\s*'
+                             r'(?P<b>' + IDENT + r')\s*;', body):
+            if not {m['lhs'], m['a'], m['b']} <= locals_:
+                continue
+            prefix = f'static inline int {helper}(int left, int right)\n{{\n  return left + right;\n}}\n\n'
+            candidate = (prefix + source[:opening+m.start()] +
+                         f'{m["lhs"]} = {helper}({m["a"]}, {m["b"]});' + source[opening+m.end():])
+            if candidate not in result:
+                result.append(candidate)
+            if len(result) >= LIMIT:
+                break
     return result[:LIMIT]

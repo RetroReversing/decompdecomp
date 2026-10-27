@@ -12,6 +12,7 @@ from ..arch import mips_templates
 from ..forks import csource
 from ..network import NetworkError
 from ..project import compiler_for
+from ..repair_feedback import trial as repair_trial
 
 MAX_SOURCE_FILES = 512
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
@@ -160,7 +161,8 @@ def run(twins, slug, job):
                 continue
             job.reuse_attempts += 1
             try:
-                result = net.try_quietly(agent, proj, fn, source)
+                with repair_trial({'kind': 'automatic candidate', 'family': kind, 'origin': origin}):
+                    result = net.try_quietly(agent, proj, fn, source)
             except NetworkError:
                 continue  # busy work remains retryable
             outcome = 'match' if result['matched'] else 'miss'

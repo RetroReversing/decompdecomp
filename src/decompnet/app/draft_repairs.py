@@ -8,7 +8,7 @@ import re
 
 from .. import m2cfix, seeds
 from ..forks.csource import _blank, find
-from . import branch_locals, expression_repairs, near_repairs, pattern_repairs
+from . import branch_locals, expression_repairs, near_repairs, pattern_repairs, storage_scope_repairs
 
 LIMIT = 20
 _IDENT = r'[A-Za-z_]\w*'
@@ -42,6 +42,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     if local := branch_locals.variant(source, name):
         proposals.append(local)
         labels[local] = 'branch_locals'
+    for text in storage_scope_repairs.variants(source, name, arch, flags):
+        proposals.append(text)
+        labels[text] = 'pointer_storage_scope'
     for family,text in pattern_repairs.variants(source,name,any(re.fullmatch(r'-g[1-3]?',f) for f in flags)):
         proposals.append(text)
         labels[text] = family
@@ -97,4 +100,13 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
             break
     for text in proposals:
         labels.setdefault(text,'expression_or_near_repair')
-    return proposals[:LIMIT]
+    # Round-robin families so a new family cannot crowd existing repairs out of a short pass.
+    groups = {}
+    for text in dict.fromkeys(proposals):
+        groups.setdefault(labels[text],[]).append(text)
+    ordered = []
+    while any(groups.values()):
+        for items in groups.values():
+            if items:
+                ordered.append(items.pop(0))
+    return ordered[:LIMIT]

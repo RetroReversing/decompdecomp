@@ -12,7 +12,10 @@ def variants(source, name):
     if not span:
         return []
     clean = _blank(source)
-    opening = clean.find('{',*span)
+    definition = re.search(r'\b' + re.escape(name) + r'\s*\([^{};]*\)\s*{', clean[span[0]:span[1]])
+    if not definition:
+        return []
+    opening = span[0] + definition.end() - 1
     body = clean[opening:span[1]]
     if '#' in body:
         return []
@@ -60,7 +63,7 @@ def variants(source, name):
 
     # Split a scalar parameter assignment through an existing local of the same type. A later read
     # of that local could observe the overwrite: allow only a later plain assignment or no later use.
-    signature = clean[span[0]:opening]
+    signature = clean[span[0] + definition.start():opening]
     for m in list(re.finditer(r'\b('+IDENT+r')\s*=\s*([^;{}]+\*[^;{}]+);',body))[:12]:
         lhs,rhs = m[1],m[2]
         param = re.search(r'\b('+INTEGER+r')\s+'+re.escape(lhs)+r'\s*[,)]',signature)
@@ -75,4 +78,38 @@ def variants(source, name):
                 continue
             expr_text = source[opening+m.start(2):opening+m.end(2)]
             add([(m.start(),m.end(),f'{local} = {expr_text}; {lhs}={local};')])
+    # Stage a pointer load through an existing spare void-pointer local. Keep the load at the same
+    # statement: only its destination changes. The spare must be unused so far and overwritten before
+    # any later read; neither its previous nor its later value may leak into the staged assignment.
+    pointer = re.compile(r'(?:^|(?<=[;{}]))\s*(?:void|char|[su](?:8|16|32))\s*\*\s*(' + IDENT + r')\s*;')
+    declarations = list(pointer.finditer(body))
+    for m in list(re.finditer(r'\b(' + IDENT + r')\s*=\s*(\*[^;{}]+);', body))[:20]:
+        lhs, rhs = m[1], m[2]
+        destination = [d for d in declarations if d[1] == lhs and d.end() <= m.start()]
+        if len(destination) != 1:
+            continue
+        declaration = destination[0]
+        pointer_type = declaration[0][:declaration.start(1)-declaration.start()].strip()
+        if not re.search(r'\b(?:void|char|[su](?:8|16|32))\s*\*\s*\*', rhs) or re.search(r'\+\+|--|=|\b' + IDENT + r'\s*\(', rhs):
+            continue
+        for decl in declarations:
+            local = decl[1]
+            if local == lhs or decl.end() > m.start() or not re.fullmatch(r'\s*void\s*\*\s*' + local + r'\s*;', decl[0]):
+                continue
+            if len(re.findall(r'\b' + re.escape(local) + r'\b', body[:m.start()])) != 1:
+                continue
+            if re.search(r'\b' + re.escape(local) + r'\b', rhs):
+                continue
+            suffix = body[m.end():]
+            use = re.search(r'\b' + re.escape(local) + r'\b', suffix)
+            if use:
+                overwrite = re.match(r'\s*=(?!=)([^;{}]*);', suffix[use.end():])
+                if not overwrite or re.search(r'\b' + re.escape(local) + r'\b', overwrite[1]):
+                    continue
+            expr_text = source[opening+m.start(2):opening+m.end(2)]
+            # The explicit cast also permits the void-pointer round trip in imported C++ sources.
+            add([(m.start(), m.end(), f'{local} = {expr_text}; {lhs}=({pointer_type}){local};')])
+            break
+        if len(result) >= 6:
+            break
     return result[:6]
