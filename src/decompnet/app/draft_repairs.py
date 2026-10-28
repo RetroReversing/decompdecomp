@@ -14,11 +14,15 @@ from . import (
     expression_repairs,
     lifetime_repairs,
     load_pair_repairs,
+    local_width_repairs,
     mmio_repairs,
     near_repairs,
     pattern_repairs,
+    pointer_cast_repairs,
     register_repairs,
+    stack_padding_repairs,
     storage_scope_repairs,
+    store_address_repairs,
 )
 
 LIMIT = 20
@@ -57,6 +61,18 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     for family,text in lifetime_repairs.variants(source,name):
         proposals.append(text)
         labels[text]=family
+    for text in store_address_repairs.variants(source, name, arch):
+        proposals.append(text)
+        labels[text] = 'store_address_lifetime'
+    for text in stack_padding_repairs.variants(source, name):
+        proposals.append(text)
+        labels[text] = 'stack_padding'
+    for text in local_width_repairs.variants(source, name):
+        proposals.append(text)
+        labels[text] = 'local_width'
+    for text in pointer_cast_repairs.variants(source, name, arch):
+        proposals.append(text)
+        labels[text] = 'pointer_cast_inline'
     # Fresh m2c drafts already get this alternative in autopilot. Saved/transferred drafts need the
     # same chance, with their macro typedef block kept out of the refinement's type substitutions.
     if arch == 'mips' and ('M2C_FIELD(' in source or 'M2C_UNK' in source or re.search(r'\barg[0-3]\b',source)):
