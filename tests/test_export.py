@@ -319,3 +319,12 @@ def test_export_preserves_judged_constant_address_despite_object_alignment(tmp_p
                    cwd=tmp_path, capture_output=True, check=True)
     assert not _single_definition((tmp_path / "extra.o").read_bytes(), "target")
 
+
+
+@pytest.mark.parametrize('symbol',['target__4Mathi','_ZN4Math6targetEi'])
+def test_cpp_single_definition_uses_judge_symbol_mapping(symbol):
+    from decompnet.arch.mips_image import linked_object
+    from decompnet.rom.export import _single_definition
+    obj=linked_object(symbol,0x80001000,bytes(8))
+    assert _single_definition(obj,'target')
+    assert not _single_definition(obj,'unrelated')
