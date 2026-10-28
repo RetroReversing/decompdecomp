@@ -909,3 +909,51 @@ def test_helper_cost_estimate_survives_restart_without_double_counting(tmp_path,
     # A legacy record with uncategorized usage must not look cheaper than it was.
     restored.sessions[sid].tokens += 50
     assert restored.snapshot()[0]['estimated_cost'] is None
+
+
+def test_reset_metrics_keeps_history_and_counts_new_work_across_restart(tmp_path, quiet):
+    net = _game(tmp_path, functions=2)
+    manager = agents.Manager(net, tmp_path, URL)
+    sid = manager.start('codex', 'game', options={'model': 'gpt-6-luna'})[0]
+    s = manager.sessions[sid]
+    agent = net.authenticate(net.register_agent(s.agent_name))
+    session = manager._session_begin(s)
+    manager.account(s, {'input': 1000000})
+    def attempt(fn, score, stamp):
+        with net.store.tx() as db:
+            db.execute('INSERT INTO attempts(function_id,agent_id,score,compiled,created_at) VALUES(?,?,?,1,?)',
+                       (fn, agent.id, score, stamp))
+            if score == 0:
+                db.execute("UPDATE functions SET status='matched', matched_agent_id=? WHERE id=?", (agent.id, fn))
+    attempt(1, 100, 100)
+    manager.reset_metrics(sid)
+    row = manager.snapshot()[0]
+    assert row['tokens'] == row['runs'] == row['metrics']['compiles'] == row['metrics']['improved'] == 0
+    assert row['metrics']['last_improvement'] is None
+    assert row['estimated_cost'] == 0
+    assert row['lifetime_tokens'] == 1000000
+    # Ties and worse attempts after reset do not become "improvements".
+    attempt(1, 100, 101)
+    attempt(1, 120, 102)
+    attempt(1, 50, 103)
+    attempt(2, 0, 104)
+    manager.account(s, {'input': 1000000})
+    manager._session_end(s, session, agent, 0, 'done')
+    manager._metrics_cache = {}
+    row = manager.snapshot()[0]
+    assert row['tokens'] == 1000000 and row['lifetime_tokens'] == 2000000
+    assert row['metrics']['compiles'] == 4
+    assert row['metrics']['improved'] == 2 and row['metrics']['matched'] == 1
+    assert row['metrics']['last_improvement'] == 104
+    assert row['estimated_cost'] == pytest.approx(kinds.get('codex').estimate_cost('gpt-6-luna', {'input':1000000, 'tokens':1000000}))
+    restored = agents.Manager(net, tmp_path, URL)
+    again = restored.snapshot()[0]
+    assert again['tokens'] == row['tokens'] and again['metrics'] == row['metrics']
+    assert net.store.one('SELECT COUNT(*) AS n FROM attempts')['n'] == 5
+    after = row['metrics_after']
+    assert [f['name'] for f in net.agent_results('game', s.agent_name, 'matched', after=after)['functions']] == ['f1']
+    assert {f['name'] for f in net.agent_results('game', s.agent_name, 'improved', after=after)['functions']} == {'f0','f1'}
+    manager.reset_metrics(sid)
+    assert manager.snapshot()[0]['tokens'] == 0
+    with pytest.raises(ValueError, match='no longer exists'):
+        manager.reset_metrics('missing')
