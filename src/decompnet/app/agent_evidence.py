@@ -93,7 +93,10 @@ def track(net,agent,slug,fn):
     if limit and count>=limit and net._function(fn['name'],slug)['status']=='open':
         held=net.store.one('SELECT 1 FROM claims WHERE function_id=? AND agent_id=?',fn['id'],agent.id)
         if held:
-            return 'Unchanged-output limit reached. '+net.release(agent,fn['name'],f'Moved on after {count} trials returning previously seen scored instruction diffs. Best source retained.',slug)
+            result=net.release(agent,fn['name'],f'Moved on after {count} trials returning previously seen scored instruction diffs. Best source retained.',slug)
+            from .. import claim_stalls
+            claim_stalls.released(net,fn,exhausted=True)
+            return 'Unchanged-output limit reached. '+result+' Automatic claims pause until the candidate, build context or repair rules change.'
     return f'Repeated instruction outputs without novelty: {count}/{limit}.' if limit else None
 
 
