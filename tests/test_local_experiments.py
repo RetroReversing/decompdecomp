@@ -23,7 +23,7 @@ def test_applicable_families_one_snapshot_and_budget(tmp_path,monkeypatch,mode):
     _,rev=agent_tokens.candidate(net,a,'game','f')
     args={'function':'f','revision':rev,'families':['signedness','declaration_order'],'max_trials':2}
     result=tools.call(net,a,'game','try_local_repairs',args)
-    assert len(seen)==2 and '1: signedness, 2: declaration_order' in result
+    assert len(seen)==2 and '1: signedness, 2: declaration_order' in result, result
     assert 'starting candidate retained' in result
     assert agent_tokens.candidate(net,a,'game','f')[0]==source
     # Submitted local variants are remembered; a second call advances instead of replaying them.

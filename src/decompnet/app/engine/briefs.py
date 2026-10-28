@@ -247,7 +247,13 @@ class BriefMixin:
             fn = self._function(fn["name"], proj["slug"])
             if fn["seed"]:
                 fn = dict(fn) | {"seed": self._draft_shown(fn, proj)}
-        return super()._brief(fn, agent, header)
+        text = super()._brief(fn, agent, header)
+        if fn['status'] == 'open' and fn['best_source']:
+            from .. import compiler_preflight
+            warning = compiler_preflight.warnings(self, proj, fn)
+            if warning:
+                text += '\n\nCompiler preflight (advisory; check the draft before tuning):\n' + warning
+        return text
 
     def xrefs(self, proj) -> dict:
         """calls / called_by / uses / used_by, all keyed by address."""

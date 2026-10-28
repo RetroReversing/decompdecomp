@@ -1,0 +1,68 @@
+"""Conservative checks before generated repairs spend a compiler invocation.
+
+This is not a C parser. Unknown declarations, macros, C++ and indirect calls stay with the compiler.
+Only an unambiguous plain prototype can rule out a direct call's argument count.
+"""
+import re
+
+from ..forks.csource import _COMMENT_OR_STRING, find
+
+_IDENT = r'[A-Za-z_]\w*'
+_TYPE = r'(?:void|char|short|int|long|float|double|signed|unsigned|const|volatile|struct\s+\w+|u(?:8|16|32|64)|s(?:8|16|32|64))'
+_PROTO = re.compile(rf'(?:^|(?<=[;}}]))\s*(?:extern\s+|static\s+)?(?:{_TYPE}\s+|\*\s*)+({_IDENT})\s*\(([^(){{}};]*)\)\s*;', re.M)
+
+
+def clean(text):
+    return _COMMENT_OR_STRING.sub(lambda m: '0' if m.group().startswith(('"', "'")) else ' ', text)
+
+
+def arguments(text):
+    depth = 0
+    count = 1 if text.strip() else 0
+    for char in text:
+        depth += (char in '([{') - (char in ')]}')
+        if char == ',' and depth == 0:
+            count += 1
+    return count
+
+
+def invalid_call(source, name, header=''):
+    """Explain a provable arity error, otherwise let the ordinary compiler decide."""
+    text = clean(header+'\n'+source)
+    # Conditional declarations and macro expansion need the real preprocessor. Even object macros can
+    # expand to commas, so skip rather than guess. Included files may define macros too.
+    if re.search(r'^\s*#', text, re.M) or re.search(r'::|\b(?:class|template|namespace)\b', text):
+        return ''
+    span = find(source, name)
+    if not span:
+        return ''
+    body = clean(source[span[0]:span[1]])
+    body = body[body.find('{')+1:]
+    prototypes = {}
+    for match in _PROTO.finditer(text):
+        params = match[2].strip()
+        if not params or '...' in params or '=' in params:
+            prototypes.setdefault(match[1], set()).add(None)
+            continue  # empty () is unspecified in C; default parameters/varargs are not fixed arity
+        if params != 'void' and any(not re.match(rf'^{_TYPE}\b', p.strip()) for p in params.split(',')):
+            prototypes.setdefault(match[1], set()).add(None)
+            continue  # typedefs and old-style names may need macro expansion
+        prototypes.setdefault(match[1], set()).add(0 if params == 'void' else arguments(params))
+    for call in re.finditer(rf'(?<![\w.>])({_IDENT})\s*\(', body):
+        if call[1] not in prototypes or len(prototypes[call[1]]) != 1 or None in prototypes[call[1]]:
+            continue
+        # A local object/parameter with this name can shadow the declaration; leave it to the compiler.
+        if re.search(rf'\b{re.escape(call[1])}\b(?!\s*\()', clean(source)):
+            continue
+        start = call.end()
+        depth, end = 1, start
+        while end < len(body) and depth:
+            depth += (body[end] == '(') - (body[end] == ')')
+            end += 1
+        if depth:
+            continue
+        actual = arguments(body[start:end-1])
+        expected = next(iter(prototypes[call[1]]))
+        if actual != expected:
+            return f'{call[1]} expects {expected} arguments; generated call has {actual}.'
+    return ''

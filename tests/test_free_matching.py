@@ -277,3 +277,29 @@ def test_free_candidate_capture_identifies_its_automatic_origin_without_reviewin
     detail=pair.repair_feedback.detail('destination',case)
     assert detail['evidence']['provenance']=={'kind':'automatic candidate','family':'template','origin':'MIPS leaf template'}
     assert detail['status']=='new' and _TRIAL.get() is None
+
+
+def test_cached_discovery_yields_time_and_resumes_after_last_visited_function(pair, monkeypatch):
+    import threading
+
+    from decompnet.app import free_candidates
+    clock = [0.0]
+    monkeypatch.setattr(free_candidates, 'time', SimpleNamespace(monotonic=lambda:clock[0], time=lambda:0))
+    target = fn([0x03e00008,0x24020007])['target']
+    with pair.store.tx() as db:
+        db.execute('UPDATE functions SET target=?,size=8,n_insns=2 WHERE id=2', (target,))
+        db.execute("INSERT INTO functions(id,project_id,name,target,size,n_insns,status,vram,relocs) "
+                   "SELECT 3,project_id,'next',target,size,n_insns,'open',vram+16,relocs FROM functions WHERE id=2")
+    visits = []
+    def cached_templates(function, *args):
+        visits.append(function['id'])
+        clock[0] += 6  # Discovery, not compilation, consumes the phase's share of ten seconds.
+        return []
+    monkeypatch.setattr(free_candidates.mips_templates, 'candidates', cached_templates)
+    for _ in range(2):
+        job = Job(stop=threading.Event())
+        free_candidates.budget(job, seconds=10, attempts=8)
+        free_candidates.run(pair.twins, 'destination', job)
+        assert job.reuse_attempts == 0
+        assert clock[0] < job.reuse_deadline  # Wider discovery still gets time.
+    assert visits == [2, 3]

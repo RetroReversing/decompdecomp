@@ -87,7 +87,7 @@ def exhausted(job):
 
 def run(twins, slug, job):
     """Try recognisable leaf patterns and exact SDK fingerprints before spending CPU on wider similarity."""
-    from . import repair_mappings
+    from . import repair_mappings, repair_preflight, reuse_traversal
     from .address_repairs import variants as address_variants
     from .sdk_library import allowed
     from .sdk_source_repairs import variant as sdk_variant
@@ -106,86 +106,97 @@ def run(twins, slug, job):
     matched = 0
     sdk_maps = {}
     by_fingerprint = {}
-    function_names = {r['vram']: r['name'] for r in net.store.all('SELECT vram,name FROM functions WHERE project_id=?', proj['id'])}
+    names = net.store.all('SELECT id,vram,name FROM functions WHERE project_id=?', proj['id'])
+    function_names = {r['vram']: r['name'] for r in names}
+    names_by_id = {r['id']: r['name'] for r in names}
     for fid, fingerprint in prints.items():
-        row = net.store.one('SELECT name FROM functions WHERE id=?', fid)
-        if row:
-            by_fingerprint.setdefault(fingerprint.key, set()).add(row['name'])
+        if fid in names_by_id:
+            by_fingerprint.setdefault(fingerprint.key, set()).add(names_by_id[fid])
     symbols = [(r['name'], r['address']) for r in net.store.all('SELECT name,address FROM symbols WHERE project_id=? ORDER BY name', proj['id'])]
-    for fn in net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open' ORDER BY size,id", proj['id']):
-        if exhausted(job):
-            break
-        if net.store.one('SELECT 1 FROM claims WHERE function_id=?', fn['id']):
-            continue
-        fingerprint = prints.get(fn['id'])
-        if fingerprint is None or fingerprint.asm:
-            continue
-        settings = compiler_for(cfg, fn['vram'])
-        candidates = [('template', 'MIPS leaf template', code) for code in mips_templates.candidates(fn, bool(proj['big_endian']), function_names)]
-        if fn['best_source'] and fn['best_score'] is not None and 0 < fn['best_score'] <= (100 - REPAIR_PERCENT) * max(1, fn['n_insns'] or 0):
-            repair_mappings.recover(twins, proj, fn, fn['best_source'])
-            candidates.insert(0, ('address-probe', 'saved near miss', fn['best_source']))
-            learned = repair_mappings.variant(twins, proj, fn, fn['best_source'])
-            if learned:
-                candidates.insert(0, ('learned-symbols', 'verified donor mappings', learned))
-        sdk = net.store.all('SELECT DISTINCT s.* FROM sdk_sources s JOIN sdk_signatures i '
-                            'ON s.corpus=i.corpus AND s.name=i.name AND s.arch=i.arch AND s.big_endian=i.big_endian '
-                            'WHERE i.arch=? AND i.big_endian=? AND i.fingerprint=? AND s.compiler=? ORDER BY s.corpus,s.name',
-                            proj['arch'], proj['big_endian'], fingerprint.key, twins._compiler_key(settings))
-        sdk = [row for row in sdk if allowed(net, proj, row['corpus'])][:3]
-        for row in sdk:
-            corpus = row['corpus']
-            if corpus not in sdk_maps:
-                signatures = net.store.all('SELECT name,fingerprint,size FROM sdk_signatures WHERE corpus=? AND arch=? AND big_endian=?',
-                                           corpus, proj['arch'], proj['big_endian'])
-                sdk_maps[corpus] = sdk_symbol_map(signatures, by_fingerprint)
-            names = {**sdk_maps[corpus], row['name']: fn['name']}
-            candidates.append(('library', corpus + '/' + row['name'], apply(row['header'] + '\n' + row['source'], names)))
-        for kind, origin, source in candidates:
-            if exhausted(job):
-                return matched
-            if kind in ('address-probe', 'address-repair', 'learned-symbols'):
-                repair_mappings.propagate(net, fn, fn['best_source'], source)
-            context = net._context(proj['id'], fn['unit'])['header']
-            key = trial_key(source, context, settings, fn, [kind, symbols])
-            previous = net.store.one("SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=? AND outcome='miss'", fn['id'], key)
-            if previous:
-                if kind == 'library':
+    # Leave half of the remaining wall time for wider cross-project discovery. Cached template/address
+    # work must not prevent that phase from ever starting; both still share the original compile budget.
+    phase_deadline = time.monotonic() + max(0, job.reuse_deadline-time.monotonic()) / 2
+    functions = net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open' ORDER BY size,id", proj['id'])
+    with reuse_traversal.rotating(net, proj['id'], functions,
+                                  ready=lambda: not exhausted(job) and time.monotonic() < phase_deadline) as rows:
+        for fn in rows:
+            if exhausted(job) or time.monotonic() >= phase_deadline:
+                break
+            if net.store.one('SELECT 1 FROM claims WHERE function_id=?', fn['id']):
+                continue
+            fingerprint = prints.get(fn['id'])
+            if fingerprint is None or fingerprint.asm:
+                continue
+            settings = compiler_for(cfg, fn['vram'])
+            candidates = [('template', 'MIPS leaf template', code) for code in mips_templates.candidates(fn, bool(proj['big_endian']), function_names)]
+            if fn['best_source'] and fn['best_score'] is not None and 0 < fn['best_score'] <= (100 - REPAIR_PERCENT) * max(1, fn['n_insns'] or 0):
+                repair_mappings.recover(twins, proj, fn, fn['best_source'])
+                candidates.insert(0, ('address-probe', 'saved near miss', fn['best_source']))
+                learned = repair_mappings.variant(twins, proj, fn, fn['best_source'])
+                if learned:
+                    candidates.insert(0, ('learned-symbols', 'verified donor mappings', learned))
+            sdk = net.store.all('SELECT DISTINCT s.* FROM sdk_sources s JOIN sdk_signatures i '
+                                'ON s.corpus=i.corpus AND s.name=i.name AND s.arch=i.arch AND s.big_endian=i.big_endian '
+                                'WHERE i.arch=? AND i.big_endian=? AND i.fingerprint=? AND s.compiler=? ORDER BY s.corpus,s.name',
+                                proj['arch'], proj['big_endian'], fingerprint.key, twins._compiler_key(settings))
+            sdk = [row for row in sdk if allowed(net, proj, row['corpus'])][:3]
+            for row in sdk:
+                corpus = row['corpus']
+                if corpus not in sdk_maps:
+                    signatures = net.store.all('SELECT name,fingerprint,size FROM sdk_signatures WHERE corpus=? AND arch=? AND big_endian=?',
+                                               corpus, proj['arch'], proj['big_endian'])
+                    sdk_maps[corpus] = sdk_symbol_map(signatures, by_fingerprint)
+                names = {**sdk_maps[corpus], row['name']: fn['name']}
+                candidates.append(('library', corpus + '/' + row['name'], apply(row['header'] + '\n' + row['source'], names)))
+            misses = {r['signature']: r for r in net.store.all(
+                "SELECT signature,feedback FROM reuse_trials WHERE function_id=? AND outcome='miss' AND length(signature)=64", fn['id'])}
+            for kind, origin, source in candidates:
+                if exhausted(job) or time.monotonic() >= phase_deadline:
+                    return matched
+                if kind in ('address-probe', 'address-repair', 'learned-symbols'):
+                    repair_mappings.propagate(net, fn, fn['best_source'], source)
+                context = net._context(proj['id'], fn['unit'])['header']
+                if repair_preflight.invalid_call(source, fn['name'], context):
+                    continue
+                key = trial_key(source, context, settings, fn, [kind, symbols])
+                previous = misses.get(key)
+                if previous:
+                    if kind == 'library':
+                        repaired = sdk_variant(net, proj, fn, source, fingerprint, job)
+                        if repaired:
+                            candidates.append(('library-repair', origin, repaired))
+                    if kind in ('address-probe', 'learned-symbols'):
+                        candidates.extend(('address-repair', origin, v) for v in
+                                          address_variants(source, json.loads(previous['feedback']), fn,
+                                                           bool(proj['big_endian']), {name for name, _ in symbols}))
+                    continue
+                job.reuse_attempts += 1
+                try:
+                    with repair_trial({'kind': 'automatic candidate', 'family': kind, 'origin': origin}):
+                        result = net.try_quietly(agent, proj, fn, source)
+                except NetworkError:
+                    continue  # busy work remains retryable
+                outcome = 'match' if result['matched'] else 'miss'
+                reason = origin + '; ' + ('byte match' if result['matched'] else f"score {result.get('score')}")
+                with net.store.tx() as db:
+                    db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
+                               (fn['id'], key, outcome, reason, json.dumps(result)))
+                    db.execute('INSERT INTO free_match_attempts(project_id,function_id,strategy,outcome,reason,created_at) VALUES(?,?,?,?,?,?)',
+                               (proj['id'], fn['id'], kind, outcome, reason, time.time()))
+                if kind == 'library' and not result['matched']:
                     repaired = sdk_variant(net, proj, fn, source, fingerprint, job)
                     if repaired:
                         candidates.append(('library-repair', origin, repaired))
-                if kind in ('address-probe', 'learned-symbols'):
+                if kind in ('address-probe', 'learned-symbols') and not result['matched']:
                     candidates.extend(('address-repair', origin, v) for v in
-                                      address_variants(source, json.loads(previous['feedback']), fn,
-                                                       bool(proj['big_endian']), {name for name, _ in symbols}))
-                continue
-            job.reuse_attempts += 1
-            try:
-                with repair_trial({'kind': 'automatic candidate', 'family': kind, 'origin': origin}):
-                    result = net.try_quietly(agent, proj, fn, source)
-            except NetworkError:
-                continue  # busy work remains retryable
-            outcome = 'match' if result['matched'] else 'miss'
-            reason = origin + '; ' + ('byte match' if result['matched'] else f"score {result.get('score')}")
-            with net.store.tx() as db:
-                db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
-                           (fn['id'], key, outcome, reason, json.dumps(result)))
-                db.execute('INSERT INTO free_match_attempts(project_id,function_id,strategy,outcome,reason,created_at) VALUES(?,?,?,?,?,?)',
-                           (proj['id'], fn['id'], kind, outcome, reason, time.time()))
-            if kind == 'library' and not result['matched']:
-                repaired = sdk_variant(net, proj, fn, source, fingerprint, job)
-                if repaired:
-                    candidates.append(('library-repair', origin, repaired))
-            if kind in ('address-probe', 'learned-symbols') and not result['matched']:
-                candidates.extend(('address-repair', origin, v) for v in
-                                  address_variants(source, result, fn, bool(proj['big_endian']),
-                                                   {name for name, _ in symbols}))
-            if result['matched']:
-                if kind in ('address-probe', 'address-repair', 'learned-symbols'):
-                    repair_mappings.accepted(net, fn, source)
-                matched += 1
-                job.reuse_matched += 1
-                job.reuse_bytes += fn['size']
-                net.add_note(agent, slug, 'Autopilot matched from ' + origin, fn['name'])
-                break
+                                      address_variants(source, result, fn, bool(proj['big_endian']),
+                                                       {name for name, _ in symbols}))
+                if result['matched']:
+                    if kind in ('address-probe', 'address-repair', 'learned-symbols'):
+                        repair_mappings.accepted(net, fn, source)
+                    matched += 1
+                    job.reuse_matched += 1
+                    job.reuse_bytes += fn['size']
+                    net.add_note(agent, slug, 'Autopilot matched from ' + origin, fn['name'])
+                    break
     return matched

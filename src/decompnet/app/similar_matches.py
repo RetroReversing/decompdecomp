@@ -290,7 +290,8 @@ def run(twins, slug: str, job) -> int:
     symbol_state = [(r['name'], r['address']) for r in net.store.all(
         'SELECT name,address FROM symbols WHERE project_id=? ORDER BY name', proj['id'])]
     source_cache, ops_cache = {}, {}
-    from . import address_repairs, regional_layouts
+    from . import address_repairs, regional_layouts, reuse_donors
+    donors = reuse_donors.Donors(net, proj)
     layouts = {pid: regional_layouts.learn(net, proj, other) for pid, other in others.items()}
     maps = {pid: regional_names(twins, proj, other) for pid, other in others.items()}
     saved = net.store.one('SELECT function_id FROM reuse_cursors WHERE project_id=?', proj['id'])
@@ -312,6 +313,9 @@ def run(twins, slug: str, job) -> int:
         current = net.store.one('SELECT status FROM functions WHERE id=?', b['id'])
         if not current or current['status'] != 'open':
             return 'skip', ''
+        from .repair_preflight import invalid_call
+        if invalid_call(candidate, b['name'], header):
+            return 'skip', 'Generated call disagrees with a fixed prototype'
         signature = trial_key(candidate, header, settings, b, [names, symbol_state])
         previous = net.store.one("SELECT * FROM reuse_trials WHERE function_id=? AND signature=? AND outcome!='match'",
                                  b['id'], signature)
@@ -372,14 +376,8 @@ def run(twins, slug: str, job) -> int:
             continue
         if net.store.one('SELECT 1 FROM claims WHERE function_id=?', b['id']):
             continue
-        rows = net.store.all(
-            'SELECT f.*,i.compiler,i.fingerprint FROM cross_game_index i '
-            'JOIN functions f ON f.id=i.function_id AND f.status=\'matched\' '
-            'JOIN projects p ON p.id=i.project_id WHERE i.project_id!=? AND p.arch=? AND p.big_endian=? '
-            'AND i.size BETWEEN ? AND ? AND (i.fingerprint!=? OR i.compiler!=?) '
-            'ORDER BY ABS(i.size-?),i.function_id LIMIT ?',
-            proj['id'], proj['arch'], proj['big_endian'],
-            max(MIN_BYTES, int(pb.size * .9)), min(MAX_BYTES, int(pb.size / .9)), pb.key, twins._compiler_key(compiler_for(cfg, b['vram'])), pb.size, MAX_POOL)
+        rows = donors.candidates(pb.size, max(MIN_BYTES, int(pb.size * .9)), min(MAX_BYTES, int(pb.size / .9)),
+                                 pb.key, twins._compiler_key(compiler_for(cfg, b['vram'])), MAX_POOL)
         layout = [(o, t) for o, t, _ in relocations(b)]
         rows = [a for a in rows if a['project_id'] in others and a['matched_source']
                 and ([(o, t) for o, t, _ in relocations(a)] == layout or maps[a['project_id']])

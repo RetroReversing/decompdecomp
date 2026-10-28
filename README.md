@@ -621,6 +621,23 @@ Verified full-image imports include linked assembly routines as target-only unit
 as recovered C. Assembly wrappers containing whole binary programs are not treated as single functions; an
 explicit coverage notice identifies their exclusion from function progress.
 
+### Repair preflight and reuse discovery
+
+Saved ROM drafts get an advisory warning preflight in agent briefs and deep-search output when their pinned
+GCC supports it. It uses separate warning flags and caches diagnostics for unchanged compiler, header and
+source inputs. An uninitialized-variable warning is a reason to check the draft before tuning it; warnings
+never change project settings or count as a match. Imported projects retain diagnostics from their own build;
+extra diagnostic builds for those projects and other compiler families are not supported yet.
+
+Generated local repairs skip direct calls that disagree with an unambiguous plain C prototype. Macros,
+includes, indirect calls, unspecified argument lists, variable arguments and C++ remain the compiler's job.
+The normal compiler and exact judge still decide every accepted improvement.
+
+Template/address/SDK discovery remembers its last visited function, including interrupted passes. Cached
+misses are read together per function, and this phase takes at most half the remaining reuse time so wider
+cross-project discovery can run too. Both phases retain the shared compile budget; a cursor does not skip
+new candidates permanently.
+
 ### Permuter budgets
 
 For a longer search of one function, open its drawer and expand **Deep permuter · this function**.
