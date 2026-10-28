@@ -404,8 +404,10 @@ class Permuter:
                     # the demo ROM (at 45); taking turns, every one matched within 12 s
                     base = best_src if batches % 2 else start_src
                     batches += 1
+                    # Alternate upstream defaults with focused weights: preserve an exploratory lane when
+                    # the advisory mismatch category is incomplete or points at the wrong repair.
                     batch = gen.batch({"header": header, "source": base, "function": fn["name"], "family": family,
-                                       "seed": rng.randrange(MAX_SEED), "count": BATCH, "weight_boosts": boosts})
+                                       "seed": rng.randrange(MAX_SEED), "count": BATCH, "weight_boosts": boosts if batches % 2 == 0 else {}})
                     if batch is None:  # C it can't read: the simple rewrites can still try
                         gen.close()
                         gen = None

@@ -54,7 +54,8 @@ save/export that project. Review them before publishing a source-assisted decomp
 - Deterministic repairs use measured mismatch evidence to rank applicable families: stack storage/declarations,
   register lifetimes, call signatures, constants or control flow. No family is excluded solely by this heuristic.
 - Random decomp-permuter search boosts relevant existing compiler weights by three, retaining every other upstream
-  weight. The fallback rewrites use the same focus. This changes search order, never the verdict.
+  weight. Focused batches alternate with upstream defaults so a misleading category cannot dominate the turn.
+  The fallback rewrites use the same focus. This changes search order, never the verdict.
 - A fresh baseline compile supplies evidence for the exact seed and context. An in-process bounded cache avoids
   compiling that same baseline every pass. Every generated candidate still goes through the normal judge.
 - An improved external seed or changed header, effective compiler, target or symbols renews the existing bounded

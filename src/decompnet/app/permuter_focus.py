@@ -3,7 +3,7 @@ import re
 
 BOOSTS = {
     'stack': ('perm_reorder_decls', 'perm_temp_for_expr', 'perm_split_assignment', 'perm_randomize_internal_type'),
-    'register': ('perm_reorder_decls', 'perm_reorder_stmts', 'perm_expand_expr', 'perm_temp_for_expr'),
+    'register': ('perm_reorder_decls', 'perm_reorder_stmts', 'perm_expand_expr', 'perm_temp_for_expr', 'perm_commutative'),
     'call': ('perm_randomize_function_type', 'perm_randomize_external_type', 'perm_refer_to_var'),
     'constant': ('perm_float_literal', 'perm_cast_simple', 'perm_add_mask', 'perm_xor_zero'),
     'control': ('perm_condition', 'perm_reorder_stmts', 'perm_ins_block', 'perm_empty_stmt'),

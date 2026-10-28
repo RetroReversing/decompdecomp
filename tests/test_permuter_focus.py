@@ -42,9 +42,10 @@ def test_random_generator_receives_advisory_boosts_without_changing_verdict(monk
     net = FakeNet()
     net._last_diffs = {(AGENT.id, 1): ([('s', 'sw a0,32(sp)', 'sw a0,40(sp)')], '')}
     p = ScriptedPermuter(net, {'candidate': 0})
-    jobs = batches(monkeypatch, ['candidate'])
+    jobs = batches(monkeypatch, ['miss'], ['candidate'])
     state = State()
     p._permute(AGENT, net.project_row('game'), net.function(), state)
     assert jobs[0]['family'] == 'gcc'
-    assert jobs[0]['weight_boosts']['perm_reorder_decls'] == 3
-    assert state.matched == 1 and p.judged == ['candidate']
+    assert jobs[0]['weight_boosts'] == {}
+    assert jobs[1]['weight_boosts']['perm_reorder_decls'] == 3
+    assert state.matched == 1 and p.judged == ['miss', 'candidate']
