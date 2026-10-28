@@ -9,9 +9,10 @@ def order(families, rows):
     elif markers and markers <= {'r', 's'}:
         preferred = ('unused_scalar_local', 'local_storage', 'parameter_storage', 'local_declaration_order',
                      'stack_array', 'parameter_width', 'declaration_order') if 's' in markers else (
-            'comparison_reuse', 'integer_address_order', 'typed_temporary', 'value_lifetime', 'declaration_order')
+            'comparison_reuse', 'integer_address_order', 'typed_temporary', 'value_lifetime',
+            'split_scalar_lifetime', 'array_index_width', 'declaration_order')
     elif markers & {'<', '>', '|', 'o'}:
-        preferred = ('branch_orientation', 'loop_induction', 'call_result_inline', 'parameter_width')
+        preferred = ('paired_load_order', 'pointer_before_store', 'branch_orientation', 'loop_induction', 'call_result_inline', 'parameter_width')
     elif 'i' in markers:
         preferred = ('integer_address_order', 'signedness', 'narrowing', 'constant_local')
     else:

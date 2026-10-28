@@ -220,7 +220,9 @@ paths still need richer per-file dependency records.
 
 Saved near misses now have a persistent three-round, width-three repair search, disabled by default with a separate
 configurable budget after normal autopilot, a persistent round-robin cursor, and cached failed compilations.
-It retains improving/equal-score candidates and chains local repairs. This uses
+It retains improving/equal-score candidates and chains address, literal and targeted local repair families,
+ranked by remaining mismatches. Identical compiler outputs retain at most two source shapes for expansion;
+frontiers and output counts survive runs, and changed repair implementations invalidate the frontier. This uses
 the same MIPS ROM feedback; object-mode and other-processor support await the context/readers described below.
 
 
