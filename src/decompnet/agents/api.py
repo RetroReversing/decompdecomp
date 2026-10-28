@@ -378,6 +378,8 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
                             old=st("text occurring exactly once", True), new=st("replacement", True),
                             repair_note=st("Optional decisive repair"), repair_category=st("Repair category"),
                             repair_automation=st("Potential deterministic repair"), occurrence=it("1-based occurrence; 0 requires unique anchor"))),
+        "try_local_repairs": ("Try applicable local repair families on one snapshot, max six normal compiles/60 seconds. Keeps best continuation; replaces parallel family probes.",
+                              s(function=st("function",True),revision=st("candidate revision",True),families={"type":"array","items":{"type":"string"}},max_trials=it("1–6; default 6"))),
         "compile_family": ("Generate bounded local casts, signedness or declaration_order variants; normal batch limits and exact judge.",
                            s(function=st("function", True), revision=st("candidate revision", True), family=st("casts | signedness | declaration_order | typed_temporary | branch_orientation | narrowing | source_lines | address_temporary | constant_local | comparison_load | stack_array | loop_induction | parameter_width | value_lifetime | sum_shape | call_result_inline", True), old=st("exact expression or declaration anchor"), declaration=st("simple declaration name instead of old"), occurrence=it("1-based occurrence of old; 0 requires unique anchor"), target=st("next: select an untried target; omit old, declaration and occurrence"))),
         "family_targets": ("Read current revision, valid declaration names/pairs and tried status; expression optionally lists literal occurrences. No compile.",
@@ -393,7 +395,7 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
                            s(function=st("optional name or address"), strategy=st("finish | easiest | untried | closest | hardest | random"),
                              count=it("up to 6 small functions at once"))),
         "get_function": ("Show any function by name or address.", s(function=st("name or address", True), section=st("all | history | candidate | notes | declarations | compiler | layouts"))),
-        "compile_and_diff": ("Compile C for the function, link it at its address and diff against the ROM. "
+        "compile_and_diff": ("Whole-function rewrite: small edits should use compile_patch. Compile, link and diff against the ROM. "
                              "Score 0 = matched. Several functions: names comma-separated, all definitions in source.",
                              s(function=st("function name, or several: a, b, c", True), source=st("C source", True),
                              repair_note=st("Optional one-sentence decisive change, single function only; saved only if it matches"),

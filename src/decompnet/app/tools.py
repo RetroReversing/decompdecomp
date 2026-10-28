@@ -13,7 +13,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from .. import __version__, agents, consoles
 from ..network import Agent, NetworkError
-from . import agent_tokens
+from . import agent_tokens, local_experiments
 from .engine import RomNetwork
 
 # The guides every console shares (app/guide/); each console's own are in its package (consoles/<id>/guides/)
@@ -175,8 +175,8 @@ repair_automation in compile_and_diff (single function only). These are saved on
 Explain what changed and how a deterministic repair could do it; omit uncertain explanations. No extra compile
 is needed. report_repair can annotate your captured match afterwards. These are review ideas, never live rules.
 """
-WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness, declaration_order, typed_temporary, branch_orientation, narrowing, source_lines, address_temporary, constant_local, comparison_load, stack_array, loop_induction, parameter_width, value_lifetime, sum_shape or call_result_inline experiments without spelling out variants. Pattern families need only function/revision; source_lines requires known debug flags. Releasing a tried function also runs a bounded local repair pass before another agent edits it. family_targets lists current choices; target=next selects an untried valid declaration target locally; omit old/declaration/occurrence with next. Wait for each same-function edit response before another edit; separate functions can run in parallel. Batches select the best continuation, keeping baseline on ties; apply selected changes in the response. Missing signedness/declaration_order selectors choose the next untried valid target. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
-FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness, declaration_order, typed_temporary, branch_orientation, narrowing, source_lines, address_temporary, constant_local, comparison_load, stack_array, loop_induction, parameter_width, value_lifetime, sum_shape or call_result_inline experiments without spelling out variants. Pattern families need only function/revision; source_lines requires known debug flags. Releasing a tried function also runs a bounded local repair pass before another agent edits it. family_targets lists current choices; target=next selects an untried valid declaration target locally; omit old/declaration/occurrence with next. Wait for each same-function edit response before another edit; separate functions can run in parallel. Batches select the best continuation, keeping baseline on ties; apply selected changes in the response. Missing signedness/declaration_order selectors choose the next untried valid target. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
+WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness, declaration_order, typed_temporary, branch_orientation, narrowing, source_lines, address_temporary, constant_local, comparison_load, stack_array, loop_induction, parameter_width, value_lifetime, sum_shape or call_result_inline experiments without spelling out variants. Pattern families need only function/revision; source_lines requires known debug flags. Releasing a tried function also runs a bounded local repair pass before another agent edits it. family_targets lists current choices; target=next selects an untried valid declaration target locally; omit old/declaration/occurrence with next. Use try_local_repairs before guessing families: it discovers applicable repairs or tries a named families list against one snapshot with at most six compiles. Use compile_patch for small local edits; compile_and_diff is for whole-function rewrites. Wait for each same-function edit response before another edit; separate functions can run in parallel. Batches select the best continuation, keeping baseline on ties; apply selected changes in the response. Missing signedness/declaration_order selectors choose the next untried valid target. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
+FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness, declaration_order, typed_temporary, branch_orientation, narrowing, source_lines, address_temporary, constant_local, comparison_load, stack_array, loop_induction, parameter_width, value_lifetime, sum_shape or call_result_inline experiments without spelling out variants. Pattern families need only function/revision; source_lines requires known debug flags. Releasing a tried function also runs a bounded local repair pass before another agent edits it. family_targets lists current choices; target=next selects an untried valid declaration target locally; omit old/declaration/occurrence with next. Use try_local_repairs before guessing families: it discovers applicable repairs or tries a named families list against one snapshot with at most six compiles. Use compile_patch for small local edits; compile_and_diff is for whole-function rewrites. Wait for each same-function edit response before another edit; separate functions can run in parallel. Batches select the best continuation, keeping baseline on ties; apply selected changes in the response. Missing signedness/declaration_order selectors choose the next untried valid target. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). get_assembly and last_diff are paged.\n"
 
 
 def _console_guides() -> dict:
@@ -311,17 +311,37 @@ def _compile(net: RomNetwork, agent: Agent, slug: str, function: str, source: st
         agent_tokens.outcome(net, agent, fn, source, result)
         agent_tokens.remember(net, agent, fn, previous_attempt)
         result = agent_tokens.feedback(net, agent, slug, names[0], result, previous_diff)
-        for note in (net.stall_note(fn['id'], agent.id), net.attempt_limit_note(agent, names[0], slug)):
-            if note and note not in result and net._function(names[0], slug)['status'] == 'open':
-                result += note
         _, revision = agent_tokens.candidate(net, agent, slug, names[0])
         if net._function(names[0],slug)['status']=='open':
             state = net.stall_status(fn['id'],agent.id)
             remaining = max(0,state['after']-state['no_better'])
-            result += f"\nNo-improvement budget remaining: {remaining}/{state['after']}; improvements reset it. "
-            result += ('Next: release_function with useful notes, then claim another function.' if not remaining else
-                       'Next: test a new hypothesis with compile_patch, compile_variants or compile_family; do not release just to avoid the remaining budget.')
-        result += f"\nCandidate revision {revision}; compile_patch accepts an exact replacement against it; keep the edited source and use this revision for your next patch without another get_candidate call."
+            result += f"\nBudget: {remaining}/{state['after']} without improvement remaining; Candidate revision {revision}."
+            limit = net.attempt_limit_note(agent,names[0],slug)
+            if limit:
+                result += limit
+            elif not remaining:
+                result += '\nNext: release_function with notes, then claim another function.'
+        else:
+            result += f"\nCandidate revision {revision}."
+        # Server conversion cannot recover tokens already sent. Coach once per claim when the exact
+        # submission was a small edit; keep accepting full rewrites without a rejection round trip.
+        if previous_attempt and previous_attempt['source'] and source!=previous_attempt['source']:
+            before = previous_attempt['source']
+            prefix = 0
+            while prefix<min(len(before),len(source)) and before[prefix]==source[prefix]:
+                prefix += 1
+            suffix = 0
+            while suffix<min(len(before),len(source))-prefix and before[-suffix-1]==source[-suffix-1]:
+                suffix += 1
+            changed=max(len(before),len(source))-prefix-suffix
+            claim=net.store.one('SELECT claimed_at FROM claims WHERE function_id=? AND agent_id=?',fn['id'],agent.id)
+            stamp=(agent.id,fn['id'],claim['claimed_at'] if claim else None)
+            coached=getattr(net,'_patch_coached',set())
+            if changed<=160 and len(source)>400 and stamp not in coached:
+                if len(coached)>=128:
+                    coached.clear()
+                coached.add(stamp);net._patch_coached=coached
+                result += '\nSmall edit: use compile_patch with revision, old and new next time; avoid resending the full C.'
     if repair_note:
         fn = net._function(names[0], slug)
         case = net.store.one('SELECT e.id FROM repair_examples e JOIN attempts a ON a.id=e.attempt_id '
@@ -347,7 +367,7 @@ def _redraft(net, slug, function, context):
     if not isinstance(context,str) or not context.strip():
         raise NetworkError('redraft needs nonempty C declarations in context (a real struct, callee prototype or extern). '
                            'To inspect existing C, use get_function(function, section="candidate"). No redraft was run.')
-    return net.redraft(slug,function,context)
+    return agent_tokens.brief(net,net.redraft(slug,function,context),slug)
 
 
 HANDLERS: dict[str, Callable[..., str]] = {
@@ -355,6 +375,8 @@ HANDLERS: dict[str, Callable[..., str]] = {
     "get_candidate": agent_tokens.get_candidate,
     "compile_patch": agent_tokens.patch,
     "compile_variants": agent_tokens.variants,
+    "try_local_repairs": lambda net,agent,slug,function,revision,families=None,max_trials=6:
+        local_experiments.run(net,agent,slug,function,revision,families,max_trials),
     "compile_family": agent_tokens.local_family,
     "family_targets": agent_tokens.family_targets,
     "get_assembly": lambda net, agent, slug, function, start=0, limit=60: agent_tokens.assembly(net, slug, function, start, limit),
@@ -367,7 +389,7 @@ HANDLERS: dict[str, Callable[..., str]] = {
         net.repair_feedback.report(agent, slug, function, change, category, automation),
     "last_diff": agent_tokens.diff_page,
     "release_function": lambda net, agent, slug, function, notes, needs="", not_c=False:
-        net.release_function(agent, function, notes, slug, needs or "", bool(not_c)),
+        agent_tokens.brief(net,net.release_function(agent, function, notes, slug, needs or "", bool(not_c)),slug,agent),
     "get_context": lambda net, agent, slug, function="": net.get_context(slug, function or None),
     "edit_context": lambda net, agent, slug, old, new, message, function="":
         net.edit_context(agent, slug, old, new, message, function or None),
@@ -519,7 +541,7 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
     @tool
     async def compile_and_diff(ctx: Context, function: str, source: str, repair_note: str = '',
                                repair_category: str = 'other', repair_automation: str = '') -> str:
-        """Compile your code for `function` and diff it against the original; score 0 = byte-identical.
+        """Submit a whole-function rewrite and judge it against the original. For small edits use compile_patch to avoid resending C; score 0 = byte-identical.
 
         ROM projects: compiled with the game's compiler (context.h included), linked at the function's
         address and compared with the ROM. Forks: send the complete definition (plus any #include "...",
@@ -548,6 +570,11 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
         Stops on match or claim error; returns a compact table and current revision. Cached or rejected
         trials may retain earlier C. Each patch starts from the original snapshot, not the previous patch."""
         return await run(ctx, 'compile_variants', function=function, revision=revision, patches=patches)
+
+    @tool
+    async def try_local_repairs(ctx: Context, function: str, revision: str, families: list[str] | None = None, max_trials: int = 6) -> str:
+        """Try applicable local repair families against one revision; at most six normal compiles and 60 seconds. Omit families to discover applicable repairs; retain best continuation. Use instead of parallel family probes."""
+        return await run(ctx,'try_local_repairs',function=function,revision=revision,families=families,max_trials=max_trials)
 
     @tool
     async def compile_family(ctx: Context, function: str, revision: str, family: str, old: str = '', declaration: str = '', occurrence: int = 0, target: str = '') -> str:
