@@ -1,5 +1,6 @@
 import pytest
 
+from decompnet import claim_stalls
 from decompnet.app import agent_evidence, agent_tokens, load_pair_repairs, tools
 from decompnet.network import NetworkError
 from tests.test_claims import _game
@@ -15,12 +16,15 @@ def test_pair_candidates_keep_both_loads_and_reject_calls():
 
 def test_unchanged_output_budget_is_independent_and_claim_scoped(tmp_path):
     net,_=_game(tmp_path,[('f',10,'open')]);agent,_=net.local_agent('a');net.claim_row(agent,'game','f');fn=net._function('f','game')
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET best_source=? WHERE id=?',('void f(){}',fn['id']))
     net.set_selection('game','a',{'stall_compiles':200,'unchanged_compiles':2})
     net._agent_outcomes={(agent.id,fn['id']):{'score':5,'rows':[('r','a','b')]}}
     assert '0/2' in agent_evidence.track(net,agent,'game',fn)
     assert '1/2' in agent_evidence.track(net,agent,'game',fn)
     assert 'Unchanged-output limit reached' in agent_evidence.track(net,agent,'game',fn)
     assert not net.store.one('SELECT 1 FROM claims WHERE function_id=?',fn['id'])
+    assert claim_stalls.blocked(net,net._project('game'))==[fn['id']]
     net.claim_row(agent,'game','f')
     assert '0/2' in agent_evidence.track(net,agent,'game',fn)
     assert net.selection('game','a')['stall_compiles']==200

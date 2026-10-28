@@ -1,6 +1,7 @@
 """Keep automatic workers from passing an unchanged failed candidate around indefinitely."""
 import hashlib
 import json
+from pathlib import Path
 
 VERSION = 'local-repairs-v16'
 RELEASES = 3
@@ -11,7 +12,7 @@ def common_state(net, proj):
     contexts = net.store.all('SELECT unit,MAX(version) AS version FROM context_versions WHERE project_id=? GROUP BY unit ORDER BY unit',proj['id'])
     symbols = net.store.all('SELECT name,address,size,kind FROM symbols WHERE project_id=? ORDER BY name',proj['id'])
     state = [VERSION,proj['config'],[(r['unit'],r['version']) for r in contexts],
-             [tuple(r) for r in symbols],getattr(net,'_generation',{}).get(proj['id'],0)]
+             [tuple(r) for r in symbols], repair_rules()]
     fp = None
     if getattr(net,'fork_slug',lambda slug: None)(proj['slug']):
         _, fp, _ = net.forks.get(proj['slug'])
@@ -20,6 +21,13 @@ def common_state(net, proj):
         paths += sorted((fp.root/'include').rglob('*.h')) if (fp.root/'include').is_dir() else []
         state.append([(str(p),file_digest(p)) for p in paths])
     return hashlib.sha256(repr(state).encode()).hexdigest(),fp
+
+
+def repair_rules():
+    """Persist across restarts; invalidate when installed repair implementations change."""
+    app = Path(__file__).parent / 'app'
+    paths = sorted(set(app.glob('*repairs.py')) | {app / 'local_experiments.py'})
+    return [(p.name,file_digest(p)) for p in paths]
 
 
 def file_digest(path):
@@ -38,7 +46,7 @@ def signature(net, proj, fn, common=None):
     return hashlib.sha256(repr(state).encode()).hexdigest()
 
 
-def released(net, fn):
+def released(net, fn, *, exhausted=False):
     proj = net.store.one('SELECT * FROM projects WHERE id=?',fn['project_id'])
     current = net.store.one('SELECT * FROM functions WHERE id=?',fn['id'])
     if current['status'] != 'open' or not current['best_source']:
@@ -48,7 +56,7 @@ def released(net, fn):
     with net.store.tx() as db:
         row = db.execute('SELECT value FROM settings WHERE key=?',(key,)).fetchone()
         old = json.loads(row['value']) if row else {}
-        count = old.get('count',0)+1 if old.get('stamp') == stamp else 1
+        count = RELEASES if exhausted else (old.get('count',0)+1 if old.get('stamp') == stamp else 1)
         db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',(key,json.dumps({'stamp':stamp,'count':count})))
 
 
