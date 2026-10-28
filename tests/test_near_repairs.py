@@ -93,3 +93,57 @@ def test_other_function_and_packed_layout_are_left_alone():
     assert not variants(src, 'f', 'mips', asm(0x3c028001, 0x8c430010))
     src = 'typedef struct __attribute__((packed)) { u8 padA[32]; s16 value; u8 padB[4]; } Item;\nvoid f(void) { return; }'
     assert not variants(src, 'f', 'mips')
+
+
+def test_near_flag_search_rotates_cached_debug_probes_to_optimization_flags():
+    import time
+
+    from decompnet.app.permute import Permuter, State
+
+    from .test_permute import AGENT
+    net = _flag_probe_net(); proj = net.project_row('game'); fn = net.function()
+    net.debug_flag_variants = lambda tc, flags: [flags, ['-O2','-g'], ['-O2','-g3']]
+    net.flag_variants = lambda tc, flags: [flags, ['-O1'], ['-O3']]
+    tested=[]; changes=[]
+    def judge(proj, fn, tc, flags, source):
+        tested.append(flags)
+        return flags == ['-O3'], None, ''
+    net._judge_with=judge
+    net.set_compiler_ranges=lambda *args:changes.append(args)
+    perm=Permuter(net); perm._score=lambda *args:0
+    state=State()
+    assert perm._repair_flags(AGENT,proj,fn,state,time.monotonic()+10)==2
+    assert not changes
+    assert perm._repair_flags(AGENT,proj,fn,state,time.monotonic()+10)==3
+    assert tested==[['-O2','-g'],['-O2','-g3'],['-O1'],['-O3']]
+    assert changes[0][-1]==['-O3'] and state.matched==1
+
+
+def test_near_flag_match_respects_manual_compiler_approval():
+    import time
+
+    from decompnet.app.permute import Permuter, State
+
+    from .test_permute import AGENT
+    net=_flag_probe_net(); proj=net.project_row('game'); fn=net.function()
+    net.debug_flag_variants=lambda tc, flags:[flags,['-O2','-g']]
+    net._judge_with=lambda *args:(True,None,'')
+    net.auto_adjusts=lambda proj:False
+    suggestions=[]
+    net.suggest=lambda *args,**kwargs:suggestions.append(kwargs)
+    net.set_compiler_ranges=lambda *args:(_ for _ in ()).throw(AssertionError('must ask the user'))
+    state=State()
+    assert Permuter(net)._repair_flags(AGENT,proj,fn,state,time.monotonic()+10)==1
+    assert suggestions[0]['function']==fn['name'] and suggestions[0]['source']==fn['best_source']
+    assert state.matched==0
+
+
+def _flag_probe_net():
+    import json
+
+    from .test_permute import FakeNet
+    net=FakeNet()
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?',(json.dumps({'compiler':{'toolchain':'gcc-2.7.2-kmc','flags':['-O2']}}),))
+        db.execute('UPDATE functions SET best_score=5,size=40')
+    return net

@@ -35,6 +35,7 @@ const cases = [
   ["pages", 'b.onclick = async () => {', '\n    };', "log", "b"],
   ["project", '$("localScan").onclick = async () => {', '\n};', "localScanLog", "localScan"],
   ["project", 'go.onclick = async () => {', '\n  };', "localImportLog", "localImport"],
+  ["steering", '$("sourcePrepRun").onclick = async () => {', '\n};', "sourcePrepLog", "sourcePrepRun"],
 ];
 function setup(file, marker, end, logId, buttonId, ranges = "") {
   const elements = new Map();

@@ -221,6 +221,34 @@ def register(app: App) -> None:
         net.resolve_boundary(slug, int(data.get("id", 0)), data.get("action") == "apply")
         return net.overview(slug)
 
+    def p_source_preparation(slug, request, data):
+        from .. import source_preparation
+        from ..permute import State
+        proj = net.project_row(slug)
+        if request.method == "GET":
+            return source_preparation.settings(net, proj)
+        if data.get('action') not in (None, 'save', 'run'):
+            raise ValueError('Choose save or run for source preparation.')
+        if data.get('action') == 'run':
+            def work(log):
+                report = source_preparation.run(net.permuter, net.project_row(slug), State(), log)
+                log(f"Prepared {report['tested']}: {report['improved']} improved, {report['matched']} matched.")
+                return report
+            return {'job': jobs.start('source-preparation', work)}
+        return source_preparation.configure(net, proj, data)
+
+    def p_permuter(slug, request, data):
+        """Run free local permutations without starting a paid helper or the full autopilot."""
+        net.project_row(slug)
+        action = data.get("action", "start")
+        if action not in {"start", "stop"}:
+            raise ValueError("Choose start or stop for the permuter.")
+        if action == "stop":
+            net.permuter.stop(slug)
+        else:
+            net.permuter.start(slug)
+        return {"permuter": net.permuter.status(slug)}
+
     def p_autopilot(slug, request, data):
         if data.get("action") == "stop":
             net.stop_autopilot(slug)
@@ -295,6 +323,8 @@ def register(app: App) -> None:
         "/api/delete": (p_delete, ["POST"]),
         "/api/try": (p_try, ["POST"]), "/api/release": (p_release, ["POST"]), "/api/reopen": (p_reopen, ["POST"]), "/api/setaside": (p_set_aside, ["POST"]),
         "/api/recheck": (p_recheck, ["POST"]),
+        "/api/permuter": (p_permuter, ["POST"]),
+        "/api/source-preparation": (p_source_preparation, ["GET", "POST"]),
         "/api/autopilot": (p_autopilot, ["POST"]), "/api/instructions": (p_instructions, ["POST"]), "/api/title": (p_title, ["POST"]),
         "/api/cross-game": (lambda s, r, d: {"results": net.twins.cross_game_results(s),
                             "suggestions": net.twins.suggestions(s, r.query_params.get("function", ""))

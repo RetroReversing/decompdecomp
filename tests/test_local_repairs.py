@@ -121,7 +121,8 @@ def test_targeted_phase_respects_lease_and_trial_budget(tmp_path,monkeypatch):
     with net.store.tx() as db:db.execute('DELETE FROM claims')
     p._repair_round(machine,net._project('game'),st,function_id=fn['id'],budget=6,seconds=8)
     assert len(seen)==6 and st.repairs==6
-    assert net.store.one('SELECT COUNT(*) AS n FROM reuse_trials WHERE function_id=?',fn['id'])['n']==6
+    assert seen[0] == fn['best_source']  # the verified baseline shares the six-compile allowance
+    assert net.store.one('SELECT COUNT(*) AS n FROM reuse_trials WHERE function_id=?',fn['id'])['n']==5
     assert not net.store.one('SELECT * FROM claims')
 
 
