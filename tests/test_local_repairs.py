@@ -157,3 +157,20 @@ def test_stall_retries_on_dependency_change(tmp_path,change):
         else:
             db.execute('INSERT INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)',(pid,'data',4096,4,'data'))
     assert not claim_stalls.blocked(net,proj)
+
+
+def test_exhausted_candidate_survives_rebuild_and_restart_but_new_rules_retry(tmp_path,monkeypatch):
+    net,_=_game(tmp_path,[('f',10,'open')])
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET best_source=?,best_score=10',('void f(){}',))
+    fn=net._function('f','game');proj=net._project('game')
+    claim_stalls.released(net,fn,exhausted=True)
+    assert claim_stalls.blocked(net,proj)==[fn['id']]
+    net._generation={proj['id']:123}
+    assert claim_stalls.blocked(net,proj)==[fn['id']]
+    del net._generation
+    assert claim_stalls.blocked(net,proj)==[fn['id']]
+    agent,_=net.local_agent('manual')
+    assert net.claim_row(agent,'game','f')['id']==fn['id']
+    monkeypatch.setattr(claim_stalls,'repair_rules',lambda: [('new-rule','changed')])
+    assert not claim_stalls.blocked(net,proj)

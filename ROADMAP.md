@@ -823,9 +823,10 @@ Settings, persisted and applied to new turns in both ROM and imported projects.
 Captured-repair families coordinate dropping 2–3 simple trailing call arguments with local prototypes, literal struct-pointer byte offsets, and flat switch-case call distribution. They share existing ROM/imported local-repair budgets and exact judges. Process-local, scope-keyed observations demote families after repeated identical scored instruction diffs, without skipping compiles or normalizing source. Tool schemas distinguish compiler profiles from repair families; full/matched section aliases and actionable redraft guidance avoid recovery turns.
 
 Agent batches can verify and cache missing baseline instruction evidence per claim/source/target/settings scope; imported verification restores the project through the diagnostic judge. A separate per-agent identical-output limit defaults to 8 (0 disables), releases the lease while retaining best source, and leaves no-improvement limits independent. Repeated batch warnings are compact with full warnings available on demand. Typed family selectors separate next/anchor/declaration modes, and paired adjacent-load scheduling candidates retain both loads and require the ordinary exact judge.
-
 Agent cards have persistent metric reset baselines, total reported tokens and time
 since the last improvement, retaining code, history and lifetime model accounting.
+
+Repeated-output limits now remember bounded fingerprints across a claim and reset the repeat streak only for genuinely novel scored instruction output, catching alternating old results. Baseline summaries distinguish verified, scored and unverified evidence. Unknown inline repair categories map to other while retaining their original label and code submission. Shared local families can narrow array indices, split scalar floating-point lifetimes, and capture repeated pointer fields before aliasing stores; ordinary exact judges and existing budgets remain mandatory.
 
 Function lists show check/improvement recency. Agent work selection supports oldest
 checked first and a recorded-model untried filter in ROM and imported projects.

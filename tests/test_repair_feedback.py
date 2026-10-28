@@ -298,3 +298,15 @@ def test_autopilot_capture_uses_actual_compile_settings_instead_of_project_snaps
     assert settings['effective_command']==effective['effective_command']
     assert settings['settings_source']=='compile invocation snapshot'
     assert not net.store.all('SELECT * FROM claims')
+
+
+def test_unknown_inline_category_preserves_patch_and_original_annotation(setup,monkeypatch):
+    net,winner,_,_,fid=setup
+    def attempt(agent,name,source,slug):
+        net._record(fn(net,fid),agent,0,source,1,matched=True)
+        return 'matched'
+    monkeypatch.setattr(net,'compile_and_diff',attempt,raising=False)
+    tools._compile(net,winner,'demo','target','winning C',repair_note='Preserved load order.',repair_category='load_store_order')
+    row=net.repair_feedback.listing('demo')['examples'][0]
+    assert row['category']=='other'
+    assert row['explanation']=='[Original category: load_store_order] Preserved load order.'

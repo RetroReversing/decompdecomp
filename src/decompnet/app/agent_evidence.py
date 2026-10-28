@@ -64,7 +64,7 @@ def _baseline(net,agent,slug,fn,source):
         states=getattr(net,'_unchanged_output',{})
         net._unchanged_output=states
         fingerprint=hashlib.sha256(repr((measured['score'],measured['rows'])).encode()).hexdigest()
-        states.setdefault(scope(net,agent,fn),(fingerprint,0))
+        states.setdefault(scope(net,agent,fn),{'seen':{fingerprint},'repeated':0})
     while len(cache)>64:
         del cache[next(iter(cache))]
     return measured
@@ -78,17 +78,26 @@ def track(net,agent,slug,fn):
     states=getattr(net,'_unchanged_output',{})
     net._unchanged_output=states
     fingerprint=hashlib.sha256(repr((measured['score'],measured['rows'])).encode()).hexdigest()
-    prior=states.get(key)
-    count=prior[1]+1 if prior and prior[0]==fingerprint else 0
-    states[key]=(fingerprint,count)
+    prior=states.get(key,{'seen':set(),'repeated':0})
+    count=prior['repeated']+1 if fingerprint in prior['seen'] else 0
+    seen=prior['seen']
+    seen.add(fingerprint)
+    # Bounded evidence, never an unbounded log of candidate source or code.
+    if len(seen)>512:
+        seen={fingerprint}
+        count=0
+    states[key]={'seen':seen,'repeated':count}
     while len(states)>128:
         del states[next(iter(states))]
     limit=net.selection(slug,agent.name).get('unchanged_compiles',8)
     if limit and count>=limit and net._function(fn['name'],slug)['status']=='open':
         held=net.store.one('SELECT 1 FROM claims WHERE function_id=? AND agent_id=?',fn['id'],agent.id)
         if held:
-            return 'Unchanged-output limit reached. '+net.release(agent,fn['name'],f'Moved on after {count} consecutive identical scored instruction diffs. Best source retained.',slug)
-    return f'Unchanged instruction outputs: {count}/{limit}.' if limit else None
+            result=net.release(agent,fn['name'],f'Moved on after {count} trials returning previously seen scored instruction diffs. Best source retained.',slug)
+            from .. import claim_stalls
+            claim_stalls.released(net,fn,exhausted=True)
+            return 'Unchanged-output limit reached. '+result+' Automatic claims pause until the candidate, build context or repair rules change.'
+    return f'Repeated instruction outputs without novelty: {count}/{limit}.' if limit else None
 
 
 def warning(net,agent,fn,text):

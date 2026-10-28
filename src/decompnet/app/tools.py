@@ -322,7 +322,10 @@ def _compile(net: RomNetwork, agent: Agent, slug: str, function: str, source: st
     """Optional repair notes ride along with a candidate, saving a separate explanation round trip."""
     from ..repair_feedback import CATEGORIES
     names = [n.strip() for n in function.split(",") if n.strip()]
-    if repair_note and (len(names) != 1 or repair_category not in CATEGORIES):
+    if repair_note and repair_category not in CATEGORIES:
+        repair_note=f'[Original category: {repair_category}] '+repair_note
+        repair_category='other'
+    if repair_note and len(names) != 1:
         raise NetworkError('Repair notes require one function and a valid category. Use report_repair after a batch.')
     previous = net.store.one('SELECT MAX(id) AS id FROM repair_examples')['id'] or 0
     previous_diff = None

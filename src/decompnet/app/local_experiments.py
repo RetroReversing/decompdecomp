@@ -10,6 +10,7 @@ from . import (
     agent_tokens,
     captured_repairs,
     expression_repairs,
+    lifetime_repairs,
     load_pair_repairs,
     mmio_repairs,
     pattern_repairs,
@@ -19,7 +20,7 @@ from . import (
 
 FAMILIES = ('signedness','declaration_order','typed_temporary','branch_orientation','narrowing','source_lines',
             'address_temporary','constant_local','comparison_load','stack_array','loop_induction',
-            'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order','mmio_address','call_arity','struct_byte_offset','switch_call','paired_load_order')
+            'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order','mmio_address','call_arity','struct_byte_offset','switch_call','paired_load_order','array_index_width','split_scalar_lifetime','pointer_before_store')
 
 
 def run(net, agent, slug, function, revision, families=None, max_trials=6):
@@ -56,6 +57,9 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
             if family in pools:
                 pools[family].append(candidate)
         for family,candidate in captured_repairs.variants(source,fn['name']):
+            if family in pools:
+                pools[family].append(candidate)
+        for family,candidate in lifetime_repairs.variants(source,fn['name']):
             if family in pools:
                 pools[family].append(candidate)
         if 'paired_load_order' in pools:
