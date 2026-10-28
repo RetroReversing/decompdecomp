@@ -8,6 +8,7 @@ from ..project import compiler_for
 from . import (
     agent_targets,
     agent_tokens,
+    captured_repairs,
     expression_repairs,
     mmio_repairs,
     pattern_repairs,
@@ -17,7 +18,7 @@ from . import (
 
 FAMILIES = ('signedness','declaration_order','typed_temporary','branch_orientation','narrowing','source_lines',
             'address_temporary','constant_local','comparison_load','stack_array','loop_induction',
-            'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order','mmio_address')
+            'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order','mmio_address','call_arity','struct_byte_offset','switch_call')
 
 
 def run(net, agent, slug, function, revision, families=None, max_trials=6):
@@ -53,6 +54,9 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         for family,candidate in register_repairs.variants(source,fn['name'],proj['arch']):
             if family in pools:
                 pools[family].append(candidate)
+        for family,candidate in captured_repairs.variants(source,fn['name']):
+            if family in pools:
+                pools[family].append(candidate)
         if 'mmio_address' in pools:
             pools['mmio_address'] = mmio_repairs.variants(source,fn['name'],proj['arch'])
         if 'narrowing' in pools:
@@ -60,6 +64,8 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
             pools['narrowing'] += [s for s in expression_repairs.variants(source,fn['name'],proj['arch']) if masks(s)<masks(source)]
         pools={f:[s for s in dict.fromkeys(pool) if s!=source and not agent_tokens.target_tried(net,fn,revision,'local:'+f,s)] for f,pool in pools.items()}
         ranked = repair_ranking.order(pools,repair_ranking.evidence(net,fn['id'],agent.id))
+        effect_scope=agent_tokens.target_scope(net,fn,'')
+        ranked=repair_ranking.demote(net,effect_scope,ranked)
         pools = {f:pools[f] for f in ranked}
         selected=[];seen=set()
         while len(selected)<max_trials and any(pools.values()):
@@ -71,7 +77,13 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         if not selected:
             return f'No untried applicable local repairs. Revision {actual}; no compile run.'
         scope=agent_tokens.target_scope(net,fn,revision)
+        baseline=getattr(net,'_agent_outcomes',{}).get((agent.id,fn['id']))
+        if baseline and baseline.get('source')!=source:
+            baseline=None
         result=agent_tokens.variants(net,agent,slug,function,revision,[{'old':source,'new':s} for _,s in selected], 'local repairs')
+        observations=getattr(net,'_local_trial_observations',{}).get((agent.id,fn['id']),[])
+        for (family,_), measured in zip(selected,observations):
+            repair_ranking.remember(net,effect_scope,family,baseline,measured)
         submitted=re.search(r'last submitted variant (\d+)',result)
         for family,candidate in selected[:int(submitted[1]) if submitted else 0]:
             with net.store.tx() as db:

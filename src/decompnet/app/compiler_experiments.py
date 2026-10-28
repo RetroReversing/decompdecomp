@@ -21,6 +21,8 @@ def run(net,agent,slug,function,revision,trials):
         proj=net._project(slug);cfg=net.cfg(proj);fork=bool(net.fork_slug(slug))
         planned=[]
         for t in trials:
+            if isinstance(t,dict) and any(k in t for k in ('family','target')):
+                raise NetworkError('Repair families belong in try_local_repairs(function, revision, families=[...]); compiler_experiments requires compiler=current or an exact compiler ID.')
             if not isinstance(t,dict) or not isinstance(t.get('compiler'),str) or not t['compiler'].strip() or t['compiler'].strip().lower()=='all':
                 raise NetworkError('Each trial needs compiler="current" or an explicit compiler ID; all is not a bounded profile.')
             if not isinstance(t.get('flags',''),str):

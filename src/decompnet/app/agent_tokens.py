@@ -274,6 +274,11 @@ def function_view(net, agent, slug, function, section='all'):
     if section == 'draft':
         fn=net._function(function,slug)
         return 'Stored machine draft (not the current candidate):\n```c\n'+(fn['seed'] or '')+'\n```' if fn['seed'] else 'No stored machine draft. Use section=candidate for existing C.'
+    if section == 'full':
+        section = 'all'
+    if section == 'matched':
+        fn=net._function(function,slug)
+        return '```c\n'+fn['matched_source']+'\n```' if fn['matched_source'] else 'No verified matched source; use section=candidate for the current attempt.'
     if section == 'source':
         section = 'candidate'
     if section == 'history':
@@ -455,6 +460,12 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             candidates.append(agent_targets.replace_anchor(source,p.get('old'),p.get('new'),p.get('occurrence',0)))
         results = ['Independent variants against revision '+revision+' (not cumulative):']
         last = None
+        observations = []
+        if not hasattr(net,'_local_trial_observations'):
+            net._local_trial_observations = {}
+        net._local_trial_observations[agent.id,fn['id']] = observations
+        while len(net._local_trial_observations)>64:
+            del net._local_trial_observations[next(iter(net._local_trial_observations))]
         groups = {}
         scores = []
         choices = []
@@ -487,6 +498,7 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             last = i
             measured = getattr(net, '_agent_outcomes', {}).get((agent.id, fn['id']))
             measured = measured if measured and measured['source'] == src else None
+            observations.append({'score':measured['score'],'rows':measured['rows']} if measured else None)
             score = measured['score'] if measured else None
             rows = measured['rows'] if measured else None
             if score is not None:
