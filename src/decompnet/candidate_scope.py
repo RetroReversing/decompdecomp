@@ -59,7 +59,11 @@ def state(net,proj,fn):
     if getattr(net,'fork_slug',lambda _:None)(proj['slug']):
         try:
             _,fp,_=net.forks.get(proj['slug']);unit=fp.unit(fn['unit'])
-            result += [repr(unit), dependencies(fp.root,unit.source),
+            target=getattr(unit,'target',None)
+            target=Path(target) if target else None
+            if target is not None and not target.is_absolute():
+                target=fp.root/target
+            result += [digest(target) if target else None,repr(unit), dependencies(fp.root,unit.source),
                        [(name,digest(fp.root/name)) for name in ('Makefile','build.ninja','objdiff.json','configure.py')]]
         except (ForkError,OSError):
             result.append(('unavailable-project',digest(Path(proj['root'])/'objdiff.json')))

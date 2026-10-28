@@ -142,3 +142,14 @@ def test_compiler_range_changes_only_invalidate_affected_functions(tmp_path):
     cfg['compiler']['flags']=['-O0']
     with net.store.tx() as db:db.execute('UPDATE projects SET config=?',(json.dumps(cfg),))
     assert agent_tokens.target_scope(net,fn,'r')!=before
+
+
+def test_imported_original_object_changes_invalidate_trial_history(tmp_path,monkeypatch):
+    from types import SimpleNamespace
+    net,_=_game(tmp_path,[('f',10,'open')]);target=tmp_path/'original.o';target.write_bytes(b'original')
+    fp=SimpleNamespace(root=tmp_path,unit=lambda _:SimpleNamespace(source=None,target=target))
+    monkeypatch.setattr(net,'fork_slug',lambda _: 'game')
+    monkeypatch.setattr(net.forks,'get',lambda _: (None,fp,None))
+    fn=net._function('f','game');before=agent_tokens.target_scope(net,fn,'r')
+    target.write_bytes(b'changed-original')
+    assert agent_tokens.target_scope(net,fn,'r')!=before
