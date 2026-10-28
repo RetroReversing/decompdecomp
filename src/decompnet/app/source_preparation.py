@@ -174,8 +174,17 @@ def prepare(reader, cfg, mapping, aliases, fallback):
     span = csource.find(original, symbol)
     if not span or csource.is_stub(original[span[0]:span[1]]):
         raise NetworkError(f'No C definition of {symbol!r} in its mapped file. Check the mapping.')
+    if csource.find(original[span[1]:], symbol):
+        raise NetworkError(f'More than one definition of {symbol!r} is present. Supply a source subset with the intended version.')
     # Keep the exact body formatting and its original line number, including __LINE__ uses.
     body = original[span[0]:span[1]]
+    # An unused static definition can disappear entirely when compiled alone. Expose only this mapped
+    # entry point; retain columns/line breaks and let the normal destination judge settle the result.
+    clean = csource._blank(body)
+    name_at = clean.find(symbol)
+    if name_at >= 0:
+        for match in reversed(list(re.finditer(r'\bstatic\b', clean[:name_at]))):
+            body = body[:match.start()] + ' ' * len(match[0]) + body[match.end():]
     source = f'#line {original[:span[0]].count(chr(10)) + 1} "reference.c"\n' + rename(body, aliases)
     if cfg.get('header'):
         header = reader.flatten(Path(cfg['header']).expanduser())

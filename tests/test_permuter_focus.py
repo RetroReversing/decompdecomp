@@ -34,3 +34,17 @@ def test_baseline_cached_per_input_and_clears_unrelated_evidence():
     net._context = lambda *args: {'version': 2, 'header': 'new context'}
     assert p._baseline(AGENT, proj, fn, st, None) == (1000, 1)
     assert len(p.judged) == 2
+
+
+def test_random_generator_receives_advisory_boosts_without_changing_verdict(monkeypatch):
+    from decompnet.app.permute import State
+    from tests.test_permute import AGENT, FakeNet, ScriptedPermuter, batches
+    net = FakeNet()
+    net._last_diffs = {(AGENT.id, 1): ([('s', 'sw a0,32(sp)', 'sw a0,40(sp)')], '')}
+    p = ScriptedPermuter(net, {'candidate': 0})
+    jobs = batches(monkeypatch, ['candidate'])
+    state = State()
+    p._permute(AGENT, net.project_row('game'), net.function(), state)
+    assert jobs[0]['family'] == 'gcc'
+    assert jobs[0]['weight_boosts']['perm_reorder_decls'] == 3
+    assert state.matched == 1 and p.judged == ['candidate']

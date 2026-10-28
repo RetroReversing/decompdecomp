@@ -181,3 +181,20 @@ def test_reference_aliases_are_explicit_and_token_safe():
     assert prep.symbol_aliases('gReference = D_80010000') == {'gReference': 'D_80010000'}
     with pytest.raises(NetworkError):
         prep.symbol_aliases('gReference = first\ngReference = second')
+
+
+
+def test_static_entry_point_is_emitted_without_changing_body_layout(tmp_path):
+    cfg = config(tmp_path)
+    (tmp_path / 'game.c').write_text('static int original(int a)\n{\n  return a;\n}\n')
+    (tmp_path / 'types.h').write_text('')
+    source, _ = prep.prepare(prep.Reader(cfg), cfg, prep.mappings(cfg['mappings'])[0], {'original': 'f'}, '')
+    assert source == '#line 1 "reference.c"\n       int f(int a)\n{\n  return a;\n}\n'
+
+
+
+def test_multiple_reference_definitions_require_an_explicit_subset(tmp_path):
+    cfg = config(tmp_path)
+    (tmp_path / 'game.c').write_text('#ifdef DEBUG\nint original(void){return 1;}\n#else\nint original(void){return 2;}\n#endif\n')
+    with pytest.raises(NetworkError, match='More than one definition'):
+        prep.prepare(prep.Reader(cfg), cfg, prep.mappings(cfg['mappings'])[0], {}, '')

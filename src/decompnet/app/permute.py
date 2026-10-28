@@ -278,7 +278,7 @@ class Permuter:
             labels = {}
             candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels)
             from . import repair_ranking
-            ranked = repair_ranking.order(dict.fromkeys(labels.values()),repair_ranking.evidence(self.net,fn['id'],agent.id))
+            ranked = repair_ranking.order(dict.fromkeys(labels.get(text, 'draft_repair') for text in candidates),repair_ranking.evidence(self.net,fn['id'],agent.id))
             from . import agent_tokens
             effect_scope=agent_tokens.target_scope(self.net,fn,'') if hasattr(self.net,'_context') else None
             ranked=repair_ranking.demote(self.net,effect_scope,ranked)
@@ -303,9 +303,9 @@ class Permuter:
                     if measured == 0:
                         st.add(improved=1, matched=1)
                         continue
-                    ranked = repair_ranking.order(dict.fromkeys(labels.values()), repair_ranking.evidence(self.net, fn['id'], agent.id))
+                    ranked = repair_ranking.order(dict.fromkeys(labels.get(text, 'draft_repair') for text in candidates), repair_ranking.evidence(self.net, fn['id'], agent.id))
                     ranked = repair_ranking.demote(self.net, effect_scope, ranked)
-                candidates.sort(key=lambda text: ranked.index(labels[text]) if labels.get(text) in ranked else len(ranked))
+                candidates.sort(key=lambda text: ranked.index(labels.get(text, 'draft_repair')) if labels.get(text, 'draft_repair') in ranked else len(ranked))
                 for candidate in candidates:
                     if st.stop.is_set() or attempts >= budget or time.monotonic() >= deadline:
                         break

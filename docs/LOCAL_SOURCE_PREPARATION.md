@@ -29,7 +29,8 @@ past that deadline, within the compiler's normal timeout. Unchanged trials (incl
 cached. Another pass continues with untried mapped functions. Edited reference bodies, headers, mappings, macro
 values or destination build inputs give those candidates another chance. The original function body keeps its
 line breaks and original line number: IDO can schedule code differently when source line information changes.
-Token replacements leave comments and string literals alone.
+Token replacements leave comments and string literals alone. A mapped `static` entry point is made externally
+visible for the isolated compile, without shifting its lines. Its original body remains unchanged.
 
 ## What gets saved
 
