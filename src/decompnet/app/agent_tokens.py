@@ -550,16 +550,21 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
                 if score is None:
                     summary += '; ' + '\n'.join(result.splitlines()[:4])[:400]
                 if 'Max tries reached' in result or 'Unchanged-output limit reached' in result:
-                    summary += '; Max tries reached'
+                    summary += '; '+('Unchanged-output limit reached' if 'Unchanged-output limit reached' in result else 'Max tries reached')
                 groups[key] = ([i], summary)
             if 'Max tries reached' in result or 'Unchanged-output limit reached' in result:
-                results.append('Max tries reached; no further variants submitted.')
+                results.append(('Unchanged-output limit reached' if 'Unchanged-output limit reached' in result else 'Max tries reached')+'; no further variants submitted.')
             if net._function(function, slug)['status'] != 'open' or 'Max tries reached' in result or 'Unchanged-output limit reached' in result:
                 break
         for indices, summary in groups.values():
             results.append('Variants '+','.join(map(str,indices))+': '+summary)
         if baseline:
-            results.append('Baseline: historical score; not reverified. Diff grouping is diagnostic only.')
+            if baseline.get('verified'):
+                results.append('Baseline: verified instruction evidence (cached within its build/claim scope). Diff grouping is diagnostic only.')
+            elif baseline.get('rows') is not None:
+                results.append('Baseline: scored instruction evidence available. Diff grouping is diagnostic only.')
+            else:
+                results.append('Baseline: historical score; not reverified. Diff grouping is diagnostic only.')
         with net.store.tx() as db:
             db.execute('INSERT INTO agent_variant_runs(function_id,family,revision,trials,best_score,created_at) VALUES(?,?,?,?,?,?)',
                        (fn['id'],family,revision,last or 0,min(scores) if scores else None,time.time()))
