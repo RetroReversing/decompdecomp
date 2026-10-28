@@ -12,6 +12,7 @@ from . import (
     branch_locals,
     captured_repairs,
     expression_repairs,
+    load_pair_repairs,
     mmio_repairs,
     near_repairs,
     pattern_repairs,
@@ -49,6 +50,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     for family, text in captured_repairs.variants(source, name):
         proposals.append(text)
         labels[text] = family
+    for text in load_pair_repairs.variants(source,name):
+        proposals.append(text)
+        labels[text]='paired_load_order'
     # Fresh m2c drafts already get this alternative in autopilot. Saved/transferred drafts need the
     # same chance, with their macro typedef block kept out of the refinement's type substitutions.
     if arch == 'mips' and ('M2C_FIELD(' in source or 'M2C_UNK' in source or re.search(r'\barg[0-3]\b',source)):

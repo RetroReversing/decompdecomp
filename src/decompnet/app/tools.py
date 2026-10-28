@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 from importlib import resources
-from typing import Callable
+from typing import Callable, Literal
 
 import anyio
 from mcp.server.mcpserver import Context, MCPServer
@@ -16,6 +16,24 @@ from .. import __version__, agents, consoles
 from ..network import Agent, NetworkError
 from . import agent_tokens, compiler_experiments, local_experiments
 from .engine import RomNetwork
+
+
+class NextFamilyTarget(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    mode: Literal['next']
+
+
+class AnchorFamilyTarget(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    mode: Literal['anchor']
+    old: str
+    occurrence: int = 0
+
+
+class DeclarationFamilyTarget(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    mode: Literal['declaration']
+    declaration: str
 
 
 class CompilerTrial(BaseModel):
@@ -186,8 +204,8 @@ repair_automation in compile_and_diff (single function only). These are saved on
 Explain what changed and how a deterministic repair could do it; omit uncertain explanations. No extra compile
 is needed. report_repair can annotate your captured match afterwards. These are review ideas, never live rules.
 """
-WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness, declaration_order, typed_temporary, branch_orientation, narrowing, source_lines, address_temporary, constant_local, comparison_load, stack_array, loop_induction, parameter_width, value_lifetime, sum_shape or call_result_inline experiments without spelling out variants. Pattern families need only function/revision; source_lines requires known debug flags. Releasing a tried function also runs a bounded local repair pass before another agent edits it. family_targets lists current choices; target=next selects an untried valid declaration target locally; omit old/declaration/occurrence with next. Use compiler_experiments for up to six independent source/profile trials from the current revision instead of resending C to try_compiler. For C89 compilers keep declarations before statements in each block. Use compiler=current to retain the function compiler. Trials are diagnostic; get_compiler_trial retains each C/profile pair. Use try_local_repairs before guessing families: it discovers applicable repairs or tries a named families list against one snapshot with at most six compiles. Use compile_patch for small local edits; compile_and_diff is for whole-function rewrites. Wait for each same-function edit response before another edit; separate functions can run in parallel. Batches select the best continuation, keeping baseline on ties; apply selected changes in the response. Missing signedness/declaration_order selectors choose the next untried valid target. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). Prefer get_assembly(focus='mismatch:N') for a later differing instruction, focus='body' for a bounded post-entry page, or focus='callee_symbol' before reading full assembly pages. get_assembly and last_diff are paged.\n"
-FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness, declaration_order, typed_temporary, branch_orientation, narrowing, source_lines, address_temporary, constant_local, comparison_load, stack_array, loop_induction, parameter_width, value_lifetime, sum_shape or call_result_inline experiments without spelling out variants. Pattern families need only function/revision; source_lines requires known debug flags. Releasing a tried function also runs a bounded local repair pass before another agent edits it. family_targets lists current choices; target=next selects an untried valid declaration target locally; omit old/declaration/occurrence with next. Use compiler_experiments for up to six independent source/profile trials from the current revision instead of resending C to try_compiler. For C89 compilers keep declarations before statements in each block. Use compiler=current to retain the function compiler. Trials are diagnostic; get_compiler_trial retains each C/profile pair. Use try_local_repairs before guessing families: it discovers applicable repairs or tries a named families list against one snapshot with at most six compiles. Use compile_patch for small local edits; compile_and_diff is for whole-function rewrites. Wait for each same-function edit response before another edit; separate functions can run in parallel. Batches select the best continuation, keeping baseline on ties; apply selected changes in the response. Missing signedness/declaration_order selectors choose the next untried valid target. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). Prefer get_assembly(focus='mismatch:N') for a later differing instruction, focus='body' for a bounded post-entry page, or focus='callee_symbol' before reading full assembly pages. get_assembly and last_diff are paged.\n"
+WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness, declaration_order, typed_temporary, branch_orientation, narrowing, source_lines, address_temporary, constant_local, comparison_load, stack_array, loop_induction, parameter_width, value_lifetime, sum_shape or call_result_inline experiments without spelling out variants. Pattern families need only function/revision; source_lines requires known debug flags. Releasing a tried function also runs a bounded local repair pass before another agent edits it. family_targets lists current choices; selector mode=next selects an untried target; anchor mode takes old/occurrence and declaration mode takes declaration. Never combine modes. Use compiler_experiments for up to six independent source/profile trials from the current revision instead of resending C to try_compiler. For C89 compilers keep declarations before statements in each block. Use compiler=current to retain the function compiler. Trials are diagnostic; get_compiler_trial retains each C/profile pair. Use try_local_repairs before guessing families: it discovers applicable repairs or tries a named families list against one snapshot with at most six compiles. Use compile_patch for small local edits; compile_and_diff is for whole-function rewrites. Wait for each same-function edit response before another edit; separate functions can run in parallel. Batches select the best continuation, keeping baseline on ties; apply selected changes in the response. Missing signedness/declaration_order selectors choose the next untried valid target. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). Prefer get_assembly(focus='mismatch:N') for a later differing instruction, focus='body' for a bounded post-entry page, or focus='callee_symbol' before reading full assembly pages. get_assembly and last_diff are paged.\n"
+FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness, declaration_order, typed_temporary, branch_orientation, narrowing, source_lines, address_temporary, constant_local, comparison_load, stack_array, loop_induction, parameter_width, value_lifetime, sum_shape or call_result_inline experiments without spelling out variants. Pattern families need only function/revision; source_lines requires known debug flags. Releasing a tried function also runs a bounded local repair pass before another agent edits it. family_targets lists current choices; selector mode=next selects an untried target; anchor mode takes old/occurrence and declaration mode takes declaration. Never combine modes. Use compiler_experiments for up to six independent source/profile trials from the current revision instead of resending C to try_compiler. For C89 compilers keep declarations before statements in each block. Use compiler=current to retain the function compiler. Trials are diagnostic; get_compiler_trial retains each C/profile pair. Use try_local_repairs before guessing families: it discovers applicable repairs or tries a named families list against one snapshot with at most six compiles. Use compile_patch for small local edits; compile_and_diff is for whole-function rewrites. Wait for each same-function edit response before another edit; separate functions can run in parallel. Batches select the best continuation, keeping baseline on ties; apply selected changes in the response. Missing signedness/declaration_order selectors choose the next untried valid target. Use compile_variants to test up to six independent small alternatives against one revision in one call. Supporting history and notes: get_function(section=history or notes). Prefer get_assembly(focus='mismatch:N') for a later differing instruction, focus='body' for a bounded post-entry page, or focus='callee_symbol' before reading full assembly pages. get_assembly and last_diff are paged.\n"
 
 
 def _console_guides() -> dict:
@@ -320,6 +338,10 @@ def _compile(net: RomNetwork, agent: Agent, slug: str, function: str, source: st
         result = net.attempt_many(agent, [net.resolve_function(agent, slug, n) for n in names], source, slug)
     if len(names) == 1:
         agent_tokens.outcome(net, agent, fn, source, result)
+        from . import agent_evidence
+        unchanged_note=agent_evidence.track(net,agent,slug,fn)
+        if unchanged_note:
+            result+='\n'+unchanged_note
         agent_tokens.remember(net, agent, fn, previous_attempt)
         result = agent_tokens.feedback(net, agent, slug, names[0], result, previous_diff)
         _, revision = agent_tokens.candidate(net, agent, slug, names[0])
@@ -602,13 +624,12 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
         return await run(ctx,'try_local_repairs',function=function,revision=revision,families=families,max_trials=max_trials)
 
     @tool
-    async def compile_family(ctx: Context, function: str, revision: str, family: str, old: str = '', declaration: str = '', occurrence: int = 0, target: str = '') -> str:
-        """Run a bounded local family. target="next" must omit old/declaration/occurrence.
-        Pattern families call_result_inline, parameter_width, value_lifetime, sum_shape, address_temporary, constant_local, comparison_load, stack_array, loop_induction, typed_temporary, branch_orientation, narrowing and
-        source_lines need only function/revision (source_lines requires known debug flags). declaration=name for signedness/declaration_order, old=expression for
-        casts. target="next" chooses an untried valid declaration target for this revision. family_targets lists current choices. occurrence selects a 1-based repeated old anchor; default 0 requires uniqueness. Missing
-        targets return choices. Normal judge, claim limits and batch budgets apply."""
-        return await run(ctx, 'compile_family', function=function, revision=revision, family=family, old=old, declaration=declaration, occurrence=occurrence, target=target)
+    async def compile_family(ctx: Context, function: str, revision: str, family: str,
+                             selector: NextFamilyTarget | AnchorFamilyTarget | DeclarationFamilyTarget | None = None) -> str:
+        """Bounded local family; selector has exactly one mode: next, anchor (old/occurrence), or declaration (name).
+        Omit selector for pattern families or automatic signedness/declaration_order targets. Normal judge and budgets apply."""
+        return await run(ctx,'compile_family',function=function,revision=revision,family=family,
+                         selector=selector.model_dump() if selector else None)
 
     @tool
     async def family_targets(ctx: Context, function: str, family: str = 'declaration_order', expression: str = '') -> str:

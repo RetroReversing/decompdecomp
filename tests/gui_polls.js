@@ -229,15 +229,23 @@ const settle = async () => { for (let i = 0; i < SETTLE_TICKS; i++) await tick()
       try { readSelection(box('2.5')); } catch (_) { rejected = true; }
       return [readSelection(box('30')), readSelection(box('')), rejected, selectionFields({stall_compiles: 30}).includes('value="30"')];
     })(),
+    selectionUnchanged: (() => {
+      const box = value => ({querySelector: sel => ({value: sel === '[data-selection-unchanged]' ? value : ''})});
+      const invalid = ['-1', '1.5', '1001', 'hardest'].map(value => {
+        try { readSelection(box(value)); return false; } catch (_) { return true; }
+      });
+      return [readSelection(box('')), readSelection(box('0')), readSelection(box('8')), invalid,
+        selectionFields({unchanged_compiles: 0}).includes('value="0"')];
+    })(),
     selectionCap: (() => {
-      const box = (tries) => ({querySelector: (sel) => ({value: sel === "[data-selection-stall]" ? "" : sel === "[data-selection-below]" ? "" : sel === "[data-selection-tries]" ? tries : "hardest"})});
+      const box = (tries) => ({querySelector: (sel) => ({value: sel === "[data-selection-unchanged]" ? "" : sel === "[data-selection-stall]" ? "" : sel === "[data-selection-below]" ? "" : sel === "[data-selection-tries]" ? tries : "hardest"})});
       let rejected = false;
       try { readSelection(box("1.5")); } catch (_) { rejected = true; }
       return [readSelection(box("12")), rejected, selectionFields({max_tries: 12}).includes('value="12"')];
     })(),
     // the launcher keeps the last effort picked: Claude Code's xhigh isn't one opencode offers
     selection: (() => {
-      const box = (raw, strategy) => ({querySelector: (sel) => ({value: sel === "[data-selection-stall]" ? "" : sel === "[data-selection-below]" ? raw : sel === "[data-selection-tries]" ? "" : strategy})});
+      const box = (raw, strategy) => ({querySelector: (sel) => ({value: sel === "[data-selection-unchanged]" ? "" : sel === "[data-selection-stall]" ? "" : sel === "[data-selection-below]" ? raw : sel === "[data-selection-tries]" ? "" : strategy})});
       let rejected = false;
       try { readSelection(box("101", "hardest")); } catch (_) { rejected = true; }
       return [readSelection(box("80", "hardest")), readSelection(box("", "untried")), rejected,

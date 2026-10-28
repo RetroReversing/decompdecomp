@@ -263,6 +263,14 @@ def test_compiler_summary_and_job_log_respect_reader_scroll():
                    capture_output=True, text=True, encoding="utf-8", timeout=GUI_TIMEOUT_SECONDS)
 
 
+def test_unchanged_output_limit_preserves_default_disable_and_validation(gui):
+    assert gui['checks']['selectionUnchanged'] == [
+        {'strategy': '', 'match_below': None},
+        {'strategy': '', 'match_below': None, 'unchanged_compiles': 0},
+        {'strategy': '', 'match_below': None, 'unchanged_compiles': 8},
+        [True, True, True, True], True,
+    ]
+
 def test_function_recency_and_model_filter_controls():
     if NODE is None:
         pytest.skip('needs node')

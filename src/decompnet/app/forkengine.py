@@ -2933,7 +2933,7 @@ class ForkEngine:
             if diagnostic:
                 undo()
                 return {'text': ('MATCH! diagnostic only' if matched else f'score {score} ({pct:.1f}%)')+'; source restored.',
-                        'score':score,'matched':matched,'percent':pct}
+                        'score':score,'matched':matched,'percent':pct,'rows':d.rows}
             if not matched and not keep and not was_matched:  # tried, not kept: the file stays as it was
                 undo()
                 if quiet is None or score < quiet:
