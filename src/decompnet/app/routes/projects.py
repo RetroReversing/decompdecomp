@@ -301,6 +301,7 @@ def register(app: App) -> None:
         "/api/priority": (p_priority, ["POST"]), "/api/note": (p_note, ["POST"]), "/api/scope": (p_scope, ["POST"]),
         "/api/unanalysed": (p_unanalysed, ["POST"]),
         "/api/suggestion": (p_suggestion, ["POST"]), "/api/boundary": (p_boundary, ["POST"]),
+        "/api/agent-results": (lambda s,r,d: net.agent_results(s,r.query_params.get('agent',''),r.query_params.get('kind','matched'),int(r.query_params.get('before',0))), ["GET"]),
         "/api/stats": (lambda s, r, d: net.stats(s), ["GET"]),
         "/api/compilermap": (p_compilermap, ["GET", "POST"]),
     }

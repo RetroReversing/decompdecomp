@@ -1100,3 +1100,21 @@ details.more[open] > summary::before { content: "− "; }
 .compiler-stat-action { color: var(--muted); font-size: 11px; font-weight: 400; }
 .compiler-stat:disabled { opacity: .6; cursor: default; }
 .compiler-stat [data-exact] { color: var(--match); }
+
+.agent-sort-select { position: relative; flex: 1; max-width: 280px; }
+.agent-sort-select select { appearance: none; width: 100%; height: 38px; padding: 0 36px 0 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font: 500 12px var(--sans); cursor: pointer; }
+.agent-sort-select::after { content: ''; position: absolute; right: 14px; top: 14px; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg); pointer-events: none; }
+.agent-sort-select select:focus-visible { outline: 2px solid var(--hl); outline-offset: 2px; }
+.agent-toolbar > label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.agent-metric-link { display: grid; gap: 3px; text-align: left; color: var(--ink); padding: 6px 8px; margin: -6px -8px; border-radius: 5px; }
+.agent-metric-link:not(:disabled):hover { background: var(--bg-alt); }
+.agent-metric-link:not(:disabled):hover strong { color: var(--match-ink); text-decoration: underline; }
+.agent-metric-link:focus-visible { outline: 2px solid var(--hl); }
+.agent-metric-link:disabled { cursor: default; }
+.agent-metric-link:disabled span span { visibility: hidden; }
+.agent-results-dialog { border: 1px solid var(--line); border-radius: 10px; padding: 24px; background: var(--panel); color: var(--ink); }
+.agent-results-dialog header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.agent-results-dialog h2 { margin: 0 0 8px; }
+.agent-results-dialog header p { margin: 0; font: 12px var(--mono); overflow-wrap: anywhere; }
+.agent-result-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.agent-result-row button { text-align: left; overflow-wrap: anywhere; font-family: var(--mono); }
