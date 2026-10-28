@@ -79,3 +79,17 @@ def test_agent_results_pagination_and_kind_validation(tmp_path):
     assert not {f['id'] for f in first['functions']} & {f['id'] for f in second['functions']}
     with pytest.raises(NetworkError):
         net.agent_results('demo','worker','invalid')
+
+
+def test_function_recency_ignores_ties_failed_checks_and_worse_scores(tmp_path):
+    net=RomNetwork(tmp_path/'recency.db',tmp_path)
+    agent,_=net.local_agent('worker')
+    with net.store.tx() as db:
+        db.execute("INSERT INTO projects(slug,name,arch,root,config) VALUES('demo','Demo','mips',?, '{}')",(str(tmp_path),))
+        for name in ('checked','never'):
+            db.execute('INSERT INTO functions(project_id,name,n_insns,size) VALUES(1,?,10,40)',(name,))
+        for score, compiled, stamp in [(1000,1,10),(800,1,20),(800,1,30),(900,1,40),(0,0,50)]:
+            db.execute('INSERT INTO attempts(function_id,agent_id,score,compiled,created_at) VALUES(1,?,?,?,?)',(agent.id,score,compiled,stamp))
+    rows={r['name']:r for r in net.function_map('demo')}
+    assert rows['checked']['last_checked']==50 and rows['checked']['last_improved']==20
+    assert rows['never']['last_checked'] is None and rows['never']['last_improved'] is None

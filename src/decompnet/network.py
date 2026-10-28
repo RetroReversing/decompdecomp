@@ -148,6 +148,7 @@ WAITING = ("SELECT w.function_id FROM waits w JOIN functions n ON n.id=w.needs_i
 READY = "SELECT w.function_id FROM waits w JOIN functions n ON n.id=w.needs_id WHERE n.status = 'matched'"
 WANTED = "SELECT w.needs_id FROM waits w JOIN functions b ON b.id=w.function_id WHERE b.status = 'open'"
 STRATEGIES = {
+    "oldest_checked": "COALESCE((SELECT MAX(t.created_at) FROM attempts t WHERE t.function_id=f.id),0) ASC, f.id ASC",
     "least_tried": "f.attempts ASC, f.n_insns ASC",
     # (a failing part waits even for its twins: they'd fail the same way)
     "easiest": f"{_FAILING}, " + _TWINS + f"f.abandons > 0, (f.n_insns + {SIZE_STEP - 1}) / {SIZE_STEP} ASC, "
@@ -696,6 +697,10 @@ class Network:
         else:
             below = None
         result = {"strategy": strategy, "match_below": below}
+        if 'model_untried' in policy:
+            if not isinstance(policy['model_untried'], bool):
+                raise NetworkError('Never tried by model must be true or false.')
+            result['model_untried'] = policy['model_untried']
         limit = policy.get("max_tries")
         if limit is not None and limit != "":
             try:
@@ -769,12 +774,15 @@ class Network:
 
     def selection_remaining(self, project: str, agent: Agent) -> int:
         policy = self.selection(project, agent.name)
+        from .model_checks import tried
+        excluded = tried(self, project, agent) if policy.get('model_untried') else set()
         return self.store.one(
             "SELECT COUNT(*) AS n FROM functions f JOIN projects p ON p.id=f.project_id WHERE p.slug=? "
+            "AND f.id NOT IN (SELECT value FROM json_each(?)) "
             "AND f.status='open' AND (? IS NULL OR f.best_score IS NULL OR "
             "MAX(0.0, 100.0 * (1.0 - CAST(f.best_score AS REAL) / MAX(1, f.n_insns * 100))) < ?) "
             "AND (? IS NULL OR (SELECT COUNT(*) FROM attempts a WHERE a.function_id=f.id AND a.agent_id=?) < ?)",
-            project, policy.get("match_below"), policy.get("match_below"), policy.get("max_tries"), agent.id,
+            project, json.dumps(list(excluded)), policy.get("match_below"), policy.get("match_below"), policy.get("max_tries"), agent.id,
             policy.get("max_tries"))["n"]
 
     def sdk_functions(self, proj) -> dict:
@@ -817,7 +825,12 @@ class Network:
                     raise NetworkError(f"{fn['name']} is set aside ({set_aside(fn)['set_aside']}): claim another")
                 slug = proj["slug"] if proj else db.execute("SELECT slug FROM projects WHERE id=?", (fn["project_id"],)).fetchone()["slug"]
                 self.check_attempt_limit(agent, fn)
-                below = self.selection(slug, agent.name).get("match_below")
+                selected = self.selection(slug, agent.name)
+                if selected.get('model_untried'):
+                    from .model_checks import tried
+                    if fn['id'] in tried(self, slug, agent):
+                        raise NetworkError('This function has already been checked by this model; claim another.')
+                below = selected.get("match_below")
                 if below is not None and fn["best_score"] is not None:
                     percent = max(0.0, 100.0 * (1.0 - fn["best_score"] / max(1, fn["n_insns"] * 100)))
                     if percent >= below:
@@ -830,6 +843,8 @@ class Network:
                 self._event(db, fn["project_id"], agent.id, "claim", fn["name"])
             else:
                 policy = self.selection(proj["slug"], agent.name)
+                from .model_checks import tried as model_tried
+                excluded = model_tried(self, proj['slug'], agent) if policy.get('model_untried') else set()
                 custom = bool(policy.get("strategy"))
                 strategy = policy.get("strategy") or strategy
                 # Explicit user ordering wins over adaptive routing and release penalties. Leases and the
@@ -852,6 +867,7 @@ class Network:
                              WHERE a.function_id=f.id AND a.agent_id=:agent) < :tries)
                         AND f.id NOT IN (SELECT function_id FROM claims)
                         AND f.id NOT IN (SELECT value FROM json_each(:stalled))
+                        AND f.id NOT IN (SELECT value FROM json_each(:model_tried))
                         AND f.name NOT IN (SELECT detail FROM events WHERE project_id=:pid AND agent_id=:agent
                                            AND kind='release' AND created_at > :mine)
                         ORDER BY CASE WHEN :custom THEN 0 ELSE f.id IN (SELECT value FROM json_each(:sdk)) END,
@@ -867,7 +883,7 @@ class Network:
                                  CASE WHEN :custom THEN 0 ELSE f.id IN ({READY}) END DESC, CASE WHEN :custom THEN 0 ELSE f.id IN ({WANTED}) END DESC,
                                  :strong AND f.abandons >= :escalate DESC, {STRATEGIES[strategy]} LIMIT 1""")
                 escalate = self._escalation(db, proj["id"]) if route else ESCALATE_AFTER
-                args = {"stalled":json.dumps(blocked), "sdk": json.dumps(list(sdk)), "pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
+                args = {"model_tried": json.dumps(list(excluded)), "stalled":json.dumps(blocked), "sdk": json.dumps(list(sdk)), "pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
                         "overall": overall, "escalate": escalate, "weak": route == "weak", "strong": route == "strong",
                         "mine": self._own_release_cutoff(db, agent.id, now), "custom": custom,
                         "below": policy.get("match_below"), "tries": policy.get("max_tries")}

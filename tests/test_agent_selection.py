@@ -238,3 +238,62 @@ def test_worker_stall_override_is_independent_persistent_and_resettable(net,tmp_
 def test_stall_budget_validation(net,value):
     with pytest.raises(NetworkError,match='No-improvement'):
         net.set_selection('game','a',{'stall_compiles':value})
+
+
+@pytest.mark.parametrize('kind', ['rom', 'fork'])
+def test_oldest_checked_puts_never_checked_first(net, kind):
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?', (json.dumps({'kind':kind}),))
+    first, _ = net.local_agent('first')
+    with net.store.tx() as db:
+        for fn, stamp in [(1, 200), (2, 100)]:
+            db.execute('INSERT INTO attempts(function_id,agent_id,compiled,score,created_at) VALUES(?,?,0,NULL,?)',
+                       (fn, first.id, stamp))
+    a, _ = net.local_agent('oldest')
+    net.set_selection('game', a.name, {'strategy':'oldest_checked'})
+    assert net.claim_row(a, 'game')['name'] == 'large'
+    b, _ = net.local_agent('oldest-2')
+    net.set_selection('game', b.name, {'strategy':'oldest_checked'})
+    assert net.claim_row(b, 'game')['name'] == 'middle'
+
+
+@pytest.mark.parametrize('kind', ['rom', 'fork'])
+def test_model_filter_uses_session_ids_across_workers_efforts_and_named_claims(net, tmp_path, kind):
+    from decompnet.app.agents import SCHEMA
+    with net.store.tx() as db:
+        for statement in SCHEMA:
+            db.execute(statement)
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?', (json.dumps({'kind':kind}),))
+    old, _ = net.local_agent('old-worker')
+    new, _ = net.local_agent('new-worker')
+    with net.store.tx() as db:
+        db.execute("INSERT INTO helpers(id,project,kind,model,name,label,state) VALUES(1,'game','codex','model-a#high',?,'new','stopped')", (new.name,))
+        for model, start, end in [('model-a#low',10,20), ('model-b',21,30)]:
+            db.execute("INSERT INTO helper_sessions(helper_id,project,kind,model,agent,started_at,ended_at) VALUES(2,'game','codex',?,?,?,?)", (model,old.name,start,end))
+        for fn, stamp in [(1,15),(2,25)]:
+            db.execute('INSERT INTO attempts(function_id,agent_id,compiled,score,created_at) VALUES(?,?,0,NULL,?)',(fn,old.id,stamp))
+    net.set_selection('game',new.name,{'strategy':'oldest_checked','model_untried':True})
+    with pytest.raises(NetworkError,match='already been checked'):
+        net.claim_row(new,'game',function='small')
+    assert net.selection_remaining('game',new) == 2
+    assert net.claim_row(new,'game')['name'] == 'large'
+    # Changing queue settings never replaces the current lease.
+    assert net.claim_row(new,'game')['name'] == 'large'
+    with net.store.tx() as db:
+        db.execute('DELETE FROM claims')
+        db.execute("UPDATE functions SET status='asm' WHERE id=3")
+    assert net.claim_row(new,'game')['name'] == 'middle'  # checked only by model-b
+    with net.store.tx() as db:
+        db.execute('DELETE FROM claims')
+        db.execute("UPDATE functions SET status='asm' WHERE id=2")
+    assert net.claim_row(new,'game') is None  # never falls back to model-a's previous work
+
+
+def test_model_filter_requires_explicit_identity(net):
+    a, _ = net.local_agent('unknown')
+    net.set_selection('game',a.name,{'model_untried':True})
+    with pytest.raises(NetworkError,match='explicit model'):
+        net.claim_row(a,'game')
+    with pytest.raises(NetworkError):
+        net.validate_selection({'model_untried':'yes'})

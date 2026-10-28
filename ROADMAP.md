@@ -824,3 +824,6 @@ Captured-repair families coordinate dropping 2–3 simple trailing call argument
 
 Agent cards have persistent metric reset baselines, total reported tokens and time
 since the last improvement, retaining code, history and lifetime model accounting.
+
+Function lists show check/improvement recency. Agent work selection supports oldest
+checked first and a recorded-model untried filter in ROM and imported projects.

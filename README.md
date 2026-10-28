@@ -612,3 +612,20 @@ its last improvement; a reset clears that improvement timer until new progress a
 Its runtime still measures time since the latest start. Provider usage reported after
 reset belongs to the new period, even when the request began earlier; missing usage
 is not reconstructed. Matched/improved function links follow the same reset period.
+
+### Choose functions by recency or model history
+
+The Functions list shows sortable **Last improved** and **Last checked** ages, with
+exact local timestamps on hover. Checked means a recorded candidate submission,
+including compile errors. Improved means a compiled candidate beat every previous
+compiled score; ties and worse candidates do not reset the clock. Missing history
+shows **Never**; old work without saved attempts cannot be reconstructed.
+
+In an agent's **Work settings**, choose **Oldest checked first** to take functions
+with no checks before the least recently checked ones. **Only functions never
+checked by this model** is a separate filter that can be combined with any order.
+It uses recorded session model IDs across workers and restarts, ignores `#effort`
+suffixes, and includes failed candidate submissions. It does not infer model aliases
+or count claims without submissions. Choose an explicit model; missing historical
+model attribution cannot be reconstructed. The filter also applies to named claims
+and never falls back to previously checked functions. Existing claims stay held.
