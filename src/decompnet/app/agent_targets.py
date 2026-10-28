@@ -67,8 +67,18 @@ def replace_anchor(source, old, new, occurrence=0):
         raise NetworkError('occurrence must be a positive 1-based integer, or 0 for a unique anchor.')
     if not positions or (occurrence == 0 and len(positions) != 1) or occurrence > len(positions):
         lines = ', '.join(str(source.count('\n',0,p)+1) for p in positions[:6])
+        nearby=[]
+        if positions:
+            for i,pos in enumerate(positions[:6],1):
+                begin=source.rfind('\n',0,pos)+1;end=source.find('\n',pos)
+                nearby.append(f"occurrence {i}, line {source.count(chr(10),0,pos)+1}: "+source[begin:end if end>=0 else len(source)][:160])
+        else:
+            import difflib
+            for line in difflib.get_close_matches(old.strip(),source.splitlines(),n=3,cutoff=.45):
+                nearby.append('Possible current line (not applied): '+line[:160])
         raise NetworkError(f'Old text must occur exactly once unless occurrence is supplied. Found {len(positions)} occurrences'
-                           + (f' on lines {lines}; select occurrence=1..{len(positions)}.' if positions else '. '+choices(source)))
+                           + (f' on lines {lines}; select occurrence=1..{len(positions)}.' if positions else '. '+choices(source))
+                           + ('\n'+'\n'.join(nearby) if nearby else ''))
     start = positions[(occurrence or 1)-1]
     return source[:start]+new+source[start+len(old):]
 

@@ -392,6 +392,8 @@ class Network:
         self.repair_feedback = RepairFeedback(self)
         self._last_diffs: dict[tuple[int, int], tuple[list, str]] = {}
         self._generation: dict[int, int] = {}  # project id -> changes compiles depend on (bump_generation)
+        self._context_rejections = OrderedDict()
+        self._context_trial_locks = {}
         self._compiled: OrderedDict[str, dict] = OrderedDict()  # compile_key -> result, for repeat_of
 
     # ------------------------------------------------------------------ agents
@@ -1417,11 +1419,30 @@ class Network:
             else:
                 new_header = header.rstrip("\n") + "\n\n" + new.strip("\n") + "\n"
             members = self._matched_using(proj, unit)
-            broken = self.regression_test(proj, new_header, only=members)
-            if broken:
-                listing = "\n".join(f"- {name}: {why}" for name, why in broken[:10])
-                return (f"❌ REJECTED: the edit breaks {len(broken)} already-matched function(s), so the header "
-                        f"stays at v{ctx['version']}.\n{listing}")
+            # Rejections only: exact header bytes and all judge inputs distinguish trials. A short
+            # process-local lifetime also limits effects of external tool/environment changes.
+            symbols = self.store.all('SELECT * FROM symbols WHERE project_id=? ORDER BY name',proj['id'])
+            state = repr((dict(proj),unit,ctx['version'],header,new_header,
+                          [dict(m) for m in members],[dict(row) for row in symbols],
+                          self._generation.get(proj['id'],0)))
+            key=hashlib.sha256(state.encode()).hexdigest()
+            with self.store.lock:
+                gate=self._context_trial_locks.setdefault((proj['id'],unit),threading.RLock())
+            with gate:
+                cached=self._context_rejections.get(key)
+                if cached and time.monotonic()-cached[0]<120:
+                    if self._context(proj['id'],unit)['version']!=ctx['version']:
+                        continue
+                    return 'Cached rejected header edit (no regression compiles run).\n'+cached[1]
+                broken = self.regression_test(proj, new_header, only=members)
+                if broken:
+                    listing = "\n".join(f"- {name}: {why}" for name, why in broken[:10])
+                    result=(f"❌ REJECTED: the edit breaks {len(broken)} already-matched function(s), so the header "
+                            f"stays at v{ctx['version']}.\n{listing}\nKeep the declaration candidate-local unless a safe shared change is needed.")
+                    self._context_rejections[key]=(time.monotonic(),result)
+                    while len(self._context_rejections)>32:
+                        self._context_rejections.popitem(last=False)
+                    return result
             with self.store.tx() as db:
                 if self._latest_version(db, proj["id"], unit) != ctx["version"]:
                     continue  # someone else committed meanwhile: re-apply on top and re-test

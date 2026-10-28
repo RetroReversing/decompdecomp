@@ -50,6 +50,14 @@ def stale(net, agent, fn, submitted, source, actual):
     if old is not None:
         lines = list(difflib.unified_diff(old.splitlines(),source.splitlines(),fromfile='submitted revision',tofile='current revision',n=1))
         change = '\nCurrent changes (bounded):\n'+'\n'.join(lines[:35])[:2000]
+    key=(agent.id,fn['id'],submitted,actual)
+    seen=getattr(net,'_stale_notices',set())
+    if key in seen:
+        return NetworkError(f'Candidate changed. Current candidate revision {actual}; same stale revision was already rejected. '
+                            'Use the earlier current-change preview or get_candidate if needed. No compile run.')
+    if len(seen)>=64:
+        seen.clear()
+    seen.add(key);net._stale_notices=seen
     return NetworkError(f'Candidate changed. Current candidate revision {actual}. No compile run. '
                         'Same-function edits are serialized; wait for each response before sending the next edit. '
                         'Apply your next patch to the current revision; get_candidate only if these changes are insufficient.'+change)
@@ -73,7 +81,10 @@ def patch(net, agent, slug, function, revision, old, new, repair_note='', repair
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
             raise stale(net,agent,fn,revision,source,actual)
-        edited = agent_targets.replace_anchor(source, old, new, occurrence)
+        try:
+            edited = agent_targets.replace_anchor(source, old, new, occurrence)
+        except NetworkError as error:
+            raise NetworkError(f'{error}\nCurrent candidate revision {actual}; no compile run. Use an exact anchor from the current C; no fuzzy edit was applied.') from error
         from .tools import _compile
         return _compile(net, agent, slug, function, edited, repair_note, repair_category, repair_automation)
 
@@ -163,7 +174,7 @@ def brief(net, text, slug=None, agent=None):
     return text
 
 
-def assembly(net, slug, function, start=0, limit=60):
+def assembly(net, slug, function, start=0, limit=60, focus="", agent=None):
     fn = net._function(function, slug)
     if net.fork_slug(slug):
         _, fp, _ = net.forks.get(slug)
@@ -171,8 +182,26 @@ def assembly(net, slug, function, start=0, limit=60):
         lines = fp.diff(unit, net.forks._meta(fn).get('symbol') or fn['name']).target_asm().splitlines()
     else:
         lines = net._asm_text(fn, net._project(slug)).splitlines()
+    if focus:
+        def normalized(text):
+            text=re.sub(r'/\*.*?\*/','',text)
+            return re.sub(r'\s+','',text).strip()
+        if focus=='mismatch':
+            kept=net._last_diffs.get((agent.id,fn['id'])) if agent else None
+            target=next((r[1] for r in kept[0] if r[0]!=' ' and r[1].strip()),'') if kept else ''
+            hits=[i for i,line in enumerate(lines) if target and normalized(target) in normalized(line)]
+        else:
+            if len(focus)>160:
+                raise NetworkError('Use a symbol or short assembly anchor for focus.')
+            hits=[i for i,line in enumerate(lines) if re.search(r'(?<![\w])'+re.escape(focus)+r'(?![\w])',line)]
+        if not hits:
+            return 'No target region located for this focus. Use paged get_assembly or compile a candidate before focus="mismatch".'
+        start=max(0,hits[0]-8);limit=min(40,max(1,int(limit)))
+        prefix=f'Focus at target line {hits[0]}; matching lines: '+', '.join(map(str,hits[:10]))+'. Use start/limit without focus to page.\n'
+    else:
+        prefix=''
     start, limit = max(0, int(start)), max(1, min(200, int(limit)))
-    return f'Target assembly lines {start}:{min(start+limit,len(lines))} of {len(lines)}\n'+'\n'.join(lines[start:start+limit])
+    return prefix+f'Target assembly lines {start}:{min(start+limit,len(lines))} of {len(lines)}\n'+'\n'.join(lines[start:start+limit])
 
 
 def diff_page(net, agent, slug, function, context=1, start=0, limit=40):
@@ -425,7 +454,9 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
         else:
             choices.append((float('inf'),source,{'score':None,'rows':None},0))
         if family != 'explicit patches':
-            results.append('Generated replacements: '+ '; '.join(f"{i}: {p['new'][:100]}" for i,p in enumerate(patches,1)))
+            results.append('Generated changes (bounded):\n'+'\n'.join(
+                f"{i}: "+'\n'.join(list(difflib.unified_diff(source.splitlines(),text.splitlines(),n=0,lineterm=''))[2:14])[:600]
+                for i,text in enumerate(candidates,1)))
         began = time.monotonic()
         for i, src in enumerate(candidates, 1):
             if last is not None and time.monotonic() - began >= 60:
