@@ -17,9 +17,11 @@ import json
 import re
 import shutil
 import subprocess
+from io import BytesIO
 from pathlib import Path
 
 import yaml
+from elftools.elf.elffile import ELFFile
 
 from .. import toolchains
 from ..hostenv import NO_WINDOW, console_python
@@ -137,6 +139,26 @@ def _export_segments(config: dict, functions) -> dict:
     return config
 
 
+def _single_definition(obj: bytes, name: str) -> bool:
+    """One exported object occupies one function's slot. Extra helper bodies can match in isolation but collide
+    with their own slots in the full image; don't silently include those definitions twice."""
+    from ..elfobj import _function_symbols
+
+    return set(_function_symbols(ELFFile(BytesIO(obj)))) == {name}
+
+
+def _section_bases(placements: dict) -> tuple[dict, str | None]:
+    """Constants must share one judge-proven base. A standalone object's preferred section alignment need not
+    match a constant pool inside the original translation unit; the build script preserves the verified base."""
+    bases = {}
+    for section, offsets in placements.items():
+        possible = {address - offset for offset, address in offsets.items()}
+        if len(possible) != 1:
+            return {}, "its own data isn't laid out like the game's"
+        bases[section] = possible.pop()
+    return bases, None
+
+
 def export_rom(net, slug: str, out: Path, console, log=print) -> dict:
     """Write the rebuildable tree to `out`, build it once and report: {"path", "identical", "matched", ...}.
     `console` (consoles/) says its processor's assembler flags, the image's extension, its assembly's preamble."""
@@ -210,6 +232,8 @@ def export_rom(net, slug: str, out: Path, console, log=print) -> dict:
         if row is None or row["status"] != "matched" or not row["matched_source"]:
             f["kind"] = "asm"
             continue
+        from ..app.function_names import canonical_source
+        row = dict(row) | {"matched_source": canonical_source(row, row["matched_source"])}
         unit = net._effective_unit(row, units)
         hdr = net._context(proj["id"], unit)["header"]
         compiled = net._compile(proj, hdr, row["matched_source"], row)
@@ -217,20 +241,18 @@ def export_rom(net, slug: str, out: Path, console, log=print) -> dict:
             as_fallback.append((f["name"], "doesn't compile any more"))
             f["kind"] = "asm"
             continue
+        if not _single_definition(compiled.obj, row["name"]):
+            as_fallback.append((f["name"], "its C also defines other functions; split their bodies into separate source files"))
+            f["kind"] = "asm"
+            continue
         linked = match.link(compiled.obj, row["name"], net._rom_target(row), net.symbols(proj["id"]), net.reader(proj))
         if not linked.exact:
             as_fallback.append((f["name"], "no longer matches"))
             f["kind"] = "asm"
             continue
-        bases, ok = {}, True
-        for section, offsets in linked.placements.items():
-            base = {addr - off for off, addr in offsets.items()}
-            if len(base) != 1:
-                ok = False
-                break
-            bases[section] = base.pop()
-        if not ok:
-            as_fallback.append((f["name"], "its own data isn't laid out like the game's"))
+        bases, problem = _section_bases(linked.placements)
+        if problem:
+            as_fallback.append((f["name"], problem))
             f["kind"] = "asm"
             continue
         src = out / "src" / f["seg"] / f"{f['name']}.{'cpp' if compiled.language == 'c++' else 'c'}"  # as it compiled

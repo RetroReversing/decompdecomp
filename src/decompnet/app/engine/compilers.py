@@ -772,8 +772,8 @@ class CompilerMixin:
             flags = flags or consoles.default_flags(cfg, toolchain)
         flags = flags or []
 
-        before = self.cfg(self._project(slug)).get("compiler_ranges", [])
-
+        proj = self._project(slug)
+        cfg = json.loads(proj["config"])
         def change(cfg):
             keep = []
             for r in cfg.get("compiler_ranges", []):
@@ -785,20 +785,8 @@ class CompilerMixin:
             if toolchain:
                 keep += [{"start": a, "end": b, "toolchain": toolchain, "flags": flags} for a, b in ranges]
             cfg["compiler_ranges"] = sorted(keep, key=lambda r: r["start"])
-        self._update_cfg(slug, change)
-        proj = self._project(slug)
-        # functions already matched in those ranges must still match with it (auto-adjust runs unattended)
-        inside = [f for f in self.store.all("SELECT * FROM functions WHERE project_id=? AND status='matched'", proj["id"])
-                  if any(a <= (f["vram"] or -1) < b for a, b in ranges)]
-        broken = self.regression_test(proj, None, only=inside,
-                                      header_for=lambda f: self._context(proj["id"], f["unit"])["header"]) if inside else []
-        if broken and reopen and not toolchain:
-            self._reopen(proj, [n for n, _ in broken], "its range was removed")
-        elif broken:
-            self._update_cfg(slug, lambda cfg: cfg.__setitem__("compiler_ranges", before))
-            raise NetworkError(f"{len(broken)} matched function(s) in those ranges wouldn't match with it any more "
-                               f"({', '.join(n for n, _ in broken[:5])}): narrow the ranges"
-                               + ("" if toolchain else ", or remove them and reopen those functions"))
+        change(cfg)
+        self._apply_compiler_config(proj, cfg, reopen=reopen and not toolchain)
         with self.store.tx() as db:
             where = ", ".join(f"0x{a:X}-0x{b:X}" for a, b in ranges)
             self._event(db, proj["id"], None, "compiler", f"{consoles.compiler_name(toolchain)} {' '.join(flags)} for {where}"
@@ -820,26 +808,69 @@ class CompilerMixin:
                            (d.score if d is not None else None, fn["id"]))
                 self._event(db, proj["id"], None, "reopen", f"{name}: open again ({why})")
 
-    def set_compiler(self, slug: str, toolchain: str, flags: list[str] | None = None, guard: bool = False) -> None:
-        """`guard` (auto-adjust, unattended): matched functions must still match with it, checked on up to 40 of them
-        across the game, or nothing changes."""
+    def _apply_compiler_config(self, proj, cfg: dict, reopen: bool = False, log=lambda line: None) -> None:
+        """Check proposed settings privately, then publish settings and scores together. A green population must
+        describe today's compiler, including functions outside the old forty-function sample. Failed checks must
+        not expose trial flags to working helpers, erase drafts or announce a change that never happened."""
+        before = self.cfg(proj)
+        keys = ("compiler", "compiler_ranges")
+        rows = self.store.all("SELECT * FROM functions WHERE project_id=? ORDER BY id", proj["id"])
+        affected = [f for f in rows if compiler_for(before, f["vram"]) != compiler_for(cfg, f["vram"])]
+        trial = dict(proj) | {"config": json.dumps(cfg)}
+        contexts = [tuple(r) for r in self.store.all("SELECT unit,version FROM context_versions WHERE project_id=? ORDER BY version", proj["id"])]
+        matched = [f for f in affected if f["status"] == "matched"]
+        log(f"Checking {len(matched)} matched functions before changing compiler settings.")
+        broken = self.regression_test(trial, None, only=matched,
+                                     header_for=lambda f: self._context(proj["id"], f["unit"])["header"]) if matched else []
+        if broken and not reopen:
+            raise NetworkError(f"{len(broken)} matched function(s) wouldn't match with it any more "
+                               f"({', '.join(n for n, _ in broken[:5])}): narrow the ranges or keep their compiler settings; when removing a range, reopen those functions explicitly")
+        broken_names = {n for n, _ in broken}
+        scores = {}
+        rescored = [f for f in affected if f["status"] == "open" or f["name"] in broken_names]
+        log(f"Updating saved scores for {len(rescored)} affected attempts.")
+        for fn in rescored:
+            source = fn["matched_source"] if fn["name"] in broken_names else self._source_of(fn)
+            own = compiler_for(cfg, fn["vram"])
+            _, diff, _ = self._judge_with(trial, fn, own["toolchain"], list(own["flags"]), source) if source else (False, None, "")
+            scores[fn["id"]] = diff.score if diff is not None else None
+        # An agent can finish while checks run. Never overwrite its work with a verdict from an older snapshot.
+        def population(items):
+            return [tuple(r[k] for k in ("id", "name", "vram", "unit", "size", "target", "relocs", "meta",
+                                         "status", "matched_source", "best_source", "best_score")) for r in items]
+        with self.store.tx() as db:
+            current = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (proj["id"],)).fetchone()["config"])
+            latest = db.execute("SELECT * FROM functions WHERE project_id=? ORDER BY id", (proj["id"],)).fetchall()
+            headers = [tuple(r) for r in db.execute("SELECT unit,version FROM context_versions WHERE project_id=? ORDER BY version", (proj["id"],))]
+            latest_affected = [f for f in latest if compiler_for(before, f["vram"]) != compiler_for(cfg, f["vram"])]
+            if any(current.get(k) != before.get(k) for k in keys) or population(latest_affected) != population(affected) or headers != contexts:
+                raise NetworkError("The project's code or settings changed during the compiler check. Try again after pausing its helpers.")
+            for key in keys:
+                if key in cfg:
+                    current[key] = cfg[key]
+                else:
+                    current.pop(key, None)
+            db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(current), proj["id"]))
+            for fn in affected:
+                if fn["status"] == "open":
+                    db.execute("UPDATE functions SET seed=NULL, best_score=? WHERE id=?", (scores[fn["id"]], fn["id"]))
+                elif fn["name"] in broken_names:
+                    db.execute("UPDATE functions SET status='open', best_source=matched_source, best_agent_id=matched_agent_id, "
+                               "best_score=?, matched_source=NULL, matched_agent_id=NULL, matched_at=NULL WHERE id=?",
+                               (scores[fn["id"]], fn["id"]))
+                    self._event(db, proj["id"], None, "reopen", f"{fn['name']}: open again (its range was removed)")
+        log("Compiler checks passed; settings and scores saved.")
+
+    def set_compiler(self, slug: str, toolchain: str, flags: list[str] | None = None, guard: bool = True,
+                     log=lambda line: None) -> None:
+        """All affected matched functions must still match, for manual and automatic changes alike.
+        `guard` is retained for callers from older versions; passing False no longer bypasses byte verification."""
         if self.fork_slug(slug):
             raise NetworkError("a fork builds with the project's own compilers and flags")
         proj = self._project(slug)
         tc = toolchains.get(toolchain)
-        cfg = json.loads(proj["config"])  # a copy of its own: changed below
-        before = cfg["compiler"]
-        cfg["compiler"] = {"toolchain": tc.id, "flags": flags or consoles.default_flags(cfg, tc.id),
-                           "timeout": 20}
+        cfg = json.loads(proj["config"])
+        cfg["compiler"] = {"toolchain": tc.id, "flags": flags or consoles.default_flags(cfg, tc.id), "timeout": 20}
+        self._apply_compiler_config(proj, cfg, log=log)
         with self.store.tx() as db:
-            db.execute("UPDATE projects SET config=? WHERE id=?", (json.dumps(cfg), proj["id"]))
-            db.execute("UPDATE functions SET seed=NULL WHERE project_id=? AND status='open'", (proj["id"],))
             self._event(db, proj["id"], None, "compiler", f"{tc.name} {' '.join(cfg['compiler']['flags'])}")
-        matched = self.store.all("SELECT * FROM functions WHERE project_id=? AND status='matched' ORDER BY vram", proj["id"])
-        sample = matched[::max(1, len(matched) // 40)][:40]
-        broken = self.regression_test(self._project(slug), None, only=sample,
-                                      header_for=lambda f: self._context(proj["id"], f["unit"])["header"]) if guard and sample else []
-        if broken:
-            self._update_cfg(slug, lambda c: c.__setitem__("compiler", before))
-            raise NetworkError(f"{len(broken)} matched function(s) wouldn't match with it any more "
-                               f"({', '.join(n for n, _ in broken[:5])})")

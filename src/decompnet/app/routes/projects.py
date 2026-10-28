@@ -75,7 +75,10 @@ def register(app: App) -> None:
                                     None if data.get("remove") else str(data.get("toolchain", "")), data.get("flags") or None,
                                     reopen=bool(data.get("reopen")))
         else:
-            net.set_compiler(slug, str(data.get("toolchain", "")), data.get("flags") or None)
+            def change_compiler(log):
+                net.set_compiler(slug, str(data.get("toolchain", "")), data.get("flags") or None, log=log)
+                return {"said": "Compiler settings saved; all affected matches checked."}
+            return {"job": jobs.start("compiler", change_compiler)}
         return net.overview(slug)
 
     def p_export(slug, request, data):

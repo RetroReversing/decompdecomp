@@ -266,3 +266,56 @@ def test_export_refuses_to_consume_an_entire_data_segment():
                             'subsegments': [[0x100, 'c', 'code'], {'start': 0x118, 'type': 'data'}]}, [0x11c]]}
     with pytest.raises(ExportError, match='review its boundaries'):
         _export_segments(config, [{'vram': 0x80000010, 'size': 12}])
+
+
+def test_export_requires_a_single_constant_pool_base():
+    from decompnet.rom.export import _section_bases
+    assert _section_bases({'.rodata': {0: 0x80001008, 8: 0x80001010}}) == ({'.rodata': 0x80001008}, None)
+    assert "isn't laid out" in _section_bases({'.rodata': {0: 0x80001000, 8: 0x80001018}})[1]
+    assert _section_bases({}) == ({}, None)
+
+
+def test_export_detects_extra_function_definitions():
+    from decompnet.arch.mips_image import linked_object
+    from decompnet.rom.export import _single_definition
+    obj = linked_object('target', 0x80001000, bytes(8))
+    assert _single_definition(obj, 'target')
+    assert not _single_definition(obj, 'other')
+
+
+def test_export_preserves_judged_constant_address_despite_object_alignment(tmp_path):
+    import runpy
+
+    if toolchains.installed("binutils-mips") is None:
+        pytest.skip("needs binutils-mips")
+    compiler_dir = toolchains.binary("binutils-mips").parent
+    source = ".set noreorder\n.text\n.globl target\ntarget:\nlui $8, %hi(value)\nlw $2, %lo(value)($8)\njr $ra\nnop\n.section .rodata\n.balign 16\n.globl value\nvalue: .word 0x12345678\n"
+    (tmp_path / "target.s").write_text(source)
+    (tmp_path / "target.c").write_text("/* selected C, object assembled for this linker test */")
+    (tmp_path / "original.bin").write_bytes(bytes(16))
+    config = {"image": "original.bin", "functions": [{"name": "target", "c": "target.c", "own": {".rodata": 0x80001008}}],
+              "segments": [{"name": "code", "kind": "code", "start": 0, "end": 16, "vram": 0x80000000,
+                            "pieces": [], "bss": []}], "symbols": {}}
+    (tmp_path / "build.json").write_text(json.dumps(config))
+    shutil.copyfile(ROOT / "src/decompnet/rom/export_build.py", tmp_path / "build.py")
+    script = runpy.run_path(str(tmp_path / "build.py"))
+    subprocess.run([str(compiler_dir / "mips-ps2-decompals-as"), "-EB", "-mips2", "-o", "target.o", "target.s"],
+                   cwd=tmp_path, capture_output=True, check=True)
+    (tmp_path / "game.ld").write_text(script["linker_script"]({"target": "target.o"}, [(0x80000000, 0, "target.o")], []))
+    subprocess.run([str(compiler_dir / "mips-ps2-decompals-ld"), "-EB", "-T", "game.ld", "-o", "game.elf", "target.o"],
+                   cwd=tmp_path, capture_output=True, check=True)
+    with (tmp_path / "game.elf").open('rb') as stream:
+        elf = ELFFile(stream)
+        symbols = {s.name: s['st_value'] for s in elf.get_section_by_name('.symtab').iter_symbols()}
+        assert symbols['value'] == 0x80001008
+        assert elf.get_section_by_name('.code').data()[4:8] == bytes.fromhex('8D021008')
+    # A saved candidate can define a neighbouring function too: it must not be exported into one slot.
+    from decompnet.rom.export import _single_definition
+    extra = source.replace("target:\n", ".type target, @function\ntarget:\n").replace(
+        ".section .rodata", ".size target, .-target\n.section .rodata")
+    extra += ".text\n.globl neighbour\n.type neighbour, @function\nneighbour:\njr $ra\nnop\n.size neighbour, .-neighbour\n"
+    (tmp_path / "extra.s").write_text(extra)
+    subprocess.run([str(compiler_dir / "mips-ps2-decompals-as"), "-EB", "-mips2", "-o", "extra.o", "extra.s"],
+                   cwd=tmp_path, capture_output=True, check=True)
+    assert not _single_definition((tmp_path / "extra.o").read_bytes(), "target")
+

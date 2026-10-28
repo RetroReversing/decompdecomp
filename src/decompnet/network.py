@@ -1400,22 +1400,30 @@ class Network:
         compiled = score is not None if compiled is None else compiled
         with self.store.tx() as db:
             current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
+            # A compiler check can finish while this candidate is still compiling with the old flags.
+            # Keep that attempt as evidence, but never turn its old-profile verdict into a new green status.
+            config = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (fn["project_id"],)).fetchone()["config"])
+            used = (effective_settings or {}).get("compiler")
+            own = compiler_for(config, current["vram"]) if used else None
+            stale = bool(used and any(used.get(k) != own.get(k) for k in ("toolchain", "flags")))
             attempt = db.execute("INSERT INTO attempts(function_id,agent_id,score,compiled,context_version,source,created_at,via) "
                        "VALUES(?,?,?,?,?,?,?,?)", (fn["id"], agent.id, score, compiled, ctx_version, source, now, via)).lastrowid
             self.repair_feedback.attempt(db, current, attempt, ctx_version, effective_settings)
-            if matched:
+            if matched and not stale:
                 self.repair_feedback.capture(db, current, source, agent.id, via, ctx_version, attempt)
             db.execute("UPDATE functions SET attempts=attempts+1 WHERE id=?", (fn["id"],))
-            if score is not None:
+            if score is not None and not stale:
                 db.execute("UPDATE functions SET best_score=?, best_source=?, best_agent_id=? "
                            "WHERE id=? AND status='open' AND (best_score IS NULL OR best_score > ?)",
                            (score, source, agent.id, fn["id"], score))
-            if matched:
+            if matched and not stale:
                 db.execute("UPDATE functions SET status='matched', matched_source=?, matched_agent_id=?, "
                            "matched_at=?, best_score=0, best_source=? WHERE id=?",
                            (source, agent.id, now, source, fn["id"]))
                 db.execute("DELETE FROM claims WHERE function_id=?", (fn["id"],))
                 self._event(db, fn["project_id"], agent.id, "match", fn["name"])
+        if stale:
+            raise NetworkError("Compiler settings changed while this candidate was compiling. Your attempt is saved; compile it again with today's settings.")
         if not matched and fn["status"] == "open":
             try:
                 self.check_attempt_limit(agent, fn)

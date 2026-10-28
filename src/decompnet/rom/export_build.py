@@ -300,11 +300,14 @@ def linker_script(provides: dict[str, str], placed: list[tuple[int, int, str]], 
             lines += [f"    .{seg['name']}_bss 0x{bss_vram:08X} (NOLOAD) : SUBALIGN(4)", "    {"]
             lines += [f"        . = 0x{b['vram'] - bss_vram:X}; {b['obj']}(.bss .sbss)" for b in seg["bss"]]
             lines.append("    }")
+    # These NOLOAD pools alias original data already present in the image. The judge proved each base and
+    # constant byte; keep it exact even when compiling one function gave its pool a larger preferred alignment.
+    # Without SUBALIGN, ld rounds a base eight bytes short of 16 and changes the function's relocation operands.
     n = 0
     for fn in B["functions"]:
         for section, base in (fn.get("own") or {}).items():
             if c_source(fn):
-                lines.append(f"    .own_{n} 0x{base:08X} (NOLOAD) : {{ {provides[fn['name']]}({section}) }}")
+                lines.append(f"    .own_{n} 0x{base:08X} (NOLOAD) : SUBALIGN(1) {{ {provides[fn['name']]}({section}) }}")
                 n += 1
     # own data of C functions nobody placed yet: kept out of the image; `build.py check` places it
     lines.append(f"    .unplaced 0xF0000000 (NOLOAD) : {{ build/src/*({OWN}) }}")

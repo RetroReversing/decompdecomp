@@ -29,6 +29,21 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
   stand-in for a model that hands in the demo's own C; the app compiles and judges every function for real.</sub>
 </p>
 
+## Changing a ROM project's compiler
+
+Changing the game's compiler or an address range checks every affected matched function before saving.
+If a match would break, the change is refused and the current settings stay in place. Narrow the range to the
+part the new compiler actually built. Removing a range can explicitly reopen its affected matches instead.
+
+Saved attempt scores are recalculated with the new settings. The C and attempt history stay saved; an old
+percentage from different flags is not used to rank today's work. Whole-game changes run as a background job
+with progress in Settings. If helpers change the code during a check, pause them and retry.
+
+Exports also check each selected object has just its intended function definition. Constant pools use the original
+addresses proven by the linked-byte judge, even when a separately compiled object's preferred section alignment
+is larger. Pools that cannot share one verified base remain assembly fallbacks. The final whole-image comparison
+still has to pass; isolated matches alone do not establish a rebuildable checkpoint.
+
 ## Choose work per agent
 
 In **Start agents → Work selection**, choose a queue for the workers you are starting. Launch an expensive

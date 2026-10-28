@@ -13,10 +13,16 @@ from ... import scoring
 from ...network import MACHINE_AGENTS, WAITING, Agent, Network, NetworkError, stall_line
 from ...rom import match, split
 from ...rom.symbols import SymbolTable
+from ..function_names import canonical_source
 from .common import _AUTO_TOKEN, BATCH_INSNS
 
 
 class JudgeMixin:
+    def _compile(self, proj, header: str, source: str, fn=None):
+        if fn is not None and self.is_rom(proj):
+            source = canonical_source(fn, source)
+        return super()._compile(proj, header, source, fn)
+
     def _rom_target(self, fn) -> match.RomTarget:
         cfg = self.cfg(self.store.one("SELECT config FROM projects WHERE id=?", fn["project_id"]))
         return match.RomTarget(fn["name"], fn["vram"], fn["target"], match.RomTarget.relocs_from_json(json.loads(fn["relocs"])),
@@ -341,7 +347,7 @@ class JudgeMixin:
 
         header = self._context(proj["id"], fn["unit"])["header"]
         settings = {"toolchain": toolchain, "flags": flags, "timeout": 20}
-        result = compile_source(compiler_config(Path(proj["root"]), {"compiler": settings}), header, source)
+        result = compile_source(compiler_config(Path(proj["root"]), {"compiler": settings}), header, canonical_source(fn, source))
         if not result.ok:
             return False, None, result.log
         cand, verdict, _ = self._evaluate(fn, proj, result.obj)
@@ -354,7 +360,8 @@ class JudgeMixin:
         """A function's best C, else its latest attempt."""
         row = self.store.one("SELECT source FROM attempts WHERE function_id=? AND source IS NOT NULL ORDER BY id DESC "
                              "LIMIT 1", fn["id"])
-        return fn["best_source"] or (row["source"] if row else None)
+        source = fn["best_source"] or (row["source"] if row else None)
+        return canonical_source(fn, source) if source else None
 
     def claim_row(self, agent: Agent, project: str | None = None, function: str | None = None, strategy: str = "easiest"):
         policy = self.selection(project, agent.name) if project else {}
