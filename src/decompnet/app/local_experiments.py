@@ -10,6 +10,7 @@ from . import (
     agent_tokens,
     captured_repairs,
     expression_repairs,
+    load_pair_repairs,
     mmio_repairs,
     pattern_repairs,
     register_repairs,
@@ -18,7 +19,7 @@ from . import (
 
 FAMILIES = ('signedness','declaration_order','typed_temporary','branch_orientation','narrowing','source_lines',
             'address_temporary','constant_local','comparison_load','stack_array','loop_induction',
-            'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order','mmio_address','call_arity','struct_byte_offset','switch_call')
+            'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order','mmio_address','call_arity','struct_byte_offset','switch_call','paired_load_order')
 
 
 def run(net, agent, slug, function, revision, families=None, max_trials=6):
@@ -57,6 +58,8 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         for family,candidate in captured_repairs.variants(source,fn['name']):
             if family in pools:
                 pools[family].append(candidate)
+        if 'paired_load_order' in pools:
+            pools['paired_load_order']=load_pair_repairs.variants(source,fn['name'])
         if 'mmio_address' in pools:
             pools['mmio_address'] = mmio_repairs.variants(source,fn['name'],proj['arch'])
         if 'narrowing' in pools:

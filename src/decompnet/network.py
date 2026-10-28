@@ -714,6 +714,15 @@ class Network:
             if isinstance(stall, bool) or not 1 <= value <= 1000 or not value.is_integer():
                 raise NetworkError("No-improvement compiles must be a whole number from 1 to 1000")
             result["stall_compiles"] = int(value)
+        unchanged=policy.get('unchanged_compiles')
+        if unchanged is not None and unchanged != '':
+            try:
+                value=float(unchanged)
+            except (TypeError,ValueError):
+                raise NetworkError('Unchanged-output compiles must be a whole number from 0 to 1000') from None
+            if isinstance(unchanged,bool) or not 0<=value<=1000 or not value.is_integer():
+                raise NetworkError('Unchanged-output compiles must be a whole number from 0 to 1000')
+            result['unchanged_compiles']=int(value)
         return result
 
     def set_selection(self, project: str, agent: str, policy: dict | None) -> dict:

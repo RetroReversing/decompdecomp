@@ -869,3 +869,16 @@ def test_diagnostic_profile_restores_even_an_exact_match(per_file):
     assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=root)==head
     assert net._function('lerp',slug)['status']=='open'
     assert net.store.one('SELECT COUNT(*) AS n FROM attempts')['n']==0
+
+
+def test_imported_baseline_evidence_is_cached_without_applying_matches(per_file):
+    from decompnet.app import agent_evidence
+    net,slug,agent,root,state,lerp=per_file
+    fn=net._function('lerp',slug)
+    before=(root/'src/game.c').read_bytes()
+    first=agent_evidence.baseline(net,agent,slug,fn,lerp)
+    second=agent_evidence.baseline(net,agent,slug,fn,lerp)
+    assert first is second and first['rows'] is not None and first['exact']
+    assert (root/'src/game.c').read_bytes()==before
+    assert net._function('lerp',slug)['status']=='open'
+    assert net.store.one('SELECT COUNT(*) AS n FROM attempts')['n']==0

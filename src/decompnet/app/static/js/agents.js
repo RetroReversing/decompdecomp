@@ -245,6 +245,7 @@ function selectionFields(policy = {}) {
     `<option value="${v}" ${(policy.strategy || "") === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
     <label class="field"><span>Only functions below match % (optional)</span><input data-selection-below type="number" min="0" max="100" step="any" placeholder="No limit" value="${esc(policy.match_below ?? "")}"></label>
     <label class="field"><span>Max tries per function (optional)</span><input data-selection-tries type="number" min="1" max="10000" step="1" placeholder="Unlimited" value="${esc(policy.max_tries ?? "")}"></label>
+    <label class="field"><span>Move on after identical instruction outputs (optional; 0 disables)</span><input data-selection-unchanged type="number" min="0" max="1000" step="1" placeholder="Automatic: 8" value="${esc(policy.unchanged_compiles ?? "")}"></label>
     <label class="field"><span>Move on after compiles without improvement (optional)</span><input data-selection-stall type="number" min="1" max="1000" step="1" placeholder="Automatic: 3–10 by function size" value="${esc(policy.stall_compiles ?? "")}"></label>
     <p class="muted small">Without improvement counts consecutive submissions that do not improve this claim's best score; an improvement resets the count. Blank uses 3–10 depending on function size. This is a move-on threshold, not a total compile cap. Max tries counts this worker's candidate submissions, including compile errors, across sessions and restarts. At the limit its best attempt is saved and the function is released for another worker. Compiler/flag searches are separate.
     Unscored functions are included. Untried first favours functions with no compile attempts.
@@ -260,7 +261,10 @@ function readSelection(box) {
   const stallRaw = box.querySelector("[data-selection-stall]").value.trim();
   const stall = stallRaw === "" ? null : Number(stallRaw);
   if (stall !== null && (!Number.isInteger(stall) || stall < 1 || stall > 1000)) throw new Error("Use a whole number from 1 to 1000 for no-improvement compiles.");
-  return { strategy: box.querySelector("[data-selection-strategy]").value, match_below: below,
+  const unchangedRaw = box.querySelector('[data-selection-unchanged]')?.value.trim() || '';
+  const unchanged = unchangedRaw === '' ? null : Number(unchangedRaw);
+  if (unchanged !== null && (!Number.isInteger(unchanged) || unchanged < 0 || unchanged > 1000)) throw new Error('Use a whole number from 0 to 1000 for unchanged outputs.');
+  return { ...(unchanged === null ? {} : { unchanged_compiles: unchanged }), strategy: box.querySelector("[data-selection-strategy]").value, match_below: below,
     ...(stall === null ? {} : { stall_compiles: stall }),
     ...(max === null ? {} : { max_tries: max }) };
 }

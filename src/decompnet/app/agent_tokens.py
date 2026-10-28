@@ -269,6 +269,9 @@ def feedback(net, agent, slug, function, text, previous):
 
 def function_view(net, agent, slug, function, section='all'):
     """Small supporting reads without replaying the candidate and assembly."""
+    if section == 'warnings':
+        from . import agent_evidence
+        return agent_evidence.warnings(net,agent,net._function(function,slug))
     if section == 'brief':
         return brief(net,net.get_function(function,slug,agent),slug,agent)
     if section == 'draft':
@@ -387,7 +390,18 @@ def target_tried(net, fn, revision, family, old):
                          fn['id'],target_scope(net,fn,revision),family,hashlib.sha256(old.encode()).hexdigest()) is not None
 
 
-def local_family(net, agent, slug, function, revision, family, old='', declaration='', occurrence=0, target=''):
+def local_family(net, agent, slug, function, revision, family, old='', declaration='', occurrence=0, target='', selector=None):
+    if selector is not None:
+        if old or declaration or occurrence or target or not isinstance(selector,dict):
+            raise NetworkError('Use one selector mode without legacy selector fields.')
+        mode=selector.get('mode')
+        allowed={'next':{'mode'},'anchor':{'mode','old','occurrence'},'declaration':{'mode','declaration'}}
+        if mode not in allowed or set(selector)-allowed[mode]:
+            raise NetworkError('Choose one selector: next, anchor with old/occurrence, or declaration with declaration.')
+        target='next' if mode=='next' else ''
+        old=selector.get('old','')
+        occurrence=selector.get('occurrence',0)
+        declaration=selector.get('declaration','')
     fn = net._function(function, slug)
     with net.attempt_turn(agent, fn):
         source, actual = candidate(net, agent, slug, function)
@@ -476,6 +490,13 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             prior = net.store.one('SELECT score FROM attempts WHERE function_id=? AND source=? ORDER BY id DESC LIMIT 1', fn['id'],source)
             if prior and prior['score'] is not None:
                 baseline = {'score':prior['score'], 'rows':None}
+        if baseline and baseline.get('rows') is None:
+            from . import agent_evidence
+            verified=agent_evidence.baseline(net,agent,slug,fn,source)
+            if verified:
+                baseline=verified
+                if verified.get('exact'):
+                    return _compile(net,agent,slug,function,source)
         if baseline and baseline['score'] is not None:
             choices.append((baseline['score'],source,baseline,0))
         else:
@@ -522,17 +543,18 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
                 if rows is not None:
                     summary += f"; {sum(r[0] != ' ' for r in rows)} displayed mismatch rows vs target"
                 if measured and measured.get('warnings'):
-                    summary += '; diagnostics: '+measured['warnings'][:250]
+                    from . import agent_evidence
+                    summary += '; diagnostics: '+agent_evidence.warning(net,agent,fn,measured['warnings'])
                 if 'MATCH!' in result:
                     summary += '; MATCH! verified by normal judge'
                 if score is None:
                     summary += '; ' + '\n'.join(result.splitlines()[:4])[:400]
-                if 'Max tries reached' in result:
+                if 'Max tries reached' in result or 'Unchanged-output limit reached' in result:
                     summary += '; Max tries reached'
                 groups[key] = ([i], summary)
-            if 'Max tries reached' in result:
+            if 'Max tries reached' in result or 'Unchanged-output limit reached' in result:
                 results.append('Max tries reached; no further variants submitted.')
-            if net._function(function, slug)['status'] != 'open' or 'Max tries reached' in result:
+            if net._function(function, slug)['status'] != 'open' or 'Max tries reached' in result or 'Unchanged-output limit reached' in result:
                 break
         for indices, summary in groups.values():
             results.append('Variants '+','.join(map(str,indices))+': '+summary)

@@ -99,7 +99,9 @@ def test_new_tools_and_paging_are_exposed_to_mcp_and_api(tmp_path):
     assert 'occurrence' in batch['parameters']['properties']['patches']['items']['properties']
     family=next(t['function'] for t in api_tool_schemas() if t['function']['name']=='compile_family')
     assert family['parameters']['required']==['function','revision','family']
-    assert 'declaration' in family['parameters']['properties']
+    choices=family['parameters']['properties']['selector']['oneOf']
+    assert {c['properties']['mode']['const'] for c in choices}=={'next','anchor','declaration'}
+    assert all(c['additionalProperties'] is False for c in choices)
 
 
 def test_fork_reads_disk_candidate_and_all_target_assembly(tmp_path, monkeypatch):
