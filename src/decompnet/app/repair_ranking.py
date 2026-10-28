@@ -3,7 +3,8 @@
 def order(families, rows):
     markers = {row[0] for row in rows if row[0] != ' '}
     if markers and markers <= {'r', 's'}:
-        preferred = ('stack_array', 'parameter_width', 'declaration_order') if 's' in markers else (
+        preferred = ('unused_scalar_local', 'local_storage', 'parameter_storage', 'local_declaration_order',
+                     'stack_array', 'parameter_width', 'declaration_order') if 's' in markers else (
             'comparison_reuse', 'integer_address_order', 'typed_temporary', 'value_lifetime', 'declaration_order')
     elif markers & {'<', '>', '|', 'o'}:
         preferred = ('branch_orientation', 'loop_induction', 'call_result_inline', 'parameter_width')

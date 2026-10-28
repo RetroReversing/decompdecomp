@@ -416,7 +416,7 @@ class Permuter:
             self._let_go(agent, fn)
 
     def _repair_flags(self, agent, proj, fn, st, deadline):
-        """Two cached debug-flag probes on close ROM misses; persist only a byte-exact function range.
+        """Two cached compiler-flag probes per pass on close ROM misses; persist only an exact function range.
 
         Imported projects own their build flags: never rewrite their build setup from this phase.
         """
@@ -430,12 +430,15 @@ class Permuter:
         count = 0
         symbols = [tuple(row) for row in self.net.store.all('SELECT name,address FROM symbols WHERE project_id=? ORDER BY name', proj['id'])]
         choices = [f for f in self.net.debug_flag_variants(own['toolchain'], list(own['flags'])) if f != own['flags']]
-        for flags in choices[:2]:
-            if st.stop.is_set() or time.monotonic() >= deadline:
+        if hasattr(self.net, 'flag_variants'):
+            choices += [f for f in self.net.flag_variants(own['toolchain'], list(own['flags']))
+                        if f != own['flags'] and f not in choices]
+        for flags in choices:
+            if count >= 2 or st.stop.is_set() or time.monotonic() >= deadline:
                 break
             digest = hashlib.sha256(repr((current['target'], current['relocs'], current['best_source'],
                                           ctx['header'], self.net.cfg(proj), symbols, flags)).encode()).hexdigest()
-            key = 'draft-debug-v1:' + digest
+            key = 'draft-flags-v2:' + digest
             if self.net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], key):
                 continue
             count += 1
@@ -443,9 +446,14 @@ class Permuter:
             exact, _, _ = self.net._judge_with(proj, current, own['toolchain'], flags, current['best_source'])
             with self.net.store.tx() as db:
                 db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
-                           (fn['id'], key, 'match' if exact else 'miss', 'near-miss debug flag probe'))
+                           (fn['id'], key, 'match' if exact else 'miss', 'near-miss compiler flag probe'))
             if exact:
-                # Changing this function's compiler settings cannot invalidate another function's match.
+                if hasattr(self.net, 'auto_adjusts') and not self.net.auto_adjusts(self.net.project_row(proj['slug'])):
+                    self.net.suggest(agent, proj['slug'], 'The permuter found an exact match with these compiler flags.',
+                                     compiler=own['toolchain'], flags=' '.join(flags), function=current['name'],
+                                     ranges=f"0x{fn['vram']:X}-0x{fn['vram']+fn['size']:X}", source=current['best_source'])
+                    break  # leave the proven change for the user, as their project setting requests
+                # Range changes still protect any affected existing match before saving.
                 self.net.set_compiler_ranges(proj['slug'], [[fn['vram'], fn['vram'] + fn['size']]], own['toolchain'], flags)
                 fresh = self.net.project_row(proj['slug'])
                 count += 1

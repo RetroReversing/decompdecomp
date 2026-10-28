@@ -830,3 +830,5 @@ Repeated-output limits now remember bounded fingerprints across a claim and rese
 
 Function lists show check/improvement recency. Agent work selection supports oldest
 checked first and a recorded-model untried filter in ROM and imported projects.
+
+The shared deterministic repair pass now tries bounded unused scalar removal, scalar/pointer storage and adjacent local declaration order on supported 32-bit ROM/imported projects, preserving line layout and using normal exact judges. Close ROM misses rotate cached debug and optimization probes, two per pass, with manual compiler approval respected. Imported compiler flags remain owned by their build.

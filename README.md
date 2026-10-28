@@ -29,6 +29,21 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
   stand-in for a model that hands in the demo's own C; the app compiles and judges every function for real.</sub>
 </p>
 
+## Automatic repairs before paid agents
+
+The permuter's bounded repair pass tries unused scalar locals, local and parameter `register` storage, and adjacent
+local declaration order before random permutation. It keeps original line layout and leaves shared headers alone.
+These hypotheses run through the same compiler and exact judge as agents, in ROM and supported 32-bit imported
+projects. They use local CPU, with no model API calls. Rejected candidates do not replace the best saved C.
+
+For close ROM misses it also tests cached compiler flag alternatives, two probes per pass. Later passes skip
+already tested choices and can reach optimization levels as well as debug flags. Only exact results qualify for a
+narrow compiler-range change. When automatic compiler changes are disabled, the result becomes a suggestion for
+you to review. Imported projects retain their own build settings.
+
+This cannot identify an unknown original-source function or reconstruct a substantially wrong algorithm. Those
+still need source-assisted agent work. It also cannot guarantee that a nearly matching function will match.
+
 ## Changing a ROM project's compiler
 
 Changing the game's compiler or an address range checks every affected matched function before saving.

@@ -18,6 +18,7 @@ from . import (
     near_repairs,
     pattern_repairs,
     register_repairs,
+    stack_repairs,
     storage_scope_repairs,
 )
 
@@ -42,6 +43,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     offset = opening + 1
     proposals = []
     labels = labels if labels is not None else {}
+    for family, text in (stack_repairs.variants(source, name) if arch in {"mips", "ppc", "x86", "arm", "thumb"} else []):
+        proposals.append(text)
+        labels[text] = family
     for family, text in register_repairs.variants(source, name, arch):
         proposals.append(text)
         labels[text] = family
