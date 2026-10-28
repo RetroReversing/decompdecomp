@@ -30,3 +30,10 @@ Goal: C that the game's own compiler turns into exactly the bytes in the ROM. No
 ## Priorities
 Get the instruction count and control flow right first, then operands, then register allocation.
 Plausible original code beats contortions: games were written by people, quickly.
+
+Before sending many hand-written variants, use `try_local_repairs` on the current revision. Its bounded
+families include `local_widening`, `callee_parameter_width`, `callee_return_width`, `split_integer_lifetime`,
+`merge_integer_lifetimes`, `branch_call`, `goto_leaf` and `switch_layout`. They can test lost coordinate bits,
+unwanted call conversions, integer register lifetimes and alternative dispatch layouts without model-written
+source variants. Candidate-owned prototypes change only in that candidate; confirm a discovered signature
+before suggesting a shared header edit. A lower score is useful evidence, not a proof of correctness.

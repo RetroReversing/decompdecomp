@@ -8,10 +8,14 @@ from ..project import compiler_for
 from . import (
     agent_targets,
     agent_tokens,
+    branch_layout_repairs,
+    callee_prototype_repairs,
     captured_repairs,
     expression_repairs,
+    integer_lifetime_repairs,
     lifetime_repairs,
     load_pair_repairs,
+    local_widening_repairs,
     local_width_repairs,
     mmio_repairs,
     pattern_repairs,
@@ -24,7 +28,8 @@ from . import (
 
 FAMILIES = ('signedness','declaration_order','typed_temporary','branch_orientation','narrowing','source_lines',
             'address_temporary','constant_local','comparison_load','stack_array','loop_induction',
-            'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order','mmio_address','call_arity','struct_byte_offset','switch_call','paired_load_order','array_index_width','split_scalar_lifetime','pointer_before_store','store_address_lifetime','stack_padding','local_width','pointer_cast_inline')
+            'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order','mmio_address','call_arity','struct_byte_offset','switch_call','paired_load_order','array_index_width','split_scalar_lifetime','pointer_before_store','store_address_lifetime','stack_padding','local_width','pointer_cast_inline',
+            'local_widening','callee_parameter_width','callee_return_width','split_integer_lifetime','merge_integer_lifetimes','branch_call','goto_leaf','switch_layout')
 
 
 def run(net, agent, slug, function, revision, families=None, max_trials=6):
@@ -64,6 +69,12 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         for family,candidate in lifetime_repairs.variants(source,fn['name']):
             if family in pools:
                 pools[family].append(candidate)
+        for module in (callee_prototype_repairs, integer_lifetime_repairs, branch_layout_repairs):
+            for family, candidate in module.variants(source, fn['name']):
+                if family in pools:
+                    pools[family].append(candidate)
+        if 'local_widening' in pools:
+            pools['local_widening'] = local_widening_repairs.variants(source, fn['name'])
         if 'pointer_cast_inline' in pools:
             pools['pointer_cast_inline'] = pointer_cast_repairs.variants(source,fn['name'],proj['arch'])
         if 'local_width' in pools:
