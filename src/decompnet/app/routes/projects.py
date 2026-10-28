@@ -221,6 +221,18 @@ def register(app: App) -> None:
         net.resolve_boundary(slug, int(data.get("id", 0)), data.get("action") == "apply")
         return net.overview(slug)
 
+    def p_permuter(slug, request, data):
+        """Run free local permutations without starting a paid helper or the full autopilot."""
+        net.project_row(slug)
+        action = data.get("action", "start")
+        if action not in {"start", "stop"}:
+            raise ValueError("Choose start or stop for the permuter.")
+        if action == "stop":
+            net.permuter.stop(slug)
+        else:
+            net.permuter.start(slug)
+        return {"permuter": net.permuter.status(slug)}
+
     def p_autopilot(slug, request, data):
         if data.get("action") == "stop":
             net.stop_autopilot(slug)
@@ -295,6 +307,7 @@ def register(app: App) -> None:
         "/api/delete": (p_delete, ["POST"]),
         "/api/try": (p_try, ["POST"]), "/api/release": (p_release, ["POST"]), "/api/reopen": (p_reopen, ["POST"]), "/api/setaside": (p_set_aside, ["POST"]),
         "/api/recheck": (p_recheck, ["POST"]),
+        "/api/permuter": (p_permuter, ["POST"]),
         "/api/autopilot": (p_autopilot, ["POST"]), "/api/instructions": (p_instructions, ["POST"]), "/api/title": (p_title, ["POST"]),
         "/api/cross-game": (lambda s, r, d: {"results": net.twins.cross_game_results(s),
                             "suggestions": net.twins.suggestions(s, r.query_params.get("function", ""))

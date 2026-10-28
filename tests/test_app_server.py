@@ -877,3 +877,19 @@ def test_reset_agent_metrics_requires_app_auth_and_rejects_missing_helper(app):
     client, _, _ = app
     assert client.post('/api/agents/reset-metrics', json={'id': 'missing'}, headers={'X-Decomp': '1'}).status_code == 400
     assert client.post('/api/agents/reset-metrics', json={'id': 'missing'}).status_code == 403
+
+
+def test_permuter_can_run_without_starting_paid_helpers(app, monkeypatch):
+    client, net, manager = app
+    calls=[]
+    monkeypatch.setattr(net, 'project_row', lambda slug: {'slug':slug})
+    monkeypatch.setattr(net.permuter, 'start', lambda slug: calls.append(('start',slug)))
+    monkeypatch.setattr(net.permuter, 'stop', lambda slug: calls.append(('stop',slug)))
+    monkeypatch.setattr(net.permuter, 'status', lambda slug: {'state':'running'})
+    headers={'X-Decomp':'1'}
+    assert client.post('/api/permuter',json={'slug':'game'}).status_code == 403
+    response=client.post('/api/permuter',json={'slug':'game'},headers=headers)
+    assert response.status_code == 200 and response.json()['permuter']['state']=='running'
+    assert client.post('/api/permuter',json={'slug':'game','action':'stop'},headers=headers).status_code==200
+    assert client.post('/api/permuter',json={'slug':'game','action':'bad'},headers=headers).status_code==400
+    assert calls==[('start','game'),('stop','game')]
