@@ -7,6 +7,8 @@ import os
 import sys
 import threading
 import time
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +20,14 @@ from decompnet.store import IN_MEMORY, Store
 
 SOURCE = "s32 f(s32 a) {\n    s32 b = a + 1;\n    return b * 2;\n}\n"
 HEADER = "/* the game's types */\n#define TWO 2\ntypedef int s32;\n"
+
+
+class ProjectStub:
+    """Filesystem facts needed by scoped imported-project repair evidence."""
+    def get(self, slug):
+        project=SimpleNamespace(root=Path('synthetic-project'),
+                                unit=lambda _:SimpleNamespace(source=None,target=None))
+        return None,project,{}
 
 
 class FakeNet:

@@ -957,3 +957,23 @@ def test_reset_metrics_keeps_history_and_counts_new_work_across_restart(tmp_path
     assert manager.snapshot()[0]['tokens'] == 0
     with pytest.raises(ValueError, match='no longer exists'):
         manager.reset_metrics('missing')
+
+
+@pytest.mark.parametrize('policy',[{}, {'match_below':100}])
+def test_paused_unchanged_queue_waits_without_starting_paid_session(tmp_path,monkeypatch,policy):
+    from decompnet import claim_stalls
+    _no_agent_settings(monkeypatch)
+    net=_game(tmp_path)
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET best_source='void f(){}',best_score=10")
+    for fn in net.store.all('SELECT * FROM functions'):
+        claim_stalls.released(net,fn,exhausted=True)
+    m=agents.Manager(net,tmp_path,URL)
+    s=m._record('game','claude','claude-1','Claude',{'selection':policy})
+    waits=[]
+    def wait(session,why,*args):
+        waits.append(why);session.stop.set()
+    monkeypatch.setattr(m,'_wait',wait)
+    monkeypatch.setattr(m,'_run_cli',lambda *args:pytest.fail('No provider call while all candidates are paused'))
+    m._run(s)
+    assert waits and 'paused' in waits[0] and s.runs==0

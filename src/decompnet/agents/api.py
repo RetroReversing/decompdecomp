@@ -400,7 +400,7 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
                            "notes and a draft. count > 1: a batch of small functions to judge together.",
                            s(function=st("optional name or address"), strategy=st("finish | easiest | least_tried | oldest_checked | untried | closest | hardest | random"),
                              count=it("up to 6 small functions at once"))),
-        "get_function": ("Show any function by name or address.", s(function=st("name or address", True), section=st("all | history | candidate | notes | declarations | compiler | layouts"))),
+        "get_function": ("Show any function by name or address.", s(function=st("name or address", True), section=st("all | history | candidate | quality | notes | declarations | compiler | layouts"))),
         "compile_and_diff": ("Whole-function rewrite: small edits should use compile_patch. Compile, link and diff against the ROM. "
                              "Score 0 = matched. Several functions: names comma-separated, all definitions in source.",
                              s(function=st("function name, or several: a, b, c", True), source=st("C source", True),

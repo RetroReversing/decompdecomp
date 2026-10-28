@@ -319,3 +319,30 @@ def test_export_preserves_judged_constant_address_despite_object_alignment(tmp_p
                    cwd=tmp_path, capture_output=True, check=True)
     assert not _single_definition((tmp_path / "extra.o").read_bytes(), "target")
 
+
+
+@pytest.mark.parametrize('symbol',['target__4Mathi','_ZN4Math6targetEi'])
+def test_cpp_single_definition_uses_judge_symbol_mapping(symbol):
+    from decompnet.arch.mips_image import linked_object
+    from decompnet.rom.export import _single_definition
+    obj=linked_object(symbol,0x80001000,bytes(8))
+    assert _single_definition(obj,'target')
+    assert not _single_definition(obj,'unrelated')
+
+
+def test_cpp_overloads_are_not_hidden_by_export_name_mapping():
+    import struct
+    from io import BytesIO
+
+    from decompnet.arch.mips_image import linked_object
+    from decompnet.rom.export import _single_definition
+    first,second='target__4Mathi','target__4Mathf'
+    obj=bytearray(linked_object(first+'\0'+second,0x80001000,bytes(16)))
+    elf=ELFFile(BytesIO(obj));symtab=elf.get_section_by_name('.symtab')
+    symbols=bytearray(symtab.data())
+    struct.pack_into('>I',symbols,16+8,8)  # first body occupies half the text section
+    symbols+=struct.pack('>IIIBBH',len(first)+2,0x80001008,8,0x12,0,1)
+    new_offset=len(obj);obj+=symbols
+    section=elf['e_shoff']+2*elf['e_shentsize']  # point symtab at the extended table
+    struct.pack_into('>II',obj,section+16,new_offset,len(symbols))
+    assert not _single_definition(bytes(obj),'target')

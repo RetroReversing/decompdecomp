@@ -142,8 +142,13 @@ def _export_segments(config: dict, functions) -> dict:
 def _single_definition(obj: bytes, name: str) -> bool:
     """One exported object occupies one function's slot. Extra helper bodies can match in isolation but collide
     with their own slots in the full image; don't silently include those definitions twice."""
-    from ..elfobj import _function_symbols
+    from ..elfobj import _function_symbols, unmangle
 
+    # Count before name mapping: overloads can map to the same game name, but still have
+    # separate bodies. The ordinary judge resolves the single C++ method back to that name.
+    if len(_function_symbols(ELFFile(BytesIO(obj)))) != 1:
+        return False
+    obj = unmangle(obj, lambda symbol: symbol == name)
     return set(_function_symbols(ELFFile(BytesIO(obj)))) == {name}
 
 
