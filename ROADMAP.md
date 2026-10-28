@@ -827,3 +827,6 @@ Agent cards have persistent metric reset baselines, total reported tokens and ti
 since the last improvement, retaining code, history and lifetime model accounting.
 
 Repeated-output limits now remember bounded fingerprints across a claim and reset the repeat streak only for genuinely novel scored instruction output, catching alternating old results. Baseline summaries distinguish verified, scored and unverified evidence. Unknown inline repair categories map to other while retaining their original label and code submission. Shared local families can narrow array indices, split scalar floating-point lifetimes, and capture repeated pointer fields before aliasing stores; ordinary exact judges and existing budgets remain mandatory.
+
+Function lists show check/improvement recency. Agent work selection supports oldest
+checked first and a recorded-model untried filter in ROM and imported projects.

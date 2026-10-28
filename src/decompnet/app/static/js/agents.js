@@ -178,7 +178,7 @@ function renderSessions(sessions) {
       ${s.metrics_since ? `<span class="small muted">Metrics since reset · ${new Date(s.metrics_since * 1000).toLocaleString()}</span>` : ""}
       <span class="facts-line">${facts.join(" · ")}</span>
       ${s.estimated_cost != null ? `<span class="small muted" title="Standard API rates checked 26 Oct 2026, using recorded input, cached input and output. Excludes cache-write, long-context, fast-mode and regional premiums. This is not your subscription bill.">≈ ${money(s.estimated_cost)} API-equivalent${b?.matched ? ` · ≈ ${money(s.estimated_cost / b.matched)} / match` : ""}</span>` : ""}
-      <button class="link-btn" data-queue="${id}" type="button">Work settings · ${s.per_session || 8} functions/session${s.task === "readable" ? "" : ` · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.stall_compiles ? ` · move on after ${esc(s.selection.stall_compiles)} without improvement` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}`}</button>
+      <button class="link-btn" data-queue="${id}" type="button">Work settings · ${s.per_session || 8} functions/session${s.task === "readable" ? "" : ` · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.model_untried ? " · never checked by this model" : ""}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.stall_compiles ? ` · move on after ${esc(s.selection.stall_compiles)} without improvement` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}`}</button>
       <button class="link-btn" data-reset-metrics="${id}" type="button">Reset metrics</button>
       <button class="link-btn" data-log="${id}" type="button" aria-pressed="${S.logFor === s.id}">${S.logFor === s.id ? "Back to everything" : "What it said and did"}</button></div>`;
   }).join("");
@@ -253,11 +253,13 @@ $("stopAll").onclick = async () => {
 /* ------------------------------------------------------------------ the launcher: agent, model, how many */
 const LZ = { kind: null, model: "", count: 1, per: null, effort: "", task: "", selection: {} };
 const QUEUE_STRATEGIES = [["", "Automatic (recommended)"], ["easiest", "Easiest first"],
-  ["least_tried", "Least tried first"], ["untried", "Untried first"], ["hardest", "Largest first"], ["closest", "Closest to matching"],
+  ["oldest_checked", "Oldest checked first"], ["least_tried", "Least tried first"], ["untried", "Untried first"], ["hardest", "Largest first"], ["closest", "Closest to matching"],
   ["finish", "Finish source files"], ["random", "Random"]];
 function selectionFields(policy = {}) {
   return `<label class="field"><span>Next function</span><select data-selection-strategy>${QUEUE_STRATEGIES.map(([v, label]) =>
     `<option value="${v}" ${(policy.strategy || "") === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+    <label class="check"><input data-selection-model-untried type="checkbox" ${policy.model_untried ? "checked" : ""}><span>Only functions never checked by this model</span></label>
+    <p class="small muted">Uses recorded model IDs across workers and sessions, ignoring effort suffixes. Requires an explicit model. Candidate submissions count, including compile errors; claims alone do not. Unknown historical model usage cannot be reconstructed. Oldest checked first puts never-checked functions first.</p>
     <label class="field"><span>Only functions below match % (optional)</span><input data-selection-below type="number" min="0" max="100" step="any" placeholder="No limit" value="${esc(policy.match_below ?? "")}"></label>
     <label class="field"><span>Max tries per function (optional)</span><input data-selection-tries type="number" min="1" max="10000" step="1" placeholder="Unlimited" value="${esc(policy.max_tries ?? "")}"></label>
     <label class="field"><span>Move on after outputs already seen in this claim (optional; 0 disables)</span><input data-selection-unchanged type="number" min="0" max="1000" step="1" placeholder="Automatic: 8" value="${esc(policy.unchanged_compiles ?? "")}"></label>
@@ -280,6 +282,7 @@ function readSelection(box) {
   const unchanged = unchangedRaw === '' ? null : Number(unchangedRaw);
   if (unchanged !== null && (!Number.isInteger(unchanged) || unchanged < 0 || unchanged > 1000)) throw new Error('Use a whole number from 0 to 1000 for unchanged outputs.');
   return { ...(unchanged === null ? {} : { unchanged_compiles: unchanged }), strategy: box.querySelector("[data-selection-strategy]").value, match_below: below,
+    ...(box.querySelector("[data-selection-model-untried]")?.checked ? { model_untried: true } : {}),
     ...(stall === null ? {} : { stall_compiles: stall }),
     ...(max === null ? {} : { max_tries: max }) };
 }
