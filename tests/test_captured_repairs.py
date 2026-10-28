@@ -69,13 +69,13 @@ def test_redraft_prose_is_actionable_without_calling_backend():
 def test_new_families_use_normal_mode_judge(imported,family,source):
     from decompnet.app.permute import State
     from tests.test_draft_repairs import setup_repair_net
-    from tests.test_permute import AGENT, ScriptedPermuter
+    from tests.test_permute import AGENT, ProjectStub, ScriptedPermuter
     net=setup_repair_net()
     with net.store.tx() as db:
         db.execute('UPDATE functions SET best_source=?',(source,))
     if imported:
         net.fork_slug=lambda slug:'fork'
-        class Fork:
+        class Fork(ProjectStub):
             def permuter_header(self,slug,function):return ''
         net.forks=Fork()
     expected=next(s for f,s in captured_repairs.variants(source,'f1') if f==family)

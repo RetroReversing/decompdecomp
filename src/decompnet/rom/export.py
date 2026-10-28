@@ -142,8 +142,11 @@ def _export_segments(config: dict, functions) -> dict:
 def _single_definition(obj: bytes, name: str) -> bool:
     """One exported object occupies one function's slot. Extra helper bodies can match in isolation but collide
     with their own slots in the full image; don't silently include those definitions twice."""
-    from ..elfobj import _function_symbols
+    from ..elfobj import _function_symbols, unmangle
 
+    # The ordinary ROM judge resolves a C++ method back to the game symbol too. Extra helper
+    # bodies remain distinct and still make the one-function-per-object check fail.
+    obj = unmangle(obj, lambda symbol: symbol == name)
     return set(_function_symbols(ELFFile(BytesIO(obj)))) == {name}
 
 

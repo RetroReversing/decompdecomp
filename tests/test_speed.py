@@ -259,8 +259,12 @@ def test_turns_not_wasted(game):
     assert "already matched" in out and "## CLAIMED" in out
     assert "Did you mean" in tools.call(net, agent, slug, "get_function", {"function": "player_take_damag"})
     fn = net.store.one("SELECT f.name FROM claims c JOIN functions f ON f.id=c.function_id WHERE c.agent_id=?", agent.id)["name"]
-    for k in range(5):
-        out = net.compile_and_diff(agent, fn, f"void {fn}(void) {{ volatile int x = {k}; }}", slug)
+    # Keep the real signature: the selected function may have a prototype in context.h.
+    source = csource.get((GAME / "game.c").read_text(), fn)
+    assert source is not None
+    candidate = source.replace("{", "{ volatile int __stall_probe = 123;", 1)
+    for _ in range(5):
+        out = net.compile_and_diff(agent, fn, candidate, slug)
     assert "Move on:" in out  # (the move-on nudge, as every compile result says it)
 
 
