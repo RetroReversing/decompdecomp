@@ -2754,7 +2754,7 @@ class ForkEngine:
             pass
 
     def _attempt(self, agent: Agent, slug: str, function: str, source: str, keep: bool = True, prelude: str = "",
-                 quiet: int | None = None, comment: bool = False) -> dict:
+                 quiet: int | None = None, comment: bool = False, diagnostic: bool = False) -> dict:
         proj, fp, cfg = self.get(slug)
         fn = self._fn(slug, function)
         meta = self._meta(fn)
@@ -2927,6 +2927,10 @@ class ForkEngine:
             pct = d.match_percent if d.match_percent is not None else 0.0
             score = max(1, len(d.literals)) if d.literals else scaled(pct, fn["n_insns"])
             matched = d.matched
+            if diagnostic:
+                undo()
+                return {'text': ('MATCH! diagnostic only' if matched else f'score {score} ({pct:.1f}%)')+'; source restored.',
+                        'score':score,'matched':matched,'percent':pct}
             if not matched and not keep and not was_matched:  # tried, not kept: the file stays as it was
                 undo()
                 if quiet is None or score < quiet:
@@ -2982,7 +2986,7 @@ class ForkEngine:
         return {"text": remembered(text, score) + stall, "score": score, "matched": False}
 
     def try_compiler(self, agent: Agent, slug: str, function: str, compiler: str, flags: str = "",
-                     source: str = "") -> str:
+                     source: str = "", keep_match: bool = True) -> str:
         """A function's C built with another of its console's compilers, where the project lets each source file have
         its own (Console.file_compiler: a DS game mixes CodeWarrior versions, issue #23). Judged as an attempt that
         isn't kept: a version it matches with stays the file's, committed, and only when the file's other matched
@@ -3031,10 +3035,12 @@ class ForkEngine:
                             with self._build_locks[proj["id"]]:  # (a build reads the map)
                                 rel = console.set_file_compiler(fp, unit.source, c)
                             changed = True
-                        res = self._attempt(agent, slug, function, source, keep=False, quiet=0)
+                        res = self._attempt(agent, slug, function, source, keep=False, quiet=0, **({"diagnostic":True} if not keep_match else {}))
                         if res["matched"] and c == own:
                             return f"{c}: {res['text']}\nThat's {unit.source}'s own compiler: nothing to switch."
                         if res["matched"]:
+                            if not keep_match:
+                                return f"{c}: {res['text']}\nDiagnostic only; the original file compiler is restored."
                             kept = c
                             self.net.bump_generation(proj["id"])  # (earlier compiles of the file aren't repeats)
                             self._commit(proj, fp, rel, f"Build {unit.source} with {c}\n\n{fn['name']} matches with "

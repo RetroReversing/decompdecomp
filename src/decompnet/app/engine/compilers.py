@@ -613,12 +613,12 @@ class CompilerMixin:
     RANGE_PROOF_BYTES, RANGE_PROOF_FUNCTIONS = 256, 3
 
     def try_compiler(self, agent: Agent, slug: str, function: str, compiler: str, flags: str = "",
-                     source: str = "") -> str:
+                     source: str = "", keep_match: bool = True) -> str:
         """A function's C (`source`, else its best attempt) built with another compiler and flags, judged like an
         attempt but recorded nowhere: to work out which compiler built a part of the game before suggesting it (on GTA
         San Andreas an agent tried compilers by suggesting them: 128 of its 149 suggestions were disproved)."""
         if self.fork_slug(slug):  # where the project lets each file have its own compiler (DS), the fork engine's
-            return self.forks.try_compiler(agent, slug, function, compiler, flags, source)
+            return self.forks.try_compiler(agent, slug, function, compiler, flags, source, keep_match=keep_match)
         proj = self._project(slug)
         cfg = self.cfg(proj)
         tc = self._toolchain_named(cfg, compiler)
