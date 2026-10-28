@@ -210,6 +210,7 @@ def test_comparable_failure_previous_trial_effective_settings_and_provenance(set
     configure({'toolchain': 'other', 'flags': ['-O1']})
     net._record(fn(net,fid),winner,1,'different settings',1,effective_settings={'compiler':{'toolchain':'other','flags':['-O1']}})
     configure(effective['compiler'])
+
     with trial({'kind':'agent batch','family':'casts','variant':2}):
         net._record(fn(net,fid),winner,0,'matched',1,matched=True,effective_settings=effective)
     case=net.repair_feedback.listing('demo')['examples'][0]['id']
@@ -225,6 +226,8 @@ def test_comparable_failure_previous_trial_effective_settings_and_provenance(set
 
 def test_compile_failure_settings_are_recorded_without_a_repair_case(setup):
     net,winner,_,pid,fid=setup
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=? WHERE id=?',(json.dumps({'compiler':{'cmd':['test','-O1']}}),pid))
     net._record(fn(net,fid),winner,None,'bad C',1,effective_settings={'compiler':{'cmd':['test','-O1']}})
     assert not net.repair_feedback.listing('demo')['examples']
     row=net.store.one('SELECT settings FROM repair_attempt_settings ORDER BY attempt_id DESC LIMIT 1')
@@ -257,10 +260,12 @@ def test_autopilot_capture_uses_actual_compile_settings_instead_of_project_snaps
     effective={'compiler':{'toolchain':'actual-compiler','flags':['-O2','-g3']},
                'effective_command':['actual-cc','-g3','{src}'],'language':'c',
                'settings_source':'compile invocation snapshot'}
+    # A per-function override differs from the project default without being an in-flight stale profile.
     with net.store.tx() as db:
-        cfg = json.loads(db.execute('SELECT config FROM projects WHERE id=?', (pid,)).fetchone()['config'])
-        cfg['compiler'] = effective['compiler']
-        db.execute('UPDATE projects SET config=? WHERE id=?', (json.dumps(cfg), pid))
+        cfg=json.loads(db.execute('SELECT config FROM projects WHERE id=?',(pid,)).fetchone()['config'])
+        cfg['compiler_ranges']=[{'start':0x80001000,'end':0x80001010,**effective['compiler']}]
+        db.execute('UPDATE projects SET config=? WHERE id=?',(json.dumps(cfg),pid))
+
     result=SimpleNamespace(ok=True,obj=b'object',effective_settings=effective)
     monkeypatch.setattr(net,'_compile',lambda *args:result)
     monkeypatch.setattr(net,'_evaluate',lambda *args:(SimpleNamespace(code=b'code',relocs=[]),True,[]))

@@ -39,7 +39,6 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         flags=compiler_for(cfg,fn['vram']).get('flags',[]) if not net.fork_slug(slug) else []
         debug=any(re.fullmatch(r'-g[1-3]?',flag) for flag in flags)
         pools={family:[] for family in requested}
-        anchors={}
         for family in ('signedness','declaration_order'):
             if family not in pools:
                 continue
@@ -49,7 +48,6 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
                 for patch in agent_tokens.family_patches(family,target['old']):
                     edited=agent_targets.replace_anchor(source,patch['old'],patch['new'])
                     pools[family].append(edited)
-                    anchors[family,edited]=target['old']
         for family,candidate in pattern_repairs.variants(source,fn['name'],debug):
             if family in pools:
                 pools[family].append(candidate)
@@ -69,7 +67,8 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         if 'narrowing' in pools:
             masks=lambda text:len(re.findall(r'&\s*0x(?:[fF]{4}|[fF]{2})\b',text))
             pools['narrowing'] += [s for s in expression_repairs.variants(source,fn['name'],proj['arch']) if masks(s)<masks(source)]
-        pools={f:[s for s in dict.fromkeys(pool) if s!=source and not agent_tokens.target_tried(net,fn,revision,'local:'+f,s)] for f,pool in pools.items()}
+        durable_scope=agent_tokens.target_scope(net,fn,'')
+        pools={f:[s for s in dict.fromkeys(pool) if s!=source and not agent_tokens.compiled_before(net,fn,s,durable_scope) and not agent_tokens.target_tried(net,fn,revision,'local:'+f,s)] for f,pool in pools.items()}
         ranked = repair_ranking.order(pools,repair_ranking.evidence(net,fn['id'],agent.id))
         effect_scope=agent_tokens.target_scope(net,fn,'')
         ranked=repair_ranking.demote(net,effect_scope,ranked)
@@ -91,12 +90,10 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         observations=getattr(net,'_local_trial_observations',{}).get((agent.id,fn['id']),[])
         for (family,_), measured in zip(selected,observations):
             repair_ranking.remember(net,effect_scope,family,baseline,measured)
-        submitted=re.search(r'last submitted variant (\d+)',result)
-        for family,candidate in selected[:int(submitted[1]) if submitted else 0]:
+        for (family,candidate),measured in zip(selected,observations):
+            if not measured or measured.get('score') is None:
+                continue
             with net.store.tx() as db:
                 db.execute('INSERT OR IGNORE INTO agent_family_targets VALUES(?,?,?,?)',
                            (fn['id'],scope,'local:'+family,hashlib.sha256(candidate.encode()).hexdigest()))
-                if (family,candidate) in anchors:
-                    db.execute('INSERT OR IGNORE INTO agent_family_targets VALUES(?,?,?,?)',
-                               (fn['id'],scope,family,hashlib.sha256(anchors[family,candidate].encode()).hexdigest()))
         return 'Local families: '+', '.join(f'{i}: {f}' for i,(f,_) in enumerate(selected,1))+'\n'+result

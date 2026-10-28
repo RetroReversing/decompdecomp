@@ -781,10 +781,13 @@ class Network:
         raise NetworkError(f"Max tries reached for {fn['name']} ({used}/{limit}). Your work is saved. "
                            "Call claim_function for another function, or ask the user to raise the limit.")
 
-    def selection_remaining(self, project: str, agent: Agent) -> int:
+    def selection_remaining(self, project: str, agent: Agent, *, include_paused: bool = False) -> int:
         policy = self.selection(project, agent.name)
         from .model_checks import tried
         excluded = tried(self, project, agent) if policy.get('model_untried') else set()
+        from . import claim_stalls
+        if not include_paused:
+            excluded.update(claim_stalls.blocked(self,self._project(project)))
         return self.store.one(
             "SELECT COUNT(*) AS n FROM functions f JOIN projects p ON p.id=f.project_id WHERE p.slug=? "
             "AND f.id NOT IN (SELECT value FROM json_each(?)) "
@@ -805,7 +808,7 @@ class Network:
         return out
 
     def claim_row(self, agent: Agent, project: str | None = None, function: str | None = None,
-                  strategy: str = "easiest"):
+                  strategy: str = "easiest", *, batch_from=None):
         """Claim (or renew) a function and return its row, or None when nothing is left."""
         if strategy not in STRATEGIES:
             raise NetworkError(f"strategy must be one of {', '.join(STRATEGIES)}")
@@ -818,6 +821,8 @@ class Network:
             self._expire_claims(db)
             held = db.execute("SELECT f.* FROM claims c JOIN functions f ON f.id=c.function_id WHERE c.agent_id=?",
                               (agent.id,)).fetchone()
+            if batch_from is not None:
+                held = None
             if held is not None:
                 if function and held["id"] != self._function(function, proj["slug"] if proj else None)["id"]:
                     want = self._function(function, proj["slug"] if proj else None)["name"]
@@ -870,6 +875,9 @@ class Network:
                 query = (
                     f"""SELECT f.* FROM functions f LEFT JOIN {_REGION} r ON r.region = f.vram / {REGION_BYTES}
                         WHERE f.project_id=:pid AND f.status='open' AND (:weak = 0 OR f.abandons < :escalate)
+                        AND (:batch_unit IS NULL OR (f.unit=:batch_unit AND f.n_insns<=:batch_limit AND f.boost>=0
+                             AND f.id NOT IN ({WAITING})))
+                        AND f.id NOT IN (SELECT value FROM json_each(:batch_sdk))
                         AND (:below IS NULL OR f.best_score IS NULL OR
                              MAX(0.0, 100.0 * (1.0 - CAST(f.best_score AS REAL) / MAX(1, f.n_insns * 100))) < :below)
                         AND (:tries IS NULL OR (SELECT COUNT(*) FROM attempts a
@@ -892,7 +900,8 @@ class Network:
                                  CASE WHEN :custom THEN 0 ELSE f.id IN ({READY}) END DESC, CASE WHEN :custom THEN 0 ELSE f.id IN ({WANTED}) END DESC,
                                  :strong AND f.abandons >= :escalate DESC, {STRATEGIES[strategy]} LIMIT 1""")
                 escalate = self._escalation(db, proj["id"]) if route else ESCALATE_AFTER
-                args = {"model_tried": json.dumps(list(excluded)), "stalled":json.dumps(blocked), "sdk": json.dumps(list(sdk)), "pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
+                args = {"batch_sdk": json.dumps(batch_from.get("deferred",[]) if batch_from is not None else []), "batch_unit": batch_from["unit"] if batch_from is not None else None,
+                        "batch_limit": batch_from["limit"] if batch_from is not None else None, "model_tried": json.dumps(list(excluded)), "stalled":json.dumps(blocked), "sdk": json.dumps(list(sdk)), "pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
                         "overall": overall, "escalate": escalate, "weak": route == "weak", "strong": route == "strong",
                         "mine": self._own_release_cutoff(db, agent.id, now), "custom": custom,
                         "below": policy.get("match_below"), "tries": policy.get("max_tries")}
@@ -956,6 +965,7 @@ class Network:
         fn = self._function(function, project)
         if not_c and not notes.strip():
             raise NetworkError("say in notes why no C makes it: the next agents and the user read it")
+        progress = self.claim_progress(agent, fn)
         with self.store.tx() as db:
             row = db.execute("SELECT agent_id FROM claims WHERE function_id=?", (fn["id"],)).fetchone()
             if row is None or row["agent_id"] != agent.id:
@@ -968,7 +978,9 @@ class Network:
             self._event(db, fn["project_id"], agent.id, "release", fn["name"])
             said = self._not_c(db, fn, agent, notes.strip()) if not_c else ""
         from . import claim_stalls
-        claim_stalls.released(self,fn)
+        claim_stalls.released(self,fn,exhausted=bool(progress and progress['compiles'] and progress['no_better'] >= progress['after']))
+        from . import candidate_quality
+        candidate_quality.capture(self,fn,agent,notes,progress)
         return (f"Released {fn['name']}. Your best attempt and notes are saved so the next agent starts "
                 f"where you left off.{said} Call claim_function for a new one.")
 
@@ -1109,6 +1121,7 @@ class Network:
         proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
         ctx = self._context(proj["id"], fn["unit"])
         claim = self.store.one("SELECT * FROM claims WHERE function_id=?", fn["id"])
+        from . import candidate_quality
         lines = [f"## {header}: {proj['slug']}/{fn['name']}",
                  f"size {fn['size']} bytes, {fn['n_insns']} instructions, arch {proj['arch']}, "
                  f"context.h v{ctx['version']} ({len(ctx['header'].splitlines())} lines)"]
@@ -1155,6 +1168,7 @@ class Network:
             lines.insert(2, f"source unit {fn['unit']}: call get_context with function=\"{fn['name']}\" for its header")
         if header == "CLAIMED":
             lines += ["", self._next_step(proj, ctx)]
+        lines += candidate_quality.brief(self,fn)
         return "\n".join(lines)
 
     def notes_for_brief(self, fn, best_text: str = "", show: int | None = None, when: bool = True) -> list[str]:

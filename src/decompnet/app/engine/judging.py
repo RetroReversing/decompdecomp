@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from ... import scoring
-from ...network import MACHINE_AGENTS, WAITING, Agent, Network, NetworkError, stall_line
+from ...network import MACHINE_AGENTS, Agent, Network, NetworkError, stall_line
 from ...rom import match, split
 from ...rom.symbols import SymbolTable
 from ..function_names import canonical_source
@@ -71,8 +71,7 @@ class JudgeMixin:
         neighbours in the same file. Most small functions match on the first try, so an agent writes them all and
         judges them in one compile_and_diff: a fraction of the turns. Big functions come alone."""
         count = max(1, min(int(count or 1), 6))
-        policy = self.selection(project, agent.name) if project else {}
-        if count == 1 or any(v is not None and v != "" for v in policy.values()) or self._link(project) is not None:
+        if count == 1 or self._link(project) is not None:
             return self.claim(agent, project, None, strategy)
         proj = self._project(project)
         held = self.store.all("SELECT f.* FROM claims c JOIN functions f ON f.id=c.function_id WHERE c.agent_id=? "
@@ -86,7 +85,7 @@ class JudgeMixin:
         first = held[0]
         rows = list(held)
         if first["n_insns"] <= BATCH_INSNS and len(rows) < count:
-            rows += self._batch_more(agent, proj, first, count - len(rows))
+            rows += self._batch_more(agent, proj, first, count - len(rows), strategy)
         if len(rows) == 1:
             return self.claim(agent, project, None, strategy)
         names = [r["name"] for r in rows]
@@ -98,22 +97,17 @@ class JudgeMixin:
         briefs = [self.forks.brief(r, agent, "CLAIMED") if fork else self._brief(r, agent, "CLAIMED") for r in rows]
         return "\n\n---\n\n".join([head, *briefs])
 
-    def _batch_more(self, agent: Agent, proj, first, n: int) -> list:
-        """Up to n more small open functions next to `first` (same file, nearest address), claimed for the agent."""
-        sdk = self.sdk_functions(proj)
-        deferred = list(sdk) if first["id"] not in sdk else []
-        now = time.time()
-        with self.store.tx() as db:
-            self._expire_claims(db)
-            rows = db.execute(
-                "SELECT f.* FROM functions f WHERE f.project_id=? AND f.status='open' AND f.boost >= 0 AND f.n_insns <= ? "
-                f"AND f.abandons = 0 AND f.unit=? AND f.id NOT IN (SELECT function_id FROM claims) AND f.id NOT IN ({WAITING}) "
-                "AND f.id NOT IN (SELECT value FROM json_each(?)) "
-                "ORDER BY ABS(COALESCE(f.vram, 0) - ?), f.id LIMIT ?",
-                (proj["id"], BATCH_INSNS, first["unit"], json.dumps(deferred), first["vram"] or 0, n)).fetchall()
-            for r in rows:
-                db.execute("INSERT INTO claims VALUES(?,?,?,?)", (r["id"], agent.id, now, now + self.claim_ttl))
-                self._event(db, proj["id"], agent.id, "claim", r["name"])
+    def _batch_more(self, agent: Agent, proj, first, n: int, strategy: str = "easiest") -> list:
+        """Up to n more small open functions in the same file, using the normal queue and filters, claimed for the agent."""
+        sdk=self.sdk_functions(proj)
+        deferred=list(sdk) if first['id'] not in sdk else []
+        rows = []
+        for _ in range(n):
+            row = Network.claim_row(self, agent, proj['slug'], strategy=strategy,
+                                    batch_from={'unit':first['unit'] or '', 'limit':BATCH_INSNS, 'deferred':deferred})
+            if row is None:
+                break
+            rows.append(row)
         return rows
 
     def attempt_many(self, agent: Agent, names: list[str], source: str, project: str | None = None) -> str:

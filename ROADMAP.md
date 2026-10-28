@@ -213,7 +213,8 @@ hoisting before stores, and scalar parameter assignments split through compatibl
 releases a tried function, a separate machine pass tries at most six candidates with an eight-second
 scheduling budget (an in-flight compiler may finish later), before another agent edits it. It uses the
 ordinary ROM/project judge, leases, per-candidate cache and repair provenance; room clients defer to their host.
-Automatic claims pause a candidate after three releases in the same state. Source, context, symbol, compiler
+Automatic claims pause a candidate immediately after its no-improvement budget is exhausted, or after three
+ordinary releases in the same state. Source, context, symbol, compiler
 or repair-rule changes reopen it, and explicit selection remains available. Imported builds also observe
 source, include headers and common build configuration files; custom generated dependencies outside those
 paths still need richer per-file dependency records.
@@ -849,3 +850,19 @@ random turns; the permuter's own improvements do not. See [the setup guide](docs
 Remaining gap: imported projects cannot automatically inject a reference declarations header into the project
 build. Their body must already compile against the project's own headers. This needs a reviewed header edit and
 regression checking of affected units before it can become automatic.
+
+
+Agent work selection now reaches small-function batches through the shared scheduler (including percentage,
+model-history, attempt and lease filters). Paused queues wait without starting a paid session. Cooldowns and
+local repair history use the function's compiler range, effective unit header, referenced symbols and target,
+so unrelated symbols, other-unit contexts and progress bookkeeping do not reopen old work. Imported projects
+also watch source includes and shared build configuration; unresolved includes conservatively watch include/.
+Actual shared header/build changes still invalidate the corresponding evidence. Judged local misses persist
+across claims and app restarts; failed builds remain retryable and explicit patch trials remain available.
+
+Agent-reported historical candidate concerns are retained with bounded compiled alternatives and shown in both
+ROM and imported briefs via get_function(section="quality"). Existing notes are labelled unanchored reports.
+These are not semantic proofs: best scores, saved best C and the exact judge remain unchanged. Alternatives must
+be rejudged in their current context. Custom generated dependencies outside the observed build/include files
+still need richer build-system dependency records.
+

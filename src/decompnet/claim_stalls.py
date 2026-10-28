@@ -9,18 +9,8 @@ PREFIX = 'agent-stall:'
 
 
 def common_state(net, proj):
-    contexts = net.store.all('SELECT unit,MAX(version) AS version FROM context_versions WHERE project_id=? GROUP BY unit ORDER BY unit',proj['id'])
-    symbols = net.store.all('SELECT name,address,size,kind FROM symbols WHERE project_id=? ORDER BY name',proj['id'])
-    state = [VERSION,proj['config'],[(r['unit'],r['version']) for r in contexts],
-             [tuple(r) for r in symbols], repair_rules()]
-    fp = None
-    if getattr(net,'fork_slug',lambda slug: None)(proj['slug']):
-        _, fp, _ = net.forks.get(proj['slug'])
-        paths = [fp.root / p for p in ('Makefile','build.ninja','objdiff.json','configure.py')]
-        # Observe external build/header edits without walking generated objects.
-        paths += sorted((fp.root/'include').rglob('*.h')) if (fp.root/'include').is_dir() else []
-        state.append([(str(p),file_digest(p)) for p in paths])
-    return hashlib.sha256(repr(state).encode()).hexdigest(),fp
+    # Kept as a cheap shared stamp; function-specific build dependencies are hashed below.
+    return [VERSION,repair_rules()]
 
 
 def repair_rules():
@@ -38,12 +28,9 @@ def file_digest(path):
 
 
 def signature(net, proj, fn, common=None):
-    stamp,fp = common if common is not None else common_state(net,proj)
-    state = [stamp,fn['best_source'],fn['target'],fn['relocs']]
-    if fp is not None:
-        unit = fp.unit(fn['unit'])
-        state.append(file_digest(fp.root/unit.source) if unit.source else None)
-    return hashlib.sha256(repr(state).encode()).hexdigest()
+    from . import candidate_scope
+    stamp = common if common is not None else common_state(net,proj)
+    return hashlib.sha256(repr((stamp,candidate_scope.key(net,proj,fn),json.loads(proj['config']).get('instructions'),fn['best_source'])).encode()).hexdigest()
 
 
 def released(net, fn, *, exhausted=False):

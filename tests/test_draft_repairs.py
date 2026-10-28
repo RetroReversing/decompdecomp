@@ -6,7 +6,7 @@ import pytest
 
 from decompnet.app.draft_repairs import variants
 from decompnet.app.permute import State
-from tests.test_permute import AGENT, FakeNet, ScriptedPermuter
+from tests.test_permute import AGENT, FakeNet, ProjectStub, ScriptedPermuter
 
 
 def test_address_conversion_and_commutation_are_combined():
@@ -92,7 +92,7 @@ def test_project_mode_uses_project_header_and_judge():
     net = setup_repair_net()
     net.fork_slug = lambda slug: 'fork'
 
-    class Fork:
+    class Fork(ProjectStub):
         def permuter_header(self, slug, function):
             assert (slug, function) == ('fork', 'f1')
             return 'typedef int word;'
@@ -169,7 +169,7 @@ def test_scaled_pointer_candidate_reaches_the_normal_mode_judge(imported):
         db.execute('UPDATE functions SET best_source=?',(source,))
     if imported:
         net.fork_slug=lambda slug:'fork'
-        class Fork:
+        class Fork(ProjectStub):
             def permuter_header(self,slug,function):
                 assert (slug,function)==('fork','f1')
                 return 'typedef unsigned short u16; typedef int s32;'
@@ -190,7 +190,7 @@ def test_linked_byte_chain_reaches_normal_judge_without_accepting_intermediate_s
         db.execute('UPDATE functions SET best_source=?',(source,))
     if imported:
         net.fork_slug=lambda slug:'fork'
-        class Fork:
+        class Fork(ProjectStub):
             def permuter_header(self,slug,function):
                 assert (slug,function)==('fork','f1')
                 return 'typedef unsigned char u8; typedef unsigned short u16; typedef int s32;'
@@ -211,7 +211,7 @@ def test_inline_expression_candidate_is_kept_only_by_the_normal_mode_judge(impor
         db.execute('UPDATE functions SET best_source=?',(source,))
     if imported:
         net.fork_slug=lambda slug:'fork'
-        class Fork:
+        class Fork(ProjectStub):
             def permuter_header(self,slug,function):
                 assert (slug,function)==('fork','f1')
                 return ''
@@ -232,7 +232,7 @@ def test_spare_pointer_staging_uses_the_normal_mode_judge(imported):
         db.execute('UPDATE functions SET best_source=?',(source,))
     if imported:
         net.fork_slug=lambda slug:'fork'
-        class Fork:
+        class Fork(ProjectStub):
             def permuter_header(self,slug,function):
                 assert (slug,function)==('fork','f1')
                 return ''
