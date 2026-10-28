@@ -1,7 +1,10 @@
 """A persistent, bounded beam of local repairs; only the normal judge accepts matches."""
 
+import hashlib
 import json
 import time
+from itertools import zip_longest
+from pathlib import Path
 
 from ..network import NetworkError
 from ..project import compiler_for
@@ -21,7 +24,14 @@ def advance(state, evaluate, variants, stopped):
             return True
         score = report.get('score')
         if isinstance(score, (int, float)) and 0 < score <= node['ceiling']:
-            state['next'].append({**node, 'score': score, 'report': report})
+            # Keep two source shapes per identical output: a later source edit can distinguish them.
+            # This only prunes search branches, never supplies a match verdict.
+            output = output_key(report)
+            outputs = state.setdefault('outputs', {})
+            if output is None or outputs.get(output, 0) < 2:
+                state['next'].append({**node, 'score': score, 'report': report})
+                if output is not None:
+                    outputs[output] = outputs.get(output, 0) + 1
         if not state['pending']:
             best = sorted(state['next'], key=lambda n: n['score'])[:WIDTH]
             state['next'] = []
@@ -35,6 +45,27 @@ def advance(state, evaluate, variants, stopped):
                     state['pending'].append(dict(source=source, depth=parent['depth'] + 1,
                                                  ceiling=parent['score']))
     return False
+
+
+def repair_rules():
+    from ..claim_stalls import file_digest
+    from ..claim_stalls import repair_rules as rules
+    from . import repair_ranking
+    return rules() + [('repair_ranking', file_digest(Path(repair_ranking.__file__)))]
+
+
+def output_key(report):
+    if report.get('candidate_target') is None:
+        return None  # displayed rows alone are insufficient evidence of identical compiler output
+    return hashlib.sha256(repr((report['candidate_target'], report.get('candidate_relocs'))).encode()).hexdigest()
+
+
+def targeted_variants(source, report, fn, arch, flags):
+    from . import draft_repairs, repair_ranking
+    labels = {}
+    proposals = draft_repairs.variants(source, fn['name'], arch, fn['asm'] or '', flags, labels)
+    families = repair_ranking.order(list(dict.fromkeys(labels[p] for p in proposals)), report.get('rows') or [])
+    return sorted(proposals, key=lambda p: families.index(labels[p]))
 
 
 def run(twins, slug, job):
@@ -54,6 +85,7 @@ def run(twins, slug, job):
         'SELECT name,address FROM symbols WHERE project_id=? ORDER BY name', proj['id'])]
     known = {name for name, _ in symbols}
     matched = 0
+    rules = repair_rules()
     rows = net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open' AND best_source IS NOT NULL "
                          "AND best_score>0 AND best_score<=?*MAX(1,n_insns) "
                          "ORDER BY id", proj['id'], 100 - similar_matches.REPAIR_PERCENT)
@@ -69,7 +101,7 @@ def run(twins, slug, job):
             continue
         header = net._context(proj['id'], fn['unit'])['header']
         settings = compiler_for(cfg, fn['vram'])
-        context = similar_matches.trial_key('', header, settings, fn, ['beam-v1', symbols])
+        context = similar_matches.trial_key('', header, settings, fn, ['beam-v2', symbols, rules])
         saved = net.store.one('SELECT context,state FROM repair_frontiers WHERE function_id=?', fn['id'])
         state = json.loads(saved['state']) if saved and saved['context'] == context else None
         if state is None or fn['best_source'] not in state['seen']:
@@ -104,13 +136,16 @@ def run(twins, slug, job):
                            (proj['id'], fn['id'], 'iterative-repair', outcome, reason, time.time()))
             return report
 
-        def variants(source, report, fn=fn):
+        def variants(source, report, fn=fn, settings=settings):
             guided = address_repairs.variants(source, report, fn, bool(proj['big_endian']), known)
             if report.get('candidate_target'):
                 compiled = dict(target=bytes.fromhex(report['candidate_target']), relocs=report.get('candidate_relocs', '[]'))
                 guided += similar_matches.literal_variants(source, compiled, fn, bool(proj['big_endian']))
-            # Reserve some proposals for casts/order/register repairs even when address evidence is plentiful.
-            return list(dict.fromkeys(guided[:4] + similar_matches.repair_variants(source, report)[:4]))
+            targeted = targeted_variants(source, report, fn, proj['arch'], settings.get('flags', []))
+            # Interleave pools so address proposals cannot starve targeted families (or vice versa).
+            pools = [guided[:4], targeted[:8], similar_matches.repair_variants(source, report)[:4]]
+            return list(dict.fromkeys(item for group in zip_longest(*pools)
+                                      for item in group if item is not None))
 
         if advance(state, evaluate, variants, stopped):
             matched += 1
