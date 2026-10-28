@@ -44,6 +44,8 @@ class Search(Permuter):
         self.best = None
         self.phase = 'local repairs'
         self.measuring_baseline = False
+        self.record_improvement = lambda score: None
+        self.recorded_best = None
 
     def check(self):
         self.log.check_cancel()
@@ -53,6 +55,9 @@ class Search(Permuter):
             raise SearchLimit('Variant limit reached')
 
     def report(self):
+        if self.best is not None and (self.recorded_best is None or self.best < self.recorded_best):
+            self.record_improvement(self.best)
+            self.recorded_best = self.best
         self.log.progress({'phase': self.phase, 'tested': self.tested, 'skipped': self.skipped,
                            'best_score': self.best, 'variant_limit': self.limit, 'rejected': self.rejected,
                            'seconds_left': max(0, round(self.deadline-time.monotonic()))})
@@ -105,6 +110,8 @@ def run(net, slug, name, minutes, max_variants, log):
         from ..candidate_scope import key
         build_scope = key(net, proj, fn)
     search = Search(net, minutes, max_variants, log)
+    if sweeps:
+        search.record_improvement = lambda score: sweeps.improvement(fn, score)
     state = State()
     agent, _ = net.local_agent('permuter')
     reason = 'Current candidate families finished'

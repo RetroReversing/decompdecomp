@@ -4,7 +4,7 @@ import json
 import threading
 import time
 
-from .. import candidate_scope
+from .. import candidate_scope, scoring
 from ..network import NetworkError
 from . import agent_tokens, deep_permuter
 
@@ -27,6 +27,10 @@ class Sweeps:
         self.lock = threading.RLock()
         with net.store.tx() as db:
             db.execute(SCHEMA)
+            db.execute('''CREATE TABLE IF NOT EXISTS deep_permutation_improvements(
+                function_id INTEGER PRIMARY KEY, starting_score INTEGER NOT NULL,
+                starting_percent REAL, new_score INTEGER NOT NULL,
+                new_percent REAL, updated_at REAL NOT NULL)''')
 
     def config(self, slug):
         proj = self.net.project_row(slug)
@@ -50,6 +54,32 @@ class Sweeps:
         result['result'] = json.loads(row['result'])
         return result
 
+    def improvement(self, before, score):
+        """Keep only scores measured by this search, including wins before cancellation."""
+        start = before['best_score']
+        if score is None or start is None or score >= start:
+            return
+        def percent(value):
+            if value == 0:
+                return 100.0
+            if not before['n_insns']:
+                return None
+            return max(0.0, min(99.9 if value else 100.0,
+                               100.0 * (1 - value / max(1, before['n_insns'] * 100))))
+        with self.net.store.tx() as db:
+            db.execute('''INSERT INTO deep_permutation_improvements
+                (function_id,starting_score,starting_percent,new_score,new_percent,updated_at)
+                VALUES(?,?,?,?,?,?) ON CONFLICT(function_id) DO UPDATE SET
+                new_score=excluded.new_score,new_percent=excluded.new_percent,updated_at=excluded.updated_at
+                WHERE excluded.new_score < deep_permutation_improvements.new_score''',
+                (before['id'], start, percent(start), score, percent(score), time.time()))
+
+    def improvements(self, project_id):
+        rows = self.net.store.all('''SELECT i.*, f.name AS function FROM deep_permutation_improvements i
+            JOIN functions f ON f.id=i.function_id WHERE f.project_id=? ORDER BY i.updated_at DESC,f.id''', project_id)
+        return [dict(row) | {'starting_percent_text': scoring.percent_text(row['starting_percent']),
+                             'new_percent_text': scoring.percent_text(row['new_percent'])} for row in rows]
+
     def status(self, slug):
         proj = self.net.project_row(slug)
         counts = self.net.store.one("SELECT COUNT(*) total, SUM(best_source IS NOT NULL AND best_score IS NOT NULL) ready "
@@ -57,10 +87,12 @@ class Sweeps:
         completed = self.net.store.one("SELECT COUNT(*) n FROM deep_permutation_passes d JOIN functions f ON f.id=d.function_id "
                                       "WHERE f.project_id=? AND d.state='completed'", proj['id'])['n']
         errors = self.net.store.one("SELECT COUNT(*) n FROM deep_permutation_passes d JOIN functions f ON f.id=d.function_id WHERE f.project_id=? AND d.state='error'", proj['id'])['n']
+        improvements = self.improvements(proj['id'])
         with self.lock:
             current = dict(self.active.get(slug, {}))
         job = self.jobs.jobs.get(current.get('job'), {})
         return self.config(slug) | {'total': counts['total'], 'ready': counts['ready'] or 0,
+                                   'improved': len(improvements), 'improvements': improvements,
                                    'completed': completed, 'errors': errors, 'state': job.get('state', 'idle'), **current,
                                    'progress': job.get('progress', {}), 'error': job.get('error')}
 
@@ -113,6 +145,7 @@ class Sweeps:
                 self.jobs.cancel(current['job'])
 
     def completed(self, slug, before, minutes, variants, result, build_scope):
+        self.improvement(before, result.get('best_score'))
         fresh = self.net._function(before['name'], slug)
         proj = self.net.project_row(slug)
         stable = build_scope == candidate_scope.key(self.net, proj, before)

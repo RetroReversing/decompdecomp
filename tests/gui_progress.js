@@ -287,3 +287,20 @@ main().catch((error) => { console.error(error); process.exitCode = 1; });
     if (state === "running") assert.equal(bar.firstElementChild.style.width, "");
   }
 }
+
+// Durable deep-pass results show every improvement and keep the function link usable.
+{
+  const source = read("steering"), start = source.indexOf("function renderDeepSweepResults(status) {");
+  const end = source.indexOf("async function renderDeepSweep()", start);
+  const result = {innerHTML:"", querySelectorAll:()=>[button]}, button = {dataset:{deepResult:"0"}};
+  let opened;
+  const ctx = {$:()=>result, esc:s=>String(s).replaceAll("<", "&lt;"), openFn:name=>{opened=name;}};
+  vm.createContext(ctx); vm.runInContext(source.slice(start,end), ctx);
+  ctx.renderDeepSweepResults({improved:1, improvements:[{function:"f<0", starting_score:50,
+    new_score:25, starting_percent_text:"95.0%", new_percent_text:"97.5%"}]});
+  for (const text of ["1 functions improved", "f&lt;0", "50", "25", "95.0%", "97.5%"])
+    assert.ok(result.innerHTML.includes(text));
+  button.onclick(); assert.equal(opened,"f<0");
+  ctx.renderDeepSweepResults({improved:0, improvements:[]});
+  assert.ok(!result.innerHTML.includes("<table>"));
+}

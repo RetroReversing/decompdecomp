@@ -188,3 +188,64 @@ def test_single_function_search_also_records_a_completed_pass(monkeypatch):
     result=deep_permuter.run(net,'game','f',1,1,Log())
     assert result['reason']=='Variant limit reached'
     assert obj.history('game',net.function())['completed']
+
+
+def test_improvement_totals_scores_and_percentages_survive_restart_and_repeat(sweep):
+    obj, net, _, path = sweep
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET n_insns=10')
+    obj.run('game', 1, 10, Log())
+    status = obj.status('game')
+    assert status['improved'] == 2
+    row = next(r for r in status['improvements'] if r['function'] == 'f0')
+    assert (row['starting_score'], row['new_score']) == (50, 25)
+    assert (row['starting_percent_text'], row['new_percent_text']) == ('95.0%', '97.5%')
+    fresh = net._function('f0', 'game')
+    obj.improvement(fresh, 0)
+    # Later poorer results, or scores from unrelated agent work, cannot rewrite these results.
+    obj.improvement(fresh, 10)
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET best_score=0,status='matched' WHERE name='f1'")
+        db.execute('DELETE FROM deep_permutation_passes')  # repeat clears completion, not improvements
+    reopened = Sweeps(RomNetwork(path / 'db.sqlite', path), Jobs())
+    status = reopened.status('game')
+    assert status['improved'] == 2
+    row = next(r for r in status['improvements'] if r['function'] == 'f0')
+    assert (row['starting_score'], row['new_score'], row['new_percent_text']) == (50, 0, '100%')
+    row = next(r for r in status['improvements'] if r['function'] == 'f1')
+    assert row['new_score'] == 25
+
+
+def test_cancelled_search_keeps_partial_improvements_and_does_not_round_to_full_match(sweep, monkeypatch):
+    obj, net, _, _ = sweep
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET n_insns=100')
+    def cancel(net, slug, name, minutes, variants, log):
+        obj.improvement(net._function(name, slug), 1)
+        raise RuntimeError('cancelled')
+    monkeypatch.setattr(deep_permuter, 'run', cancel)
+    with pytest.raises(RuntimeError, match='cancelled'):
+        obj.run('game', 1, 10, Log())
+    row = obj.status('game')['improvements'][0]
+    assert row['new_percent_text'] == '99.9%'
+    assert not obj.history('game', net._function('f0', 'game'))['completed']
+
+
+def test_single_search_publishes_improvements_before_completion(monkeypatch):
+    from decompnet.app.permute import Permuter
+    from tests.test_deep_permuter import setup
+    net = setup(monkeypatch)
+    obj = Sweeps(net, Jobs())
+    net.deep_sweeps = obj
+    monkeypatch.setattr(Permuter, '_score', lambda *args: 20)
+    log = Log()
+    original = log.progress
+    observed = []
+    def progress(value):
+        observed.append(obj.status('game')['improved'])
+        original(value)
+    log.progress = progress
+    deep_permuter.run(net, 'game', 'f', 1, 1, log)
+    assert 1 in observed
+    row = obj.status('game')['improvements'][0]
+    assert (row['starting_score'], row['new_score']) == (40, 20)
