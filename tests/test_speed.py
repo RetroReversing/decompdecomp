@@ -304,14 +304,13 @@ def test_the_permuter_finishes_a_near_miss(game, monkeypatch):
     assert st.matched == 1 and net._function("entity_update_physics", slug)["status"] == "matched", st
 
 
-@pytest.mark.skipif(toolchains.installed("decomp-permuter") is None, reason="needs decomp-permuter")
 @pytest.mark.parametrize("name,written,near", [
     ("entity_spawn", "e->vel_x = 0;\n            e->vel_y = 0;", "e->vel_y = 0;\n            e->vel_x = 0;"),
-    ("checksum_save", "(sum << 5) + sum", "sum + (sum << 5)"),  # no simple rewrite turns operands around
+    ("checksum_save", "(sum << 5) + sum", "sum + (sum << 5)"),  # a local probe avoids waiting for random drift
 ])
-def test_decomp_permuter_brings_a_near_miss_back_to_a_match(game, name, written, near):
+def test_permuter_repairs_local_ordering_before_random_search(game, name, written, near):
     """A matching function with two statements in another order, or an addition's operands the other way round,
-    left as an agent's near miss: decomp-permuter's variants, judged by our judge, match it again in one turn."""
+    left as an agent's near miss: bounded local ordering probes, judged normally, match it in one turn."""
     import time
 
     from decompnet.app import permute

@@ -53,6 +53,8 @@ save/export that project. Review them before publishing a source-assisted decomp
 
 - Deterministic repairs use measured mismatch evidence to rank applicable families: stack storage/declarations,
   register lifetimes, call signatures, constants or control flow. No family is excluded solely by this heuristic.
+- Each random turn first tries up to eight cached local ordering probes: adjacent equal-constant stores and
+  shift/add operand order. They share the turn deadline and normal judge, avoiding random drift for these cheap cases.
 - Random decomp-permuter search boosts relevant existing compiler weights by three, retaining every other upstream
   weight. Focused batches alternate with upstream defaults so a misleading category cannot dominate the turn.
   The fallback rewrites use the same focus. This changes search order, never the verdict.

@@ -394,6 +394,11 @@ class Permuter:
                 if measured == 0:
                     st.add(improved=1, matched=1)
                     return
+            if hasattr(self.net, 'keep_diff'):
+                best, best_src = self._local_order(agent, proj, fn, st, fork, deadline, best, best_src)
+                cur, cur_src = best, best_src
+                if best == 0:
+                    return
             rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
             focus, boosts = permuter_focus.classify(rows), permuter_focus.boosts(rows)
             batches = misses = 0
@@ -492,6 +497,31 @@ class Permuter:
                     st.add(improved=1, matched=1)
                 break
         return count
+
+    def _local_order(self, agent, proj, fn, st, fork, deadline, best, best_src):
+        """Eight cached cheap hypotheses, inside the turn's existing time/claim allowance."""
+        from . import permuter_inputs, permuter_local, source_preparation
+        state = (st.started_at, proj['config'], self.net.forks.permuter_header(fork, fn['name']),
+                 permuter_inputs.build_state(proj)) if fork else source_preparation.inputs(self.net, proj, fn)
+        for family, candidate in permuter_local.variants(fn['best_source'], fn['name']):
+            if st.stop.is_set() or time.monotonic() >= deadline:
+                break
+            key = 'local-order-v1:' + hashlib.sha256(repr((state, candidate)).encode()).hexdigest()
+            if self.net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], key):
+                continue
+            st.add(variants=1, repairs=1)
+            with repair_trial({'kind': 'local order before permutation', 'family': family}):
+                score = self._score(agent, proj, fn, candidate, best, fork)
+            with self.net.store.tx() as db:
+                db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
+                           (fn['id'], key, str(score), family))
+            if score is not None and score < best:
+                best, best_src = score, candidate
+                st.add(improved=1)
+                if score == 0:
+                    st.add(matched=1)
+                    break
+        return best, best_src
 
     def _baseline(self, agent, proj, fn, st, fork):
         """Fresh evidence once per exact input in this process; a bounded cache avoids repeated baseline compiles."""
