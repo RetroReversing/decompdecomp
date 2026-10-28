@@ -1419,6 +1419,11 @@ class Network:
             else:
                 new_header = header.rstrip("\n") + "\n\n" + new.strip("\n") + "\n"
             members = self._matched_using(proj, unit)
+            from .context_preflight import conflicts
+            incompatible=conflicts(new_header,members)
+            if incompatible:
+                listing='\n'.join(f'- {fn}: conflicting extern {name}' for fn,name in incompatible[:8])
+                return ('❌ REJECTED by declaration preflight; no regression compiles run. Keep declarations candidate-local.\n'+listing)
             # Rejections only: exact header bytes and all judge inputs distinguish trials. A short
             # process-local lifetime also limits effects of external tool/environment changes.
             symbols = self.store.all('SELECT * FROM symbols WHERE project_id=? ORDER BY name',proj['id'])
