@@ -55,5 +55,8 @@ def test_later_mismatch_focus_and_draft_aliases(tmp_path,monkeypatch):
     monkeypatch.setattr(net,'_asm_text',lambda *args:'\n'.join(lines))
     net.keep_diff(a.id,fn['id'],[('i','first','other'),('i','second','other')])
     assert 'Focus at target line 60' in agent_tokens.assembly(net,'game','f',focus='mismatch:2',agent=a)
+    assert 'Target assembly lines 12:52' in agent_tokens.assembly(net,'game','f',focus='body',agent=a)
+    with pytest.raises(NetworkError):
+        agent_tokens.assembly(net,'game','f',focus='mismatch:1:2',agent=a)
     with net.store.tx() as db:db.execute("UPDATE functions SET seed='int f(){return 0;}'")
     assert 'Stored machine draft' in agent_tokens.function_view(net,a,'game','f','draft')
