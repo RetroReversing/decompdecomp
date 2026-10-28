@@ -818,10 +818,26 @@ class Manager:
                 continue
         return out
 
+    def reset_metrics(self, sid: str) -> None:
+        from .agent_metrics import reset
+        reset(self, sid)
+
     def snapshot(self, since: dict | None = None) -> list[dict]:
+        from .agent_metrics import results
         since = since or {}
+        cache = getattr(self, '_metrics_cache', {})
+        sessions = list(self.sessions.values())
+        board = {}
+        for slug in {s.slug for s in sessions}:
+            key = tuple(s.id for s in sessions if s.slug == slug)
+            old = cache.get(slug)
+            if old is None or old[0] != key or time.monotonic() - old[1] > 5:
+                old = (key, time.monotonic(), results(self.net, slug, [s for s in sessions if s.slug == slug]))
+                cache[slug] = old
+            board.update(old[2])
+        self._metrics_cache = cache
         out = []
-        for s in self.sessions.values():
+        for s in sessions:
             row = s.snapshot(int(since.get(s.id, 0)))
             records = self.net.store.all("SELECT * FROM helper_sessions WHERE helper_id=? AND agent=? AND ended_at IS NOT NULL",
                                          s.id, s.agent_name)
@@ -836,6 +852,20 @@ class Manager:
                 recorded_tokens += s.usage["tokens"]
             row["estimated_cost"] = (sum(estimates) if estimates and all(x is not None for x in estimates)
                                      and recorded_tokens == s.tokens else None)
+            baseline = s.options.get('_metrics', {})
+            row['metrics'] = board.get(s.agent_name, {})
+            row['metrics_since'] = baseline.get('at')
+            row['metrics_after'] = baseline.get('attempt', 0)
+            row['lifetime_tokens'] = s.tokens
+            for key in ('tokens', 'usd', 'runs', 'restarts'):
+                row[key] = max(0, row[key] - baseline.get(key, 0))
+            if baseline:
+                # Provider totals may arrive only at session end. The display counts
+                # usage reported after reset, never guesses how to split an active call.
+                old_cost = baseline.get('estimated_cost')
+                cost = row['estimated_cost']
+                row['estimated_cost'] = (max(0, cost - old_cost) if cost is not None and old_cost is not None
+                                         else 0 if row['tokens'] == 0 else None)
             out.append(row)
         return out
 
