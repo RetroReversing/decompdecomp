@@ -195,7 +195,7 @@ def test_targeted_ranking_prefers_load_order_for_scheduling_diffs(monkeypatch):
 
 
 def test_new_repair_rules_reopen_frontier_and_reuse_cached_seed(pair,monkeypatch):
-    from decompnet.app import address_repairs,similar_matches
+    from decompnet.app import address_repairs, similar_matches
     with pair.store.tx() as db:
         db.execute("UPDATE functions SET best_source='seed',best_score=20,n_insns=8 WHERE id=2")
     monkeypatch.setattr(address_repairs,'variants',lambda *a:[])
