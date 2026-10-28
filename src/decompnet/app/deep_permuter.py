@@ -7,6 +7,7 @@ import hashlib
 import json
 import time
 
+from .. import scoring
 from ..network import NetworkError
 from ..project import compiler_for
 from . import agent_tokens, draft_repairs, permuter_local, stack_padding_repairs
@@ -34,14 +35,18 @@ def validate(net, slug, name, minutes, max_variants):
 
 
 class Search(Permuter):
-    def __init__(self, net, minutes, max_variants, log):
+    def __init__(self, net, minutes, max_variants, log, fn=None):
         super().__init__(net)
         self.deadline = time.monotonic()+minutes*60
         self.seconds = minutes*60
         self.limit = max_variants
         self.log = log
         self.tested = self.skipped = self.visited = self.rejected = 0
-        self.best = None
+        self.starting_score = fn['best_score'] if fn is not None else None
+        self.best = self.starting_score
+        self.max_score = max(1, fn['n_insns'] or 0) * scoring.PENALTY_INSERTION if fn is not None else None
+        self.improvements = 0
+        self.baseline_measured = False
         self.phase = 'local repairs'
         self.measuring_baseline = False
         self.record_improvement = lambda score: None
@@ -54,12 +59,21 @@ class Search(Permuter):
         if self.tested >= self.limit or self.visited >= self.limit*20:
             raise SearchLimit('Variant limit reached')
 
+    def metrics(self):
+        """Use the ordinary score scale; a near miss must never round up to a displayed 100%."""
+        def percent(score):
+            if score is None or self.max_score is None:
+                return None
+            return 100.0 if score == 0 else min(99.9, int(max(0, 100*(1-score/self.max_score))*10)/10)
+        return {'starting_score': self.starting_score, 'starting_percent': percent(self.starting_score),
+                'best_score': self.best, 'best_percent': percent(self.best), 'improvements': self.improvements}
+
     def report(self):
         if self.best is not None and (self.recorded_best is None or self.best < self.recorded_best):
             self.record_improvement(self.best)
             self.recorded_best = self.best
         self.log.progress({'phase': self.phase, 'tested': self.tested, 'skipped': self.skipped,
-                           'best_score': self.best, 'variant_limit': self.limit, 'rejected': self.rejected,
+                           **self.metrics(), 'variant_limit': self.limit, 'rejected': self.rejected,
                            'seconds_left': max(0, round(self.deadline-time.monotonic()))})
 
     def _baseline(self, *args):
@@ -87,7 +101,8 @@ class Search(Permuter):
         key = 'deep-v1:'+hashlib.sha256((scope+source).encode()).hexdigest()
         cached = self.net.store.one('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], key)
         score = json.loads(cached['feedback']) if cached and cached['feedback'] else None
-        if not self.measuring_baseline and isinstance(score, int) and score >= best:
+        reused = not self.measuring_baseline and isinstance(score, int) and score >= best
+        if reused:
             self.skipped += 1
         else:
             self.tested += 1
@@ -97,7 +112,13 @@ class Search(Permuter):
                     db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
                                (fn['id'], key, 'miss', 'deep function search', json.dumps(score)))
         if score is not None:
-            self.best = score if self.best is None else min(self.best, score)
+            if self.measuring_baseline and not self.baseline_measured:
+                self.starting_score = self.best = score
+                self.baseline_measured = True
+            elif not reused and not self.measuring_baseline and (self.best is None or score < self.best):
+                if self.best is not None:
+                    self.improvements += 1
+                self.best = score
         self.report()
         return score
 
@@ -109,9 +130,10 @@ def run(net, slug, name, minutes, max_variants, log):
     if sweeps:
         from ..candidate_scope import key
         build_scope = key(net, proj, fn)
-    search = Search(net, minutes, max_variants, log)
+    search = Search(net, minutes, max_variants, log, fn)
     if sweeps:
         search.record_improvement = lambda score: sweeps.improvement(fn, score)
+    search.report()
     state = State()
     agent, _ = net.local_agent('permuter')
     reason = 'Current candidate families finished'
@@ -169,7 +191,7 @@ def run(net, slug, name, minutes, max_variants, log):
     search.report()
     log(f'{reason}: {search.tested} candidates tested, {search.skipped} cached misses skipped, {search.rejected} invalid calls skipped. Verified improvements are saved immediately.')
     result = {'function': name, 'reason': reason, 'tested': search.tested, 'skipped': search.skipped,
-              'rejected': search.rejected, 'matched': net._function(name, slug)['status'] == 'matched', 'best_score': search.best}
+              'rejected': search.rejected, 'matched': net._function(name, slug)['status'] == 'matched', **search.metrics()}
     if sweeps:
         sweeps.completed(slug, fn, minutes, max_variants, result, build_scope)
     return result

@@ -71,6 +71,7 @@ function setup(file, marker, end, logId, buttonId, ranges = "") {
     },
   };
   vm.createContext(ctx);
+  vm.runInContext(read("deep-progress"), ctx);
   const base = read("base");
   vm.runInContext(base.slice(base.indexOf("const JOB_POLL_MS"), base.indexOf("/* The map's still")), ctx);
   // The page error box is independent of the bar; keep its text to check that cleanup preserves it.
@@ -259,6 +260,24 @@ async function main() {
   copyTest.ctx.showJobError(copyTest.log, "");
   assert.equal(toolbar.hidden, true);
   assert.equal(copyTest.log.textContent, "");
+  // Deep-search scores remain visible independently of the collapsed technical log.
+  {
+    const test = setup(...cases[cases.length - 1]);
+    const running = test.ctx.run();
+    assert.ok(test.get("fnDeepWork").children.includes(test.log.bar));
+    assert.equal(test.log._followTail, false);
+    test.start.resolve({job:"deep"}); await tick();
+    const metrics = {starting_score:14639,starting_percent:76.3,best_score:0,best_percent:100,
+      improvements:4,tested:268,skipped:1,reason:"Matched",seconds_left:165};
+    test.poll.resolve({state:"done",log:[],progress:metrics,result:metrics}); await running;
+    assert.equal(test.get("fnDeepStartPercent").textContent,"76.3%");
+    assert.equal(test.get("fnDeepBestPercent").textContent,"100%");
+    assert.equal(test.get("fnDeepBestScore").textContent,"Score 0");
+    assert.equal(test.get("fnDeepImproved").textContent,"4");
+    assert.equal(test.get("fnDeepTime").textContent,"2m 45s left");
+    assert.equal(test.get("fnDeepMetrics").dataset.matched,"true");
+    assert.equal(test.log.bar.removed,true);
+  }
   // A range-only compiler setting remains immediate and has no progress bar.
   const range = setup(...cases[9], "0x1000-0x2000");
   const running = range.ctx.run();

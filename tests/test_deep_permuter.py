@@ -169,3 +169,35 @@ def test_invalid_generated_calls_do_not_consume_the_compile_allowance(monkeypatc
     source = 'int send(int a,int b); int f(void) { return send(1); }'
     assert search._score(AGENT, net.project_row('game'), net.function(), source, 40, None) is None
     assert search.rejected == 1 and search.tested == 0 and not calls
+
+
+def test_live_metrics_count_only_verified_strict_improvements_and_keep_starting_baseline(monkeypatch):
+    net = setup(monkeypatch)
+    fn = net.function()
+    search = deep_permuter.Search(net, 1, 20, Log(), fn)
+    answers = iter([50, 30, 30, None, 20, 20, 0])
+    monkeypatch.setattr(Permuter, '_score', lambda *args:next(answers))
+    proj = net.project_row('game')
+    search.measuring_baseline = True
+    search._score(AGENT, proj, fn, 'baseline', 40, None)
+    assert search.metrics()['starting_score'] == 50  # The stale saved score was 40.
+    search.measuring_baseline = False
+    for source in ['better', 'equal', 'error', 'better again']:
+        search._score(AGENT, proj, fn, source, 50, None)
+    assert search.improvements == 2 and search.best == 20
+    # A second baseline when random search starts must not erase local-repair progress.
+    search.measuring_baseline = True
+    search._score(AGENT, proj, fn, 'current baseline', 20, None)
+    search.measuring_baseline = False
+    search._score(AGENT, proj, fn, 'match', 20, None)
+    assert search.metrics() == {'starting_score':50,'starting_percent':95.0,'best_score':0,
+                                'best_percent':100.0,'improvements':3}
+    assert search.log.updates[-1]['improvements'] == 3
+
+
+def test_percentages_do_not_round_a_near_match_to_100(monkeypatch):
+    net = setup(monkeypatch)
+    fn = {**dict(net.function()), 'n_insns':10000, 'best_score':1}
+    search = deep_permuter.Search(net, 1, 20, Log(), fn)
+    assert search.metrics()['starting_percent'] == search.metrics()['best_percent'] == 99.9
+    assert search.improvements == 0
