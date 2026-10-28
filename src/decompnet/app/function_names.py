@@ -30,3 +30,21 @@ def record(db, fid, old, new, **provenance):
     meta["naming"] = {"original_name": previous.get("original_name", old), "previous_name": old,
                       "name": new, "method": "rename", "at": time.time(), **provenance}
     db.execute("UPDATE functions SET meta=? WHERE id=?", (json.dumps(meta), fid))
+
+
+# Replace identifier tokens only: a renamed symbol appearing in a string must keep its original bytes.
+_C_TOKEN = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[A-Za-z_]\w*', re.S)
+
+
+def canonical_source(fn, source: str) -> str:
+    """Old saved attempts can predate a rename. Replay the function under its current symbol, preserving literals,
+    comments and whitespace (period compilers can schedule differently when formatting changes)."""
+    row = dict(fn)
+    meta = json.loads(row.get("meta") or "{}")
+    naming = meta.get("naming") or {}
+    aliases = {naming.get("original_name"), naming.get("previous_name")}
+    if row.get("vram") is not None:
+        aliases.add(f"func_{fn['vram']:08X}")
+    aliases.discard(None)
+    aliases.discard(fn["name"])
+    return _C_TOKEN.sub(lambda m: fn["name"] if m.group() in aliases else m.group(), source)

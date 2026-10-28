@@ -549,7 +549,7 @@ $("compilerParts").onclick = async (e) => {
 };
 $("setTc").onchange = () => { $("setFlags").value = ""; };  // one compiler's flags aren't another's (-G8 vs -sdatathreshold): its defaults
 $("setTcSave").onclick = async () => {
-  const wholeProject = S.ov.kind === "fork" && !$("setRanges").value.trim();
+  const wholeProject = !$("setRanges").value.trim();
   const finish = wholeProject ? beginWork($("setTcLog"), "Changing project compiler", [$("setTcSave")], "Project compiler change finished.") : () => {};
   $("setTcSave").disabled = true;
   if (wholeProject) showJobError($("setTcLog"), "");
@@ -560,7 +560,7 @@ $("setTcSave").onclick = async () => {
     if (r.job) {  // the whole game, where each source file has a compiler: every file is tried in turn
       $("setTcLog").hidden = false;
       const res = await followJob(r.job, $("setTcLog"));
-      said = `${plural(res.switched, "source file")} built with it now${res.stayed.length ? `; ${plural(res.stayed.length, "file")} kept theirs (their matches need it)` : ""}.`;
+      said = res.said || `${plural(res.switched, "source file")} built with it now${res.stayed.length ? `; ${plural(res.stayed.length, "file")} kept theirs (their matches need it)` : ""}.`;
       S.ov = await api(`/api/project?slug=${S.slug}`);
     } else S.ov = r;
     renderStats(S.ov);
