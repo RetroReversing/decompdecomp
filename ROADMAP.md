@@ -816,3 +816,6 @@ Deterministic repairs can reuse a dead existing integer local for repeated membe
 Conservative shared-header declaration preflight rejects clear primitive extern conflicts before regression compiles; uncertain declarations still use the ordinary judge. Agents can inspect later differing instructions or a bounded post-entry assembly page, and brief/draft section aliases avoid recovery turns. Bounded compiler experiments test up to six source/profile pairs against one revision, retain retrievable process-local evidence and never apply diagnostic matches. Imported trials restore source/compiler state and are not cached because external build inputs can change.
 
 Volatile absolute-register lvalues can be tested as explicit uncached MIPS addresses; scalar reads and ordinary RAM globals are excluded. Local families receive stable mismatch-based advisory ordering, never filtering or bypassing exact judges. Near-match claim briefs retain full candidate C with a bounded target listing and full-detail tools. Compiler experiments accept current (including function-range flags, or imported per-file compilers where supported). Address/literal temporaries avoid splitting C89 declaration initializers.
+
+Global permuter instruction, time-per-turn and turn-count limits are adjustable in
+Settings, persisted and applied to new turns in both ROM and imported projects.

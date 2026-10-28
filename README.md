@@ -590,3 +590,14 @@ For imported overlays missing their original strings or tables, see [supplementa
 Verified full-image imports include linked assembly routines as target-only units: assembly bytes never count
 as recovered C. Assembly wrappers containing whole binary programs are not treated as single functions; an
 explicit coverage notice identifies their exclusion from function progress.
+
+### Permuter budgets
+
+In **Settings → Permuter limits**, raise the maximum instructions per function to
+include larger near misses. Defaults are 400 instructions, 60 seconds per turn and
+four turns per function. All three limits are global, saved across restarts and
+apply to new turns in both ROM and imported projects. Raising the turn limit gives
+previously exhausted functions more turns. Larger functions compile more slowly;
+the permuter still selects candidates within 6% of an exact match. Deterministic
+repair passes retain their separate budgets. Idle workers check again within about
+three minutes; a finished permuter starts again when project agents start.

@@ -852,3 +852,22 @@ def test_toolchain_reinstall_keeps_explicit_license_acceptance(app, monkeypatch,
     assert job['state'] == 'done', job
     assert calls[0][0] == 'ido-5.2'
     assert calls[0][1]['force'] is True and calls[0][1]['accept_license'] is True
+
+
+def test_permuter_settings_apply_immediately_and_survive_reloading(app):
+    from decompnet.app.support import Settings
+
+    client, net, manager = app
+    values = {'permuter_max_insns': 2000, 'permuter_seconds': 180, 'permuter_max_turns': 12}
+    response = client.post('/api/settings', json=values, headers={'X-Decomp': '1'})
+    assert response.status_code == 200
+    assert all(response.json()[k] == v for k, v in values.items())
+    assert (net.permuter.max_insns, net.permuter.seconds, net.permuter.max_turns) == (2000, 180, 12)
+    saved = Settings(manager.home / 'settings.json').public()
+    assert all(saved[k] == v for k, v in values.items())
+    response = client.post('/api/settings', json={'permuter_max_insns': 999999, 'permuter_seconds': -1,
+                                                'permuter_max_turns': 9999}, headers={'X-Decomp': '1'})
+    assert response.json()['permuter_max_insns'] == 100000
+    assert (net.permuter.seconds, net.permuter.max_turns) == (1, 1000)
+    client.post('/api/settings', json={'permuter_max_insns': 400, 'permuter_seconds': 60,
+                                     'permuter_max_turns': 4}, headers={'X-Decomp': '1'})

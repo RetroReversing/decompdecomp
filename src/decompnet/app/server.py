@@ -64,6 +64,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     net.cascades.configure(settings.data.get('reuse_auto', True), settings.data.get('reuse_seconds', 120),
                            settings.data.get('reuse_attempts', 128), settings.data.get('iterative_enabled', False),
                            settings.data.get('iterative_seconds', 120), settings.data.get('iterative_attempts', 128))
+    net.permuter.configure(settings.data)
     net.auto_compiler = bool(settings.data.get("auto_compiler"))
     manager.budget = lambda: float(settings.data.get("budget_usd") or 0)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}

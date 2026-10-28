@@ -215,6 +215,11 @@ def register(app: App) -> None:
             net.cascades.configure(settings.data.get('reuse_auto', True), settings.data.get('reuse_seconds', 120),
                                    settings.data.get('reuse_attempts', 128), settings.data.get('iterative_enabled', False),
                                    settings.data.get('iterative_seconds', 120), settings.data.get('iterative_attempts', 128))
+        for key, maximum in [('permuter_max_insns', 100000), ('permuter_seconds', 3600), ('permuter_max_turns', 1000)]:
+            if key in data:
+                settings.data[key] = max(1, min(maximum, int(data[key])))
+        if any(key in data for key in ('permuter_max_insns', 'permuter_seconds', 'permuter_max_turns')):
+            net.permuter.configure(settings.data)
         if "auto_update" in data:
             settings.data["auto_update"] = bool(data["auto_update"])
         if "check_updates" in data:
