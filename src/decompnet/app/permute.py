@@ -207,6 +207,11 @@ class Permuter:
             st.stop.set()
 
     def candidates(self, proj, limit: int = CANDIDATES) -> list:
+        from . import permuter_inputs
+        rows = self.net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open' "
+                                  "AND best_source IS NOT NULL AND best_score>0 AND best_score<=n_insns*100*? "
+                                  "AND n_insns<=?", proj['id'], NEAR, self.max_insns)
+        permuter_inputs.refresh(self.net, proj, rows)
         return self.net.store.all(
             "SELECT * FROM functions WHERE project_id=? AND status='open' AND best_source IS NOT NULL "
             "AND best_score > 0 AND best_score <= n_insns * 100 * ? AND n_insns <= ? AND permuted < ? "
@@ -222,6 +227,9 @@ class Permuter:
                     proj = self.net.project_row(slug)
                 except NetworkError:
                     return  # the project is gone
+                from .source_preparation import run as prepare_sources
+                prepare_sources(self, proj, st)
+                proj = self.net.project_row(slug)
                 self._repair_round(agent, proj, st)
                 todo = self.candidates(proj)
                 if not todo:
@@ -240,6 +248,8 @@ class Permuter:
         st = State(stop=stop)
         if slug not in self.net.links:
             agent, _ = self.net.local_agent("permuter")
+            from .source_preparation import run as prepare_sources
+            prepare_sources(self, self.net.project_row(slug), st)
             self._repair_round(agent, self.net.project_row(slug), st)
         return st
 
@@ -272,7 +282,6 @@ class Permuter:
             from . import agent_tokens
             effect_scope=agent_tokens.target_scope(self.net,fn,'') if hasattr(self.net,'_context') else None
             ranked=repair_ranking.demote(self.net,effect_scope,ranked)
-            candidates.sort(key=lambda text: ranked.index(labels[text]) if labels.get(text) in ranked else len(ranked))
             if not self._hold(agent, fn, count_turn=False):
                 continue
             st.holding(fn['name'], True)
@@ -288,6 +297,15 @@ class Permuter:
                 context = repr((scope, header, self.net.cfg(proj), symbols, proj['arch'], proj['big_endian'],
                                 fn['unit'], fn['target'], fn['relocs'], fn['vram']))
                 best = fn['best_score']
+                if hasattr(self.net, 'keep_diff') and attempts < budget and time.monotonic() < deadline:
+                    measured, compiled = self._baseline(agent, proj, fn, st, fork)
+                    attempts += compiled
+                    if measured == 0:
+                        st.add(improved=1, matched=1)
+                        continue
+                    ranked = repair_ranking.order(dict.fromkeys(labels.values()), repair_ranking.evidence(self.net, fn['id'], agent.id))
+                    ranked = repair_ranking.demote(self.net, effect_scope, ranked)
+                candidates.sort(key=lambda text: ranked.index(labels[text]) if labels.get(text) in ranked else len(ranked))
                 for candidate in candidates:
                     if st.stop.is_set() or attempts >= budget or time.monotonic() >= deadline:
                         break
@@ -370,6 +388,14 @@ class Permuter:
             start_src = best_src = cur_src = m2cfix.expand_macros(fn["best_source"])
             best = cur = fn["best_score"]
             deadline = time.monotonic() + seconds
+            from . import permuter_focus, repair_ranking
+            if hasattr(self.net, 'keep_diff'):
+                measured, _ = self._baseline(agent, proj, fn, st, fork)
+                if measured == 0:
+                    st.add(improved=1, matched=1)
+                    return
+            rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
+            focus, boosts = permuter_focus.classify(rows), permuter_focus.boosts(rows)
             batches = misses = 0
             while time.monotonic() < deadline and best > 0 and not st.stop.is_set():
                 if gen is not None:
@@ -379,7 +405,7 @@ class Permuter:
                     base = best_src if batches % 2 else start_src
                     batches += 1
                     batch = gen.batch({"header": header, "source": base, "function": fn["name"], "family": family,
-                                       "seed": rng.randrange(MAX_SEED), "count": BATCH})
+                                       "seed": rng.randrange(MAX_SEED), "count": BATCH, "weight_boosts": boosts})
                     if batch is None:  # C it can't read: the simple rewrites can still try
                         gen.close()
                         gen = None
@@ -387,7 +413,7 @@ class Permuter:
                     if not batch:  # nothing new left to write from this C
                         break
                 else:  # one simple rewrite, mostly of the last C kept
-                    batch = [mutate(cur_src if rng.random() < 0.85 else best_src, rng)]
+                    batch = [mutate(cur_src if rng.random() < 0.85 else best_src, rng, focus)]
                     # none of them applies to this C (lerp's `a + (b - a) * t`): a minute of trying burnt a core
                     misses = 0 if batch[0] else misses + 1
                     if misses >= REWRITE_MISSES:
@@ -402,6 +428,8 @@ class Permuter:
                         continue
                     if score < best:
                         best, best_src = score, cand
+                        rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
+                        focus, boosts = permuter_focus.classify(rows), permuter_focus.boosts(rows)
                         st.add(improved=1)
                         if score == 0:
                             st.add(matched=1)
@@ -463,6 +491,35 @@ class Permuter:
                 break
         return count
 
+    def _baseline(self, agent, proj, fn, st, fork):
+        """Fresh evidence once per exact input in this process; a bounded cache avoids repeated baseline compiles."""
+        from . import permuter_inputs, source_preparation
+        header = self.net.forks.permuter_header(fork, fn['name']) if fork else self.net._context(proj['id'], fn['unit'])['header']
+        state = (st.started_at, header, proj['config'], fn['best_source'], fn['target'], permuter_inputs.build_state(proj)) if fork else source_preparation.inputs(self.net, proj, fn)
+        key = (fn['id'], hashlib.sha256(repr(state).encode()).hexdigest())
+        cache = getattr(self, '_baselines', {})
+        self._baselines = cache
+        if key in cache:
+            score, rows = cache[key]
+            self.net.keep_diff(agent.id, fn['id'], rows)
+            if not hasattr(self.net, '_agent_outcomes'):
+                self.net._agent_outcomes = {}
+            self.net._agent_outcomes[agent.id, fn['id']] = {'source': fn['best_source'], 'score': score, 'rows': rows}
+            return score, 0
+        st.add(variants=1, repairs=1)
+        # Clear old evidence so a compile/link error cannot leave a misleading diff as today's baseline.
+        getattr(self.net, '_last_diffs', {}).pop((agent.id, fn['id']), None)
+        score = self._score(agent, proj, fn, fn['best_source'], fn['best_score'], fork)
+        rows = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0] if score is not None else []
+        self.net.keep_diff(agent.id, fn['id'], rows)
+        if not hasattr(self.net, '_agent_outcomes'):
+            self.net._agent_outcomes = {}
+        self.net._agent_outcomes[agent.id, fn['id']] = {'source': fn['best_source'], 'score': score, 'rows': rows}
+        cache[key] = (score, rows)
+        while len(cache) > 256:
+            del cache[next(iter(cache))]
+        return score, 1
+
     def _score(self, agent, proj, fn, source: str, best: int, fork: str | None) -> int | None:
         """A variant's score; recorded (as the function's best attempt, or its match) only when it beats `best`."""
         if fork:
@@ -478,6 +535,10 @@ class Permuter:
         d = scoring.diff(self.net._target_obj(fn, proj), cand)
         if verdict is not None:
             d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
+        self.net.keep_diff(agent.id, fn['id'], d.rows)
+        if not hasattr(self.net, '_agent_outcomes'):
+            self.net._agent_outcomes = {}
+        self.net._agent_outcomes[agent.id, fn['id']] = {'source': source, 'score': d.score, 'rows': d.rows}
         if d.score < best:
             self.net._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match, via="permuter", effective_settings=getattr(result,"effective_settings",None))
         return 0 if d.bytes_match else max(1, d.score)

@@ -1395,7 +1395,8 @@ class Network:
                 f"claim_function(function=\"{rows[0]['name']}\") takes one next.")
 
     def _record(self, fn, agent: Agent, score: int | None, source: str, ctx_version: int, matched: bool = False,
-                compiled: bool | None = None, via: str = "agent", effective_settings=None):
+                compiled: bool | None = None, via: str = "agent", effective_settings=None,
+                prepared_header=None, prepared_inputs=None):
         now = time.time()
         compiled = score is not None if compiled is None else compiled
         with self.store.tx() as db:
@@ -1405,7 +1406,13 @@ class Network:
             config = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (fn["project_id"],)).fetchone()["config"])
             used = (effective_settings or {}).get("compiler")
             own = compiler_for(config, current["vram"]) if used else None
-            stale = bool(used and any(used.get(k) != own.get(k) for k in ("toolchain", "flags")))
+            stale = bool(score is not None and used and any(used.get(k) != own.get(k) for k in ("toolchain", "flags")))
+            if prepared_header is not None:
+                from .app.source_preparation import promote_context
+                if stale or score is None or (current['best_score'] is not None and score >= current['best_score']):
+                    raise NetworkError("The prepared candidate no longer improves this function. Run the pass again.")
+                ctx_version = promote_context(self, db, current, prepared_inputs, prepared_header, agent)
+                current = db.execute("SELECT * FROM functions WHERE id=?", (fn['id'],)).fetchone()
             attempt = db.execute("INSERT INTO attempts(function_id,agent_id,score,compiled,context_version,source,created_at,via) "
                        "VALUES(?,?,?,?,?,?,?,?)", (fn["id"], agent.id, score, compiled, ctx_version, source, now, via)).lastrowid
             self.repair_feedback.attempt(db, current, attempt, ctx_version, effective_settings)
@@ -1413,9 +1420,12 @@ class Network:
                 self.repair_feedback.capture(db, current, source, agent.id, via, ctx_version, attempt)
             db.execute("UPDATE functions SET attempts=attempts+1 WHERE id=?", (fn["id"],))
             if score is not None and not stale:
-                db.execute("UPDATE functions SET best_score=?, best_source=?, best_agent_id=? "
-                           "WHERE id=? AND status='open' AND (best_score IS NULL OR best_score > ?)",
-                           (score, source, agent.id, fn["id"], score))
+                improved = db.execute("UPDATE functions SET best_score=?, best_source=?, best_agent_id=? "
+                                      "WHERE id=? AND status='open' AND (best_score IS NULL OR best_score > ?)",
+                                      (score, source, agent.id, fn["id"], score)).rowcount
+                if improved:
+                    from .app.permuter_inputs import external_seed
+                    external_seed(db, current, source, agent.name)
             if matched and not stale:
                 db.execute("UPDATE functions SET status='matched', matched_source=?, matched_agent_id=?, "
                            "matched_at=?, best_score=0, best_source=? WHERE id=?",

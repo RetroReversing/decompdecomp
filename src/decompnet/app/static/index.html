@@ -368,6 +368,23 @@
 
   <!-- settings -->
   <section class="ptab" data-pane="settings">
+    <section class="panel">
+      <header class="panel-head"><h2>Local source preparation</h2><span class="muted small">optional · no AI tokens</span></header>
+      <div class="pad">
+        <p class="small muted">Have reference source you want to use? Map its functions explicitly. The app reads it without changing it, preserves line breaks and tries the ordinary compiler/link judge. A mapping alone never counts as a match.</p>
+        <label class="check"><input id="sourcePrepEnabled" type="checkbox"><span>Use this local source before permuting unmatched functions</span></label>
+        <label>Reference source folder<input id="sourcePrepRoot" placeholder="/path/to/local/source"></label>
+        <label>Declarations header (optional, inside a selected folder)<input id="sourcePrepHeader" placeholder="/path/to/local/source/context.h"></label>
+        <label>Additional include folders (one per line)<textarea id="sourcePrepIncludes" rows="2"></textarea></label>
+        <label>Function mappings (destination = source symbol @ relative file)<textarea id="sourcePrepMappings" rows="4" placeholder="func_80001000 = update_objects @ objects.c"></textarea></label>
+        <label>Other symbol aliases (reference name = destination name)<textarea id="sourcePrepAliases" rows="2" placeholder="gObjects = D_80010000"></textarea></label>
+        <label>Retail macro values (numeric, one per line)<textarea id="sourcePrepOverrides" rows="2" placeholder="OBJECT_LIMIT=128"></textarea></label>
+        <p class="small muted">Headers and mappings stay on this machine. Use a declarations header with the retail layouts, not debug settings. Imported projects keep their existing build headers; the reference body must compile against those. Each preparation pass is limited to 8 compiles / 20 seconds; unchanged trials are skipped.</p>
+        <div class="row"><button id="sourcePrepSave" class="ghost" type="button">Save source settings</button><button id="sourcePrepRun" class="primary" type="button">Try preparation pass</button></div>
+        <div id="sourcePrepLog"></div>
+      </div>
+    </section>
+
     <div class="cols">
       <section class="panel" id="compilerPanel" aria-labelledby="compilerH">
         <header class="panel-head"><h2 id="compilerH">Compiler</h2><span class="muted small" id="compilerState"></span></header>

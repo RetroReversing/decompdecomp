@@ -893,3 +893,32 @@ def test_permuter_can_run_without_starting_paid_helpers(app, monkeypatch):
     assert client.post('/api/permuter',json={'slug':'game','action':'stop'},headers=headers).status_code==200
     assert client.post('/api/permuter',json={'slug':'game','action':'bad'},headers=headers).status_code==400
     assert calls==[('start','game'),('stop','game')]
+
+
+def test_source_preparation_settings_and_bounded_job(app, tmp_path, monkeypatch):
+    from decompnet.app import source_preparation
+    client, net, _ = app
+    with net.store.tx() as db:
+        db.execute("INSERT INTO projects(slug,name,arch,root,config) VALUES('source-test','Game','mips',?,'{}')", (str(tmp_path),))
+    headers = {'X-Decomp': '1'}
+    root = tmp_path / 'reference'
+    root.mkdir()
+    (root / 'game.c').write_text('int original(void) { return 1; }')
+    data = {'slug': 'source-test', 'root': str(root), 'enabled': True, 'mappings': 'f = original @ game.c'}
+    saved = client.post('/api/source-preparation', json=data, headers=headers)
+    assert saved.status_code == 200
+    assert client.get('/api/source-preparation?slug=source-test').json()['root'] == str(root)
+    invalid = client.post('/api/source-preparation', json=data | {'mappings': 'not a mapping'}, headers=headers)
+    assert invalid.status_code == 400
+    calls = []
+    monkeypatch.setattr(source_preparation, 'run', lambda *args: calls.append(args) or {'tested': 1, 'improved': 1, 'matched': 0, 'errors': []})
+    response = client.post('/api/source-preparation', json={'slug': 'source-test', 'action': 'run'}, headers=headers)
+    assert response.status_code == 200
+    job = response.json()['job']
+    for _ in range(100):
+        result = client.get('/api/job', params={'id': job}).json()
+        if result['state'] in {'done', 'error'}:
+            break
+        time.sleep(.01)
+    assert result['state'] == 'done' and calls
+    assert result['result']['improved'] == 1

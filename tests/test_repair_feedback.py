@@ -200,8 +200,16 @@ def test_comparable_failure_previous_trial_effective_settings_and_provenance(set
     from decompnet.repair_feedback import trial
     net,winner,_,pid,fid=setup
     effective={'compiler':{'toolchain':'example','flags':['-O2']},'effective_command':['cc','-O2','{src}']}
+    def configure(compiler):
+        with net.store.tx() as db:
+            cfg = json.loads(db.execute('SELECT config FROM projects WHERE id=?', (pid,)).fetchone()['config'])
+            cfg['compiler'] = compiler
+            db.execute('UPDATE projects SET config=? WHERE id=?', (json.dumps(cfg), pid))
+    configure(effective['compiler'])
     net._record(fn(net,fid),winner,20,'comparable',1,effective_settings=effective)
+    configure({'toolchain': 'other', 'flags': ['-O1']})
     net._record(fn(net,fid),winner,1,'different settings',1,effective_settings={'compiler':{'toolchain':'other','flags':['-O1']}})
+    configure(effective['compiler'])
     with trial({'kind':'agent batch','family':'casts','variant':2}):
         net._record(fn(net,fid),winner,0,'matched',1,matched=True,effective_settings=effective)
     case=net.repair_feedback.listing('demo')['examples'][0]['id']
@@ -249,6 +257,10 @@ def test_autopilot_capture_uses_actual_compile_settings_instead_of_project_snaps
     effective={'compiler':{'toolchain':'actual-compiler','flags':['-O2','-g3']},
                'effective_command':['actual-cc','-g3','{src}'],'language':'c',
                'settings_source':'compile invocation snapshot'}
+    with net.store.tx() as db:
+        cfg = json.loads(db.execute('SELECT config FROM projects WHERE id=?', (pid,)).fetchone()['config'])
+        cfg['compiler'] = effective['compiler']
+        db.execute('UPDATE projects SET config=? WHERE id=?', (json.dumps(cfg), pid))
     result=SimpleNamespace(ok=True,obj=b'object',effective_settings=effective)
     monkeypatch.setattr(net,'_compile',lambda *args:result)
     monkeypatch.setattr(net,'_evaluate',lambda *args:(SimpleNamespace(code=b'code',relocs=[]),True,[]))
