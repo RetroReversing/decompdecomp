@@ -136,6 +136,17 @@ def register(app: App) -> None:
         settings.save()
         return JSONResponse({"started": ids})
 
+    @mcp.custom_route("/api/agents/reset-metrics", methods=["POST"])
+    async def api_agents_reset_metrics(request: Request) -> Response:
+        if (bad := guard(request, write=True)):
+            return bad
+        data = await body(request)
+        try:
+            manager.reset_metrics(str(data.get('id', '')))
+        except ValueError as e:
+            return fail(e)
+        return JSONResponse({'reset': True})
+
     @mcp.custom_route("/api/agents/rename", methods=["POST"])
     async def api_agents_rename(request: Request) -> Response:
         if (bad := guard(request, write=True)):

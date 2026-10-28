@@ -871,3 +871,9 @@ def test_permuter_settings_apply_immediately_and_survive_reloading(app):
     assert (net.permuter.seconds, net.permuter.max_turns) == (1, 1000)
     client.post('/api/settings', json={'permuter_max_insns': 400, 'permuter_seconds': 60,
                                      'permuter_max_turns': 4}, headers={'X-Decomp': '1'})
+
+
+def test_reset_agent_metrics_requires_app_auth_and_rejects_missing_helper(app):
+    client, _, _ = app
+    assert client.post('/api/agents/reset-metrics', json={'id': 'missing'}, headers={'X-Decomp': '1'}).status_code == 400
+    assert client.post('/api/agents/reset-metrics', json={'id': 'missing'}).status_code == 403

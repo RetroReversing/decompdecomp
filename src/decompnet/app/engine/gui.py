@@ -322,30 +322,33 @@ class GuiMixin:
         # The overview limits its leaderboard in the GUI; truncating here makes active cards show zero.
         return {"agents": board, "matches_per_hour": per_hour, "compiles_last_hour": compiles}
 
-    def agent_results(self, slug, agent, kind='matched', before=0):
+    def agent_results(self, slug, agent, kind='matched', before=0, after=0):
         """Paged functions behind the agent card's counters, using the same attribution as stats."""
         from ...network import NetworkError
         if kind not in ('matched','improved'):
             raise NetworkError('Choose matched or improved functions.')
         pid=self._project(slug)['id']
         before=max(0,int(before))
+        after=max(0,int(after))
         fields='f.id,f.name,f.status,f.best_score,f.n_insns'
         if kind=='matched':
             rows=self.store.all('SELECT '+fields+' FROM functions f JOIN agents a ON a.id=f.matched_agent_id '
                                 "WHERE f.project_id=? AND a.name=? AND f.status='matched' AND (?=0 OR f.id<?) "
-                                'ORDER BY f.id DESC LIMIT 101',pid,agent,before,before)
+                                'AND (?=0 OR EXISTS (SELECT 1 FROM attempts t WHERE t.function_id=f.id AND t.agent_id=a.id '
+                                'AND t.compiled AND t.score=0 AND t.id>?)) '
+                                'ORDER BY f.id DESC LIMIT 101',pid,agent,before,before,after,after)
         else:
             # Do not filter the worker before the window: every earlier contributor establishes the
             # running best. Ties, failed compiles and 0%-only initial attempts earn no improvement.
             rows=self.store.all(
-                'WITH history AS (SELECT t.agent_id,t.function_id,t.score,t.compiled,f.n_insns, '
+                'WITH history AS (SELECT t.id,t.agent_id,t.function_id,t.score,t.compiled,f.n_insns, '
                 'MIN(CASE WHEN t.compiled THEN t.score END) OVER (PARTITION BY t.function_id ORDER BY t.id '
                 'ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS previous '
                 'FROM attempts t JOIN functions f ON f.id=t.function_id WHERE f.project_id=?) '
                 'SELECT DISTINCT '+fields+' FROM history h JOIN functions f ON f.id=h.function_id '
                 'JOIN agents a ON a.id=h.agent_id WHERE a.name=? AND h.compiled AND h.score>=0 '
-                'AND h.score<COALESCE(h.previous,h.n_insns*100) AND (?=0 OR f.id<?) '
-                'ORDER BY f.id DESC LIMIT 101',pid,agent,before,before)
+                'AND h.score<COALESCE(h.previous,h.n_insns*100) AND h.id>? AND (?=0 OR f.id<?) '
+                'ORDER BY f.id DESC LIMIT 101',pid,agent,after,before,before)
         return {'functions':[dict(r) for r in rows[:100]],'more':len(rows)>100}
 
     def live(self, slug: str, since_event: int = 0, since_attempt: int = 0) -> dict:
