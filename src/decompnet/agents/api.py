@@ -378,7 +378,7 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
                             old=st("text occurring exactly once", True), new=st("replacement", True),
                             repair_note=st("Optional decisive repair"), repair_category=st("Repair category"),
                             repair_automation=st("Potential deterministic repair"), occurrence=it("1-based occurrence; 0 requires unique anchor"))),
-        "compiler_experiments": ("Bounded diagnostic source/profile trials on one candidate revision. 1–6 explicit compiler profiles; optional independent old/new/occurrence patches. No compiler choice applied.",
+        "compiler_experiments": ("Bounded diagnostic source/profile trials on one candidate revision. 1–6 compiler profiles (compiler=current uses this function’s current compiler); optional independent old/new/occurrence patches. No compiler choice applied.",
                                  s(function=st("function",True),revision=st("candidate revision",True),trials={"type":"array","minItems":1,"maxItems":6,"req":True,"items":{"type":"object","properties":{"compiler":{"type":"string"},"flags":{"type":"string"},"old":{"type":"string"},"new":{"type":"string"},"occurrence":{"type":"integer"}},"required":["compiler"]}})),
         "get_compiler_trial": ("Retrieve the saved C/compiler/flags diagnostic pair; no compile/application.",s(function=st("function",True),trial_id=st("trial id",True))),
         "try_local_repairs": ("Try applicable local repair families on one snapshot, max six normal compiles/60 seconds. Keeps best continuation; replaces parallel family probes.",

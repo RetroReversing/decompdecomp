@@ -6,6 +6,7 @@ import time
 
 from .. import consoles
 from ..network import NetworkError
+from ..project import compiler_for
 from . import agent_targets, agent_tokens
 
 
@@ -21,13 +22,24 @@ def run(net,agent,slug,function,revision,trials):
         planned=[]
         for t in trials:
             if not isinstance(t,dict) or not isinstance(t.get('compiler'),str) or not t['compiler'].strip() or t['compiler'].strip().lower()=='all':
-                raise NetworkError('Each trial needs one explicit compiler; all is not a bounded profile.')
+                raise NetworkError('Each trial needs compiler="current" or an explicit compiler ID; all is not a bounded profile.')
             if not isinstance(t.get('flags',''),str):
                 raise NetworkError('flags must be a string.')
+            current = t['compiler'].strip().lower() == 'current'
+            if current:
+                if fork:
+                    _, fp, _ = net.forks.get(slug)
+                    unit = fp.unit(fn['unit'])
+                    own = consoles.get(cfg.get('platform')).file_compiler(fp,unit.source) if unit.source else None
+                    if not own:
+                        raise NetworkError('This imported build does not expose a selectable per-file compiler.')
+                else:
+                    own = compiler_for(cfg,fn['vram'])['toolchain']
+                t = {**t,'compiler':own}
             text=agent_targets.replace_anchor(source,t['old'],t.get('new',''),t.get('occurrence',0)) if 'old' in t else source
             if not fork:
                 compiler=net._toolchain_named(cfg,t['compiler'])
-                flags=t.get('flags','').split() or consoles.default_flags(cfg,compiler)
+                flags=t.get('flags','').split() or (compiler_for(cfg,fn['vram']).get('flags',[]) if current else consoles.default_flags(cfg,compiler))
                 t={**t,'compiler':compiler,'flags':' '.join(flags)}
             planned.append((t,text))
         scope=hashlib.sha256(repr((agent_tokens.target_scope(net,fn,revision),dict(fn),

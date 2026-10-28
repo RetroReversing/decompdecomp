@@ -2312,6 +2312,9 @@ class ForkEngine:
                    "every instruction matches, but loaded constants differ" if d.literals else
                    f"{percent_text(d.match_percent)} match")
             asm = d.target_asm().splitlines()
+            compact = header == 'CLAIMED' and fn['best_source'] and d.match_percent is not None and d.match_percent >= 95 and not d.matched
+            if compact and len(asm) > 40:
+                asm = asm[:40] + ['... use get_assembly(start,limit) or get_function(section=full) for full evidence']
             if len(asm) > 500:
                 asm = asm[:500] + [f"... ({len(asm) - 500} more instructions)"]
             lines += [f"current state: {pct}", "", "### Target assembly", "```asm", *asm, "```"]

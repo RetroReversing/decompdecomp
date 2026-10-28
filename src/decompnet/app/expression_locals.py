@@ -28,6 +28,12 @@ def statement_start(body, end):
     return start
 
 
+def declaration_prefix(text):
+    # Conservatively identify a declaration initializer. Never insert a statement ahead of it:
+    # that would put the existing declaration after a statement in C89. Inline alternatives stay valid.
+    return bool(re.match(r'\s*(?:(?:const|volatile|unsigned|signed|struct)\s+)*[A-Za-z_]\w*(?:\s+(?:\*\s*)*|\s*\*+\s*)[A-Za-z_]\w*\s*(?:\[[^]]*\])?\s*=',text))
+
+
 def variants(source, name):
     span = find(source,name)
     if not span:
@@ -71,6 +77,8 @@ def variants(source, name):
             continue
         expr=raw(m.end(),m.end()+len(args[0])).strip()
         for inline in (False,True):
+            if not inline and declaration_prefix(prefix):
+                continue
             replacement='__repair_addr' if not inline else f'(__repair_addr = (char *)({expr}))'
             edits=[(1,1,'\nchar *__repair_addr;\n'),(m.end(),m.end()+len(args[0]),replacement)]
             if not inline:
@@ -88,7 +96,7 @@ def variants(source, name):
         if not re.search(r'[+*]',expr) or re.search(r'\b'+IDENT+r'\s*\(|\+\+|--|[=;{}]',expr):
             continue
         at=statement_start(body,m.start())
-        if re.search(r'\b(?:for|while|do|return|goto|else)\b',body[at:m.start()]):
+        if declaration_prefix(body[at:m.start()]) or re.search(r'\b(?:for|while|do|return|goto|else)\b',body[at:m.start()]):
             continue
         add('address_temporary',[(1,1,'\nchar *__repair_addr;\n'),
                                  (at,at,f'\n__repair_addr = (char *)({expr});\n'),
@@ -105,6 +113,8 @@ def variants(source, name):
             continue
         # A '*' can be a declaration/pointer cast; require a value immediately to its left.
         if m['op']=='*' and not re.search(r'[\w)\]]\s*$',prefix):
+            continue
+        if declaration_prefix(prefix):
             continue
         typ='unsigned int' if m['u'] else 'int'
         add('constant_local',[(1,1,f'\n{typ} __repair_literal;\n'),

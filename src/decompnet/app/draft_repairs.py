@@ -8,7 +8,15 @@ import re
 
 from .. import m2cfix, seeds
 from ..forks.csource import _blank, find
-from . import branch_locals, expression_repairs, near_repairs, pattern_repairs, register_repairs, storage_scope_repairs
+from . import (
+    branch_locals,
+    expression_repairs,
+    mmio_repairs,
+    near_repairs,
+    pattern_repairs,
+    register_repairs,
+    storage_scope_repairs,
+)
 
 LIMIT = 20
 _IDENT = r'[A-Za-z_]\w*'
@@ -34,6 +42,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     for family, text in register_repairs.variants(source, name, arch):
         proposals.append(text)
         labels[text] = family
+    for text in mmio_repairs.variants(source, name, arch):
+        proposals.append(text)
+        labels[text] = 'mmio_address'
     # Fresh m2c drafts already get this alternative in autopilot. Saved/transferred drafts need the
     # same chance, with their macro typedef block kept out of the refinement's type substitutions.
     if arch == 'mips' and ('M2C_FIELD(' in source or 'M2C_UNK' in source or re.search(r'\barg[0-3]\b',source)):

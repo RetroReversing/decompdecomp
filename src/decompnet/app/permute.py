@@ -260,6 +260,9 @@ class Permuter:
                 db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (key, str(fn['id'])))
             labels = {}
             candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels)
+            from . import repair_ranking
+            ranked = repair_ranking.order(dict.fromkeys(labels.values()),repair_ranking.evidence(self.net,fn['id'],agent.id))
+            candidates.sort(key=lambda text: ranked.index(labels[text]) if labels.get(text) in ranked else len(ranked))
             if not self._hold(agent, fn, count_turn=False):
                 continue
             st.holding(fn['name'], True)

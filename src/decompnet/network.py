@@ -1092,6 +1092,8 @@ class Network:
         if own is not cfg.get("compiler"):  # a range built by another compiler than the rest of the game
             lines.append(f"compiled with {own['toolchain']} {' '.join(own['flags'])}: this address range's compiler, "
                          f"not the project's")
+        if own.get('toolchain'):
+            lines.append(f"compiler ID: {own['toolchain']}; compiler_experiments compiler=\"current\" retains it")
         if claim:
             who = "you" if agent and claim["agent_id"] == agent.id else self._agent_name(claim["agent_id"])
             lines.append(f"claimed by {who}, lease expires in {int(claim['expires_at'] - time.time()) // 60} min "
@@ -1101,8 +1103,17 @@ class Network:
         if fn["status"] == "matched":
             lines += [f"MATCHED by {self._agent_name(fn['matched_agent_id'])} {_ago(fn['matched_at'])}:",
                       "```c", fn["matched_source"].strip(), "```"]
-        lines += ["", "### Target assembly", "```asm", scoring.compact_asm(self._asm_text(fn, proj)), "```"]
-        lines += self._extra_brief(fn, proj)
+        assembly = self._asm_text(fn, proj)
+        compact = header == 'CLAIMED' and fn['best_source'] and fn['best_score'] is not None and 0 < fn['best_score'] <= max(1,fn['n_insns'])*5
+        if compact and len(assembly.splitlines()) > 40:
+            kept = self._last_diffs.get((agent.id,fn['id'])) if agent else None
+            if kept:
+                lines += ['', '### Saved mismatch evidence', scoring.render_rows(kept[0],context=2,max_rows=16)]
+            assembly = '\n'.join(assembly.splitlines()[:40])
+            lines += ['Near-match brief: first 40 target lines. Use get_assembly(start,limit) or get_function(section=full) for full evidence.']
+        lines += ["", "### Target assembly", "```asm", scoring.compact_asm(assembly), "```"]
+        if not compact:
+            lines += self._extra_brief(fn, proj)
         if fn["status"] != "matched":
             if fn["best_source"]:
                 lines += ["", f"### Best attempt so far: score {fn['best_score']} by "
