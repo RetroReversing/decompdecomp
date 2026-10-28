@@ -877,3 +877,18 @@ def test_reset_agent_metrics_requires_app_auth_and_rejects_missing_helper(app):
     client, _, _ = app
     assert client.post('/api/agents/reset-metrics', json={'id': 'missing'}, headers={'X-Decomp': '1'}).status_code == 400
     assert client.post('/api/agents/reset-metrics', json={'id': 'missing'}).status_code == 403
+
+
+def test_workbench_routes_require_auth_and_never_start_paid_trials_without_confirmation(app,monkeypatch):
+    client,net,manager=app
+    assert client.get('/api/agents/queue?id=missing').status_code==400
+    assert client.get('/api/function/models?slug=missing&name=f').status_code==400
+    assert client.get('/api/function/diagnosis?slug=missing&name=f').status_code==400
+    assert client.post('/api/agents/controls',json={'id':'missing'}).status_code==403
+    assert client.post('/api/agents/controls',json={'id':'missing'},headers={'X-Decomp':'1'}).status_code==400
+    assert client.get('/api/comparisons?slug=missing').json()==[]
+    assert client.post('/api/comparisons',json={'action':'run'}).status_code==403
+    from decompnet.app.benchmarks import Benchmarks
+    monkeypatch.setattr(Benchmarks,'folder',lambda self,identifier:manager.home)
+    response=client.post('/api/comparisons',json={'action':'run','id':'test'},headers={'X-Decomp':'1'})
+    assert response.status_code==400 and 'Confirm' in response.json()['error']

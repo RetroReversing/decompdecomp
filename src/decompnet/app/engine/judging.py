@@ -356,16 +356,20 @@ class JudgeMixin:
                              "LIMIT 1", fn["id"])
         return fn["best_source"] or (row["source"] if row else None)
 
+    def queue_priority(self, project, agent):
+        policy = self.selection(project,agent.name)
+        if any(v is not None and v != '' for v in policy.values()) or self.fork_slug(project):
+            return None
+        proj=self._project(project)
+        now=time.time()
+        if self.store.one('SELECT 1 FROM claims WHERE agent_id=? AND expires_at>?',agent.id,now): return None
+        for name in self.cfg(proj).get('priority',[]):
+            row=self.store.one("SELECT * FROM functions WHERE project_id=? AND name=? AND status='open'",proj['id'],name)
+            if row and not self.store.one('SELECT 1 FROM claims WHERE function_id=? AND expires_at>?',row['id'],now): return row
+        return None
+
     def claim_row(self, agent: Agent, project: str | None = None, function: str | None = None, strategy: str = "easiest"):
-        policy = self.selection(project, agent.name) if project else {}
-        if function is None and project and not any(v is not None and v != "" for v in policy.values()) and not self.fork_slug(project):
-            proj = self._project(project)
-            for name in self.cfg(proj).get("priority", []):
-                row = self.store.one("SELECT f.id, f.status FROM functions f WHERE f.project_id=? AND f.name=?", proj["id"], name)
-                held = self.store.one("SELECT 1 FROM claims WHERE agent_id=?", agent.id)
-                if row and row["status"] == "open" and not held and not self.store.one(
-                        "SELECT 1 FROM claims WHERE function_id=?", row["id"]):
-                    function = name
-                    break
+        if function is None and project and (priority:=self.queue_priority(project,agent)) is not None:
+            function=priority['name']
         self._yield_autopilot(function, project)
         return Network.claim_row(self, agent, project, function, strategy)

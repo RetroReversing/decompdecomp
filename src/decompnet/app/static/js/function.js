@@ -79,11 +79,11 @@ function fnBadge(d = S.fnDetail) {
   st.textContent = d.status === "matched" ? "matched" : d.status === "asm" ? (d.not_c ? "not C" : "set aside") : working ? `${working.agent} working` : d.best != null ? `best ${pctText(pctOf(d.best, d.insns))}` : "not started";
 }
 
-function showFnTab(tab) {
+function showFnTab(tab, fetchDiff = true) {
   document.querySelectorAll("[data-ftab]").forEach((b) => b.classList.toggle("on", b.dataset.ftab === tab));
   $("fnDiffView").hidden = tab !== "diff";
   $("fnCodeView").hidden = tab !== "code";
-  if (tab === "diff") loadDiff();
+  if (tab === "diff" && fetchDiff) loadDiff();
 }
 document.querySelectorAll("[data-ftab]").forEach((b) => { b.onclick = () => { S.ftab = b.dataset.ftab; showFnTab(S.ftab); }; });
 document.querySelectorAll("#diffWhich [data-which]").forEach((b) => {
@@ -329,7 +329,7 @@ function renderDiff(d) {
   const rowHtml = (r) => {
     const cls = MARK[r[0]] || "repl";
     if (r[1]) t++;
-    return `<div class="dr ${cls}"${r[0] !== " " ? ` title="${MARK_TEXT[r[0]] || ""}"` : ""}><span class="dn">${r[1] ? t : ""}</span><code>${insnHtml(r[1], r[2], cls)}</code><span class="dm">${r[0] === " " ? "" : esc(r[0])}</span><code>${insnHtml(r[2], r[1], cls)}</code></div>`;
+    return `<div id="diff-row-${rows.indexOf(r)}" class="dr ${cls}"${r[0] !== " " ? ` title="${MARK_TEXT[r[0]] || ""}"` : ""}><span class="dn">${r[1] ? t : ""}</span><code>${insnHtml(r[1], r[2], cls)}</code><span class="dm">${r[0] === " " ? "" : esc(r[0])}</span><code>${insnHtml(r[2], r[1], cls)}</code></div>`;
   };
   const flush = (end) => {
     if (run.length > 10 && end !== "all") {

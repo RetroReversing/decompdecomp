@@ -827,3 +827,14 @@ since the last improvement, retaining code, history and lifetime model accountin
 
 Function lists show check/improvement recency. Agent work selection supports oldest
 checked first and a recorded-model untried filter in ROM and imported projects.
+
+## Agent workbench
+
+Shared ROM/imported controls now include scheduler queue previews, per-start token/
+time/reported-dollar/no-improvement caps, per-function model evidence, observed diff
+summaries, and verified-byte efficiency. Local checkpoints support sequential isolated
+model comparisons with equal budgets, explicit account consent and persistent reports.
+Installed-compiler preflights remain ROM-only because project-mode bulk comparisons
+are still unavailable. Imported trials need explicit permission for copied build scripts;
+these run with user permissions, not an OS filesystem sandbox. Paid provider integration
+is not exercised by automated tests. See docs/agent-workbench.md.

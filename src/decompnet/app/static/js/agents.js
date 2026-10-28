@@ -72,7 +72,7 @@ async function renderCosts(force = false) {
   const per = (r) => r.matches ? (r.usd ? `${money(r.usd / r.matches)} a match` : `${Math.round(r.tokens / r.matches / 1000)}k total tokens a match`) : "no match yet";
   setHtml(box, `<ul class="mini-list">${rows.map((r) => `<li><b>${esc(r.model || r.kind)}</b> <span class="muted small">${esc(r.kind)}</span>
       <span class="small">${r.matches.toLocaleString()} ${r.matches === 1 ? "match" : "matches"} · ${per(r)}${r.usd ? ` · ${money(r.usd)} in all` : ""}</span>
-      <span class="small muted" title="Reported token categories; cached tokens are included in the total and do not have the same price as uncached input">${tokenBreakdown(r)}</span></li>`).join("")}</ul>`);
+      <span class="small muted" title="Reported token categories; cached tokens are included in the total and do not have the same price as uncached input">${tokenBreakdown(r)} · ${Number(r.verified_bytes || 0).toLocaleString()} verified bytes${r.bytes_per_million_tokens == null ? "" : ` · ${Math.round(r.bytes_per_million_tokens).toLocaleString()} bytes / million tokens`}</span></li>`).join("")}</ul>`);
   // a model spinning here lately (agents.py spin_advice): advice to weigh, above the helpers it's about
   const advice = rows.filter((r) => r.advice).map((r) => r.advice);
   $("modelAdvice").hidden = !advice.length;
@@ -177,10 +177,14 @@ function renderSessions(sessions) {
       ${agentMetrics(s, b)}
       ${s.metrics_since ? `<span class="small muted">Metrics since reset · ${new Date(s.metrics_since * 1000).toLocaleString()}</span>` : ""}
       <span class="facts-line">${facts.join(" · ")}</span>
+      <span class="small muted">${Number(s.verified_bytes || 0).toLocaleString()} verified bytes · ${s.bytes_per_million_tokens == null ? '—' : Math.round(s.bytes_per_million_tokens).toLocaleString()} bytes / million reported tokens</span>
+      ${s.why?.startsWith('Compiler preflight:') && LIVE.includes(s.state) ? '<progress aria-label="Testing compilers before the next model session"></progress>' : ''}
       ${s.estimated_cost != null ? `<span class="small muted" title="Standard API rates checked 26 Oct 2026, using recorded input, cached input and output. Excludes cache-write, long-context, fast-mode and regional premiums. This is not your subscription bill.">≈ ${money(s.estimated_cost)} API-equivalent${b?.matched ? ` · ≈ ${money(s.estimated_cost / b.matched)} / match` : ""}</span>` : ""}
       <button class="link-btn" data-queue="${id}" type="button">Work settings · ${s.per_session || 8} functions/session${s.task === "readable" ? "" : ` · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.model_untried ? " · never checked by this model" : ""}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.stall_compiles ? ` · move on after ${esc(s.selection.stall_compiles)} without improvement` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}`}</button>
-      <button class="link-btn" data-reset-metrics="${id}" type="button">Reset metrics</button>
-      <button class="link-btn" data-log="${id}" type="button" aria-pressed="${S.logFor === s.id}">${S.logFor === s.id ? "Back to everything" : "What it said and did"}</button></div>`;
+      <div class="agent-actions"><button class="link-btn" data-reset-metrics="${id}" type="button">Reset metrics</button>
+      <button class="link-btn" data-preview="${id}" type="button">Preview queue</button>
+      <button class="link-btn" data-controls="${id}" type="button">Spending limits & compiler checks</button>
+      <button class="link-btn" data-log="${id}" type="button" aria-pressed="${S.logFor === s.id}">${S.logFor === s.id ? "Back to everything" : "What it said and did"}</button></div></div>`;
   }).join("");
   setHtml(box, html);
   box.querySelectorAll('[data-agent-results]').forEach(button => {
@@ -236,6 +240,8 @@ function renderSessions(sessions) {
       } catch (error) { toast(esc(error.message),'err'); }
     };
   }; });
+  box.querySelectorAll('[data-preview]').forEach(b => { b.onclick = () => showQueuePreview(b.dataset.preview); });
+  box.querySelectorAll('[data-controls]').forEach(b => { b.onclick = () => showAgentControls(sessions.find(s => String(s.id) === b.dataset.controls)); });
   act("[data-stop]", "/api/agents/stop", (b) => ({ id: b.dataset.stop }));
   act("[data-remove]", "/api/agents/stop", (b) => ({ id: b.dataset.remove, remove: true }));
   act("[data-again]", "/api/agents/restart", (b) => ({ id: b.dataset.again }));
@@ -252,8 +258,21 @@ $("stopAll").onclick = async () => {
 
 /* ------------------------------------------------------------------ the launcher: agent, model, how many */
 const LZ = { kind: null, model: "", count: 1, per: null, effort: "", task: "", selection: {} };
+function limitFields(values={}) {
+  return [['tokens','Reported tokens'],['seconds','Elapsed seconds'],['usd','Reported dollars'],['idle_seconds','Seconds without an improvement']].map(([key,label])=>`<label class="field"><span>${label} (blank = no limit)</span><input data-limit="${key}" type="number" min="0" step="${key==='usd'?'any':'1'}" value="${esc(values[key] || '')}"></label>`).join('');
+}
+function readLimits(panel) {
+  const out={};
+  panel.querySelectorAll('[data-limit]').forEach(input=>{
+    if(!input.value.trim())return;
+    const n=Number(input.value);
+    if(!Number.isFinite(n)||n<0||(input.dataset.limit!=='usd'&&!Number.isInteger(n)))throw new Error('Use non-negative numbers; tokens and seconds must be whole numbers.');
+    if(n)out[input.dataset.limit]=n;
+  });
+  return out;
+}
 const QUEUE_STRATEGIES = [["", "Automatic (recommended)"], ["easiest", "Easiest first"],
-  ["oldest_checked", "Oldest checked first"], ["least_tried", "Least tried first"], ["untried", "Untried first"], ["hardest", "Largest first"], ["closest", "Closest to matching"],
+  ["compiler_unchecked", "Compiler comparison not run first"], ["oldest_checked", "Oldest checked first"], ["least_tried", "Least tried first"], ["untried", "Untried first"], ["hardest", "Largest first"], ["closest", "Closest to matching"],
   ["finish", "Finish source files"], ["random", "Random"]];
 function selectionFields(policy = {}) {
   return `<label class="field"><span>Next function</span><select data-selection-strategy>${QUEUE_STRATEGIES.map(([v, label]) =>
@@ -331,6 +350,9 @@ async function startAgents(a, model, count, btn, extra = {}) {
     if (model && !a.uses_endpoints) options.model = withEffort(a, model);
     if (a.uses_endpoints && effortOf(a)) options.effort = effortOf(a);  // its model is the endpoint's
     else if (effortOf(a) && !model) throw new Error("pick a model to set its effort");
+    const launchForm=btn?.closest('.lz-body');
+    options.limits=launchForm?.querySelector('[data-agent-limits]') ? readLimits(launchForm) : (LZ.limits || {});
+    options.compiler_first=!LZ.task && Boolean(launchForm?.querySelector('[data-launch-compiler]')?.checked);
     if (LZ.per) options.per_session = LZ.per;
     if (LZ.task) options.task = LZ.task;
     if (!LZ.task) options.selection = btn?.closest(".lz-body")?.querySelector("[data-selection-strategy]")
@@ -397,13 +419,15 @@ function renderLauncher(box, compact = true) {
   box.innerHTML = `${tasks}<div class="lz-kinds">${kinds}</div>
     <div class="lz-body">${body}
       ${ready && !LZ.task ? `<details data-launch-selection><summary>Work selection (for these agents)</summary>${selectionFields(LZ.selection)}</details>` : ""}
-      ${ready ? `<div class="lz-row">
+      ${ready ? `<details data-agent-limits><summary>Spending limits & local compiler checks</summary>${limitFields(LZ.limits || {})}<p class="small muted">Limits apply to each worker from its start. Usage reports can arrive late; an elapsed-time limit also bounds calls with missing usage. In-flight calls may overshoot.</p><label class="check"><input data-launch-compiler type="checkbox" ${LZ.compiler_first?'checked':''} ${S.ov?.kind==='fork'||LZ.task?'disabled':''}><span>Compare installed compilers for the next saved candidate before each model session (ROM projects)</span></label></details><div class="lz-row">
         <div class="field"><span>How many</span><span class="stepper"><button type="button" data-step="-1">−</button><output>${LZ.count}</output><button type="button" data-step="1">+</button></span></div>
         <label class="field"><span>Functions per session</span><input data-f="per" type="number" min="1" max="${MAX_PER_SESSION}" value="${LZ.per || S.st.settings.per_session}"></label>
         <span class="grow"></span>
         <button class="primary" data-act="start" type="button">${esc(launchLabel(a, LZ.model, LZ.count))}</button></div>
         <p class="muted small">${a.uses_endpoints ? "A built-in agent loop drives the model through the decomp tools." : esc(a.signin)} Each agent takes a different function; a fresh session every few functions keeps its context small.</p>` : ""}
     </div>`;
+  const capsBox=box.querySelector('[data-agent-limits]');
+  if(capsBox)capsBox.onchange=()=>{try{LZ.limits=readLimits(capsBox);LZ.compiler_first=Boolean(capsBox.querySelector('[data-launch-compiler]')?.checked);}catch(e){toast(esc(e.message),'err');}};
   const selectionBox = box.querySelector("[data-launch-selection]");
   if (selectionBox) selectionBox.onchange = () => {
     try { LZ.selection = readSelection(selectionBox); } catch (e) { toast(esc(e.message), "err"); }

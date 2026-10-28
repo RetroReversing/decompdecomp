@@ -1118,3 +1118,13 @@ details.more[open] > summary::before { content: "− "; }
 .agent-results-dialog header p { margin: 0; font: 12px var(--mono); overflow-wrap: anywhere; }
 .agent-result-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .agent-result-row button { text-align: left; overflow-wrap: anywhere; font-family: var(--mono); }
+
+/* Evidence tables need room without widening ordinary input dialogs. */
+.drawer-card.narrow:has([data-comparison-results]),
+.drawer-card.narrow:has([data-evidence]),
+.drawer-card.narrow:has([data-queue-results]) { width: min(1040px, 100vw); }
+[data-comparison-results], [data-evidence] { overflow-x: auto; }
+[data-trials] { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,260px),1fr)); gap: 12px; margin-block: 12px; }
+[data-trials] .panel { min-width: 0; }
+
+.agent-actions { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }

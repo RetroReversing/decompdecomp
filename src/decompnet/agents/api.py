@@ -162,6 +162,8 @@ class Api(Agent):
                     return used_tool
                 finishing = False
                 for c in calls:
+                    if s.stop.is_set():
+                        return used_tool
                     name = c["function"]["name"]
                     try:
                         args = json.loads(c["function"].get("arguments") or "{}")

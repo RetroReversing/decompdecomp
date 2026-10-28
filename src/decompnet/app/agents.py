@@ -361,6 +361,7 @@ class Session:
     def snapshot(self, since: int = 0) -> dict:
         return {"id": self.id, "kind": self.kind, "kind_name": agents.get(self.kind).name, "label": self.label,
                 "selection": self.options.get("selection") or {},
+                "limits": self.options.get("limits") or {}, "compiler_first": bool(self.options.get("compiler_first")),
                 "per_session": self.options.get("per_session", PER_SESSION),
                 "task": self.options.get("task") or "",  # "readable": it polishes matched code
                 "slug": self.slug, "agent": self.agent_name, "model": self.model, "state": self.state, "why": self.why,
@@ -571,6 +572,12 @@ class Manager:
     def start(self, kind: str, slug: str, count: int = 1, options: dict | None = None) -> list[str]:
         options = dict(options or {})
         options["selection"] = self.net.validate_selection(options.get("selection"))
+        from .agent_limits import validate
+        options['limits'] = validate(options.get('limits') or {})
+        if 'compiler_first' in options and not isinstance(options['compiler_first'],bool):
+            raise NetworkError('Compiler preflight must be true or false.')
+        if options.get('compiler_first') and self.net.fork_slug(slug):
+            raise NetworkError('Installed-compiler comparisons are currently available for ROM projects only.')
         agent = agents.get(kind)  # (an unknown kind is a ValueError that says which there are)
         if agent.id != kind:
             kind = agent.id
@@ -594,6 +601,23 @@ class Manager:
                 self._launch(s)
                 ids.append(s.id)
         return ids
+
+    def set_controls(self, sid, limits, compiler_first=False):
+        from .agent_limits import begin, validate
+        from .agent_workbench import helper
+        values = validate(limits)
+        s = helper(self,sid)
+        if not isinstance(compiler_first,bool):
+            raise NetworkError('Compiler preflight must be true or false.')
+        if compiler_first and self.net.fork_slug(s.slug):
+            raise NetworkError('Installed-compiler comparisons are currently available for ROM projects only.')
+        with self._lock:
+            s.options.update(limits=values,compiler_first=compiler_first)
+            with self.net.store.tx() as db:
+                kept={k:v for k,v in s.options.items() if k!='api_key'}
+                db.execute('UPDATE helpers SET options=? WHERE id=?',(json.dumps(kept),s.id))
+            begin(self,s)
+        return values
 
     def rename(self, sid: str, label: str) -> str:
         """Change the display name without changing tokens, claims or attribution."""
@@ -630,6 +654,8 @@ class Manager:
         s.signed_out = s.throttled = s.limited = s.auth_failed = False
         s.started_at = time.time()
         self._save(s)
+        from .agent_limits import begin
+        begin(self, s)
         s.thread = threading.Thread(target=self._run, args=(s,), daemon=True, name=f"agent-{s.agent_name}")
         s.thread.start()
 
@@ -757,6 +783,15 @@ class Manager:
         advice = spin_advice(recent)
         out = [dict(r) | {"usd": r["usd"] or 0.0, "tokens": r["tokens"] or 0, "matches": r["matches"] or 0,
                           "advice": advice.get((r["kind"], r["model"]), "")} for r in rows]
+        byte_rows=self.net.store.all(
+            "SELECT f.size,s.kind,s.model FROM functions f JOIN projects p ON p.id=f.project_id "
+            "JOIN agents a ON a.id=f.matched_agent_id JOIN helper_sessions s ON s.id=(SELECT ss.id "
+            "FROM helper_sessions ss WHERE ss.project=p.slug AND ss.agent=a.name AND ss.started_at<=f.matched_at "
+            "AND (ss.ended_at IS NULL OR ss.ended_at>=f.matched_at) ORDER BY ss.started_at DESC,ss.id DESC LIMIT 1) "
+            "WHERE p.slug=? AND f.status='matched'",slug)
+        for cell in out:
+            cell['verified_bytes']=sum(r['size'] or 0 for r in byte_rows if (r['kind'],r['model'])==(cell['kind'],cell['model']))
+            cell['bytes_per_million_tokens']=cell['verified_bytes']*1000000/cell['tokens'] if cell['tokens'] else None
         # a model without a price (the API helper counts only tokens) isn't free: priced models by dollars a match,
         # then the rest by tokens a match, then those that matched nothing
         return sorted(out, key=lambda r: (r["matches"] == 0, r["usd"] == 0,
@@ -854,11 +889,19 @@ class Manager:
                                      and recorded_tokens == s.tokens else None)
             baseline = s.options.get('_metrics', {})
             row['metrics'] = board.get(s.agent_name, {})
+            after = int(s.options.get('_metrics', {}).get('attempt',0))
+            recovered = self.net.store.one(
+                "SELECT COALESCE(SUM(f.size),0) AS n FROM functions f JOIN agents a ON a.id=f.matched_agent_id "
+                "JOIN projects p ON p.id=f.project_id WHERE p.slug=? AND a.name=? AND f.status='matched' "
+                "AND (?=0 OR EXISTS(SELECT 1 FROM attempts t WHERE t.function_id=f.id AND t.agent_id=a.id "
+                "AND t.compiled AND t.score=0 AND t.id>?))",s.slug,s.agent_name,after,after)['n']
+            row['verified_bytes'] = recovered
             row['metrics_since'] = baseline.get('at')
             row['metrics_after'] = baseline.get('attempt', 0)
             row['lifetime_tokens'] = s.tokens
             for key in ('tokens', 'usd', 'runs', 'restarts'):
                 row[key] = max(0, row[key] - baseline.get(key, 0))
+            row['bytes_per_million_tokens'] = recovered*1000000/row['tokens'] if row['tokens'] else None
             if baseline:
                 # Provider totals may arrive only at session end. The display counts
                 # usage reported after reset, never guesses how to split an active call.
@@ -938,6 +981,8 @@ class Manager:
         s.tokens += total
         if usd or total:
             self.net.add_spend(s.slug, usd, total)
+        from .agent_limits import enforce
+        enforce(self,s)
 
     def over_budget(self, slug: str) -> float | None:
         """The budget (USD) when the project's agents have spent it, else None."""
@@ -1024,6 +1069,19 @@ class Manager:
             if (broken := self._build_problem(s.slug)) is not None:
                 self._pause(s, f"the project doesn't build on this computer, so no session starts: {broken}",
                             "Fix the project's setup (its page says what's wrong), then press Start again.")
+                break
+            from .agent_limits import enforce
+            if enforce(self, s):
+                break
+            if s.options.get('compiler_first'):
+                try:
+                    from .compiler_preflight import run
+                    run(self,s)
+                except Exception as e:
+                    if not s.stop.is_set():
+                        self._pause(s,str(e),'Review compiler comparisons or disable the preflight in Work settings.')
+                    break
+            if s.stop.is_set():
                 break
             s.runs += 1
             self._set(s, "working")

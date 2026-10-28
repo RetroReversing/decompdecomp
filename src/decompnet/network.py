@@ -148,6 +148,7 @@ WAITING = ("SELECT w.function_id FROM waits w JOIN functions n ON n.id=w.needs_i
 READY = "SELECT w.function_id FROM waits w JOIN functions n ON n.id=w.needs_id WHERE n.status = 'matched'"
 WANTED = "SELECT w.needs_id FROM waits w JOIN functions b ON b.id=w.function_id WHERE b.status = 'open'"
 STRATEGIES = {
+    "compiler_unchecked": "EXISTS(SELECT 1 FROM compiler_tests ct WHERE ct.function_id=f.id), f.best_source IS NULL, f.attempts ASC, f.id ASC",
     "oldest_checked": "COALESCE((SELECT MAX(t.created_at) FROM attempts t WHERE t.function_id=f.id),0) ASC, f.id ASC",
     "least_tried": "f.attempts ASC, f.n_insns ASC",
     # (a failing part waits even for its twins: they'd fail the same way)
@@ -842,51 +843,7 @@ class Network:
                 db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fn["id"], agent.id, now, now + self.claim_ttl))
                 self._event(db, fn["project_id"], agent.id, "claim", fn["name"])
             else:
-                policy = self.selection(proj["slug"], agent.name)
-                from .model_checks import tried as model_tried
-                excluded = model_tried(self, proj['slug'], agent) if policy.get('model_untried') else set()
-                custom = bool(policy.get("strategy"))
-                strategy = policy.get("strategy") or strategy
-                # Explicit user ordering wins over adaptive routing and release penalties. Leases and the
-                # agent's recent-release exclusion still prevent two workers or a tight retry loop.
-                route = None if custom else self._route(db, proj["id"], agent, now)
-                family = model_family(agent.name)
-                kin = [r["id"] for r in db.execute("SELECT id, name FROM agents") if model_family(r["name"]) == family]
-                tried = db.execute("SELECT SUM(status = 'matched') AS won, SUM(status = 'matched' OR attempts > 0) "
-                                   "AS tried FROM functions WHERE project_id=? AND status != 'asm'", (proj["id"],)).fetchone()
-                overall = (tried["won"] or 0) / tried["tried"] if tried["tried"] else 0.5
-                # not what this agent released lately (see SELF_RELEASE_WINDOW); what it released before that last
-                # functions waiting for another to match come last (WAITING); the ones they wait for, and those whose
-                # wait is over, first (after what the release rules put back, before model routing's escalations)
-                query = (
-                    f"""SELECT f.* FROM functions f LEFT JOIN {_REGION} r ON r.region = f.vram / {REGION_BYTES}
-                        WHERE f.project_id=:pid AND f.status='open' AND (:weak = 0 OR f.abandons < :escalate)
-                        AND (:below IS NULL OR f.best_score IS NULL OR
-                             MAX(0.0, 100.0 * (1.0 - CAST(f.best_score AS REAL) / MAX(1, f.n_insns * 100))) < :below)
-                        AND (:tries IS NULL OR (SELECT COUNT(*) FROM attempts a
-                             WHERE a.function_id=f.id AND a.agent_id=:agent) < :tries)
-                        AND f.id NOT IN (SELECT function_id FROM claims)
-                        AND f.id NOT IN (SELECT value FROM json_each(:stalled))
-                        AND f.id NOT IN (SELECT value FROM json_each(:model_tried))
-                        AND f.name NOT IN (SELECT detail FROM events WHERE project_id=:pid AND agent_id=:agent
-                                           AND kind='release' AND created_at > :mine)
-                        ORDER BY CASE WHEN :custom THEN 0 ELSE f.id IN (SELECT value FROM json_each(:sdk)) END,
-                                 CASE WHEN :custom THEN 0 ELSE f.id IN ({WAITING}) END,
-                                 CASE WHEN :custom THEN 0 ELSE f.name IN (SELECT detail FROM events WHERE project_id=:pid AND agent_id=:agent
-                                            AND kind='release') END,
-                                 CASE WHEN :custom THEN 0 ELSE f.name IN (SELECT detail FROM events WHERE project_id=:pid AND kind='release'
-                                            AND agent_id IN (SELECT value FROM json_each(:kin)) AND created_at >
-                                            COALESCE((SELECT MAX(created_at) FROM events WHERE project_id=:pid
-                                                      AND kind IN ('context', 'compiler')), 0)) END,
-                                 CASE WHEN :custom THEN 0 ELSE f.name IN (SELECT detail FROM events WHERE project_id=:pid AND kind='release'
-                                            AND created_at > :cooled) END,
-                                 CASE WHEN :custom THEN 0 ELSE f.id IN ({READY}) END DESC, CASE WHEN :custom THEN 0 ELSE f.id IN ({WANTED}) END DESC,
-                                 :strong AND f.abandons >= :escalate DESC, {STRATEGIES[strategy]} LIMIT 1""")
-                escalate = self._escalation(db, proj["id"]) if route else ESCALATE_AFTER
-                args = {"model_tried": json.dumps(list(excluded)), "stalled":json.dumps(blocked), "sdk": json.dumps(list(sdk)), "pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
-                        "overall": overall, "escalate": escalate, "weak": route == "weak", "strong": route == "strong",
-                        "mine": self._own_release_cutoff(db, agent.id, now), "custom": custom,
-                        "below": policy.get("match_below"), "tries": policy.get("max_tries")}
+                query, args, route = self.queue_query(db, proj, agent, strategy, now, sdk, blocked)
                 fn = db.execute(query, args).fetchone()
                 if fn is None and route == "weak":  # only what stronger models are for is left: better tried than idle
                     fn = db.execute(query, args | {"weak": False}).fetchone()
@@ -898,6 +855,56 @@ class Network:
             db.execute("DELETE FROM waits WHERE function_id=? AND needs_id IN (SELECT id FROM functions "
                        "WHERE status='matched')", (fn["id"],))
         return fn
+
+    def queue_query(self, db, proj, agent, strategy, now, sdk, blocked, limit=1):
+        """One query for previews and real claims; callers never duplicate eligibility rules."""
+        policy = self.selection(proj["slug"], agent.name)
+        from .model_checks import tried as model_tried
+        excluded = model_tried(self, proj['slug'], agent) if policy.get('model_untried') else set()
+        custom = bool(policy.get("strategy"))
+        strategy = policy.get("strategy") or strategy
+        # Explicit user ordering wins over adaptive routing and release penalties. Leases and the
+        # agent's recent-release exclusion still prevent two workers or a tight retry loop.
+        route = None if custom else self._route(db, proj["id"], agent, now)
+        family = model_family(agent.name)
+        kin = [r["id"] for r in db.execute("SELECT id, name FROM agents") if model_family(r["name"]) == family]
+        tried = db.execute("SELECT SUM(status = 'matched') AS won, SUM(status = 'matched' OR attempts > 0) "
+                           "AS tried FROM functions WHERE project_id=? AND status != 'asm'", (proj["id"],)).fetchone()
+        overall = (tried["won"] or 0) / tried["tried"] if tried["tried"] else 0.5
+        # not what this agent released lately (see SELF_RELEASE_WINDOW); what it released before that last
+        # functions waiting for another to match come last (WAITING); the ones they wait for, and those whose
+        # wait is over, first (after what the release rules put back, before model routing's escalations)
+        query = (
+            f"""SELECT f.* FROM functions f LEFT JOIN {_REGION} r ON r.region = f.vram / {REGION_BYTES}
+                WHERE f.project_id=:pid AND f.status='open' AND (:weak = 0 OR f.abandons < :escalate)
+                AND (:below IS NULL OR f.best_score IS NULL OR
+                     MAX(0.0, 100.0 * (1.0 - CAST(f.best_score AS REAL) / MAX(1, f.n_insns * 100))) < :below)
+                AND (:tries IS NULL OR (SELECT COUNT(*) FROM attempts a
+                     WHERE a.function_id=f.id AND a.agent_id=:agent) < :tries)
+                AND f.id NOT IN (SELECT function_id FROM claims)
+                AND f.id NOT IN (SELECT value FROM json_each(:stalled))
+                AND f.id NOT IN (SELECT value FROM json_each(:model_tried))
+                AND f.name NOT IN (SELECT detail FROM events WHERE project_id=:pid AND agent_id=:agent
+                                   AND kind='release' AND created_at > :mine)
+                ORDER BY CASE WHEN :custom THEN 0 ELSE f.id IN (SELECT value FROM json_each(:sdk)) END,
+                         CASE WHEN :custom THEN 0 ELSE f.id IN ({WAITING}) END,
+                         CASE WHEN :custom THEN 0 ELSE f.name IN (SELECT detail FROM events WHERE project_id=:pid AND agent_id=:agent
+                                    AND kind='release') END,
+                         CASE WHEN :custom THEN 0 ELSE f.name IN (SELECT detail FROM events WHERE project_id=:pid AND kind='release'
+                                    AND agent_id IN (SELECT value FROM json_each(:kin)) AND created_at >
+                                    COALESCE((SELECT MAX(created_at) FROM events WHERE project_id=:pid
+                                              AND kind IN ('context', 'compiler')), 0)) END,
+                         CASE WHEN :custom THEN 0 ELSE f.name IN (SELECT detail FROM events WHERE project_id=:pid AND kind='release'
+                                    AND created_at > :cooled) END,
+                         CASE WHEN :custom THEN 0 ELSE f.id IN ({READY}) END DESC, CASE WHEN :custom THEN 0 ELSE f.id IN ({WANTED}) END DESC,
+                         :strong AND f.abandons >= :escalate DESC, {STRATEGIES[strategy]} LIMIT 1""")
+        escalate = self._escalation(db, proj["id"]) if route else ESCALATE_AFTER
+        args = {"model_tried": json.dumps(list(excluded)), "stalled":json.dumps(blocked), "sdk": json.dumps(list(sdk)), "pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
+                "overall": overall, "escalate": escalate, "weak": route == "weak", "strong": route == "strong",
+                "mine": self._own_release_cutoff(db, agent.id, now), "custom": custom,
+                "below": policy.get("match_below"), "tries": policy.get("max_tries")}
+        args["limit"] = max(1, min(1000, int(limit)))
+        return query.rsplit("LIMIT 1", 1)[0] + "LIMIT :limit", args, route
 
     @staticmethod
     def _escalation(db, project_id: int) -> int:

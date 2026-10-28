@@ -629,3 +629,16 @@ suffixes, and includes failed candidate submissions. It does not infer model ali
 or count claims without submissions. Choose an explicit model; missing historical
 model attribution cannot be reconstructed. The filter also applies to named claims
 and never falls back to previously checked functions. Existing claims stay held.
+
+### Control agent spending and compare models
+
+Agent cards offer **Preview queue** and **Spending limits & compiler checks**.
+Set per-worker token, time, reported-dollar or no-improvement limits in the launcher
+before starting. Function inspectors offer **Model attempts** and **Explain remaining
+differences**. Verified bytes per million reported tokens complement match counts.
+
+**Agents → Compare models** creates a local checkpoint and runs explicit models
+sequentially in separate copies with equal budgets. It keeps original projects
+unchanged and never merges results automatically. Paid work requires a start click;
+usage may be incomplete for interrupted calls. See [the workbench guide](docs/agent-workbench.md)
+for controls, accounting scopes, imported-build permissions and validation limits.

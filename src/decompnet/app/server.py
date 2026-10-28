@@ -27,7 +27,7 @@ from .. import hostenv
 from ..network import NetworkError
 from . import agents, collab, routes, saves, tools, updates, window
 from .engine import RomNetwork
-from .routes import forks, life, pages, projects, repair_feedback, rooms, setup, state
+from .routes import forks, life, pages, projects, repair_feedback, rooms, setup, state, workbench
 from .support import Jobs, Settings, session_options
 
 
@@ -164,7 +164,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     app = routes.App(net, mcp, home, port, secret, mcp_url, build_id, manager, jobs, settings, allowed_hosts,
                      guard, body, call, fail, updater=updates.Updater(before_restart, port, secret),
                      busy=busy, quit_app=quit_app)
-    for part in (pages, state, projects, repair_feedback, forks, setup, life, rooms):
+    for part in (pages, state, projects, repair_feedback, forks, setup, life, rooms, workbench):
         part.register(app)
 
     security = TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=sorted(allowed_hosts),

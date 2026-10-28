@@ -8,6 +8,7 @@ module's register(), which adds that part's routes to the MCP server's web app:
 - setup:    compilers and tools, helper agents and their sign-in, settings
 - life:     updates, the window, quitting
 - rooms:    decompiling together (collab.py)
+- workbench: queue previews, per-agent controls, model evidence and isolated comparisons
 
 Routes check the request with app.guard (the window's secret, the host, and a header for writes) before anything
 else, run blocking work with app.call (a thread), and answer errors with app.fail.

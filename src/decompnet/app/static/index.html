@@ -319,7 +319,7 @@
   <section class="ptab" data-pane="agents">
     <div class="agents-grid">
       <section class="panel">
-        <header class="panel-head"><h2>Your agents here <span class="muted small" id="spendLine"></span></h2><button class="ghost small-btn" id="repairExamples" type="button">Repair examples</button><button class="ghost small-btn" id="stopAll" type="button" hidden>Stop all</button></header>
+        <header class="panel-head"><h2>Your agents here <span class="muted small" id="spendLine"></span></h2><button class="ghost small-btn" id="compareModels" type="button">Compare models</button><button class="ghost small-btn" id="repairExamples" type="button">Repair examples</button><button class="ghost small-btn" id="stopAll" type="button" hidden>Stop all</button></header>
         <div class="notice" id="modelAdvice" role="status" hidden></div>
         <div class="agent-toolbar"><label for="agentSort">Sort by</label><span class="agent-sort-select"><select id="agentSort"><option value="state">Status</option><option value="matches">Most matches</option><option value="improved">Most improved</option><option value="runtime">Longest running</option><option value="model">Model</option><option value="efficiency">Fewest tokens per match</option></select></span></div>
         <div id="sessions" class="sessions"></div>
@@ -555,6 +555,7 @@
         <button class="primary small-btn" id="fnApplyCompiler" type="button" hidden>Apply these settings to this function</button>
         <details class="more"><summary>Comparison details</summary><pre class="joblog" id="fnCompilerLog" hidden></pre></details>
       </div>
+      <div class="row"><button class="ghost small-btn" id="fnModelEvidence" type="button">Model attempts</button><button class="ghost small-btn" id="fnDiagnosis" type="button">Explain remaining differences</button></div>
       <div class="fn-tabs">
         <div class="tabs" role="tablist" aria-label="Function view">
           <button role="tab" class="tab on" data-ftab="diff" type="button">Diff</button>
@@ -619,6 +620,7 @@
 <script src="/assets/js/repair-feedback.js"></script>
 <script src="/assets/js/function.js"></script>
 <script src="/assets/js/compiler-progress.js"></script>
+<script src="/assets/js/workbench.js"></script>
 <script src="/assets/js/steering.js"></script>
 <script src="/assets/js/pages.js"></script>
 </body>
