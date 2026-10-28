@@ -5,11 +5,11 @@ import re
 
 from ..network import NetworkError
 from ..project import compiler_for
-from . import agent_targets, agent_tokens, expression_repairs, pattern_repairs
+from . import agent_targets, agent_tokens, expression_repairs, pattern_repairs, register_repairs
 
 FAMILIES = ('signedness','declaration_order','typed_temporary','branch_orientation','narrowing','source_lines',
             'address_temporary','constant_local','comparison_load','stack_array','loop_induction',
-            'parameter_width','value_lifetime','sum_shape','call_result_inline')
+            'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order')
 
 
 def run(net, agent, slug, function, revision, families=None, max_trials=6):
@@ -40,6 +40,9 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
                     pools[family].append(edited)
                     anchors[family,edited]=target['old']
         for family,candidate in pattern_repairs.variants(source,fn['name'],debug):
+            if family in pools:
+                pools[family].append(candidate)
+        for family,candidate in register_repairs.variants(source,fn['name'],proj['arch']):
             if family in pools:
                 pools[family].append(candidate)
         if 'narrowing' in pools:
