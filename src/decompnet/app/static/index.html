@@ -572,17 +572,27 @@
         <button class="primary small-btn" id="fnApplyCompiler" type="button" hidden>Apply these settings to this function</button>
         <details class="more"><summary>Comparison details</summary><pre class="joblog" id="fnCompilerLog" hidden></pre></details>
       </div>
-      <details class="more" id="fnDeepPanel" hidden>
-        <summary>Deep permuter · this function</summary>
-        <p class="small muted">Tries the supported local repairs, then searches random rewrites of this function’s saved C. No AI tokens. This is a bounded search, not every possible C program. Exact matches and better candidates are saved immediately.</p>
-        <div class="fields">
-          <label class="field"><span>Time limit (minutes)</span><input id="fnDeepMinutes" type="number" min="1" max="120" value="30"></label>
-          <label class="field"><span>Maximum candidate compiles</span><input id="fnDeepVariants" type="number" min="1" max="1000000" value="100000"></label>
+      <details class="more deep-search" id="fnDeepPanel" hidden>
+        <summary>Deep permuter · this function <span class="deep-free">No AI tokens</span></summary>
+        <p class="small muted">Try local repairs, then random rewrites. Verified improvements save immediately.</p>
+        <div class="deep-controls">
+          <label class="field"><span>Time limit · minutes</span><input id="fnDeepMinutes" type="number" min="1" max="120" value="30"></label>
+          <label class="field"><span>Compile limit</span><input id="fnDeepVariants" type="number" min="1" max="1000000" value="100000"></label>
+          <div class="deep-actions"><button class="primary small-btn" id="fnDeepRun" type="button">Run deep permuter</button>
+          <button class="ghost small-btn" id="fnDeepStop" type="button" hidden>Stop</button></div>
         </div>
-        <button class="primary small-btn" id="fnDeepRun" type="button">Run deep permuter</button>
-        <button class="ghost small-btn" id="fnDeepStop" type="button" hidden>Stop</button>
+        <div class="deep-dashboard" id="fnDeepMetrics" hidden>
+          <dl class="deep-scores">
+            <div><dt>Starting match</dt><dd id="fnDeepStartPercent">—</dd><span id="fnDeepStartScore">Score —</span></div>
+            <div class="deep-best"><dt>Current best</dt><dd id="fnDeepBestPercent">—</dd><span id="fnDeepBestScore">Score —</span></div>
+            <div><dt>Improvements</dt><dd id="fnDeepImproved">0</dd><span>Verified score reductions</span></div>
+          </dl>
+          <div class="deep-counters"><span><b id="fnDeepTested">0</b> tested</span><span><b id="fnDeepSkipped">0</b> cached skips</span><span id="fnDeepTime">—</span></div>
+        </div>
         <p class="small muted" id="fnDeepStatus" role="status"></p>
-        <pre class="joblog" id="fnDeepLog" hidden></pre>
+        <div id="fnDeepWork"></div>
+        <details class="deep-output" id="fnDeepOutput"><summary>Technical output</summary><pre class="joblog" id="fnDeepLog" hidden></pre></details>
+        <p class="small muted deep-note">Search is bounded by these limits; it cannot try every possible C program.</p>
       </details>
       <div class="fn-tabs">
         <div class="tabs" role="tablist" aria-label="Function view">
@@ -646,6 +656,7 @@
 <script src="/assets/js/agents.js"></script>
 <script src="/assets/js/transcripts.js"></script>
 <script src="/assets/js/repair-feedback.js"></script>
+<script src="/assets/js/deep-progress.js"></script>
 <script src="/assets/js/function.js"></script>
 <script src="/assets/js/compiler-progress.js"></script>
 <script src="/assets/js/steering.js"></script>

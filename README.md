@@ -649,7 +649,10 @@ new candidates permanently.
 ### Permuter budgets
 
 For a longer search of one function, open its drawer and expand **Deep permuter · this function**.
-Choose a time limit and maximum candidate compiles, then select **Run deep permuter**. **Stop** ends the job
+Choose a time limit and maximum candidate compiles, then select **Run deep permuter**.
+The scorecard shows the freshly measured starting score and percentage, the current best, and how many
+verified score reductions this run found. Local repairs and random rewrites share that improvement count.
+Expand **Technical output** for compiler diagnostics; the progress bar stays visible when output is closed. **Stop** ends the job
 after its current compiler/generator finishes. Better candidates and exact matches are saved immediately.
 This bypasses the background queue’s instruction and turn limits for the selected function only. It visits the
 current local candidate list, then uses random rewrites; it cannot exhaust every possible C program. No AI tokens
