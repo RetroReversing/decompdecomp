@@ -69,7 +69,8 @@ def test_checkpoint_rejects_active_agents_or_files_changing_during_copy(comparis
     assert not list(service.root.glob('*/checkpoint.json'))
 
 
-def test_trials_receive_identical_copies_equal_limits_and_credentials_only_on_stdin(comparison,monkeypatch):
+@pytest.mark.parametrize('effort',[None,'high'])
+def test_trials_receive_identical_copies_equal_limits_and_credentials_only_on_stdin(comparison,monkeypatch,effort):
     service,app,project=comparison
     cp=service.checkpoint('demo',log=lambda x:None)
     app.settings.endpoint=lambda x:{'id':'endpoint','name':'Local test','provider':'custom','base_url':'http://localhost:1/v1','api_key':'private-secret','model':'m'}
@@ -97,12 +98,15 @@ def test_trials_receive_identical_copies_equal_limits_and_credentials_only_on_st
         def poll(self): return 0
     monkeypatch.setattr(benchmarks.subprocess,'Popen',Process)
     monkeypatch.setattr(benchmarks.limits,'capped',lambda x:x)
-    report=service.run(cp['id'],[{'kind':'api','model':'model-a','endpoint':'endpoint'},
+    report=service.run(cp['id'],[{'kind':'api','model':'model-a'+('#'+effort if effort else ''),'endpoint':'endpoint'},
                                  {'kind':'api','model':'model-b','endpoint':'endpoint'}],{'seconds':30,'tokens':1000},{},log=lambda x:None)
     assert report['state']=='complete'
     assert [r['options']['limits'] for r in requests]==[{'seconds':30,'tokens':1000}]*2
     assert requests[0]['baseline']==requests[1]['baseline']
     assert requests[0]['options']['api_key']=='private-secret'
+    assert requests[0]['options']['model']=='model-a'
+    assert requests[0]['options'].get('effort')==effort
+    assert report['trials'][0]['model']=='model-a'+('#'+effort if effort else '')
     assert report['trials'][0]['unique_matches']==['exclusive']
     assert report['trials'][1]['unique_matches']==[]
     assert 'private-secret' not in (service.folder(cp['id'])/'report.json').read_text()

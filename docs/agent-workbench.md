@@ -24,7 +24,7 @@ manually starting it again does too. Display metric resets do not reset limits.
 Token/dollar limits rely on provider reports. Some CLIs report only at session end;
 interrupted calls may never report. A call can overshoot a limit, and a dollar-only
 limit cannot bound a provider that never reports dollars. Use an elapsed-time cap
-too. API-equivalent estimates are not used as if they were actual charges. Joined-room members use time/usage limits; no-improvement timers require the host’s authoritative history.
+too. Dollar caps use the provider/CLI’s reported counter, not the app’s locally computed API-equivalent estimate. A reported CLI figure can itself be API-equivalent rather than a subscription charge. Joined-room members use time/usage limits; no-improvement timers require the host’s authoritative history.
 
 **Compiler comparison not run first** is a queue strategy. **Before each session,
 compare installed compilers** optionally checks the next queued function that has

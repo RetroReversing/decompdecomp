@@ -230,6 +230,11 @@ class Benchmarks:
                 if not endpoint: raise NetworkError('Choose a configured API endpoint for each API trial.')
                 opts |= session_options(endpoint)
                 opts['model']=str(plan['model']).strip()
+                if '#' in opts['model']:
+                    base,effort=opts['model'].rsplit('#',1)
+                    if not base or effort not in kind.efforts:
+                        raise NetworkError('Use a supported #effort suffix or the plain API model ID.')
+                    opts['model'],opts['effort']=base,effort
             options.append((kind.id,opts))
         with self.lock:
             if identifier in self.active: raise NetworkError('This checkpoint already has a comparison running.')
@@ -251,8 +256,9 @@ class Benchmarks:
                 if stopped.is_set(): break
                 trial=folder/'runs'/uuid.uuid4().hex
                 trial.mkdir(parents=True,mode=0o700)
-                log(f'Preparing trial {index+1}/{len(options)}: {opts["model"]}')
-                report['active_trial']={'index':index+1,'total':len(options),'model':opts['model']}
+                label=opts['model']+(('#'+opts['effort']) if opts.get('effort') else '')
+                log(f'Preparing trial {index+1}/{len(options)}: {label}')
+                report['active_trial']={'index':index+1,'total':len(options),'model':label}
                 save_report()
                 shutil.copytree(folder/'project',trial/'project',symlinks=False)
                 shutil.copyfile(folder/'checkpoint.db',trial/'trial.db')
@@ -286,7 +292,7 @@ class Benchmarks:
                             break
                         time.sleep(0.5)
                     result=read(trial/'result.json') or {'state':'failed','error':'The trial did not produce a report. Inspect its local worker log.'}
-                report['trials'].append(result | {'kind':kind,'model':opts['model'],'folder':str(trial)})
+                report['trials'].append(result | {'kind':kind,'model':label,'folder':str(trial)})
                 save_report()
                 log(f'Trial {index+1}: {result.get("matches",0)} new matches; {result.get("improved",0)} functions improved.')
             report['state']='cancelled' if stopped.is_set() else 'complete'
