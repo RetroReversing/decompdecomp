@@ -946,3 +946,17 @@ def test_deep_permuter_route_starts_a_cancellable_job_for_one_function(app, monk
     assert result['state'] == 'done'
     assert result['result']['function'] == 'selected_function'
     assert checked == [('selected-game','selected_function',10,99)]
+
+
+def test_deep_sweep_routes_validate_start_stop_and_status(app, monkeypatch):
+    client, net, _ = app
+    calls = []
+    monkeypatch.setattr(net.deep_sweeps, 'start', lambda *args: calls.append(args) or {'job':'sweep','enabled':True})
+    monkeypatch.setattr(net.deep_sweeps, 'stop', lambda slug: {'enabled':False,'project':slug})
+    monkeypatch.setattr(net.deep_sweeps, 'status', lambda slug: {'project':slug,'completed':2})
+    assert client.get('/api/permuter/pass?slug=example').json()['completed'] == 2
+    response = client.post('/api/permuter/pass', json={'slug':'example','minutes':7,'max_variants':99,'repeat':True}, headers={'X-Decomp':'1'})
+    assert response.json()['job'] == 'sweep' and calls == [('example',7,99,True)]
+    assert not client.post('/api/permuter/pass', json={'slug':'example','action':'stop'}, headers={'X-Decomp':'1'}).json()['enabled']
+    assert client.post('/api/permuter/pass', json={'slug':'example','repeat':'yes'}, headers={'X-Decomp':'1'}).status_code == 400
+    assert client.post('/api/permuter/pass', json={'slug':'example','action':'unknown'}, headers={'X-Decomp':'1'}).status_code == 400

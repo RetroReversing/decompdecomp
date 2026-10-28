@@ -53,7 +53,7 @@ function setup(file, marker, end, logId, buttonId, ranges = "") {
   let polls = 0;
   const ctx = {
     $: get, document: { createElement: element },
-    deepPermuterBusy: false, deepPermuterJob: null, refreshFn: async () => {},
+    followDeepSweep: () => {}, deepPermuterBusy: false, deepPermuterJob: null, refreshFn: async () => {},
     S: { slug: "test", fn: "f", ov: { kind: "fork" } }, info: {}, box, body: box, n: get("compilerNotice"), log, inst: button,
     b: Object.assign(button, { dataset: { inst: "test" } }), a: { id: "test", name: "Test" }, ROOM_PORT: 6481,
     results: get("localResults"), scan: { folder: "/synthetic/collection", projects: [] }, picked: new Set(), renderList() {},
@@ -122,6 +122,35 @@ async function main() {
         assert.equal(log._workStatus.textContent, "Stopped");
       }
     }
+  }
+  // A project sweep has separate start and long-running follow phases, including page navigation.
+  for (const failed of [false, true]) {
+    const test = setup("steering", '$("deepSweepStart").onclick = async () => {', '\n};', "deepSweepLog", "deepSweepStart");
+    const followed = [];
+    test.ctx.followDeepSweep = (...args) => followed.push(args);
+    const running = test.ctx.run();
+    assert.equal(test.button.disabled, true);
+    assert.ok(test.log.bar && !test.log.bar.removed);
+    if (failed) test.start.reject(new Error("Cannot start"));
+    else test.start.resolve({job:"sweep"});
+    await running;
+    assert.equal(test.log.bar.removed, true);
+    assert.equal(test.button.disabled, false);
+    assert.equal(followed.length, failed ? 0 : 1);
+  }
+  for (const outcome of ["done", "error", "cancelled", "detached"]) {
+    const test = setup("steering", 'async function followDeepSweep(slug, job) {', '\n}\n', "deepSweepLog", "deepSweepStart");
+    Object.assign(test.ctx, {slug:"test", job:"sweep", deepSweepFollowing:null, renderDeepSweep:()=>{}});
+    const running = test.ctx.run();
+    await tick();
+    const log = test.log.children[0];
+    assert.ok(log.bar && !log.bar.removed);
+    if (outcome === "detached") test.ctx.S.slug = "other";
+    test.poll.resolve({state:outcome === "detached" ? "done" : outcome, log:["Working"], error:"Stopped", progress:{function:"f", phase:"local repairs"}, result:{}});
+    await running;
+    assert.equal(log.bar.removed, true);
+    if (outcome === "detached") assert.equal(log.textContent, "");
+    else if (outcome !== "done") assert.equal(log.error, "Stopped");
   }
   // SDK indexing includes optional local C and always clears its foreground progress bar.
   for (const fail of [false, true]) {

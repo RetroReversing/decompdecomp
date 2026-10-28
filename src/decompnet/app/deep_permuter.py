@@ -100,6 +100,10 @@ class Search(Permuter):
 def run(net, slug, name, minutes, max_variants, log):
     """Visit the supported local repairs, then spend the remaining budget on random permutations."""
     proj, fn = validate(net, slug, name, minutes, max_variants)
+    sweeps = getattr(net, 'deep_sweeps', None)
+    if sweeps:
+        from ..candidate_scope import key
+        build_scope = key(net, proj, fn)
     search = Search(net, minutes, max_variants, log)
     state = State()
     agent, _ = net.local_agent('permuter')
@@ -157,5 +161,8 @@ def run(net, slug, name, minutes, max_variants, log):
         reason = str(error)
     search.report()
     log(f'{reason}: {search.tested} candidates tested, {search.skipped} cached misses skipped, {search.rejected} invalid calls skipped. Verified improvements are saved immediately.')
-    return {'function': name, 'reason': reason, 'tested': search.tested, 'skipped': search.skipped,
-            'rejected': search.rejected, 'matched': net._function(name, slug)['status'] == 'matched', 'best_score': search.best}
+    result = {'function': name, 'reason': reason, 'tested': search.tested, 'skipped': search.skipped,
+              'rejected': search.rejected, 'matched': net._function(name, slug)['status'] == 'matched', 'best_score': search.best}
+    if sweeps:
+        sweeps.completed(slug, fn, minutes, max_variants, result, build_scope)
+    return result

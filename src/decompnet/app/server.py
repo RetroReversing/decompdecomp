@@ -36,6 +36,8 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     build_id = (updates.installed().get("commit") or "")[:12]  # a branch install: the commit it came from
     manager = agents.Manager(net, home, mcp_url)
     jobs = Jobs(home / "logs" / "decomp.log")
+    from .deep_sweep import Sweeps
+    net.deep_sweeps = Sweeps(net, jobs)
 
     def busy() -> bool:
         return bool(manager.running()) or any(j["state"] == "running" for j in jobs.jobs.values())
@@ -52,6 +54,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     def quit_app() -> None:
         """Quit means quit: the window, every helper with everything it started, then the server."""
         window.close_app()
+        net.deep_sweeps.shutdown()
         manager.shutdown()
         os._exit(0)
     window.WINDOW = window.Window(home, f"http://127.0.0.1:{port}/", secret, window_ended)
@@ -110,6 +113,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
             return None
         return options | (session_options(saved) if saved is not None else {})
     manager.options_now = options_now
+    net.deep_sweeps.resume()
     manager.resume()  # helpers that were working when the app last stopped carry on (their records say which)
 
     mcp = tools.build_mcp(net, agent_of, observe=manager.record_agent)
@@ -157,6 +161,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         return JSONResponse({"error": str(e)}, status_code=code)
 
     def before_restart() -> None:  # helpers stop now and resume in the new version; the window closes with the process
+        net.deep_sweeps.shutdown()
         manager.shutdown()
 
     # the app's parts add their routes (routes/__init__.py says which is where); forks come after state and projects,

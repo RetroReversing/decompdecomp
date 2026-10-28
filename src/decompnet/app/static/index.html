@@ -385,6 +385,19 @@
       </div>
     </section>
 
+    <section class="panel" id="deepSweepPanel">
+      <header class="panel-head"><h2>Deep permutation pass</h2><span class="muted small">all unmatched functions · no AI tokens</span></header>
+      <div class="pad">
+        <p class="small muted">Give each function a longer turn through local repairs and random permutations. Completed passes are saved, so you can stop, close the app and resume later. Changed source, headers or compiler inputs make a function eligible again.</p>
+        <div class="row"><label>Minutes per function<input id="deepSweepMinutes" type="number" min="1" max="120" value="5"></label><label>Variants per function<input id="deepSweepVariants" type="number" min="1" max="1000000" value="10000"></label></div>
+        <label class="check"><input id="deepSweepRepeat" type="checkbox"><span>Repeat previously completed passes</span></label>
+        <div class="row"><button id="deepSweepStart" type="button" class="primary">Deep permute untested functions</button><button id="deepSweepStop" type="button" class="ghost" hidden>Stop deep pass</button></div>
+        <p class="small muted">One function at a time. Busy functions and those without scored C wait for their agent or draft. Only the ordinary byte judge can save a match. A completed pass means its bounded turn finished, not that every possible rewrite was tried.</p>
+        <p class="small" id="deepSweepStatus" role="status"></p>
+        <div id="deepSweepLog"></div>
+      </div>
+    </section>
+
     <div class="cols">
       <section class="panel" id="compilerPanel" aria-labelledby="compilerH">
         <header class="panel-head"><h2 id="compilerH">Compiler</h2><span class="muted small" id="compilerState"></span></header>
@@ -574,6 +587,7 @@
       </div>
       <details class="more" id="fnDeepPanel" hidden>
         <summary>Deep permuter · this function</summary>
+        <p class="small muted" id="fnDeepHistory"></p>
         <p class="small muted">Tries the supported local repairs, then searches random rewrites of this function’s saved C. No AI tokens. This is a bounded search, not every possible C program. Exact matches and better candidates are saved immediately.</p>
         <div class="fields">
           <label class="field"><span>Time limit (minutes)</span><input id="fnDeepMinutes" type="number" min="1" max="120" value="30"></label>
