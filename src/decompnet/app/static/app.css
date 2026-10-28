@@ -1118,3 +1118,36 @@ details.more[open] > summary::before { content: "− "; }
 .agent-results-dialog header p { margin: 0; font: 12px var(--mono); overflow-wrap: anywhere; }
 .agent-result-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .agent-result-row button { text-align: left; overflow-wrap: anywhere; font-family: var(--mono); }
+
+/* Deep search keeps its scores visible while optional technical output grows separately. */
+.deep-search { padding: 16px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raise); }
+.deep-search > summary { font-weight: 600; }
+.deep-free { display: inline-block; margin-left: 8px; padding: 3px 7px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: 11px; font-weight: 400; }
+.deep-controls { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(140px, 1fr) auto; gap: 12px; align-items: end; margin: 18px 0; }
+.deep-controls .field { margin: 0; min-width: 0; }
+.deep-controls input { width: 100%; box-sizing: border-box; }
+.deep-actions { display: flex; gap: 8px; flex-wrap: wrap; padding-bottom: 1px; }
+.deep-dashboard { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.deep-dashboard[hidden] { display: none; }
+.deep-scores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+.deep-scores > div { padding: 16px; min-width: 0; }
+.deep-scores > div + div { border-left: 1px solid var(--line); }
+.deep-scores dt, .deep-scores span { color: var(--muted); font-size: 11px; }
+.deep-scores dd { margin: 8px 0 5px; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.deep-scores span { display: block; overflow-wrap: anywhere; }
+.deep-best { background: color-mix(in oklch, var(--hl-soft) 16%, transparent); }
+.deep-dashboard[data-matched="true"] .deep-best dd { color: var(--match); }
+.deep-dashboard[data-improved="true"] { border-color: var(--hl); }
+.deep-counters { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 10px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.deep-counters b { color: var(--ink); font-weight: 600; }
+.deep-counters > :last-child { margin-left: auto; }
+.deep-output { margin-top: 14px; font-size: 12px; }
+.deep-output summary { cursor: pointer; color: var(--muted); }
+.deep-output .joblog { max-height: 180px; margin-top: 10px; }
+.deep-note { margin-bottom: 0; font-size: 11px; }
+@media (max-width: 650px) {
+  .deep-controls { grid-template-columns: 1fr 1fr; }
+  .deep-actions { grid-column: 1 / -1; }
+  .deep-scores > div { padding: 12px 8px; }
+  .deep-scores dd { font-size: 22px; }
+}
