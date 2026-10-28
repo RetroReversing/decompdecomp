@@ -111,6 +111,10 @@ async function refreshFn(first) {
       ? `${d.unit} · ${d.insns} instructions${d.match_percent != null ? ` · ${d.match_percent >= 100 ? "100" : (Math.floor(d.match_percent * 10) / 10).toFixed(1)}% now` : ""}`
       : `${hex8(d.vram)} · ROM 0x${d.rom_offset.toString(16).toUpperCase()} · ${d.insns} instructions`;
     if ($("fnName").textContent !== d.name) {
+      if (!deepPermuterBusy) {
+        $("fnDeepMetrics").hidden = true;
+        $("fnDeepStatus").textContent = "";
+      }
       $("fnCompilerRanked").replaceChildren();
       $("fnApplyCompiler").hidden = true;
       $("fnCompilerSummary").hidden = true;
@@ -532,18 +536,25 @@ $("fnDeepRun").onclick = async () => {
   const log = $("fnDeepLog"), status = $("fnDeepStatus"), stop = $("fnDeepStop");
   const controls = [$("fnDeepRun"), $("fnDeepMinutes"), $("fnDeepVariants")];
   const minutes = Number($("fnDeepMinutes").value), maxVariants = Number($("fnDeepVariants").value);
+  const renderProgress = deepProgressView();
+  renderProgress();
+  log._followTail = false;
   deepPermuterBusy = true;
   log.hidden = false; stop.hidden = false; stop.disabled = true;
   showJobError(log, "");
   status.textContent = `Starting deep search for ${name}…`;
   const done = beginWork(log, "Searching this function locally", controls, "Deep search finished.");
+  const bar = log.previousElementSibling;
+  $("fnDeepWork").append(log._workStatus);
+  $("fnDeepWork").append(bar);
   try {
     const { job } = await api("/api/permuter/function", { method: "POST", body: { slug, function: name, minutes, max_variants: maxVariants } });
     deepPermuterJob = job; stop.disabled = false;
     const result = await followJob(job, log, (_, state) => {
       const p = state.progress;
-      if (p) status.textContent = `${name} · ${p.phase} · ${p.tested.toLocaleString()} tested · ${p.skipped.toLocaleString()} cached misses skipped · best score ${p.best_score ?? "—"} · ${p.seconds_left}s left`;
+      if (p) { renderProgress(p); status.textContent = `${name} · ${p.phase}`; }
     });
+    renderProgress(result);
     status.textContent = `${name} · ${result.reason} · ${result.tested.toLocaleString()} tested. Improvements saved.`;
     if (S.slug === slug && S.fn === name) { await refreshMap(true); await refreshFn(false); }
   } catch (error) {
@@ -551,7 +562,7 @@ $("fnDeepRun").onclick = async () => {
       status.textContent = `${name} · Stopped. Verified improvements are saved.`;
       log._workStatus.dataset.state = "cancelled"; log._workStatus.textContent = "Stopped";
     }
-    else showJobError(log, error.message);
+    else { status.textContent = error.message; $("fnDeepOutput").open = true; showJobError(log, error.message); }
   } finally {
     deepPermuterBusy = false; deepPermuterJob = null; stop.hidden = true; done();
   }
