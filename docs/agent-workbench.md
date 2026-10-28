@@ -8,7 +8,7 @@ Matched/set-aside functions, active claims, stalled candidates, the worker's try
 limit, match percentage, recent releases and recorded model history are explained.
 SDK code is deferred in automatic mode, not forbidden. Starred work stays first in
 automatic mode. A preview never claims, releases or expires anything. It is a
-snapshot: other workers can change availability immediately. Random order can
+snapshot: other workers can change availability immediately. Joined-room members must inspect the host app’s queue; a local replica cannot predict its authoritative scheduler. Random order can
 naturally change between requests; the preview examines at most 1,000 eligible rows.
 
 ## Bound a worker's allowance
@@ -24,7 +24,7 @@ manually starting it again does too. Display metric resets do not reset limits.
 Token/dollar limits rely on provider reports. Some CLIs report only at session end;
 interrupted calls may never report. A call can overshoot a limit, and a dollar-only
 limit cannot bound a provider that never reports dollars. Use an elapsed-time cap
-too. API-equivalent estimates are not used as if they were actual charges.
+too. API-equivalent estimates are not used as if they were actual charges. Joined-room members use time/usage limits; no-improvement timers require the host’s authoritative history.
 
 **Compiler comparison not run first** is a queue strategy. **Before each session,
 compare installed compilers** optionally checks the next queued function that has
@@ -63,9 +63,9 @@ Open **Agents → Compare models**:
    Changes during copying invalidate it. The copy excludes Git pointers and other
    projects; old helpers and room/settings state cannot resume in a trial.
 3. Choose two to six explicit model IDs and configured API endpoints when needed.
-   Choose an equal elapsed-time and/or reported-token budget. Token-only requests
+   Choose one shared deterministic queue order (easiest first by default) and an equal elapsed-time and/or reported-token budget. Adaptive routing and model-specific history filters are disabled in controlled trials. Token-only requests
    also receive a finite 30-minute wall-clock ceiling. The UI defaults to 30 minutes.
-4. Stop the app’s other agents to avoid competing provider slots. Confirm the account/allowance use and press **Start comparison**. No model starts
+4. Stop the app’s other agents to avoid competing provider slots. New/restarted helpers are blocked while a controlled comparison runs. Confirm the account/allowance use and press **Start comparison**. No model starts
    merely by opening this panel or creating a checkpoint.
 5. Review new/exclusive matches, distinct improvements, recovered bytes, elapsed
    time, reported usage, reported cost and API-equivalent estimates. Earlier reports

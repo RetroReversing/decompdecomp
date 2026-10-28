@@ -8,6 +8,7 @@ from .. import agent_workbench
 def register(app):
     from ..benchmarks import Benchmarks
     comparisons=Benchmarks(app)
+    app.manager.comparing=lambda:bool(comparisons.active)
     previous_stop=app.manager.on_stop
     def stop():
         comparisons.shutdown()

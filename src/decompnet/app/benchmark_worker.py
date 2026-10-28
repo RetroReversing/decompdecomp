@@ -108,7 +108,7 @@ def run(folder,request):
     security=TransportSecuritySettings(enable_dns_rebinding_protection=True,
                                        allowed_hosts=[f'127.0.0.1:{port}'],allowed_origins=[f'http://127.0.0.1:{port}'])
     server=uvicorn.Server(uvicorn.Config(mcp.streamable_http_app(transport_security=security,host='127.0.0.1'),
-                                       host='127.0.0.1',port=port,log_level='warning',timeout_graceful_shutdown=30))
+                                       host='127.0.0.1',port=port,log_config=None,log_level=None,access_log=False,timeout_graceful_shutdown=30))
     thread=threading.Thread(target=lambda:server.run(sockets=[listener]),daemon=True)
     thread.start()
     try:

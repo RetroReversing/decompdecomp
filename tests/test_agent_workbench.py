@@ -158,3 +158,20 @@ def test_compiler_unchecked_strategy_is_a_shared_queue_order(setup,kind):
     if kind=='fork':
         with pytest.raises(NetworkError,match='ROM projects only'):
             manager.set_controls(s.id,{},True)
+
+
+def test_comparison_guard_blocks_new_and_restarted_helpers(setup):
+    net,manager,s,agent=setup
+    manager.comparing=lambda:True
+    with pytest.raises(ValueError,match='comparison'):
+        manager.start('codex','game')
+    with pytest.raises(ValueError,match='comparison'):
+        manager.restart(s.id)
+
+
+def test_joined_room_preview_does_not_guess_the_host_queue(setup):
+    net,manager,s,agent=setup
+    net.links[s.slug]=object()
+    with pytest.raises(NetworkError,match='host'):
+        agent_workbench.preview(manager,s.id)
+    net.links.clear()

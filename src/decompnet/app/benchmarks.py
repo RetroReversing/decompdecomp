@@ -143,7 +143,7 @@ class Benchmarks:
         proj=net.project_row(slug)
         if slug in net.links or slug in net.rooms:
             raise NetworkError('Leave the shared room before making a local comparison checkpoint.')
-        if any(s.slug==slug and s.state in ('starting','working','waiting') for s in self.app.manager.sessions.values()):
+        if any(s.slug==slug and (s.state in ('starting','working','waiting') or (getattr(s,'thread',None) is not None and s.thread.is_alive())) for s in self.app.manager.sessions.values()):
             raise NetworkError('Stop this project’s agents before creating a comparison checkpoint.')
         if net.store.one('SELECT 1 FROM claims c JOIN functions f ON f.id=c.function_id WHERE f.project_id=? AND c.expires_at>?',proj['id'],time.time()):
             raise NetworkError('This project still has active work. Wait for its checks to finish before taking a checkpoint.')
@@ -213,8 +213,11 @@ class Benchmarks:
             raise NetworkError('Set an equal time or token budget for all trials.')
         # A finite wall-clock ceiling prevents unknown CLI usage from leaving a token-only trial running forever.
         caps.setdefault('seconds',1800)
-        policy=self.app.net.validate_selection(selection)
-        if any(s.state in ('starting','working','waiting') for s in self.app.manager.sessions.values()):
+        policy=self.app.net.validate_selection(selection or {'strategy':'easiest'})
+        policy['strategy']=policy.get('strategy') or 'easiest'
+        if policy.get('model_untried') or policy['strategy']=='random':
+            raise NetworkError('Controlled comparisons need one deterministic common queue, without model-specific history filters.')
+        if any(s.state in ('starting','working','waiting') or (getattr(s,'thread',None) is not None and s.thread.is_alive()) for s in self.app.manager.sessions.values()):
             raise NetworkError('Stop the app’s other agents before running a controlled model comparison.')
         options=[]
         for plan in plans:

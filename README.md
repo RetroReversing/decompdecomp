@@ -638,7 +638,6 @@ before starting. Function inspectors offer **Model attempts** and **Explain rema
 differences**. Verified bytes per million reported tokens complement match counts.
 
 **Agents → Compare models** creates a local checkpoint and runs explicit models
-sequentially in separate copies with equal budgets. It keeps original projects
-unchanged and never merges results automatically. Paid work requires a start click;
+sequentially in separate copies with equal budgets. It never merges results into the original project automatically. Paid work requires a start click;
 usage may be incomplete for interrupted calls. See [the workbench guide](docs/agent-workbench.md)
 for controls, accounting scopes, imported-build permissions and validation limits.

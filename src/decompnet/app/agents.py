@@ -574,6 +574,8 @@ class Manager:
         options["selection"] = self.net.validate_selection(options.get("selection"))
         from .agent_limits import validate
         options['limits'] = validate(options.get('limits') or {})
+        if options['limits'].get('idle_seconds') and slug in self.net.links:
+            raise NetworkError('Joined-room progress is recorded by the host. Use elapsed-time or usage limits for this member.')
         if 'compiler_first' in options and not isinstance(options['compiler_first'],bool):
             raise NetworkError('Compiler preflight must be true or false.')
         if options.get('compiler_first') and self.net.fork_slug(slug):
@@ -584,6 +586,8 @@ class Manager:
             options.pop("model", None)  # a Gemini CLI model name may mean nothing to Antigravity: use its default
         if self._down:
             raise ValueError("decompdecomp is quitting")
+        if getattr(self,"comparing",lambda:False)():
+            raise ValueError("A controlled model comparison is running. Stop it before starting other agents.")
         ids = []
         self._prepare(slug)
         with self._lock:
@@ -607,6 +611,8 @@ class Manager:
         from .agent_workbench import helper
         values = validate(limits)
         s = helper(self,sid)
+        if values.get('idle_seconds') and s.slug in self.net.links:
+            raise NetworkError('Joined-room progress is recorded by the host. Use elapsed-time or usage limits for this member.')
         if not isinstance(compiler_first,bool):
             raise NetworkError('Compiler preflight must be true or false.')
         if compiler_first and self.net.fork_slug(s.slug):
@@ -661,6 +667,8 @@ class Manager:
 
     def restart(self, sid: str) -> None:
         """Start a stopped or paused helper again, by hand."""
+        if getattr(self,"comparing",lambda:False)():
+            raise ValueError("A controlled model comparison is running. Stop it before restarting other agents.")
         with self._lock:
             s = self.sessions.get(sid)
             if s is None:

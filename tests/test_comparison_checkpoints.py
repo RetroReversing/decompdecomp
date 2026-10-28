@@ -258,3 +258,11 @@ def test_relocation_handles_json_windows_separators_and_external_sibling_paths(t
     c.commit();c.close()
     benchmarks.relocate(db,old,root)
     assert json.loads((root/'objdiff.json').read_text())['target']==str(root/'build/object.o')
+
+
+@pytest.mark.parametrize('selection',[{'strategy':'random'},{'model_untried':True}])
+def test_comparisons_require_a_common_deterministic_queue(comparison,selection):
+    service,app,project=comparison
+    cp=service.checkpoint('demo',log=lambda x:None)
+    with pytest.raises(NetworkError,match='common queue'):
+        service.run(cp['id'],[{'kind':'codex','model':'a'},{'kind':'codex','model':'b'}],{'seconds':1},selection,log=lambda x:None)

@@ -17,6 +17,8 @@ def preview(manager, sid, limit=20):
     s = helper(manager,sid)
     net = manager.net
     proj = net.project_row(s.slug)
+    if s.slug in net.links:
+        raise network.NetworkError('Joined-room queue previews need the host’s scheduler. Open the host app to inspect its queue.')
     row = net.store.one('SELECT * FROM agents WHERE name=?',s.agent_name)
     agent = network.Agent(row['id'] if row else -1,s.agent_name,None,True)
     now = time.time()
