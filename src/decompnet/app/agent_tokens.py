@@ -182,13 +182,24 @@ def assembly(net, slug, function, start=0, limit=60, focus="", agent=None):
         lines = fp.diff(unit, net.forks._meta(fn).get('symbol') or fn['name']).target_asm().splitlines()
     else:
         lines = net._asm_text(fn, net._project(slug)).splitlines()
+    if focus.startswith('mismatch'):
+        parts=focus.split(':')
+        try:
+            region=int(parts[1]) if len(parts)==2 else 1
+        except ValueError:
+            raise NetworkError('Use mismatch or mismatch:N (1-based differing instruction).') from None
+        if len(parts)>2 or region<1:
+            raise NetworkError('Use mismatch:N with N >= 1.')
     if focus:
         def normalized(text):
             text=re.sub(r'/\*.*?\*/','',text)
             return re.sub(r'\s+','',text).strip()
-        if focus=='mismatch':
+        if focus=='body':
+            hits=[min(20,max(0,len(lines)-1))]
+        elif focus.startswith('mismatch'):
             kept=net._last_diffs.get((agent.id,fn['id'])) if agent else None
-            target=next((r[1] for r in kept[0] if r[0]!=' ' and r[1].strip()),'') if kept else ''
+            different=[r[1] for r in kept[0] if r[0]!=' ' and r[1].strip()] if kept else []
+            target=different[region-1] if region<=len(different) else ''
             hits=[i for i,line in enumerate(lines) if target and normalized(target) in normalized(line)]
         else:
             if len(focus)>160:
@@ -258,6 +269,11 @@ def feedback(net, agent, slug, function, text, previous):
 
 def function_view(net, agent, slug, function, section='all'):
     """Small supporting reads without replaying the candidate and assembly."""
+    if section == 'brief':
+        return brief(net,net.get_function(function,slug,agent),slug,agent)
+    if section == 'draft':
+        fn=net._function(function,slug)
+        return 'Stored machine draft (not the current candidate):\n```c\n'+(fn['seed'] or '')+'\n```' if fn['seed'] else 'No stored machine draft. Use section=candidate for existing C.'
     if section == 'source':
         section = 'candidate'
     if section == 'history':

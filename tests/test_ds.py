@@ -856,3 +856,16 @@ def test_a_symbol_of_the_game_is_renamed_in_its_config(tmp_path):
     (gc / "symbols.txt").write_text("fn_80003100 = .text:0x80003100; // type:function size:0x40\n")
     consoles.get("gc").rename_symbol(fp, "v2", "fn_80003100", "OSInit")
     assert (gc / "symbols.txt").read_text() == "OSInit = .text:0x80003100; // type:function size:0x40\n"
+
+
+def test_diagnostic_profile_restores_even_an_exact_match(per_file):
+    net,slug,agent,root,state,lerp=per_file
+    N64.set_file_compiler(None,'src/game.c',BAD)
+    before=(root/'src/game.c').read_bytes()
+    head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root)
+    result=net.try_compiler(agent,slug,'lerp',GOOD,source=lerp,keep_match=False)
+    assert 'MATCH' in result and state['compiler']==BAD
+    assert (root/'src/game.c').read_bytes()==before
+    assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=root)==head
+    assert net._function('lerp',slug)['status']=='open'
+    assert net.store.one('SELECT COUNT(*) AS n FROM attempts')['n']==0
