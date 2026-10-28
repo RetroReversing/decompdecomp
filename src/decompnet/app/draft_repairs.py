@@ -148,7 +148,10 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
         labels.setdefault(text,'expression_or_near_repair')
     # Round-robin families so a new family cannot crowd existing repairs out of a short pass.
     groups = {}
+    from .repair_preflight import invalid_call
     for text in dict.fromkeys(proposals):
+        if invalid_call(text, name):
+            continue
         groups.setdefault(labels[text],[]).append(text)
     ordered = []
     while any(groups.values()):

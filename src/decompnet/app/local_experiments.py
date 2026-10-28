@@ -82,6 +82,8 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         if 'narrowing' in pools:
             masks=lambda text:len(re.findall(r'&\s*0x(?:[fF]{4}|[fF]{2})\b',text))
             pools['narrowing'] += [s for s in expression_repairs.variants(source,fn['name'],proj['arch']) if masks(s)<masks(source)]
+        from .repair_preflight import invalid_call
+        pools = {f: [s for s in pool if not invalid_call(s, fn['name'])] for f, pool in pools.items()}
         durable_scope=agent_tokens.target_scope(net,fn,'')
         pools={f:[s for s in dict.fromkeys(pool) if s!=source and not agent_tokens.compiled_before(net,fn,s,durable_scope) and not agent_tokens.target_tried(net,fn,revision,'local:'+f,s)] for f,pool in pools.items()}
         ranked = repair_ranking.order(pools,repair_ranking.evidence(net,fn['id'],agent.id))

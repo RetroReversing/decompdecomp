@@ -40,7 +40,7 @@ class Search(Permuter):
         self.seconds = minutes*60
         self.limit = max_variants
         self.log = log
-        self.tested = self.skipped = self.visited = 0
+        self.tested = self.skipped = self.visited = self.rejected = 0
         self.best = None
         self.phase = 'local repairs'
         self.measuring_baseline = False
@@ -54,7 +54,7 @@ class Search(Permuter):
 
     def report(self):
         self.log.progress({'phase': self.phase, 'tested': self.tested, 'skipped': self.skipped,
-                           'best_score': self.best, 'variant_limit': self.limit,
+                           'best_score': self.best, 'variant_limit': self.limit, 'rejected': self.rejected,
                            'seconds_left': max(0, round(self.deadline-time.monotonic()))})
 
     def _baseline(self, *args):
@@ -69,6 +69,13 @@ class Search(Permuter):
     def _score(self, agent, proj, fn, source, best, fork):
         self.check()
         self.visited += 1
+        if not fork and not self.measuring_baseline and source != fn['best_source']:
+            from .repair_preflight import invalid_call
+            header = self.net._context(proj['id'], fn['unit'])['header']
+            if invalid_call(source, fn['name'], header):
+                self.rejected += 1
+                self.report()
+                return None
         # Scope includes the actual compiler/header/target and imported build dependencies. A previous
         # miss is reusable only in that scope. Better cached results are rejudged before being kept.
         scope = agent_tokens.target_scope(self.net, {**dict(fn), 'best_source': source}, '')
@@ -97,6 +104,10 @@ def run(net, slug, name, minutes, max_variants, log):
     state = State()
     agent, _ = net.local_agent('permuter')
     reason = 'Current candidate families finished'
+    from .compiler_preflight import warnings
+    warning = warnings(net, proj, fn)
+    if warning:
+        log('Compiler preflight (advisory): '+warning)
     log('Testing supported local repairs, then bounded random rewrites. This cannot exhaust every possible C program.')
     try:
         if not search._hold(agent, fn, count_turn=False):
@@ -145,6 +156,6 @@ def run(net, slug, name, minutes, max_variants, log):
     except SearchLimit as error:
         reason = str(error)
     search.report()
-    log(f'{reason}: {search.tested} candidates tested, {search.skipped} cached misses skipped. Verified improvements are saved immediately.')
+    log(f'{reason}: {search.tested} candidates tested, {search.skipped} cached misses skipped, {search.rejected} invalid calls skipped. Verified improvements are saved immediately.')
     return {'function': name, 'reason': reason, 'tested': search.tested, 'skipped': search.skipped,
-            'matched': net._function(name, slug)['status'] == 'matched', 'best_score': search.best}
+            'rejected': search.rejected, 'matched': net._function(name, slug)['status'] == 'matched', 'best_score': search.best}

@@ -21,6 +21,7 @@ class Log:
 
 def setup(monkeypatch, imported=False):
     net = FakeNet()
+    monkeypatch.setattr('decompnet.app.compiler_preflight.warnings', lambda *args: '')
     net._function = lambda name, slug: net.function()
     net.local_agent = lambda name: (AGENT, None)
     net.fork_slug = lambda slug: 'fork' if imported else None
@@ -157,3 +158,14 @@ def test_a_scalar_cache_does_not_replace_baseline_instruction_evidence(monkeypat
     search._score(AGENT, proj, fn, 'cached', 40, None)
     search._baseline(AGENT, proj, fn, None, None)
     assert len(seen) == 2
+
+
+def test_invalid_generated_calls_do_not_consume_the_compile_allowance(monkeypatch):
+    net = setup(monkeypatch)
+    search = deep_permuter.Search(net, 1, 4, Log())
+    calls = []
+    monkeypatch.setattr(Permuter, '_score', lambda *args:calls.append(1) or 40)
+    net._context = lambda *args: {'header':'', 'version':1}
+    source = 'int send(int a,int b); int f(void) { return send(1); }'
+    assert search._score(AGENT, net.project_row('game'), net.function(), source, 40, None) is None
+    assert search.rejected == 1 and search.tested == 0 and not calls

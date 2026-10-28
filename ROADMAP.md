@@ -881,3 +881,10 @@ projects. It bypasses the background queue's size and turn filters, visits the g
 then uses ordinary random rewrites. Time/compile limits, progress, cancellation, normal judges and immediate
 saving remain mandatory. Scoped misses survive another deep run; failed compiles stay retryable and cached
 improvements must be rejudged. This does not claim to exhaust all possible C programs or compiler options.
+
+Repair preflight filters provable plain-prototype arity errors in shared generated local families and ROM
+permuter/reuse candidates, before the ordinary judges. Saved ROM GCC drafts get cached advisory warnings in
+agent briefs and deep-search output. Planned: compiler-specific diagnostic flags for other backends and an
+opt-in diagnostic build command for imported projects (their ordinary build diagnostics remain available).
+Reuse discovery batches fingerprint names/cache reads and persists a separate cheap-discovery cursor; at most
+half the remaining shared reuse time goes to that phase, leaving time for wider matching.

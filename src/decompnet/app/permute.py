@@ -558,6 +558,9 @@ class Permuter:
             res = self.net.forks.attempt(agent, fork, fn["name"], source, keep=False, quiet=best)
             return res.get("score")
         ctx = self.net._context(proj["id"], fn["unit"])
+        from .repair_preflight import invalid_call
+        if source != fn['best_source'] and invalid_call(source, fn['name'], ctx['header']):
+            return None
         result = self.net._compile(proj, ctx["header"], source, fn)
         if not result.ok:
             return None

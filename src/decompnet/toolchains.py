@@ -136,6 +136,13 @@ def compiler_family(tid: str) -> str:
     return _registry_data().get(tid, {}).get("family", "")
 
 
+def diagnostic_flags(tid: str) -> tuple[str, ...]:
+    """Warning switches for known GCC backends only; no tools are installed to answer this."""
+    spec = _registry_data().get(tid, {})
+    gcc = spec.get('family') == 'gcc' or 'gcc' in tid.split('-')
+    return ('-Wall', '-Wuninitialized') if gcc and spec else ()
+
+
 def data_dir() -> Path:
     """Per-user data directory for decompnet (toolchains, caches)."""
     if sys.platform == "win32":
