@@ -601,3 +601,14 @@ previously exhausted functions more turns. Larger functions compile more slowly;
 the permuter still selects candidates within 6% of an exact match. Deterministic
 repair passes retain their separate budgets. Idle workers check again within about
 three minutes; a finished permuter starts again when project agents start.
+
+### Reset an agent's card metrics
+
+Choose **Reset metrics** on an agent card to start its displayed matches, improvements,
+compiles, reported tokens/cost and session counters from zero. This keeps verified code,
+attribution, transcripts and project/model lifetime totals, and does not stop the agent.
+The baseline survives app restarts. The card shows total reported tokens and time since
+its last improvement; a reset clears that improvement timer until new progress arrives.
+Its runtime still measures time since the latest start. Provider usage reported after
+reset belongs to the new period, even when the request began earlier; missing usage
+is not reconstructed. Matched/improved function links follow the same reset period.

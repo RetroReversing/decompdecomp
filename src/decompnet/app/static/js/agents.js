@@ -93,7 +93,7 @@ function agentTokenRate(s, stats) {
 }
 function sortAgentCards(sessions, board, mode, now = Date.now() / 1000) {
   return [...sessions].sort((a, b) => {
-    const x = board.get(a.agent), y = board.get(b.agent);
+    const x = a.metrics || board.get(a.agent), y = b.metrics || board.get(b.agent);
     const value = mode === "matches" ? (y?.matched || 0) - (x?.matched || 0)
       : mode === "improved" ? (y?.improved || 0) - (x?.improved || 0)
       : mode === "runtime" ? agentRuntime(b, now) - agentRuntime(a, now)
@@ -119,7 +119,7 @@ async function showAgentResults(session, kind) {
   async function load() {
     const done = beginWork(list, 'Loading agent results', [more]);
     try {
-      const data = await api(`/api/agent-results?slug=${encodeURIComponent(slug)}&agent=${encodeURIComponent(session.agent)}&kind=${kind}&before=${before}`);
+      const data = await api(`/api/agent-results?slug=${encodeURIComponent(slug)}&agent=${encodeURIComponent(session.agent)}&kind=${kind}&before=${before}&after=${session.metrics_after || 0}`);
       if (!panel.isConnected) return;
       if (!before && !data.functions.length) list.textContent = 'No functions to show yet.';
       for (const fn of data.functions) {
@@ -141,7 +141,10 @@ function agentMetrics(s, stats) {
   const elapsed = agentRuntime(s), rate = agentTokenRate(s, stats);
   const runtime = LIVE.includes(s.state) ? `${Math.floor(elapsed / 3600)}h ${Math.floor(elapsed % 3600 / 60)}m` : "Not running";
   const metric = (kind,count) => `<button type="button" class="agent-metric-link" data-agent-results="${esc(s.id)}" data-result-kind="${kind}" ${count ? '' : 'disabled'} aria-label="View ${count} ${kind} functions for ${esc(s.label)}"><strong>${count}</strong><span>${kind} <span aria-hidden="true">↗</span></span></button>`;
-  return `<div class="agent-metrics">${s.task === 'readable' ? `<div><strong>${stats?.polished || 0}</strong><span>polished</span></div>` : metric('matched',stats?.matched || 0)}${metric('improved',stats?.improved || 0)}<div><strong>${runtime}</strong><span>since latest start</span></div><div><strong>${rate == null ? "—" : (rate / 1000).toFixed(1) + "k"}</strong><span title="Recorded lifetime total tokens, including cache reads, divided by lifetime matches; not a dollar cost">tokens / match</span></div></div>`;
+  const last = stats?.last_improvement;
+  const seconds = last ? Math.max(0, Date.now() / 1000 - last) : null;
+  const ago = seconds == null ? "None yet" : seconds < 60 ? `${Math.floor(seconds)}s` : seconds < 3600 ? `${Math.floor(seconds / 60)}m` : `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m`;
+  return `<div class="agent-metrics"><div><strong>${Number(s.tokens || 0).toLocaleString()}</strong><span title="Reported tokens since the last metrics reset, including cache reads and writes">total tokens used</span></div><div><strong>${ago}</strong><span>since last improvement</span></div>${s.task === 'readable' ? `<div><strong>${stats?.polished || 0}</strong><span>polished</span></div>` : metric('matched',stats?.matched || 0)}${metric('improved',stats?.improved || 0)}<div><strong>${runtime}</strong><span>since latest start</span></div><div><strong>${rate == null ? "—" : (rate / 1000).toFixed(1) + "k"}</strong><span title="Recorded tokens since the last reset, including cache reads, divided by matches in that period; not a dollar cost">tokens / match</span></div></div>`;
 }
 $("agentSort").onchange = () => { agentSort = $("agentSort").value; renderSessions(S.sessions || []); };
 
@@ -160,7 +163,7 @@ function renderSessions(sessions) {
       ? `<h3 class="session-group">${group}</h3>` : "";
     const claim = S.claims.find((c) => c.agent === s.agent);
     const dot = s.state === "paused" ? "err" : s.state === "working" ? "on" : s.state === "stopped" ? "" : "work";
-    const live = LIVE.includes(s.state), id = esc(s.id), b = board.get(s.agent);
+    const live = LIVE.includes(s.state), id = esc(s.id), b = s.metrics || board.get(s.agent);
     const facts = [s.task === "readable" ? `<b>polishing</b>` : "", esc(s.kind_name), s.model ? esc(s.model) : "its default model", s.task === "readable" ? helperResults(b, s.task) : "", b ? plural(b.compiles, "compile") : "",
       s.usd ? money(s.usd) : s.tokens ? `${(s.tokens / 1000).toFixed(0)}k tokens` : "", s.runs ? plural(s.runs, "session") : "",
       s.restarts ? `started again ${plural(s.restarts, "time")}` : "", live && s.started_at ? `since ${hhmm(s.started_at)}` : ""].filter(Boolean);
@@ -172,9 +175,11 @@ function renderSessions(sessions) {
       ${todo ? `<span class="todo-line">${esc(todo)}</span>` : ""}
       ${s.last_message ? `<details class="agent-message"><summary>Latest update</summary><q class="said">${esc(s.last_message)}</q></details>` : ""}
       ${agentMetrics(s, b)}
+      ${s.metrics_since ? `<span class="small muted">Metrics since reset · ${new Date(s.metrics_since * 1000).toLocaleString()}</span>` : ""}
       <span class="facts-line">${facts.join(" · ")}</span>
       ${s.estimated_cost != null ? `<span class="small muted" title="Standard API rates checked 26 Oct 2026, using recorded input, cached input and output. Excludes cache-write, long-context, fast-mode and regional premiums. This is not your subscription bill.">≈ ${money(s.estimated_cost)} API-equivalent${b?.matched ? ` · ≈ ${money(s.estimated_cost / b.matched)} / match` : ""}</span>` : ""}
       <button class="link-btn" data-queue="${id}" type="button">Work settings · ${s.per_session || 8} functions/session${s.task === "readable" ? "" : ` · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.stall_compiles ? ` · move on after ${esc(s.selection.stall_compiles)} without improvement` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}`}</button>
+      <button class="link-btn" data-reset-metrics="${id}" type="button">Reset metrics</button>
       <button class="link-btn" data-log="${id}" type="button" aria-pressed="${S.logFor === s.id}">${S.logFor === s.id ? "Back to everything" : "What it said and did"}</button></div>`;
   }).join("");
   setHtml(box, html);
@@ -219,6 +224,16 @@ function renderSessions(sessions) {
         s.label = result.label;
         closeDialog(); renderSessions(S.sessions || []);
       } catch (e) { toast(esc(e.message), "err"); }
+    };
+  }; });
+  box.querySelectorAll("[data-reset-metrics]").forEach(button => { button.onclick = () => {
+    const panel = dialog("Reset agent metrics", `<p>Start this agent’s displayed matches, improvements, compiles, tokens, cost and session counters from zero. Matched code, attribution and transcripts are kept. The agent continues running.</p><p class="small muted">Token usage reported after reset counts in the new period, even if the call started earlier. Latest-start runtime stays unchanged. Project and model lifetime totals are kept.</p><button class="primary" data-confirm-reset>Reset metrics</button><button class="ghost" data-cancel-reset>Cancel</button>`);
+    panel.querySelector('[data-cancel-reset]').onclick = closeDialog;
+    panel.querySelector('[data-confirm-reset]').onclick = async () => {
+      try {
+        await api('/api/agents/reset-metrics', {method:'POST',body:{id:button.dataset.resetMetrics}});
+        closeDialog(); await poll(false);
+      } catch (error) { toast(esc(error.message),'err'); }
     };
   }; });
   act("[data-stop]", "/api/agents/stop", (b) => ({ id: b.dataset.stop }));
