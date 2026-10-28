@@ -826,3 +826,6 @@ Agent batches can verify and cache missing baseline instruction evidence per cla
 
 Agent cards have persistent metric reset baselines, total reported tokens and time
 since the last improvement, retaining code, history and lifetime model accounting.
+
+Function lists show check/improvement recency. Agent work selection supports oldest
+checked first and a recorded-model untried filter in ROM and imported projects.

@@ -270,3 +270,9 @@ def test_unchanged_output_limit_preserves_default_disable_and_validation(gui):
         {'strategy': '', 'match_below': None, 'unchanged_compiles': 8},
         [True, True, True, True], True,
     ]
+
+def test_function_recency_and_model_filter_controls():
+    if NODE is None:
+        pytest.skip('needs node')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_function_recency.js'))], check=True,
+                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)

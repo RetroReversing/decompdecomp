@@ -154,8 +154,16 @@ class GuiMixin:
         key = (lambda r: r["name"]) if link is not None and link.fork else (lambda r: r["vram"])
         remote = {key(c): "@" + c["agent"] for c in (link.claims if link is not None else [])}
         from ..function_names import state as name_state
+        recency = {r['function_id']: dict(r) for r in self.store.all(
+            'WITH history AS (SELECT t.*,f.n_insns, '
+            'MIN(CASE WHEN t.compiled THEN t.score END) OVER (PARTITION BY t.function_id ORDER BY t.id '
+            'ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS previous '
+            'FROM attempts t JOIN functions f ON f.id=t.function_id WHERE f.project_id=?) '
+            'SELECT function_id,MAX(created_at) AS last_checked, '
+            'MAX(CASE WHEN compiled AND score>=0 AND score<COALESCE(previous,n_insns*100) '
+            'THEN created_at END) AS last_improved FROM history GROUP BY function_id', proj['id'])}
         sdk = self.sdk_functions(proj)
-        return [{**name_state(r), "sdk": sdk.get(r["id"]), "name": r["name"], "vram": r["vram"], "size": r["size"], "insns": r["n_insns"], "unit": r["unit"],
+        return [{**name_state(r), **{k: recency.get(r["id"], {}).get(k) for k in ("last_checked", "last_improved")}, "sdk": sdk.get(r["id"]), "name": r["name"], "vram": r["vram"], "size": r["size"], "insns": r["n_insns"], "unit": r["unit"],
                  "status": r["status"] if r["status"] in ("matched", "asm") else "working" if (r["agent"] or key(r) in remote) else "open",
                  "best": r["best_score"], "attempts": r["attempts"], "agent": r["agent"] or remote.get(key(r)),
                  "matched_at": r["matched_at"], "matched_by": r["matched_by"],
