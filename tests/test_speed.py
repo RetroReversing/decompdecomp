@@ -262,8 +262,9 @@ def test_turns_not_wasted(game):
     # Keep the real signature: the selected function may have a prototype in context.h.
     source = csource.get((GAME / "game.c").read_text(), fn)
     assert source is not None
-    candidate = source.replace("{", "{ volatile int __stall_probe = 123;", 1)
-    for _ in range(5):
+    for k in range(5):
+        # Distinct valid candidates exercise stagnation, rather than the duplicate-source cache.
+        candidate = source.replace("{", "{ volatile int __stall_probe = " + str(123 + k) + ";", 1)
         out = net.compile_and_diff(agent, fn, candidate, slug)
     assert "Move on:" in out  # (the move-on nudge, as every compile result says it)
 
