@@ -237,6 +237,14 @@ def register(app: App) -> None:
             return {'job': jobs.start('source-preparation', work)}
         return source_preparation.configure(net, proj, data)
 
+    def p_deep_permuter(slug, request, data):
+        from .. import deep_permuter
+        name = str(data.get('function') or '')
+        minutes, variants = data.get('minutes', 30), data.get('max_variants', 100000)
+        deep_permuter.validate(net, slug, name, minutes, variants)
+        return {'job': jobs.start('deep-permuter', lambda log: deep_permuter.run(net, slug, name, minutes, variants, log),
+                                  cancel_message='Deep permuter stopped. Verified improvements are saved.')}
+
     def p_permuter(slug, request, data):
         """Run free local permutations without starting a paid helper or the full autopilot."""
         net.project_row(slug)
@@ -324,6 +332,7 @@ def register(app: App) -> None:
         "/api/try": (p_try, ["POST"]), "/api/release": (p_release, ["POST"]), "/api/reopen": (p_reopen, ["POST"]), "/api/setaside": (p_set_aside, ["POST"]),
         "/api/recheck": (p_recheck, ["POST"]),
         "/api/permuter": (p_permuter, ["POST"]),
+        "/api/permuter/function": (p_deep_permuter, ["POST"]),
         "/api/source-preparation": (p_source_preparation, ["GET", "POST"]),
         "/api/autopilot": (p_autopilot, ["POST"]), "/api/instructions": (p_instructions, ["POST"]), "/api/title": (p_title, ["POST"]),
         "/api/cross-game": (lambda s, r, d: {"results": net.twins.cross_game_results(s),

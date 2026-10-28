@@ -31,7 +31,7 @@ _IDENT = r'[A-Za-z_]\w*'
 _MEMBER = rf'{_IDENT}(?:\s*(?:->|\.)\s*{_IDENT})*'
 
 
-def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=None) -> list[str]:
+def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=None, *, limit=LIMIT) -> list[str]:
     span = find(source, name)
     if span is None:
         return []
@@ -155,4 +155,4 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
         for items in groups.values():
             if items:
                 ordered.append(items.pop(0))
-    return ordered[:LIMIT]
+    return ordered if limit is None else ordered[:limit]

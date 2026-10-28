@@ -36,6 +36,7 @@ const cases = [
   ["project", '$("localScan").onclick = async () => {', '\n};', "localScanLog", "localScan"],
   ["project", 'go.onclick = async () => {', '\n  };', "localImportLog", "localImport"],
   ["steering", '$("sourcePrepRun").onclick = async () => {', '\n};', "sourcePrepLog", "sourcePrepRun"],
+  ["function", '$("fnDeepRun").onclick = async () => {', '\n};', "fnDeepLog", "fnDeepRun"],
 ];
 function setup(file, marker, end, logId, buttonId, ranges = "") {
   const elements = new Map();
@@ -45,13 +46,15 @@ function setup(file, marker, end, logId, buttonId, ranges = "") {
   get("agList").querySelector = () => log; const input = element();
   const box = { querySelector: (selector) => ["[data-log]", "[data-local-log]"].includes(selector) ? log : get(selector.replace(/^#/, "")), querySelectorAll: (selector) => selector === "input, button, select" ? [input, button] : [input] };
   get("srcState").querySelectorAll = () => [button];
+  get("fnDeepMinutes").value = "30"; get("fnDeepVariants").value = "100";
   get("setRanges").value = ranges;
   get("rLink").value = "https://room.test"; get("jPath").value = "game";
   const start = deferred(), poll = deferred();
   let polls = 0;
   const ctx = {
     $: get, document: { createElement: element },
-    S: { slug: "test", ov: { kind: "fork" } }, info: {}, box, body: box, n: get("compilerNotice"), log, inst: button,
+    deepPermuterBusy: false, deepPermuterJob: null, refreshFn: async () => {},
+    S: { slug: "test", fn: "f", ov: { kind: "fork" } }, info: {}, box, body: box, n: get("compilerNotice"), log, inst: button,
     b: Object.assign(button, { dataset: { inst: "test" } }), a: { id: "test", name: "Test" }, ROOM_PORT: 6481,
     results: get("localResults"), scan: { folder: "/synthetic/collection", projects: [] }, picked: new Set(), renderList() {},
     selected: () => [{ path: "/synthetic/collection/project" }], renderLocalProjects() {}, update() {},
@@ -100,20 +103,22 @@ async function main() {
         assert.equal(log.bar.removed, undefined, marker);
         poll.resolve({ state: outcome === "done" ? "done" : outcome === "cancelled" ? "cancelled" : "error",
           log: ["Building"], error: outcome === "cancelled" ? "Cancelled." : "Build failed",
-          result: { slug: "test", identical: true, switched: 1, stayed: [], functions: 1, imported: [], errors: [] } });
+          result: {reason: "Time limit reached", tested: 2,  slug: "test", identical: true, switched: 1, stayed: [], functions: 1, imported: [], errors: [] } });
       }
       await running;
       assert.equal(log.bar.removed, true, marker);
       if (buttonId) assert.equal(button.disabled, false, marker);
-      if (outcome !== "done") assert.equal(log.error, outcome === "start-error" ? "Cannot start" : outcome === "cancelled" ? "Cancelled." : "Build failed", marker);
-      if (outcome === "job-error" || outcome === "cancelled") assert.equal(log.textContent, (outcome === "cancelled" ? "Cancelled." : "Build failed") + "\n\nBuilding", marker);
+      const deepCancelled = file === "function" && outcome === "cancelled";
+      if (deepCancelled) assert.ok(test.get("fnDeepStatus").textContent.includes("Stopped"));
+      if (outcome !== "done" && !deepCancelled) assert.equal(log.error, outcome === "start-error" ? "Cannot start" : outcome === "cancelled" ? "Cancelled." : "Build failed", marker);
+      if (outcome === "job-error" || (outcome === "cancelled" && !deepCancelled)) assert.equal(log.textContent, (outcome === "cancelled" ? "Cancelled." : "Build failed") + "\n\nBuilding", marker);
       if (outcome === "done") {
         assert.equal(log.error || "", "", marker);
         assert.equal(log._workStatus.dataset.state, "done");
         assert.ok(log._workStatus.textContent.endsWith("."), marker);
         assert.notEqual(log._workStatus.textContent, "Finished.", marker);
       } else {
-        assert.equal(log._workStatus.dataset.state, "error");
+        assert.equal(log._workStatus.dataset.state, deepCancelled ? "cancelled" : "error");
         assert.equal(log._workStatus.textContent, "Stopped");
       }
     }
@@ -131,6 +136,26 @@ async function main() {
     assert.equal(test.log.bar.removed, true);
     if (fail) assert.equal(test.log.error, "Invalid source folder");
     else assert.match(test.log.textContent, /12 signatures and 4 C definitions/);
+  }
+  // Stopping a deep search cancels its existing job, rather than launching another search.
+  for (const fail of [false, true]) {
+    const test = setup(...cases[cases.length - 1]);
+    test.ctx.deepPermuterJob = "deep-job";
+    const request = deferred(); let called;
+    test.ctx.api = (url, options) => { called = { url, options }; return request.promise; };
+    const source = read("function"), marker = '$("fnDeepStop").onclick = async () => {';
+    const offset = source.indexOf(marker) + marker.length;
+    vm.runInContext('async function stopDeep() {' + source.slice(offset, source.indexOf('\n};', offset)) + '\n}', test.ctx);
+    const stopping = test.ctx.stopDeep();
+    assert.equal(test.get("fnDeepStop").disabled, true);
+    assert.equal(called.url, "/api/job/cancel");
+    assert.equal(called.options.body.id, "deep-job");
+    if (fail) request.reject(new Error("Could not stop")); else request.resolve({ cancelled: true });
+    await stopping;
+    if (fail) {
+      assert.equal(test.log.error, "Could not stop");
+      assert.equal(test.get("fnDeepStop").disabled, false);
+    } else assert.ok(test.get("fnDeepStatus").textContent.includes("Stopping"));
   }
   // Passive overview refreshes keep a pending check's panel and indicator intact.
   for (const caseIndex of [0, 6]) {

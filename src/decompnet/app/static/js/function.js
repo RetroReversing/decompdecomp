@@ -96,6 +96,7 @@ document.querySelectorAll("#diffWhich [data-which]").forEach((b) => {
 
 let fnBusy = false;
 let compilerComparisonBusy = false;
+let deepPermuterBusy = false, deepPermuterJob = null;
 async function refreshFn(first) {
   if (fnBusy || nameChangeBusy || !S.fn) return;
   fnBusy = true;
@@ -124,6 +125,7 @@ async function refreshFn(first) {
       ? `Name inferred from ${d.naming.source_project} · exact code match`
       : d.renamed ? `Renamed from ${d.naming.original_name}` : d.named ? "Named function" : "Generated name";
     fnBadge(d);
+    $("fnDeepPanel").hidden = !deepPermuterBusy && (d.status !== "open" || d.best == null);
     $("fnCompilerTest").hidden = S.ov.kind === "fork" || d.status !== "open" || !S.ov.compilers?.length;
     if (!compilerComparisonBusy && S.ov.kind !== "fork") {
       const history = d.compiler_test;
@@ -523,4 +525,42 @@ $("fnTestCompilers").onclick = async () => {
     renderFunctionCompilerComparison(result.comparison, slug, name);
   } catch (e) { summary.textContent = e.message; showJobError(log, e.message); }
   finally { compilerComparisonBusy = false; finish(); await refreshFn(false); }
+};
+
+$("fnDeepRun").onclick = async () => {
+  const slug = S.slug, name = S.fn;
+  const log = $("fnDeepLog"), status = $("fnDeepStatus"), stop = $("fnDeepStop");
+  const controls = [$("fnDeepRun"), $("fnDeepMinutes"), $("fnDeepVariants")];
+  const minutes = Number($("fnDeepMinutes").value), maxVariants = Number($("fnDeepVariants").value);
+  deepPermuterBusy = true;
+  log.hidden = false; stop.hidden = false; stop.disabled = true;
+  showJobError(log, "");
+  status.textContent = `Starting deep search for ${name}…`;
+  const done = beginWork(log, "Searching this function locally", controls, "Deep search finished.");
+  try {
+    const { job } = await api("/api/permuter/function", { method: "POST", body: { slug, function: name, minutes, max_variants: maxVariants } });
+    deepPermuterJob = job; stop.disabled = false;
+    const result = await followJob(job, log, (_, state) => {
+      const p = state.progress;
+      if (p) status.textContent = `${name} · ${p.phase} · ${p.tested.toLocaleString()} tested · ${p.skipped.toLocaleString()} cached misses skipped · best score ${p.best_score ?? "—"} · ${p.seconds_left}s left`;
+    });
+    status.textContent = `${name} · ${result.reason} · ${result.tested.toLocaleString()} tested. Improvements saved.`;
+    if (S.slug === slug && S.fn === name) { await refreshMap(true); await refreshFn(false); }
+  } catch (error) {
+    if (error.job?.state === "cancelled") {
+      status.textContent = `${name} · Stopped. Verified improvements are saved.`;
+      log._workStatus.dataset.state = "cancelled"; log._workStatus.textContent = "Stopped";
+    }
+    else showJobError(log, error.message);
+  } finally {
+    deepPermuterBusy = false; deepPermuterJob = null; stop.hidden = true; done();
+  }
+};
+$("fnDeepStop").onclick = async () => {
+  if (!deepPermuterJob) return;
+  const button = $("fnDeepStop"); button.disabled = true;
+  try {
+    await api("/api/job/cancel", { method: "POST", body: { id: deepPermuterJob } });
+    $("fnDeepStatus").textContent = "Stopping after the current compiler or generator finishes. Improvements are saved.";
+  } catch (error) { showJobError($("fnDeepLog"), error.message); button.disabled = false; }
 };

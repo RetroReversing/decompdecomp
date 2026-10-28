@@ -572,6 +572,18 @@
         <button class="primary small-btn" id="fnApplyCompiler" type="button" hidden>Apply these settings to this function</button>
         <details class="more"><summary>Comparison details</summary><pre class="joblog" id="fnCompilerLog" hidden></pre></details>
       </div>
+      <details class="more" id="fnDeepPanel" hidden>
+        <summary>Deep permuter · this function</summary>
+        <p class="small muted">Tries the supported local repairs, then searches random rewrites of this function’s saved C. No AI tokens. This is a bounded search, not every possible C program. Exact matches and better candidates are saved immediately.</p>
+        <div class="fields">
+          <label class="field"><span>Time limit (minutes)</span><input id="fnDeepMinutes" type="number" min="1" max="120" value="30"></label>
+          <label class="field"><span>Maximum candidate compiles</span><input id="fnDeepVariants" type="number" min="1" max="1000000" value="100000"></label>
+        </div>
+        <button class="primary small-btn" id="fnDeepRun" type="button">Run deep permuter</button>
+        <button class="ghost small-btn" id="fnDeepStop" type="button" hidden>Stop</button>
+        <p class="small muted" id="fnDeepStatus" role="status"></p>
+        <pre class="joblog" id="fnDeepLog" hidden></pre>
+      </details>
       <div class="fn-tabs">
         <div class="tabs" role="tablist" aria-label="Function view">
           <button role="tab" class="tab on" data-ftab="diff" type="button">Diff</button>
