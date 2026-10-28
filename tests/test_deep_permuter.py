@@ -201,3 +201,52 @@ def test_percentages_do_not_round_a_near_match_to_100(monkeypatch):
     search = deep_permuter.Search(net, 1, 20, Log(), fn)
     assert search.metrics()['starting_percent'] == search.metrics()['best_percent'] == 99.9
     assert search.improvements == 0
+
+
+@pytest.mark.parametrize('imported', [False, True])
+def test_local_repairs_chain_from_saved_improvements_with_fresh_diffs(monkeypatch, imported):
+    net = setup(monkeypatch, imported)
+    original = net.function()['best_source']
+    generated, tested, stack_rows = [], [], []
+    def variants(source, *args, **kwargs):
+        generated.append(source)
+        return {original:['better', 'old remainder'], 'better':['best', 'better'], 'best':['exact']}[source]
+    monkeypatch.setattr(draft_repairs, 'variants', variants)
+    monkeypatch.setattr(deep_permuter.stack_padding_repairs, 'grow',
+                        lambda source, name, arch, rows: stack_rows.append(rows) or [])
+    net._last_diffs = {}
+    def judge(self, agent, proj, fn, source, best, fork):
+        tested.append((source, fork))
+        score = {'better':30, 'best':10, 'exact':0}[source]
+        with net.store.tx() as db:
+            db.execute('UPDATE functions SET best_score=?,best_source=?,status=? WHERE id=?',
+                       (score, source, 'matched' if score == 0 else 'open', fn['id']))
+        net._last_diffs[agent.id, fn['id']] = ([source], '')
+        return score
+    monkeypatch.setattr(Permuter, '_score', judge)
+    monkeypatch.setattr(Permuter, '_permute', lambda *args: pytest.fail('Local repairs should match first'))
+    result = deep_permuter.run(net, 'game', 'f', 1, 10, Log())
+    assert result['matched'] and result['tested'] == 3
+    assert generated == [original, 'better', 'best']
+    assert stack_rows == [[], ['better'], ['best']]
+    assert tested == [(s, 'fork' if imported else None) for s in ['better', 'best', 'exact']]
+    assert net.store.one('SELECT COUNT(*) n FROM claims')['n'] == 0
+
+
+def test_chained_local_repairs_share_the_original_compile_limit(monkeypatch):
+    net = setup(monkeypatch)
+    generated = []
+    def variants(source, *args, **kwargs):
+        generated.append(source)
+        return [source + ' ']
+    monkeypatch.setattr(draft_repairs, 'variants', variants)
+    def judge(self, agent, proj, fn, source, best, fork):
+        with net.store.tx() as db:
+            db.execute('UPDATE functions SET best_score=?,best_source=? WHERE id=?', (best-1, source, fn['id']))
+        return best-1
+    monkeypatch.setattr(Permuter, '_score', judge)
+    result = deep_permuter.run(net, 'game', 'f', 1, 2, Log())
+    assert result['reason'] == 'Variant limit reached'
+    assert result['tested'] == 2 and len(generated) == 2
+    assert net.function()['best_score'] == 38
+    assert net.store.one('SELECT COUNT(*) n FROM claims')['n'] == 0

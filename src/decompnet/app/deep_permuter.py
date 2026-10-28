@@ -156,17 +156,29 @@ def run(net, slug, name, minutes, max_variants, log):
                 reason = 'Matched'
             else:
                 best = baseline
-                source = fn['best_source']
-                rows = getattr(net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0]
-                choices = draft_repairs.variants(source, fn['name'], proj['arch'], fn['asm'] or '', flags, limit=None)
-                choices += stack_padding_repairs.grow(source, fn['name'], proj['arch'], rows)
-                choices += [s for _,s in permuter_local.variants(source, fn['name'])]
-                for candidate in dict.fromkeys(choices):
-                    score = search._score(agent, proj, fn, candidate, best, fork)
-                    if score is not None and score < best:
-                        best = score
-                    if score == 0:
-                        reason = 'Matched'
+                seen = {fn['best_source']}
+                repair_fn = fn
+                while best > 0:
+                    search.check()
+                    source = repair_fn['best_source']
+                    rows = getattr(net, '_last_diffs', {}).get((agent.id, repair_fn['id']), ([], ''))[0]
+                    choices = draft_repairs.variants(source, repair_fn['name'], proj['arch'], repair_fn['asm'] or '', flags, limit=None)
+                    choices += stack_padding_repairs.grow(source, repair_fn['name'], proj['arch'], rows)
+                    choices += [s for _,s in permuter_local.variants(source, repair_fn['name'])]
+                    for candidate in dict.fromkeys(choices):
+                        if candidate in seen:
+                            continue
+                        seen.add(candidate)
+                        score = search._score(agent, proj, repair_fn, candidate, best, fork)
+                        if score == 0:
+                            reason = 'Matched'
+                        if score is not None and score < best:
+                            best = score
+                            # Chain repairs from the saved winner and its new diff; keep the same
+                            # deadline/compile budget and avoid retesting candidates from earlier rounds.
+                            repair_fn = net._function(name, slug)
+                            break
+                    else:
                         break
         finally:
             search._let_go(agent, fn)
