@@ -53,7 +53,7 @@ GENERATOR_SECONDS = 30  # a batch that takes longer is stuck: its randomizer ret
 READ_BYTES = 1 << 16
 MAX_SEED = 2**31  # seeds of the generator's runs: the same function and turn write the same variants
 REWRITE_MISSES = 200  # simple rewrites in a row that change nothing: none applies to the C
-MAX_INSNS = 400  # bigger near misses are left to agents: one variant takes too long to judge
+MAX_INSNS = 400  # default size ceiling; larger functions cost more time per variant
 REPAIR_MAX_INSNS = 1024  # deterministic hypotheses keep their own 32-attempt / 20-second cap
 IDLE_SECONDS = 180  # with no near misses, how long until the permuter looks again
 IDLE_LOOKS = 20  # looks in a row with nothing to do (an hour) and it's done until agents start again
@@ -179,6 +179,13 @@ class Permuter:
     def __init__(self, net):
         self.net = net
         self.jobs: dict[str, State] = {}
+        self.max_insns, self.seconds, self.max_turns = MAX_INSNS, SECONDS, MAX_TURNS
+
+    def configure(self, settings: dict) -> None:
+        """Global random-permutation budgets; running turns keep their existing deadline."""
+        self.max_insns = max(1, min(100000, int(settings.get('permuter_max_insns', MAX_INSNS))))
+        self.seconds = max(1, min(3600, int(settings.get('permuter_seconds', SECONDS))))
+        self.max_turns = max(1, min(1000, int(settings.get('permuter_max_turns', MAX_TURNS))))
 
     def status(self, slug: str) -> dict | None:
         st = self.jobs.get(slug)
@@ -204,7 +211,7 @@ class Permuter:
             "SELECT * FROM functions WHERE project_id=? AND status='open' AND best_source IS NOT NULL "
             "AND best_score > 0 AND best_score <= n_insns * 100 * ? AND n_insns <= ? AND permuted < ? "
             "AND id NOT IN (SELECT function_id FROM claims) ORDER BY CAST(best_score AS REAL) / (n_insns * 100) LIMIT ?",
-            proj["id"], NEAR, MAX_INSNS, MAX_TURNS, limit)
+            proj["id"], NEAR, self.max_insns, self.max_turns, limit)
 
     def _loop(self, slug: str, st: State) -> None:
         agent, _ = self.net.local_agent("permuter")
@@ -312,17 +319,17 @@ class Permuter:
         except NetworkError as e:  # the project refused its source (a helper the file hasn't): an answer, not a crash
             log.info("permuter: %s: %s (left to agents)", fn["name"], str(e).splitlines()[0])
             with self.net.store.tx() as db:  # the same best attempt is refused every time: no more turns on it
-                db.execute("UPDATE functions SET permuted=MAX(permuted, ?) WHERE id=?", (MAX_TURNS, fn["id"]))
+                db.execute("UPDATE functions SET permuted=MAX(permuted, ?) WHERE id=?", (self.max_turns, fn["id"]))
         except Exception as e:  # one odd function must not stop the rest
             log.info("permuter: %s: %s", fn["name"], e, exc_info=True)
 
-    def _hold(self, agent, fn, *, count_turn=True) -> bool:
+    def _hold(self, agent, fn, *, count_turn=True, seconds=None) -> bool:
         now = time.time()
         with self.net.store.tx() as db:
             self.net._expire_claims(db)
             if db.execute("SELECT 1 FROM claims WHERE function_id=?", (fn["id"],)).fetchone():
                 return False
-            db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fn["id"], agent.id, now, now + SECONDS + HOLD_SPARE_SECONDS))
+            db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fn["id"], agent.id, now, now + (self.seconds if seconds is None else seconds) + HOLD_SPARE_SECONDS))
             if count_turn:
                 db.execute("UPDATE functions SET permuted = permuted + 1 WHERE id=?", (fn["id"],))
         return True
@@ -332,7 +339,8 @@ class Permuter:
             db.execute("DELETE FROM claims WHERE function_id=? AND agent_id=?", (fn["id"], agent.id))
 
     def _permute(self, agent, proj, fn, st: State) -> None:
-        if st.stop.is_set() or not self._hold(agent, fn):
+        seconds = self.seconds
+        if st.stop.is_set() or not self._hold(agent, fn, seconds=seconds):
             return
         st.add(tried=1)
         st.holding(fn["name"], True)
@@ -352,7 +360,7 @@ class Permuter:
             # (a draft still in m2c's macros isn't C decomp-permuter's parser reads: written out, it is the same code)
             start_src = best_src = cur_src = m2cfix.expand_macros(fn["best_source"])
             best = cur = fn["best_score"]
-            deadline = time.monotonic() + SECONDS
+            deadline = time.monotonic() + seconds
             batches = misses = 0
             while time.monotonic() < deadline and best > 0 and not st.stop.is_set():
                 if gen is not None:

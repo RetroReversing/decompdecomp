@@ -115,6 +115,11 @@ async function showSettingsPage() {
     <label class="check"><input type="checkbox" id="iterativeEnabled" ${st.settings.iterative_enabled ? "checked" : ""}><span>After normal autopilot, run deeper iterative repairs (experimental, no AI calls). Uses its own extra budget; background reuse is unchanged.</span></label>
     <label class="field"><span>Iterative repairs: additional seconds per pass</span><input id="iterativeSeconds" type="number" min="1" max="600" value="${st.settings.iterative_seconds || 120}"></label>
     <label class="field"><span>Iterative repairs: additional compile attempts per pass</span><input id="iterativeAttempts" type="number" min="1" max="1024" value="${st.settings.iterative_attempts || 128}"></label>
+    <h3>Permuter limits</h3>
+    <p class="small muted">Global limits for random permutation of near misses (within 6% of an exact match). Larger functions take longer per compile. Changes apply to new turns; running turns keep their deadline. Raising the turn limit gives previously exhausted functions more turns. Targeted deterministic repairs have separate budgets.</p>
+    <label class="field"><span>Maximum instructions per function (1–100,000)</span><input id="permuterMaxInsns" type="number" min="1" max="100000" value="${st.settings.permuter_max_insns ?? 400}"></label>
+    <label class="field"><span>Seconds per function per turn (1–3,600)</span><input id="permuterSeconds" type="number" min="1" max="3600" value="${st.settings.permuter_seconds ?? 60}"></label>
+    <label class="field"><span>Maximum turns per function (1–1,000)</span><input id="permuterMaxTurns" type="number" min="1" max="1000" value="${st.settings.permuter_max_turns ?? 4}"></label>
     <label class="check"><input type="checkbox" id="autopilotSet" ${st.settings.autopilot !== false ? "checked" : ""}><span><b>Autopilot after each import</b>: try every function's machine draft first, so free matches cost no agent time.</span></label>`;
   const theme = savedTheme();
   $("setComputer").innerHTML = `
@@ -182,6 +187,9 @@ async function showSettingsPage() {
       if (path) $("romLibrary").value = path;
     } catch (e) { toast(esc(e.message), "err"); }
   };
+  for (const [id, key] of [["permuterMaxInsns", "permuter_max_insns"], ["permuterSeconds", "permuter_seconds"], ["permuterMaxTurns", "permuter_max_turns"]]) {
+    $(id).onchange = () => save({ [key]: Number($(id).value) }, "Permuter limit saved.");
+  }
   $("perSession").onchange = () => save({ per_session: Number($("perSession").value) }, "Saved.");
   $("autopilotSet").onchange = () => save({ autopilot: $("autopilotSet").checked }, "Saved.");
   $("reuseAuto").onchange = () => save({ reuse_auto: $("reuseAuto").checked }, "Saved.");

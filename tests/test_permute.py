@@ -119,7 +119,7 @@ def test_c_decomp_permuter_cant_read_falls_back_to_the_simple_rewrites(monkeypat
     net = FakeNet()
     p = ScriptedPermuter(net, {})
     jobs = batches(monkeypatch, None)
-    monkeypatch.setattr(permute, "SECONDS", 0.3)
+    monkeypatch.setattr(p, "seconds", 0.3)
     p._permute(AGENT, net.project_row("game"), net.function(), State())
     assert len(jobs) == 1 and p.judged[0] != SOURCE and all("s32 f(s32 a)" in c for c in p.judged)
 
@@ -308,8 +308,7 @@ def test_a_source_the_project_refuses_is_one_line_in_the_log(tmp_path, caplog, m
         db.execute("INSERT INTO projects(slug,name,description,arch,big_endian,root,config) VALUES('g','G','','arm',0,?,'{}')",
                    (str(tmp_path),))
         db.execute("INSERT INTO functions(project_id,name,size,n_insns,status,unit) VALUES(1,'f',8,2,'open','a')")
-    p = permute.Permuter.__new__(permute.Permuter)
-    p.net = net
+    p = permute.Permuter(net)
     monkeypatch.setattr(p, "_permute", lambda *a: (_ for _ in ()).throw(NetworkError("send the function definition\nmore")),
                         raising=False)
     with caplog.at_level("INFO", logger="decompdecomp"):
@@ -333,3 +332,21 @@ def test_a_draft_in_m2cs_macros_is_permuted_as_plain_c_and_a_helper_stays_local(
     p._permute(AGENT, net.project_row("game"), net.function(), State())
     assert "M2C_" not in jobs[0]["source"] and "(*(s32 *)((char *)(p) + 4))" in jobs[0]["source"]
     assert p.judged[0].startswith("static inline s32 inline_fn")
+
+
+def test_configured_size_and_turn_limits_admit_large_exhausted_near_misses():
+    net = FakeNet()
+    p = Permuter(net)
+    proj = net.project_row('game')
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET n_insns=800, best_score=100, permuted=4 WHERE id=1')
+    assert p.candidates(proj) == []
+    p.configure({'permuter_max_insns': 1000, 'permuter_max_turns': 5, 'permuter_seconds': 180})
+    assert [r['name'] for r in p.candidates(proj)] == ['f']
+    assert p._hold(AGENT, net.function())
+    claim = net.store.one('SELECT * FROM claims')
+    assert claim['expires_at'] - claim['claimed_at'] == 180 + permute.HOLD_SPARE_SECONDS
+    p._let_go(AGENT, net.function())
+    assert p.candidates(proj) == []
+    p.configure({})
+    assert (p.max_insns, p.seconds, p.max_turns) == (400, 60, 4)
