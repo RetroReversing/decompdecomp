@@ -61,9 +61,12 @@ def output_key(report):
 
 
 def targeted_variants(source, report, fn, arch, flags):
-    from . import draft_repairs, repair_ranking
+    from . import draft_repairs, repair_ranking, stack_padding_repairs
     labels = {}
     proposals = draft_repairs.variants(source, fn['name'], arch, fn['asm'] or '', flags, labels)
+    for text in stack_padding_repairs.grow(source, fn['name'], arch, report.get('rows') or []):
+        proposals.append(text)
+        labels[text] = 'stack_padding'
     families = repair_ranking.order(list(dict.fromkeys(labels[p] for p in proposals)), report.get('rows') or [])
     return sorted(proposals, key=lambda p: families.index(labels[p]))
 

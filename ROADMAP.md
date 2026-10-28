@@ -866,3 +866,12 @@ These are not semantic proofs: best scores, saved best C and the exact judge rem
 be rejudged in their current context. Custom generated dependencies outside the observed build/include files
 still need richer build-system dependency records.
 
+Shared deterministic repairs can stage a scalar store's byte address, route repeated pointer-to-integer casts
+through an inline helper on supported 32-bit processors, remove/shrink unreferenced local padding, and narrow
+an ordinary local when its existing uses already contain narrow casts. ROM and imported projects use the same
+bounded draft/local-family pipelines and ordinary exact judges. These remain source hypotheses, not semantic
+proofs or automatic compiler-setting changes; volatile, escaping and ambiguous cases are left alone.
+Measured MIPS stack-only diffs can also propose two small missing-padding hypotheses when the prologue,
+epilogue and every changed saved-register slot agree on the same positive frame delta. The optional iterative
+phase uses its existing budget; agent local trials require measured evidence for their current source. Other
+processors still use padding removal/shrinking until they have a corresponding frame reader.

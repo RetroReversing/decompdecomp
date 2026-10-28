@@ -12,15 +12,19 @@ from . import (
     expression_repairs,
     lifetime_repairs,
     load_pair_repairs,
+    local_width_repairs,
     mmio_repairs,
     pattern_repairs,
+    pointer_cast_repairs,
     register_repairs,
     repair_ranking,
+    stack_padding_repairs,
+    store_address_repairs,
 )
 
 FAMILIES = ('signedness','declaration_order','typed_temporary','branch_orientation','narrowing','source_lines',
             'address_temporary','constant_local','comparison_load','stack_array','loop_induction',
-            'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order','mmio_address','call_arity','struct_byte_offset','switch_call','paired_load_order','array_index_width','split_scalar_lifetime','pointer_before_store')
+            'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order','mmio_address','call_arity','struct_byte_offset','switch_call','paired_load_order','array_index_width','split_scalar_lifetime','pointer_before_store','store_address_lifetime','stack_padding','local_width','pointer_cast_inline')
 
 
 def run(net, agent, slug, function, revision, families=None, max_trials=6):
@@ -60,6 +64,17 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         for family,candidate in lifetime_repairs.variants(source,fn['name']):
             if family in pools:
                 pools[family].append(candidate)
+        if 'pointer_cast_inline' in pools:
+            pools['pointer_cast_inline'] = pointer_cast_repairs.variants(source,fn['name'],proj['arch'])
+        if 'local_width' in pools:
+            pools['local_width'] = local_width_repairs.variants(source,fn['name'])
+        if 'stack_padding' in pools:
+            pools['stack_padding'] = stack_padding_repairs.variants(source,fn['name'])
+            measured = getattr(net,'_agent_outcomes',{}).get((agent.id,fn['id']))
+            if measured and measured.get('source') == source:
+                pools['stack_padding'] += stack_padding_repairs.grow(source,fn['name'],proj['arch'],measured.get('rows') or [])
+        if 'store_address_lifetime' in pools:
+            pools['store_address_lifetime'] = store_address_repairs.variants(source,fn['name'],proj['arch'])
         if 'paired_load_order' in pools:
             pools['paired_load_order']=load_pair_repairs.variants(source,fn['name'])
         if 'mmio_address' in pools:
