@@ -10,11 +10,22 @@ from typing import Callable
 import anyio
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from pydantic import BaseModel, ConfigDict, Field
 
 from .. import __version__, agents, consoles
 from ..network import Agent, NetworkError
 from . import agent_tokens, compiler_experiments, local_experiments
 from .engine import RomNetwork
+
+
+class CompilerTrial(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    compiler: str = Field(description='current or an exact compiler ID. Repair families belong in try_local_repairs, not this tool.')
+    flags: str = ''
+    old: str | None = None
+    new: str = ''
+    occurrence: int = 0
+
 
 # The guides every console shares (app/guide/); each console's own are in its package (consoles/<id>/guides/)
 TOOL_HELP = {}
@@ -364,6 +375,8 @@ def _add_note(net: RomNetwork, agent: Agent, slug: str, text: str, function: str
 
 
 def _redraft(net, slug, function, context):
+    if isinstance(context,str) and context.strip() and not re.search(r'[;{}#]',context):
+        raise NetworkError('redraft context must be C declarations, not prose. Save observations with add_note; use get_function(section=candidate) to read existing C.')
     if not isinstance(context,str) or not context.strip():
         raise NetworkError('redraft needs nonempty C declarations in context (a real struct, callee prototype or extern). '
                            'To inspect existing C, use get_function(function, section="candidate"). No redraft was run.')
@@ -574,9 +587,9 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
         return await run(ctx, 'compile_variants', function=function, revision=revision, patches=patches)
 
     @tool
-    async def compiler_experiments(ctx: Context, function: str, revision: str, trials: list[dict]) -> str:
+    async def compiler_experiments(ctx: Context, function: str, revision: str, trials: list[CompilerTrial]) -> str:
         """Test 1–6 explicit compiler/flags profiles, optionally with independent old/new/occurrence patches against one saved revision. 60-second budget; diagnostic only. No source resends, match credit or compiler application."""
-        return await run(ctx,'compiler_experiments',function=function,revision=revision,trials=trials)
+        return await run(ctx,'compiler_experiments',function=function,revision=revision,trials=[t.model_dump(exclude_none=True) for t in trials])
 
     @tool
     async def get_compiler_trial(ctx: Context, function: str, trial_id: str) -> str:

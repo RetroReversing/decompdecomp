@@ -819,3 +819,5 @@ Volatile absolute-register lvalues can be tested as explicit uncached MIPS addre
 
 Global permuter instruction, time-per-turn and turn-count limits are adjustable in
 Settings, persisted and applied to new turns in both ROM and imported projects.
+
+Captured-repair families coordinate dropping 2–3 simple trailing call arguments with local prototypes, literal struct-pointer byte offsets, and flat switch-case call distribution. They share existing ROM/imported local-repair budgets and exact judges. Process-local, scope-keyed observations demote families after repeated identical scored instruction diffs, without skipping compiles or normalizing source. Tool schemas distinguish compiler profiles from repair families; full/matched section aliases and actionable redraft guidance avoid recovery turns.

@@ -269,6 +269,9 @@ class Permuter:
             candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels)
             from . import repair_ranking
             ranked = repair_ranking.order(dict.fromkeys(labels.values()),repair_ranking.evidence(self.net,fn['id'],agent.id))
+            from . import agent_tokens
+            effect_scope=agent_tokens.target_scope(self.net,fn,'') if hasattr(self.net,'_context') else None
+            ranked=repair_ranking.demote(self.net,effect_scope,ranked)
             candidates.sort(key=lambda text: ranked.index(labels[text]) if labels.get(text) in ranked else len(ranked))
             if not self._hold(agent, fn, count_turn=False):
                 continue
@@ -294,8 +297,14 @@ class Permuter:
                         continue
                     attempts += 1
                     st.add(variants=1, repairs=1)
+                    baseline=getattr(self.net,'_agent_outcomes',{}).get((agent.id,fn['id']))
+                    if baseline and baseline.get('source')!=fn['best_source']:
+                        baseline=None
                     with repair_trial({'kind':'deterministic draft repair','family':labels.get(candidate,'draft_repair'),'base_source_sha256':hashlib.sha256(fn['best_source'].encode()).hexdigest(),'source_sha256':hashlib.sha256(candidate.encode()).hexdigest()}):
                         score = self._score(agent, proj, fn, candidate, best, fork)
+                    measured=getattr(self.net,'_agent_outcomes',{}).get((agent.id,fn['id']))
+                    if measured and measured.get('source')==candidate:
+                        repair_ranking.remember(self.net,effect_scope,labels.get(candidate,'draft_repair'),baseline,measured)
                     with self.net.store.tx() as db:
                         db.execute("INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)",
                                    (fn['id'], trial, str(score), "targeted draft repair"))
