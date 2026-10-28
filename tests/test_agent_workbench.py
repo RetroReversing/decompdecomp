@@ -175,3 +175,35 @@ def test_joined_room_preview_does_not_guess_the_host_queue(setup):
     with pytest.raises(NetworkError,match='host'):
         agent_workbench.preview(manager,s.id)
     net.links.clear()
+
+
+def test_elapsed_limit_watchdog_stops_a_running_worker_and_releases_its_claim(tmp_path,monkeypatch):
+    import threading
+    monkeypatch.setenv('DECOMP_DETECT_AGENTS','off')
+    monkeypatch.setattr(Manager,'_prepare',lambda *a:None)
+    net=RomNetwork(tmp_path/'watch.db',tmp_path)
+    with net.store.tx() as db:
+        db.execute("INSERT INTO projects(slug,name,arch,root,config) VALUES('demo','Demo','mips',?,?)",(str(tmp_path),json.dumps({'kind':'rom'})))
+        db.execute("INSERT INTO functions(project_id,name,n_insns,size) VALUES(1,'probe',2,8)")
+    ready=threading.Event()
+    def waiting(manager,s):
+        agent,_=net.local_agent(s.agent_name)
+        manager.assignments[agent.id]=s.slug
+        net.claim_row(agent,s.slug,function='probe')
+        manager._set(s,'working')
+        ready.set()
+        s.stop.wait(10)
+    monkeypatch.setattr(Manager,'_run',waiting)
+    manager=Manager(net,tmp_path/'helpers','http://127.0.0.1:1/mcp')
+    sid=manager.start('codex','demo',options={'model':'known','limits':{'seconds':1}})[0]
+    s=manager.sessions[sid]
+    try:
+        assert ready.wait(3)
+        s.thread.join(timeout=7)
+        deadline=time.monotonic()+2
+        while ('seconds limit' not in s.why or manager.assignments) and time.monotonic()<deadline: time.sleep(.02)
+        assert s.stop.is_set() and s.state=='stopped' and 'seconds limit' in s.why
+        assert not manager.assignments
+        assert net.store.one('SELECT COUNT(*) AS n FROM claims')['n']==0
+    finally:
+        manager.shutdown()
