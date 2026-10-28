@@ -36,3 +36,29 @@ def test_padding_repairs_reach_both_local_search_entry_points():
     choices = draft_repairs.variants('void f(void) { int pad[4]; work(); }', 'f', 'mips', labels=labels)
     assert any(labels[s] == 'stack_padding' for s in choices)
     assert 'stack_padding' in local_experiments.FAMILIES
+
+
+ROWS = [('s', 'addiu $sp, $sp, -0x28', 'addiu $sp, $sp, -0x20'),
+        ('s', 'sw $ra, 0x20($sp)', 'sw $ra, 0x18($sp)'),
+        ('s', 'lw $ra, 0x20($sp)', 'lw $ra, 0x18($sp)'),
+        ('s', 'addiu $sp, $sp, 0x28', 'addiu $sp, $sp, 0x20')]
+
+
+def test_frame_growth_requires_a_consistent_stack_only_report():
+    source = 'void f(void) { work(); }'
+    choices = stack_padding_repairs.grow(source, 'f', 'mips', ROWS)
+    assert len(choices) == 2
+    assert 'char __repair_stack_padding[8];' in choices[0]
+    assert not stack_padding_repairs.grow(source, 'f', 'ppc', ROWS)
+    assert not stack_padding_repairs.grow(source, 'f', 'mips', ROWS[:-1])
+    assert not stack_padding_repairs.grow(source, 'f', 'mips', [('r', *ROWS[0][1:])]+ROWS[1:])
+    assert not stack_padding_repairs.grow(source, 'f', 'mips', [ROWS[0], ('s','sw $s0, 0x20($sp)','sw $ra, 0x18($sp)'), *ROWS[2:]])
+    assert not stack_padding_repairs.grow(source, 'f', 'mips', [ROWS[0], ('s','sw $ra, 0x24($sp)','sw $ra, 0x18($sp)'), *ROWS[2:]])
+    assert not stack_padding_repairs.grow(choices[0], 'f', 'mips', ROWS)
+
+
+def test_iterative_search_can_try_a_measured_missing_frame():
+    from decompnet.app.iterative_repairs import targeted_variants
+    source = 'void f(void) { work(); }'
+    choices = targeted_variants(source, {'rows':ROWS}, {'name':'f','asm':''}, 'mips', [])
+    assert any('__repair_stack_padding[8]' in s for s in choices)

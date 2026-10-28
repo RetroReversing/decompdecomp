@@ -1,6 +1,7 @@
 """Remove or shrink unused local padding; exact comparison decides the original frame size."""
 import re
 
+from .. import arch as arches
 from ..forks.csource import _blank, find
 
 IDENT = r'[A-Za-z_]\w*'
@@ -38,3 +39,21 @@ def variants(source, name):
         if len(result) >= 4:
             break
     return result
+
+
+def grow(source, name, arch, rows):
+    """Try missing local storage only when every differing instruction agrees on one frame delta."""
+    reader = arches.get(arch).stack_frame_growth
+    delta = reader(rows) if reader else None
+    if delta is None:
+        return []
+    span = find(source, name)
+    if not span:
+        return []
+    clean = _blank(source)
+    opening = clean.find('{', *span)
+    fresh = '__repair_stack_padding'
+    if opening < 0 or '#' in clean[opening:span[1]] or re.search(r'\b(?:volatile|'+fresh+r')\b', clean):
+        return []
+    return [source[:opening+1]+'\nchar '+fresh+'['+str(count)+'];'+source[opening+1:]
+            for count in (delta, delta//2)]

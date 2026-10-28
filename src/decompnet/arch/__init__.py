@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import arm, mips, mips_fields, mips_tools, ppc, x86, x86_fields
+from . import arm, mips, mips_fields, mips_stack, mips_tools, ppc, x86, x86_fields
 
 # What decompdecomp's readers can do with a processor's code (each is a module of its own that reads MIPS, and some
 # x86):
@@ -46,13 +46,15 @@ class Arch:
     method_draft: Callable[..., str | None] | None = None
     # variants of it capstone can't decode (Console.cpu_variant) -> their own reader: (code, big_endian) ->
     # [(offset, mnemonic, operands)], for scoring's diffs (MIPS: the PSP's Allegrex, read by rabbitizer)
+    # Uniform saved-register/frame shifts in scored instruction pairs, for bounded padding hypotheses.
+    stack_frame_growth: Callable[..., int | None] | None = None
     variants: dict[str, Callable[[bytes, bool], list[tuple[int, str, str]]]] = field(default_factory=dict)
 
 
 ARCHES = [
     Arch("mips", "MIPS", mips.CAPSTONE, mips.RELOC_MASKS, mips.asm_reason, True,
          frozenset({COMPILER_MAP, CLASSES, BOUNDARIES, STRUCTS}), mips_fields.read_facts,
-         build_tool_paths=mips_tools.build_paths, variants={mips.ALLEGREX: mips.allegrex_lines}),
+         build_tool_paths=mips_tools.build_paths, stack_frame_growth=mips_stack.frame_growth, variants={mips.ALLEGREX: mips.allegrex_lines}),
     Arch("ppc", "PowerPC", ppc.CAPSTONE, ppc.RELOC_MASKS, ppc.asm_reason),
     Arch("x86", "x86", x86.CAPSTONE, x86.RELOC_MASKS, features=frozenset({CLASSES, STRUCTS}),
          field_accesses=x86_fields.read_facts, float_operands=x86.float_operands, method_draft=x86.method_draft),

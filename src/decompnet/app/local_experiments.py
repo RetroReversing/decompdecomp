@@ -70,6 +70,9 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
             pools['local_width'] = local_width_repairs.variants(source,fn['name'])
         if 'stack_padding' in pools:
             pools['stack_padding'] = stack_padding_repairs.variants(source,fn['name'])
+            measured = getattr(net,'_agent_outcomes',{}).get((agent.id,fn['id']))
+            if measured and measured.get('source') == source:
+                pools['stack_padding'] += stack_padding_repairs.grow(source,fn['name'],proj['arch'],measured.get('rows') or [])
         if 'store_address_lifetime' in pools:
             pools['store_address_lifetime'] = store_address_repairs.variants(source,fn['name'],proj['arch'])
         if 'paired_load_order' in pools:
