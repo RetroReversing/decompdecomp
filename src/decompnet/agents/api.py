@@ -388,8 +388,8 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
                              s(function=st("function", True), revision=st("candidate revision", True),
                                patches={"type": "array", "minItems": 1, "maxItems": 6, "req": True,
                                         "items": {"type": "object", "properties": {"old": {"type": "string"}, "new": {"type": "string"}, "occurrence": {"type": "integer", "minimum": 0}}, "required": ["old", "new"]}})),
-        "get_assembly": ("Read a page of target assembly omitted from a compact claim.",
-                         s(function=st("function", True), start=it("zero-based line"), limit=it("up to 200 lines"))),
+        "get_assembly": ("Read target assembly: focus=mismatch or a callee symbol/short anchor for a bounded region; omit focus to page.",
+                         s(function=st("function", True), start=it("zero-based line"), limit=it("up to 200 lines"), focus=st("mismatch, symbol or short assembly anchor"))),
         "claim_function": ("Claim the next function (or one by name/address). Returns assembly, data, best attempt, "
                            "notes and a draft. count > 1: a batch of small functions to judge together.",
                            s(function=st("optional name or address"), strategy=st("finish | easiest | untried | closest | hardest | random"),

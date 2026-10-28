@@ -309,7 +309,7 @@ def test_local_family_uses_same_batch_judge_and_records_history(tmp_path, monkey
     monkeypatch.setattr(net,'compile_and_diff',compile)
     _,rev=agent_tokens.candidate(net,a,'game','f')
     result=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'signedness','old':'int x;'})
-    assert seen==['int f(){unsigned int x;return x;}'] and 'Generated replacements' in result
+    assert seen==['int f(){unsigned int x;return x;}'] and 'Generated changes' in result
     assert 'signedness: 1 trials' in agent_tokens.tried_summary(net,fn)
 
 
