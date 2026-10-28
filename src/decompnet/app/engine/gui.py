@@ -56,8 +56,9 @@ class GuiMixin:
         twins = self.twins.jobs.get(proj["slug"])
         base = self._overview(slug, proj)
         from ..libultra import report as libultra_report
+        from ..source_preparation import settings as source_settings
         return base | {"libultra": libultra_report(self, proj), "last_activity": last, "autopilot": self.autopilot_status(slug),
-                       "permuter": self.permuter.status(proj["slug"]),
+                       "permuter": self.permuter.status(proj["slug"]), "source_preparation": source_settings(self, proj),
                        "twins": None if twins is None else {
                            k: getattr(twins, k) for k in ("state", "pairs", "tried", "matched", "asm",
                                                         "cross_candidates", "cross_tried", "cross_matched")},

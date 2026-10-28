@@ -304,14 +304,13 @@ def test_the_permuter_finishes_a_near_miss(game, monkeypatch):
     assert st.matched == 1 and net._function("entity_update_physics", slug)["status"] == "matched", st
 
 
-@pytest.mark.skipif(toolchains.installed("decomp-permuter") is None, reason="needs decomp-permuter")
 @pytest.mark.parametrize("name,written,near", [
     ("entity_spawn", "e->vel_x = 0;\n            e->vel_y = 0;", "e->vel_y = 0;\n            e->vel_x = 0;"),
-    ("checksum_save", "(sum << 5) + sum", "sum + (sum << 5)"),  # no simple rewrite turns operands around
+    ("checksum_save", "(sum << 5) + sum", "sum + (sum << 5)"),  # a local probe avoids waiting for random drift
 ])
-def test_decomp_permuter_brings_a_near_miss_back_to_a_match(game, name, written, near):
+def test_permuter_repairs_local_ordering_before_random_search(game, name, written, near):
     """A matching function with two statements in another order, or an addition's operands the other way round,
-    left as an agent's near miss: decomp-permuter's variants, judged by our judge, match it again in one turn."""
+    left as an agent's near miss: bounded local ordering probes, judged normally, match it in one turn."""
     import time
 
     from decompnet.app import permute
@@ -337,3 +336,44 @@ def test_decomp_permuter_brings_a_near_miss_back_to_a_match(game, name, written,
     net.permuter._permute(permuter, proj, net._function(name, slug), st)
     assert st.matched == 1 and net._function(name, slug)["status"] == "matched", st
     assert time.monotonic() - started < permute.SECONDS
+
+
+def test_local_source_preparation_uses_real_rom_judge_and_private_context(game, tmp_path):
+    """The opt-in seed path must earn an exact linked verdict, not just a successful compiler invocation."""
+    import sqlite3
+
+    from decompnet.app import source_preparation
+    from decompnet.app.permute import State
+    original, slug, _ = game
+    database = tmp_path / 'copy.db'
+    with sqlite3.connect(database) as dest:
+        original.store.conn.backup(dest)
+    proj = original.project_row(slug)
+    folder = tmp_path / 'project'
+    shutil.copytree(proj['root'], folder)
+    net = RomNetwork(database, tmp_path)
+    net.on_match = lambda *args: None
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET root=? WHERE slug=?', (str(folder), slug))
+        db.execute("UPDATE functions SET status='open',matched_source=NULL,best_source='int clamp_s32(int x,int lo,int hi){return 0;}',best_score=10000 WHERE project_id=? AND name='clamp_s32'", (proj['id'],))
+        db.execute('DELETE FROM claims')
+    fn = net._function('clamp_s32', slug)
+    old_header = net._context(proj['id'], fn['unit'])['header']
+    header = tmp_path / 'reference.h'
+    header.write_text(old_header)
+    cfg = {'enabled': True, 'root': str(GAME), 'header': str(header), 'include_roots': str(tmp_path),
+           'mappings': 'clamp_s32 = clamp_s32 @ game.c'}
+    source_preparation.configure(net, net.project_row(slug), cfg)
+    report = source_preparation.run(net.permuter, net.project_row(slug), State())
+    assert report['errors'] == []
+    assert report['tested'] == report['matched'] == 1
+    matched = net._function('clamp_s32', slug)
+    assert matched['status'] == 'matched' and matched['unit'] == f'local_source_{fn["id"]}'
+    assert net._context(proj['id'], fn['unit'])['header'] == old_header
+    assert net.try_quietly(net.local_agent('you')[0], net.project_row(slug), matched, matched['matched_source'])['matched']
+
+    from decompnet.rom.export import export_rom
+    exported = export_rom(net, slug, tmp_path / 'export', net.console(net.project_row(slug)), log=lambda *args: None)
+    assert exported['identical']
+    assert 'clamp_s32' not in [name for name, _ in exported['fallback']]
+    assert list((tmp_path / 'export' / 'include').glob('common_local_source_*.h'))

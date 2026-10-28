@@ -71,6 +71,7 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Drafts follow the header, made in the background; `redraft` | ✓ | ✓ | ✓ | ✓ | — | ✓ Ghidra's | — | — |
 | C++ methods drafted as `Class::method` | ✓ | ✓ | ✓ | ✓ | — | ✓ (RTTI, and classes from the vtables constructors store) | — | — |
 | Twins: free matches from identical code | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Local mapped source preparation | ✓ | ✓ | ✓ | ✓ | body only¹ | body only¹ | body only¹ | body only¹ |
 | Permuter on near misses | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Hand-written assembly set aside | ✓ | ✓ | ✓ | ✓ | ✓ | Visual C++'s exception-handling stubs | BIOS call stubs, pieces of functions | MIPS, PowerPC, ARM's BIOS stubs and pieces of functions |
 | Pieces of functions joined to their function | — | — | — | — | — | ✓ (`scratch.merge_pieces`) | ✓ (`recover.merge_pieces`) | — |
@@ -834,6 +835,22 @@ Repeated-output limits now remember bounded fingerprints across a claim and rese
 Function lists show check/improvement recency. Agent work selection supports oldest
 checked first and a recorded-model untried filter in ROM and imported projects.
 
+The shared deterministic repair pass now tries bounded unused scalar removal, scalar/pointer storage and adjacent local declaration order on supported 32-bit ROM/imported projects, preserving line layout and using normal exact judges. Close ROM misses rotate cached debug and optimization probes, two per pass, with manual compiler approval respected. Imported compiler flags remain owned by their build.
+
+### Local source preparation and renewed free searches
+
+¹ Imported builds retain their own declarations headers; reference-header injection remains a planned gap.
+
+Opt-in Settings → Local source preparation reads explicitly mapped local reference bodies, preserves formatting,
+applies supplied numeric retail macros and judges each seed before saving it. ROM mode installs improved seeds
+with private per-function declarations; imported mode uses its existing build headers and objdiff judge. Both
+modes share bounded preparation, cached trials and diff-focused permutation. External input changes renew bounded
+random turns; the permuter's own improvements do not. See [the setup guide](docs/LOCAL_SOURCE_PREPARATION.md).
+
+Remaining gap: imported projects cannot automatically inject a reference declarations header into the project
+build. Their body must already compile against the project's own headers. This needs a reviewed header edit and
+regression checking of affected units before it can become automatic.
+
 
 Agent work selection now reaches small-function batches through the shared scheduler (including percentage,
 model-history, attempt and lease filters). Paused queues wait without starting a paid session. Cooldowns and
@@ -848,3 +865,4 @@ ROM and imported briefs via get_function(section="quality"). Existing notes are 
 These are not semantic proofs: best scores, saved best C and the exact judge remain unchanged. Alternatives must
 be rejudged in their current context. Custom generated dependencies outside the observed build/include files
 still need richer build-system dependency records.
+

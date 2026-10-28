@@ -1,10 +1,16 @@
 """Rank applicable hypotheses by observed mismatches without excluding other families."""
 
 def order(families, rows):
+    from .permuter_focus import classify
+    focus = classify(rows)
     markers = {row[0] for row in rows if row[0] != ' '}
-    if markers and markers <= {'r', 's'}:
-        preferred = ('stack_array', 'parameter_width', 'declaration_order') if 's' in markers else (
-            'comparison_reuse', 'integer_address_order', 'typed_temporary', 'value_lifetime', 'split_scalar_lifetime', 'array_index_width', 'declaration_order')
+    if focus == 'call':
+        preferred = ('call_arity', 'call_result_inline', 'parameter_width', 'parameter_storage')
+    elif markers and markers <= {'r', 's'}:
+        preferred = ('unused_scalar_local', 'local_storage', 'parameter_storage', 'local_declaration_order',
+                     'stack_array', 'parameter_width', 'declaration_order') if 's' in markers else (
+            'comparison_reuse', 'integer_address_order', 'typed_temporary', 'value_lifetime',
+            'split_scalar_lifetime', 'array_index_width', 'declaration_order')
     elif markers & {'<', '>', '|', 'o'}:
         preferred = ('paired_load_order', 'pointer_before_store', 'branch_orientation', 'loop_induction', 'call_result_inline', 'parameter_width')
     elif 'i' in markers:

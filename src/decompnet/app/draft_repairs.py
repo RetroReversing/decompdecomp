@@ -18,6 +18,7 @@ from . import (
     near_repairs,
     pattern_repairs,
     register_repairs,
+    stack_repairs,
     storage_scope_repairs,
 )
 
@@ -42,6 +43,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     offset = opening + 1
     proposals = []
     labels = labels if labels is not None else {}
+    for family, text in (stack_repairs.variants(source, name) if arch in {"mips", "ppc", "x86", "arm", "thumb"} else []):
+        proposals.append(text)
+        labels[text] = family
     for family, text in register_repairs.variants(source, name, arch):
         proposals.append(text)
         labels[text] = family
@@ -66,7 +70,7 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
             proposals.append(seeds.M2C_MACROS + refined)
             labels[proposals[-1]] = 'm2c_refinement'
     if local := branch_locals.variant(source, name):
-        proposals.append(local)
+        proposals.insert(0, local)
         labels[local] = 'branch_locals'
     for text in storage_scope_repairs.variants(source, name, arch, flags):
         proposals.append(text)
