@@ -144,8 +144,10 @@ def _single_definition(obj: bytes, name: str) -> bool:
     with their own slots in the full image; don't silently include those definitions twice."""
     from ..elfobj import _function_symbols, unmangle
 
-    # The ordinary ROM judge resolves a C++ method back to the game symbol too. Extra helper
-    # bodies remain distinct and still make the one-function-per-object check fail.
+    # Count before name mapping: overloads can map to the same game name, but still have
+    # separate bodies. The ordinary judge resolves the single C++ method back to that name.
+    if len(_function_symbols(ELFFile(BytesIO(obj)))) != 1:
+        return False
     obj = unmangle(obj, lambda symbol: symbol == name)
     return set(_function_symbols(ELFFile(BytesIO(obj)))) == {name}
 
