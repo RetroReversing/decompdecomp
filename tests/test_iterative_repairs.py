@@ -150,3 +150,62 @@ def test_optional_phase_disabled_and_independent_of_exhausted_normal_budget(pair
     parent.stop.set()
     search.optional_phase(pair.twins, 'destination', parent)
     assert len(called) == 1
+
+
+def test_output_duplicates_bound_expansion_but_preserve_two_source_shapes():
+    state, expanded = seed(), []
+    def evaluate(source):
+        return dict(score=20, matched=False, candidate_target='001122', candidate_relocs='[]')
+    def variants(source, report):
+        expanded.append(source)
+        return ['a','b','c'] if source=='seed' else []
+    assert not search.advance(state,evaluate,variants,lambda:False)
+    assert expanded==['seed','a']
+    assert len(state['outputs'])==1
+    assert search.output_key({'rows':[]}) is None
+    assert search.output_key({'candidate_target':'00','candidate_relocs':'[]'}) != search.output_key(
+        {'candidate_target':'00','candidate_relocs':'[1]'})
+
+
+def test_targeted_repairs_chain_and_keep_serialized_progress(monkeypatch):
+    from decompnet.app import draft_repairs
+    def proposals(source,name,arch,asm,flags,labels):
+        out={'seed':['lifetime'], 'lifetime':['done']}.get(source,[])
+        labels.update({p:'split_scalar_lifetime' for p in out})
+        return out
+    monkeypatch.setattr(draft_repairs,'variants',proposals)
+    state=seed();calls=[]
+    def judge(source):
+        calls.append(source)
+        return dict(score={'seed':20,'lifetime':10,'done':0}[source],matched=source=='done')
+    variants=lambda s,r:search.targeted_variants(s,r,{'name':'f','asm':''},'mips',[])
+    assert not search.advance(state,judge,variants,lambda:len(calls)>=2)
+    state=json.loads(json.dumps(state))
+    assert search.advance(state,judge,variants,lambda:False)
+    assert calls==['seed','lifetime','done']
+
+
+def test_targeted_ranking_prefers_load_order_for_scheduling_diffs(monkeypatch):
+    from decompnet.app import draft_repairs
+    def proposals(source,name,arch,asm,flags,labels):
+        labels.update(a='signedness',b='pointer_before_store',c='paired_load_order')
+        return ['a','b','c']
+    monkeypatch.setattr(draft_repairs,'variants',proposals)
+    assert search.targeted_variants('seed',{'rows':[('o','x','y')]},{'name':'f','asm':''},'mips',[])==['c','b','a']
+
+
+def test_new_repair_rules_reopen_frontier_and_reuse_cached_seed(pair,monkeypatch):
+    from decompnet.app import address_repairs,similar_matches
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET best_source='seed',best_score=20,n_insns=8 WHERE id=2")
+    monkeypatch.setattr(address_repairs,'variants',lambda *a:[])
+    monkeypatch.setattr(similar_matches,'repair_variants',lambda *a:[])
+    monkeypatch.setattr(search,'targeted_variants',lambda *a:[])
+    monkeypatch.setattr(search,'repair_rules',lambda:['old'])
+    calls=[]
+    monkeypatch.setattr(pair,'try_quietly',lambda a,p,f,s:calls.append(s) or dict(score=20,matched=False))
+    search.run(pair.twins,'destination',Job())
+    monkeypatch.setattr(search,'repair_rules',lambda:['new'])
+    monkeypatch.setattr(search,'targeted_variants',lambda s,*a:['new-shape'] if s=='seed' else [])
+    search.run(pair.twins,'destination',Job())
+    assert calls==['seed','new-shape']
