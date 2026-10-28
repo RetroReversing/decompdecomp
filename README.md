@@ -623,6 +623,14 @@ explicit coverage notice identifies their exclusion from function progress.
 
 ### Permuter budgets
 
+For a longer search of one function, open its drawer and expand **Deep permuter · this function**.
+Choose a time limit and maximum candidate compiles, then select **Run deep permuter**. **Stop** ends the job
+after its current compiler/generator finishes. Better candidates and exact matches are saved immediately.
+This bypasses the background queue’s instruction and turn limits for the selected function only. It visits the
+current local candidate list, then uses random rewrites; it cannot exhaust every possible C program. No AI tokens
+are used. Cached misses are skipped on later deep runs when their build inputs still agree.
+
+
 In **Settings → Permuter limits**, raise the maximum instructions per function to
 include larger near misses. Defaults are 400 instructions, 60 seconds per turn and
 four turns per function. All three limits are global, saved across restarts and

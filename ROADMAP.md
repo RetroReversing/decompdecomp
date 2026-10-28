@@ -875,3 +875,9 @@ Measured MIPS stack-only diffs can also propose two small missing-padding hypoth
 epilogue and every changed saved-register slot agree on the same positive frame delta. The optional iterative
 phase uses its existing budget; agent local trials require measured evidence for their current source. Other
 processors still use padding removal/shrinking until they have a corresponding frame reader.
+
+A function drawer can launch a bounded deep permuter job for one saved, scored candidate in ROM or imported
+projects. It bypasses the background queue's size and turn filters, visits the generated local repair list,
+then uses ordinary random rewrites. Time/compile limits, progress, cancellation, normal judges and immediate
+saving remain mandatory. Scoped misses survive another deep run; failed compiles stay retryable and cached
+improvements must be rejudged. This does not claim to exhaust all possible C programs or compiler options.

@@ -922,3 +922,27 @@ def test_source_preparation_settings_and_bounded_job(app, tmp_path, monkeypatch)
         time.sleep(.01)
     assert result['state'] == 'done' and calls
     assert result['result']['improved'] == 1
+
+
+def test_deep_permuter_route_starts_a_cancellable_job_for_one_function(app, monkeypatch):
+    from decompnet.app import deep_permuter
+    client, _, _ = app
+    checked = []
+    monkeypatch.setattr(deep_permuter, 'validate', lambda *args: checked.append(args[1:]))
+    def run(net, slug, name, minutes, variants, log):
+        log('Testing only '+name)
+        log.progress({'tested':1, 'skipped':0, 'phase':'local repairs'})
+        return {'function':name, 'matched':False, 'tested':1}
+    monkeypatch.setattr(deep_permuter, 'run', run)
+    payload = {'slug':'selected-game','function':'selected_function','minutes':10,'max_variants':99}
+    response = client.post('/api/permuter/function', json=payload, headers={'X-Decomp':'1'})
+    assert response.status_code == 200
+    job_id = response.json()['job']
+    for _ in range(100):
+        result = client.get('/api/job?id='+job_id).json()
+        if result['state'] != 'running':
+            break
+        time.sleep(.01)
+    assert result['state'] == 'done'
+    assert result['result']['function'] == 'selected_function'
+    assert checked == [('selected-game','selected_function',10,99)]
