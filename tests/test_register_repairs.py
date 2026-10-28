@@ -14,7 +14,7 @@ void f(Thing *p) {
     assert len(variants) == 2
     text = variants[0][1]
     assert 'scratch = p->size;' in text
-    assert text.count('(u32)scratch') == 2
+    assert text.count('(unsigned int)scratch') == 2
     assert '/* keep this comment */' in text
     assert text.startswith('int other(){return 0;}')
     assert not register_repairs.variants(source.replace('scratch = p->other;', 'use(scratch);'), 'f', 'mips')
@@ -34,11 +34,11 @@ def test_coordinated_integer_address_order_preserves_loads():
     variants = register_repairs.variants(source,'f','mips')
     assert len(variants) == 2
     text = variants[0][1]
-    assert text.count('off + (u32)') == 2
+    assert text.count('off + (unsigned int)') == 2
     assert text.count('*((u8 **)') == 2
     assert variants == register_repairs.variants(source,'f','arm')
     assert not register_repairs.variants(source,'f','aarch64')
     assert not register_repairs.variants(source.replace('+ off)', '+ off++)'), 'f','mips')
     assert not register_repairs.variants(source.replace('p + 4', 'get_pointer() + 4').replace('p + 8', 'get_pointer() + 8'), 'f','mips')
     assert 'integer_address_order' in local_experiments.FAMILIES
-    assert any('off + (u32)' in s for s in draft_repairs.variants(source,'f','mips'))
+    assert any('off + (unsigned int)' in s for s in draft_repairs.variants(source,'f','mips'))

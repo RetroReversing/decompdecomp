@@ -50,7 +50,7 @@ def variants(source, name, arch):
             assignment = re.match(r'\s*=(?!=)([^;{}]*);', body[last.end()+later.end():])
             if not assignment or re.search(r'\b'+re.escape(var)+r'\b', assignment[1]):
                 continue
-            for cast in ('u32', 's32'):
+            for cast in ('unsigned int', 'int'):
                 changed = original
                 for m in reversed(matches):
                     changed = changed[:m.start('field')]+f'({cast}){var}'+changed[m.end('field'):]
@@ -82,7 +82,7 @@ def variants(source, name, arch):
             if re.fullmatch(IDENT, rhs) and load.fullmatch(unwrap(lhs)):
                 address_groups.setdefault(rhs, []).append((start, end, lhs))
     for index, edits in list(address_groups.items())[:2]:
-        for cast in ('u32', 's32'):
+        for cast in ('unsigned int', 'int'):
             changed = original
             for start, end, lhs in reversed(edits):
                 changed = changed[:start]+f'({index} + ({cast}){lhs})'+changed[end:]
