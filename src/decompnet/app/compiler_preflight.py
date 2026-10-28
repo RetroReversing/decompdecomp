@@ -6,6 +6,7 @@ makes that evidence available before more permutations; it never supplies a scor
 import hashlib
 import json
 import logging
+import threading
 
 from .. import toolchains
 from ..project import compiler_for
@@ -24,17 +25,22 @@ def warnings(net, proj, fn):
         return ''
     header = net._context(proj['id'], fn['unit'])['header']
     key = hashlib.sha256(repr((proj['root'], settings, header, fn['best_source'])).encode()).hexdigest()
-    cache = getattr(net, '_compiler_preflights', {})
-    net._compiler_preflights = cache
-    if key not in cache:
-        diagnostic = {**cfg, 'compiler_ranges': [], 'compiler': {**settings, 'flags': [*settings.get('flags', []), *flags]}}
-        try:
-            result = net._compile({**dict(proj), 'config': json.dumps(diagnostic)}, header, fn['best_source'], fn)
-            lines = [line for line in result.log.splitlines() if 'warning' in line.lower() or 'uninitialized' in line.lower()]
-            cache[key] = '\n'.join(lines)[:1000] if result.ok else ''
-        except Exception:  # advisory evidence must never stand between the user and the real judge
-            log.exception('compiler warning preflight failed')
-            return ''  # Tool failures remain retryable.
+    cache = net.__dict__.setdefault('_compiler_preflights', {})
+    lock = net.__dict__.setdefault('_compiler_preflight_lock', threading.Lock())
+    with lock:
+        if key in cache:
+            return cache[key]
+    diagnostic = {**cfg, 'compiler_ranges': [], 'compiler': {**settings, 'flags': [*settings.get('flags', []), *flags]}}
+    try:
+        result = net._compile({**dict(proj), 'config': json.dumps(diagnostic)}, header, fn['best_source'], fn)
+        lines = [line for line in result.log.splitlines() if 'warning' in line.lower() or 'uninitialized' in line.lower()]
+        text = '\n'.join(lines)[:1000] if result.ok else ''
+    except Exception:  # advisory evidence must never stand between the user and the real judge
+        log.exception('compiler warning preflight failed')
+        return ''  # Tool failures remain retryable.
+    # Different functions may compile concurrently. Only publication/eviction needs the lock.
+    with lock:
+        cache[key] = text
         while len(cache) > 256:
             del cache[next(iter(cache))]
-    return cache[key]
+    return text
