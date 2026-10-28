@@ -2290,6 +2290,7 @@ class ForkEngine:
         meta = self._meta(fn)
         unit = fp.unit(fn["unit"])
         lines = [f"## {header}: {fn['name']}  ({proj['name']})", f"unit {unit.name}, {fn['size']} bytes"]
+        from .. import candidate_quality
         if fn["status"] != "matched":
             lines.append(move_on_brief(fn, self.net.agent_stall_budget(fn, agent)))
         if meta.get("demangled"):
@@ -2378,6 +2379,7 @@ class ForkEngine:
         lines += ["", "Send compile_and_diff the complete function definition (same name and signature as the original), "
                       "with any #include \"...\", prototypes or #pragma lines it needs. Structs, globals and helper "
                       "functions go in with edit_file."]
+        lines += candidate_quality.brief(self.net,fn)
         return "\n".join(lines)
 
     def _twin_brief(self, proj, fn) -> list[str]:

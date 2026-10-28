@@ -284,6 +284,9 @@ def function_view(net, agent, slug, function, section='all'):
         return '```c\n'+fn['matched_source']+'\n```' if fn['matched_source'] else 'No verified matched source; use section=candidate for the current attempt.'
     if section == 'source':
         section = 'candidate'
+    if section == 'quality':
+        from .. import candidate_quality
+        return candidate_quality.view(net,net._function(function,slug))
     if section == 'history':
         fn = net._function(function, slug)
         return tried_summary(net, fn) + (history(net, fn) or 'No attempt history.')
@@ -367,7 +370,7 @@ def family_targets(net, agent, slug, function, family='declaration_order', expre
     else:
         targets = agent_targets.valid_targets(source,family)
         for t in targets[:6]:
-            tried = target_tried(net,fn,revision,family,t['old'])
+            tried = not available_target(net,fn,source,revision,family,t['old'])
             lines.append(f"{t['label']} (line {t['line']}), {'tried' if tried else 'untried'}")
         if not targets:
             lines.append(agent_targets.choices(source,family))
@@ -379,15 +382,27 @@ def family_targets(net, agent, slug, function, family='declaration_order', expre
 
 
 def target_scope(net, fn, revision):
-    config = net.store.one('SELECT config FROM projects WHERE id=?',fn['project_id'])
-    contexts = net.store.all('SELECT unit,MAX(version) AS version FROM context_versions WHERE project_id=? GROUP BY unit ORDER BY unit',fn['project_id'])
-    settings = str(config['config'] if config else '') + repr([(r['unit'],r['version']) for r in contexts])
-    return hashlib.sha256((revision+settings).encode()).hexdigest()
+    from .. import candidate_scope, claim_stalls
+    proj=net.store.one('SELECT * FROM projects WHERE id=?',fn['project_id'])
+    return hashlib.sha256(repr((revision,candidate_scope.key(net,proj,fn),claim_stalls.repair_rules())).encode()).hexdigest()
 
 
 def target_tried(net, fn, revision, family, old):
     return net.store.one('SELECT 1 FROM agent_family_targets WHERE function_id=? AND scope=? AND family=? AND target_hash=?',
                          fn['id'],target_scope(net,fn,revision),family,hashlib.sha256(old.encode()).hexdigest()) is not None
+
+
+def compiled_before(net,fn,source,scope=None):
+    scope=scope if scope is not None else target_scope(net,fn,'')
+    return net.store.one('SELECT 1 FROM agent_family_targets WHERE function_id=? AND scope=? AND family=? AND target_hash=?',
+                         fn['id'],scope,'compiled-miss',hashlib.sha256(source.encode()).hexdigest()) is not None
+
+
+def available_target(net,fn,source,revision,family,old):
+    if target_tried(net,fn,revision,family,old):
+        return False
+    return any(not compiled_before(net,fn,agent_targets.replace_anchor(source,p['old'],p['new']))
+               for p in family_patches(family,old))
 
 
 def local_family(net, agent, slug, function, revision, family, old='', declaration='', occurrence=0, target='', selector=None):
@@ -421,6 +436,7 @@ def local_family(net, agent, slug, function, revision, family, old='', declarati
                 generated = [s for s in expression_repairs.variants(source,fn['name'],proj['arch']) if mask_count(s)<mask_count(source)]
             else:
                 generated = [s for kind,s in pattern_repairs.variants(source,fn['name'],debug) if kind==family]
+            generated=[s for s in generated if not compiled_before(net,fn,s)]
             if not generated:
                 return 'No applicable '+family+' variants for this candidate. No compile run.'
             return variants(net,agent,slug,function,revision,[{'old':source,'new':s} for s in generated[:6]],family)
@@ -430,7 +446,7 @@ def local_family(net, agent, slug, function, revision, family, old='', declarati
             if target != 'next'  or old or declaration or occurrence:
                 raise NetworkError('Use target=next alone with family and revision; do not combine other selectors.')
             targets = agent_targets.valid_targets(source,family)
-            available = [t for t in targets if not target_tried(net,fn,revision,family,t['old'])]
+            available = [t for t in targets if available_target(net,fn,source,revision,family,t['old'])]
             if not available:
                 return 'No untried valid '+family+' targets for revision '+revision+'. No compile run.'
             declaration = available[0]['name']
@@ -448,9 +464,15 @@ def local_family(net, agent, slug, function, revision, family, old='', declarati
             raise NetworkError(str(e)+' '+agent_targets.choices(source,family)) from e
         for p in patches:
             p['occurrence'] = occurrence
+        patches=[p for p in patches if not compiled_before(net,fn,agent_targets.replace_anchor(source,p['old'],p['new'],p.get('occurrence',0)))]
+        if not patches:
+            return 'All generated alternatives were judged before in this build context. No compile run.'
         scope = target_scope(net,fn,revision)
         result = variants(net, agent, slug, function, revision, patches, family)
-        if re.search(r'last submitted variant [1-6]',result):
+        submitted=re.search(r'last submitted variant ([1-6])',result)
+        observations=getattr(net,'_local_trial_observations',{}).get((agent.id,fn['id']),[])
+        if submitted and int(submitted[1])==len(patches) and len(observations)==len(patches) and all(
+                item and item.get('score') is not None for item in observations):
             with net.store.tx() as db:
                 db.execute('INSERT OR IGNORE INTO agent_family_targets VALUES(?,?,?,?)',
                            (fn['id'],scope,family,hashlib.sha256(old.encode()).hexdigest()))
@@ -505,6 +527,7 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             results.append('Generated changes (bounded):\n'+'\n'.join(
                 f"{i}: "+'\n'.join(list(difflib.unified_diff(source.splitlines(),text.splitlines(),n=0,lineterm=''))[2:14])[:600]
                 for i,text in enumerate(candidates,1)))
+        durable_scope=target_scope(net,fn,'')
         began = time.monotonic()
         for i, src in enumerate(candidates, 1):
             if last is not None and time.monotonic() - began >= 60:
@@ -521,6 +544,10 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             measured = measured if measured and measured['source'] == src else None
             observations.append({'score':measured['score'],'rows':measured['rows']} if measured else None)
             score = measured['score'] if measured else None
+            if family != 'explicit patches' and score is not None and score > 0:
+                with net.store.tx() as db:
+                    db.execute('INSERT OR IGNORE INTO agent_family_targets VALUES(?,?,?,?)',
+                               (fn['id'],durable_scope,'compiled-miss',hashlib.sha256(src.encode()).hexdigest()))
             rows = measured['rows'] if measured else None
             if score is not None:
                 scores.append(score)

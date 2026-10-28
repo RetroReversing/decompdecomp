@@ -1008,14 +1008,19 @@ class Manager:
                 self._finish(s, f"nothing left to {'polish' if task == 'readable' else 'decompile'} here 🎉")
                 break
             policy = self.net.selection(s.slug, agent.name)
-            if task != "readable" and (policy.get("match_below") is not None or policy.get("max_tries")):
-                if not self.net.selection_remaining(s.slug, agent) and not self.net.store.one(
+            if task != "readable" and (policy.get("match_below") is not None or policy.get("max_tries") or policy.get("model_untried")):
+                if not self.net.selection_remaining(s.slug, agent, include_paused=True) and not self.net.store.one(
                         "SELECT 1 FROM claims WHERE agent_id=?", agent.id):
                     below = policy.get("match_below")
-                    why = f"no functions remain below {below:g}% match" if below is not None else "no functions remain within max tries"
+                    why = f"no functions remain below {below:g}% match" if below is not None else "no functions remain unchecked by this model" if policy.get("model_untried") else "no functions remain within max tries"
                     self._pause(s, why + " for this worker (unscored functions also count)",
                                 "Change Work selection, then press Start again.")
                     break
+            if task != 'readable' and not self.net.selection_remaining(s.slug,agent) and not self.net.store.one(
+                    'SELECT 1 FROM claims WHERE agent_id=?',agent.id):
+                self._wait(s,'No eligible functions: unchanged candidates are paused.',time.time()+30,
+                           'Waiting for candidate, build-context or repair changes; no model call is running.')
+                continue
             if (cap := self.over_budget(s.slug)) is not None:
                 self._finish(s, f"the agents on this project have spent the ${cap:.2f} budget (Setup)")
                 break

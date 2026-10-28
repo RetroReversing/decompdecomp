@@ -107,7 +107,7 @@ def test_new_tools_and_paging_are_exposed_to_mcp_and_api(tmp_path):
 def test_fork_reads_disk_candidate_and_all_target_assembly(tmp_path, monkeypatch):
     from types import SimpleNamespace
     net,_=_game(tmp_path,[('f',600,'open')]);a,_=net.local_agent('a')
-    fp=SimpleNamespace(unit=lambda name: name, diff=lambda *args: SimpleNamespace(target_asm=lambda:'\n'.join(f'op{i}' for i in range(600))))
+    fp=SimpleNamespace(root=tmp_path,unit=lambda name: SimpleNamespace(source=None), diff=lambda *args: SimpleNamespace(target_asm=lambda:'\n'.join(f'op{i}' for i in range(600))))
     monkeypatch.setattr(net,'fork_slug',lambda slug: slug)
     net.forks.get=lambda slug:(None,fp,{})
     net.forks._current_source=lambda fp,fn:'int f(){return 7;}'
@@ -406,10 +406,15 @@ def test_current_target_listing_and_auto_selection_are_revision_scoped(tmp_path,
         db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode}),))
         db.execute('UPDATE functions SET best_source=?',(source,))
     net.claim_row(a,'game','f')
+    net._record(net._function('f','game'),a,10,source,1)
     _,rev=agent_tokens.candidate(net,a,'game','f')
     seen=[]
     # Cached-style trials retain the candidate: makes repeat selection under the same snapshot observable.
-    monkeypatch.setattr(tools,'_compile',lambda *args:seen.append(args[4]) or 'score 10')
+    def compile(*args):
+        seen.append(args[4])
+        agent_tokens.outcome(net,a,net._function('f','game'),args[4],'score 10')
+        return 'score 10'
+    monkeypatch.setattr(tools,'_compile',compile)
     listed=tools.call(net,a,'game','family_targets',{'function':'f','expression':' a'})
     assert rev in listed and 'a -> b' in listed and 'b -> c' in listed and '2 literal occurrences' in listed
     assert seen==[]
@@ -419,7 +424,7 @@ def test_current_target_listing_and_auto_selection_are_revision_scoped(tmp_path,
     assert 'Selected declaration a' in first and 'Selected declaration b' in second
     assert 'No untried valid' in third and len(seen)==2
     assert 'tried' in agent_tokens.family_targets(net,a,'game','f')
-    with net.store.tx() as db:db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode,'changed':True}),))
+    with net.store.tx() as db:db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode,'gp':4096}),))
     assert 'untried' in agent_tokens.family_targets(net,a,'game','f')
     fn=net._function('f','game');previous_scope=agent_tokens.target_scope(net,fn,rev)
     with net.store.tx() as db:

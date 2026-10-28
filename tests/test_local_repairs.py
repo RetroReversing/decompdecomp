@@ -62,7 +62,7 @@ def test_stalled_claims_wait_for_changed_inputs_but_explicit_selection_works(tmp
     if mode=='fork':
         src.write_text('void f(){changed();}')
     else:
-        with net.store.tx() as db:db.execute('UPDATE projects SET config=? WHERE id=?',(json.dumps({'kind':'rom','changed':True}),pid))
+        with net.store.tx() as db:db.execute('UPDATE projects SET config=? WHERE id=?',(json.dumps({'kind':'rom','gp':4096}),pid))
     assert not claim_stalls.blocked(net,net._project('game'))
 
 
@@ -147,7 +147,7 @@ def test_agent_release_runs_phase_only_after_accepted_tried_release(tmp_path,mon
 @pytest.mark.parametrize('change',['header','symbols'])
 def test_stall_retries_on_dependency_change(tmp_path,change):
     net,pid=_game(tmp_path,[('f',10,'open')])
-    with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?,best_score=10',('void f(){}',))
+    with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?,best_score=10',('void f(){use(data);}',))
     fn=net._function('f','game');proj=net._project('game')
     for _ in range(3):claim_stalls.released(net,fn)
     assert claim_stalls.blocked(net,proj)
