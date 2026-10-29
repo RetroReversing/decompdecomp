@@ -1,5 +1,10 @@
 # Roadmap
 
+Bounded integer/call repairs now include evidence-led local widening, candidate-owned callee prototype widths,
+integer lifetime splits/merges, call distribution into branches, terminal goto leaves and switch layout variants.
+They share the ROM/imported-project judge and existing budgets; a better similarity score remains a draft.
+General CFG liveness, fallthrough switch rewriting and shared-header prototype inference remain future work.
+
 What's planned for decompdecomp, roughly in order, and why. Every item keeps the rule that matters most: a match is
 byte-identical after linking (ROM mode) or objdiff 100% (fork mode). Nothing here accepts code that only does the
 same thing.

@@ -9,11 +9,15 @@ import re
 from .. import m2cfix, seeds
 from ..forks.csource import _blank, find
 from . import (
+    branch_layout_repairs,
     branch_locals,
+    callee_prototype_repairs,
     captured_repairs,
     expression_repairs,
+    integer_lifetime_repairs,
     lifetime_repairs,
     load_pair_repairs,
+    local_widening_repairs,
     local_width_repairs,
     mmio_repairs,
     near_repairs,
@@ -74,6 +78,13 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     for text in local_width_repairs.variants(source, name):
         proposals.append(text)
         labels[text] = 'local_width'
+    for text in local_widening_repairs.variants(source, name):
+        proposals.append(text)
+        labels[text] = 'local_widening'
+    for module in (callee_prototype_repairs, integer_lifetime_repairs, branch_layout_repairs):
+        for family, text in module.variants(source, name):
+            proposals.append(text)
+            labels[text] = family
     for text in pointer_cast_repairs.variants(source, name, arch):
         proposals.append(text)
         labels[text] = 'pointer_cast_inline'

@@ -623,7 +623,7 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
 
     @tool
     async def try_local_repairs(ctx: Context, function: str, revision: str, families: list[str] | None = None, max_trials: int = 6) -> str:
-        """Try applicable local repair families against one revision; at most six normal compiles and 60 seconds. Omit families to discover applicable repairs; retain best continuation. Use instead of parallel family probes."""
+        """Try applicable local repairs against one revision; at most six normal compiles and 60 seconds. Omit families to discover repairs. Includes local_widening, callee_parameter_width, callee_return_width, split_integer_lifetime, merge_integer_lifetimes, branch_call, goto_leaf and switch_layout. Retain best continuation; use instead of parallel family probes."""
         return await run(ctx,'try_local_repairs',function=function,revision=revision,families=families,max_trials=max_trials)
 
     @tool
