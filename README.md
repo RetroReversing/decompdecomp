@@ -36,6 +36,14 @@ local declaration order before random permutation. It keeps original line layout
 These hypotheses run through the same compiler and exact judge as agents, in ROM and supported 32-bit imported
 projects. They use local CPU, with no model API calls. Rejected candidates do not replace the best saved C.
 
+The same pass can widen a byte/short local when arithmetic or a later conversion suggests truncation, test
+candidate-owned callee parameter/return widths, and split or merge bounded integer lifetimes. It also tries
+calls inside argument-selecting branches, copies terminal goto leaves, and reorders switch cases with no
+fallthrough. Missing no-op zero cases can restore a compiler's original dispatch layout. Shared headers and
+project-wide prototypes stay unchanged. These are hypotheses: an improved similarity score is still a draft,
+and only a byte-exact result counts as matched. The families also reach iterative/deep search and
+`try_local_repairs`; loops, incoming jumps, shadowing and ambiguous declarations limit what is proposed.
+
 For close ROM misses it also tests cached compiler flag alternatives, two probes per pass. Later passes skip
 already tested choices and can reach optimization levels as well as debug flags. Only exact results qualify for a
 narrow compiler-range change. When automatic compiler changes are disabled, the result becomes a suggestion for
