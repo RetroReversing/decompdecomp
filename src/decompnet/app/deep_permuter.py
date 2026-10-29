@@ -10,8 +10,11 @@ import time
 from .. import scoring
 from ..network import NetworkError
 from ..project import compiler_for
+from ..repair_feedback import trial as repair_trial
 from . import agent_tokens, draft_repairs, permuter_local, stack_padding_repairs
 from .permute import Permuter, State
+
+AFTER_RANDOM_TRIALS = 32
 
 
 class SearchLimit(Exception):
@@ -51,6 +54,10 @@ class Search(Permuter):
         self.measuring_baseline = False
         self.record_improvement = lambda score: None
         self.recorded_best = None
+        self.local_seen = set()
+        self.refinement_rounds = 0
+        self.winner_diff = None
+        self.winner_source = None
 
     def check(self):
         self.log.check_cancel()
@@ -74,16 +81,98 @@ class Search(Permuter):
             self.recorded_best = self.best
         self.log.progress({'phase': self.phase, 'tested': self.tested, 'skipped': self.skipped,
                            **self.metrics(), 'variant_limit': self.limit, 'rejected': self.rejected,
-                           'seconds_left': max(0, round(self.deadline-time.monotonic()))})
+                           'seconds_left': max(0, round(self.deadline-time.monotonic())), 'refinement_rounds': self.refinement_rounds})
 
-    def _baseline(self, *args):
-        # A cached scalar score cannot supply the instruction rows needed by targeted repairs.
-        # The parent still caches a measured baseline within this search instance.
+    def _baseline(self, agent, proj, fn, state, fork):
+        # Baseline evidence must come from today's compiler/header, including score-zero open rows.
         self.measuring_baseline = True
         try:
-            return super()._baseline(*args)
+            measured = super()._baseline(agent, proj, fn, state, fork)
+            if measured[0] is not None or fork:
+                return measured
+            from .prototype_alignment import variants
+            header = self.net._context(proj['id'], fn['unit'])['header']
+            for candidate in variants(fn['best_source'], fn['name'], header):
+                score = self._score(agent, proj, fn, candidate, float('inf'), fork)
+                fresh = self.net._function(fn['name'], proj['slug'])
+                if score is not None and fresh['status'] == 'open' and fresh['best_source'] == fn['best_source']:
+                    # The old percentage described C which no longer compiles. Retain that source in
+                    # history and rebase only this broken draft after a normal compiler/judge result.
+                    self.net._record(fn, agent, None, fn['best_source'],
+                                     self.net._context(proj['id'], fn['unit'])['version'],
+                                     compiled=False, via='permuter')
+                    with self.net.store.tx() as db:
+                        current = self.net._function(fn['name'], proj['slug'])
+                        unchanged = (current['status'] == 'open' and current['best_source'] == fn['best_source']
+                                     and all(current[k] == fn[k] for k in ('best_score', 'target', 'relocs', 'vram'))
+                                     and self.net._project(proj['slug'])['config'] == proj['config']
+                                     and self.net._context(proj['id'], fn['unit'])['header'] == header)
+                        if unchanged:
+                            db.execute("UPDATE functions SET best_source=?,best_score=?,best_agent_id=? WHERE id=? AND status='open'",
+                                       (candidate, score, agent.id, fn['id']))
+                    fresh = self.net._function(fn['name'], proj['slug'])
+                if score is not None and (fresh['best_source'] == candidate or fresh['status'] == 'matched'):
+                    self.log('Repaired a conflicting return type in the candidate; shared header unchanged. '
+                             'The broken draft is retained in history; the new baseline may have a lower percentage.')
+                    return score, measured[1]+1
+            return measured
         finally:
             self.measuring_baseline = False
+
+    def local_repairs(self, agent, proj, fn, best, fork, max_trials=None):
+        """Regenerate from each saved winner, sharing this search's deadline, cache and allowance."""
+        flags = compiler_for(self.net.cfg(proj), fn['vram']).get('flags', []) if not fork else []
+        trials = 0
+        source = fn['best_source']
+        while best > 0:
+            self.check()
+            self.local_seen.add(source)
+            rows = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0]
+            labels = {}
+            choices = draft_repairs.variants(source, fn['name'], proj['arch'], fn['asm'] or '', flags, labels=labels, limit=None)
+            choices += stack_padding_repairs.grow(source, fn['name'], proj['arch'], rows)
+            choices += [s for _, s in permuter_local.variants(source, fn['name'])]
+            for candidate in dict.fromkeys(choices):
+                if candidate in self.local_seen:
+                    continue
+                if max_trials is not None and trials >= max_trials:
+                    return best, source
+                self.local_seen.add(candidate)
+                trials += 1
+                with repair_trial({'kind': 'deep local repair', 'family': labels.get(candidate, 'local_repair'),
+                                   'base_source_sha256': hashlib.sha256(source.encode()).hexdigest()}):
+                    score = self._score(agent, proj, fn, candidate, best, fork)
+                if score is not None and score < best:
+                    best = score
+                    fn = self.net._function(fn['name'], proj['slug'])
+                    source = fn['best_source']
+                    break
+            else:
+                break
+        return best, source
+
+    def _after_improvement(self, agent, proj, fn, state, fork, best, source):
+        previous = self.phase
+        self.phase = 'local repairs after random improvement'
+        self.refinement_rounds += 1
+        try:
+            self.log('Random rewrite improved the candidate; trying targeted local repairs on its new diff.')
+            # Keep the exploratory lane alive: at most 32 local proposals after each random win.
+            # The original global time/compile limit always wins over this burst limit.
+            fresh = self.net._function(fn['name'], proj['slug'])
+            return self.local_repairs(agent, proj, fresh, best, fork, max_trials=AFTER_RANDOM_TRIALS)
+        finally:
+            if self.winner_diff is not None:
+                # A losing local trial must not steer the next random batch's weights. Restore
+                # evidence for the saved winner, without spending another compiler invocation.
+                if hasattr(self.net, 'keep_diff'):
+                    self.net.keep_diff(agent.id, fn['id'], self.winner_diff[0])
+                else:
+                    self.net._last_diffs[agent.id, fn['id']] = self.winner_diff
+                if hasattr(self.net, '_agent_outcomes'):
+                    self.net._agent_outcomes[agent.id, fn['id']] = {
+                        'source': self.winner_source, 'score': self.best, 'rows': self.winner_diff[0]}
+            self.phase = previous
 
     def _score(self, agent, proj, fn, source, best, fork):
         self.check()
@@ -112,13 +201,19 @@ class Search(Permuter):
                     db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
                                (fn['id'], key, 'miss', 'deep function search', json.dumps(score)))
         if score is not None:
+            winner = False
             if self.measuring_baseline and not self.baseline_measured:
                 self.starting_score = self.best = score
                 self.baseline_measured = True
+                winner = True
             elif not reused and not self.measuring_baseline and (self.best is None or score < self.best):
                 if self.best is not None:
                     self.improvements += 1
                 self.best = score
+                winner = True
+            if winner:
+                self.winner_diff = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']))
+                self.winner_source = source
         self.report()
         return score
 
@@ -147,39 +242,16 @@ def run(net, slug, name, minutes, max_variants, log):
             raise NetworkError('This function was claimed meanwhile; try again after it is released.')
         try:
             fork = net.fork_slug(slug)
-            flags = compiler_for(net.cfg(proj), fn['vram']).get('flags', []) if not fork else []
-            # Fresh baseline evidence enables measured stack repairs and diagnoses stale saved scores.
+            # Fresh baseline evidence also diagnoses obsolete candidate-owned prototypes.
             baseline, _ = search._baseline(agent, proj, fn, state, fork)
             if baseline is None:
-                raise NetworkError('The saved C does not compile in the current context; fix it before deep search.')
+                raise NetworkError('The saved C does not compile in the current context; fix its declarations before deep search.')
             if baseline == 0:
                 reason = 'Matched'
             else:
-                best = baseline
-                seen = {fn['best_source']}
-                repair_fn = fn
-                while best > 0:
-                    search.check()
-                    source = repair_fn['best_source']
-                    rows = getattr(net, '_last_diffs', {}).get((agent.id, repair_fn['id']), ([], ''))[0]
-                    choices = draft_repairs.variants(source, repair_fn['name'], proj['arch'], repair_fn['asm'] or '', flags, limit=None)
-                    choices += stack_padding_repairs.grow(source, repair_fn['name'], proj['arch'], rows)
-                    choices += [s for _,s in permuter_local.variants(source, repair_fn['name'])]
-                    for candidate in dict.fromkeys(choices):
-                        if candidate in seen:
-                            continue
-                        seen.add(candidate)
-                        score = search._score(agent, proj, repair_fn, candidate, best, fork)
-                        if score == 0:
-                            reason = 'Matched'
-                        if score is not None and score < best:
-                            best = score
-                            # Chain repairs from the saved winner and its new diff; keep the same
-                            # deadline/compile budget and avoid retesting candidates from earlier rounds.
-                            repair_fn = net._function(name, slug)
-                            break
-                    else:
-                        break
+                best, _ = search.local_repairs(agent, proj, net._function(name, slug), baseline, fork)
+                if best == 0:
+                    reason = 'Matched'
         finally:
             search._let_go(agent, fn)
         if reason != 'Matched':
@@ -203,7 +275,8 @@ def run(net, slug, name, minutes, max_variants, log):
     search.report()
     log(f'{reason}: {search.tested} candidates tested, {search.skipped} cached misses skipped, {search.rejected} invalid calls skipped. Verified improvements are saved immediately.')
     result = {'function': name, 'reason': reason, 'tested': search.tested, 'skipped': search.skipped,
-              'rejected': search.rejected, 'matched': net._function(name, slug)['status'] == 'matched', **search.metrics()}
+              'rejected': search.rejected, 'refinement_rounds': search.refinement_rounds,
+              'matched': net._function(name, slug)['status'] == 'matched', **search.metrics()}
     if sweeps:
         sweeps.completed(slug, fn, minutes, max_variants, result, build_scope)
     return result
