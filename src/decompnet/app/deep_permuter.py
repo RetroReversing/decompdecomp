@@ -257,7 +257,8 @@ def run(net, slug, name, minutes, max_variants, log):
     search.report()
     log(f'{reason}: {search.tested} candidates tested, {search.skipped} cached misses skipped, {search.rejected} invalid calls skipped. Verified improvements are saved immediately.')
     result = {'function': name, 'reason': reason, 'tested': search.tested, 'skipped': search.skipped,
-              'rejected': search.rejected, 'matched': net._function(name, slug)['status'] == 'matched', **search.metrics()}
+              'rejected': search.rejected, 'refinement_rounds': search.refinement_rounds,
+              'matched': net._function(name, slug)['status'] == 'matched', **search.metrics()}
     if sweeps:
         sweeps.completed(slug, fn, minutes, max_variants, result, build_scope)
     return result
