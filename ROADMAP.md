@@ -893,3 +893,9 @@ agent briefs and deep-search output. Planned: compiler-specific diagnostic flags
 opt-in diagnostic build command for imported projects (their ordinary build diagnostics remain available).
 Reuse discovery batches fingerprint names/cache reads and persists a separate cheap-discovery cursor; at most
 half the remaining shared reuse time goes to that phase, leaving time for wider matching.
+
+Project settings now offer a resumable deep permutation pass across unmatched functions in ROM and imported
+projects. Each function's completed bounded turn is persisted with its source/build scope and budget. Unfinished
+turns resume after restart; changed inputs become eligible again. Busy functions and candidates without scored C
+wait without being marked complete. The pass uses the same local/random searches, claims and judges as a single
+function, with a visible progress bar and stop button. No paid helper is launched.

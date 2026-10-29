@@ -130,6 +130,8 @@ async function refreshFn(first) {
       : d.renamed ? `Renamed from ${d.naming.original_name}` : d.named ? "Named function" : "Generated name";
     fnBadge(d);
     $("fnDeepPanel").hidden = !deepPermuterBusy && (d.status !== "open" || d.best == null);
+    const pass = d.deep_pass || {};
+    $("fnDeepHistory").textContent = pass.completed ? `Deep pass completed · ${pass.minutes} min / ${Number(pass.max_variants).toLocaleString()} variants budget` : pass.stale ? "Previous pass saved; inputs changed, so this function is eligible again." : pass.state === "error" ? `Deep pass needs attention: ${pass.error}` : `Deep pass: ${pass.state || "not tried"}`;
     $("fnCompilerTest").hidden = S.ov.kind === "fork" || d.status !== "open" || !S.ov.compilers?.length;
     if (!compilerComparisonBusy && S.ov.kind !== "fork") {
       const history = d.compiler_test;

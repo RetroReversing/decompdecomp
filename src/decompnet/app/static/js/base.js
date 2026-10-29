@@ -130,9 +130,11 @@ function beginWork(log, label, controls = [], completed = "Finished.") {
   };
 }
 
-async function followJob(id, logEl, onUpdate) {
+async function followJob(id, logEl, onUpdate, active = () => true) {
   for (;;) {
+    if (!active()) return null;
     const job = await api(`/api/job?id=${id}`);
+    if (!active()) return null;
     if (logEl) {
       const text = job.log.join("\n");
       if (logEl.textContent !== text) {

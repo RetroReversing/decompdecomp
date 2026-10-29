@@ -49,6 +49,8 @@ class Search(Permuter):
         self.baseline_measured = False
         self.phase = 'local repairs'
         self.measuring_baseline = False
+        self.record_improvement = lambda score: None
+        self.recorded_best = None
 
     def check(self):
         self.log.check_cancel()
@@ -67,6 +69,9 @@ class Search(Permuter):
                 'best_score': self.best, 'best_percent': percent(self.best), 'improvements': self.improvements}
 
     def report(self):
+        if self.best is not None and (self.recorded_best is None or self.best < self.recorded_best):
+            self.record_improvement(self.best)
+            self.recorded_best = self.best
         self.log.progress({'phase': self.phase, 'tested': self.tested, 'skipped': self.skipped,
                            **self.metrics(), 'variant_limit': self.limit, 'rejected': self.rejected,
                            'seconds_left': max(0, round(self.deadline-time.monotonic()))})
@@ -121,7 +126,13 @@ class Search(Permuter):
 def run(net, slug, name, minutes, max_variants, log):
     """Visit the supported local repairs, then spend the remaining budget on random permutations."""
     proj, fn = validate(net, slug, name, minutes, max_variants)
+    sweeps = getattr(net, 'deep_sweeps', None)
+    if sweeps:
+        from ..candidate_scope import key
+        build_scope = key(net, proj, fn)
     search = Search(net, minutes, max_variants, log, fn)
+    if sweeps:
+        search.record_improvement = lambda score: sweeps.improvement(fn, score)
     search.report()
     state = State()
     agent, _ = net.local_agent('permuter')
@@ -145,17 +156,29 @@ def run(net, slug, name, minutes, max_variants, log):
                 reason = 'Matched'
             else:
                 best = baseline
-                source = fn['best_source']
-                rows = getattr(net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0]
-                choices = draft_repairs.variants(source, fn['name'], proj['arch'], fn['asm'] or '', flags, limit=None)
-                choices += stack_padding_repairs.grow(source, fn['name'], proj['arch'], rows)
-                choices += [s for _,s in permuter_local.variants(source, fn['name'])]
-                for candidate in dict.fromkeys(choices):
-                    score = search._score(agent, proj, fn, candidate, best, fork)
-                    if score is not None and score < best:
-                        best = score
-                    if score == 0:
-                        reason = 'Matched'
+                seen = {fn['best_source']}
+                repair_fn = fn
+                while best > 0:
+                    search.check()
+                    source = repair_fn['best_source']
+                    rows = getattr(net, '_last_diffs', {}).get((agent.id, repair_fn['id']), ([], ''))[0]
+                    choices = draft_repairs.variants(source, repair_fn['name'], proj['arch'], repair_fn['asm'] or '', flags, limit=None)
+                    choices += stack_padding_repairs.grow(source, repair_fn['name'], proj['arch'], rows)
+                    choices += [s for _,s in permuter_local.variants(source, repair_fn['name'])]
+                    for candidate in dict.fromkeys(choices):
+                        if candidate in seen:
+                            continue
+                        seen.add(candidate)
+                        score = search._score(agent, proj, repair_fn, candidate, best, fork)
+                        if score == 0:
+                            reason = 'Matched'
+                        if score is not None and score < best:
+                            best = score
+                            # Chain repairs from the saved winner and its new diff; keep the same
+                            # deadline/compile budget and avoid retesting candidates from earlier rounds.
+                            repair_fn = net._function(name, slug)
+                            break
+                    else:
                         break
         finally:
             search._let_go(agent, fn)
@@ -179,5 +202,8 @@ def run(net, slug, name, minutes, max_variants, log):
         reason = str(error)
     search.report()
     log(f'{reason}: {search.tested} candidates tested, {search.skipped} cached misses skipped, {search.rejected} invalid calls skipped. Verified improvements are saved immediately.')
-    return {'function': name, 'reason': reason, 'tested': search.tested, 'skipped': search.skipped,
-            'rejected': search.rejected, 'matched': net._function(name, slug)['status'] == 'matched', **search.metrics()}
+    result = {'function': name, 'reason': reason, 'tested': search.tested, 'skipped': search.skipped,
+              'rejected': search.rejected, 'matched': net._function(name, slug)['status'] == 'matched', **search.metrics()}
+    if sweeps:
+        sweeps.completed(slug, fn, minutes, max_variants, result, build_scope)
+    return result

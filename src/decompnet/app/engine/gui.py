@@ -256,8 +256,10 @@ class GuiMixin:
 
     def function_detail(self, slug: str, name: str) -> dict:
         from ..function_names import state as name_state
+        sweep = getattr(self, 'deep_sweeps', None)
+        deep_pass = sweep.history(slug, self._function(name, slug)) if sweep else {'state': 'not tried', 'completed': False}
         if (fork := self.fork_slug(slug)):
-            return self.forks.function_detail(fork, name) | name_state(self._function(name, slug))
+            return self.forks.function_detail(fork, name) | name_state(self._function(name, slug)) | {'deep_pass': deep_pass}
         fn = self._function(name, slug)
         proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
         attempts = self.store.all(
@@ -275,6 +277,7 @@ class GuiMixin:
         return {
             **name_state(fn), "name": fn["name"], "vram": fn["vram"], "rom_offset": fn["rom_offset"], "size": fn["size"],
             "insns": fn["n_insns"], "status": fn["status"], "best": fn["best_score"], **set_aside(fn),
+            "deep_pass": deep_pass,
             "compiler_test": self.compiler_test_result(proj, fn),
             "asm": self._asm_text(fn, proj),
             "source": fn["matched_source"] or fn["best_source"] or (latest["source"] if latest else None) or fn["seed"],

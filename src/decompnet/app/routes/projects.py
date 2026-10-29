@@ -237,6 +237,19 @@ def register(app: App) -> None:
             return {'job': jobs.start('source-preparation', work)}
         return source_preparation.configure(net, proj, data)
 
+    def p_deep_sweep(slug, request, data):
+        sweeps = net.deep_sweeps
+        if request.method == 'GET':
+            return sweeps.status(slug)
+        action = data.get('action', 'start')
+        if action == 'stop':
+            return sweeps.stop(slug)
+        if action != 'start':
+            raise ValueError('Choose start or stop for the deep pass.')
+        if not isinstance(data.get('repeat', False), bool):
+            raise ValueError('Repeat must be true or false.')
+        return sweeps.start(slug, data.get('minutes', 5), data.get('max_variants', 10000), data.get('repeat', False))
+
     def p_deep_permuter(slug, request, data):
         from .. import deep_permuter
         name = str(data.get('function') or '')
@@ -332,6 +345,7 @@ def register(app: App) -> None:
         "/api/try": (p_try, ["POST"]), "/api/release": (p_release, ["POST"]), "/api/reopen": (p_reopen, ["POST"]), "/api/setaside": (p_set_aside, ["POST"]),
         "/api/recheck": (p_recheck, ["POST"]),
         "/api/permuter": (p_permuter, ["POST"]),
+        "/api/permuter/pass": (p_deep_sweep, ["GET", "POST"]),
         "/api/permuter/function": (p_deep_permuter, ["POST"]),
         "/api/source-preparation": (p_source_preparation, ["GET", "POST"]),
         "/api/autopilot": (p_autopilot, ["POST"]), "/api/instructions": (p_instructions, ["POST"]), "/api/title": (p_title, ["POST"]),

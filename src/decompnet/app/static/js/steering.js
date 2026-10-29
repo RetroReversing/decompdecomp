@@ -432,6 +432,7 @@ function projectCompilerFacts(ov) {
 }
 
 async function renderProjectSettings() {
+  renderDeepSweep();
   if ($("compilerImprovements").dataset.slug !== S.slug) $("compilerImprovements").replaceChildren();
   if ($("compilerProgress").dataset.slug !== S.slug) {
     $("compilerProgress").hidden = true;
@@ -806,4 +807,76 @@ $("sourcePrepRun").onclick = async () => {
     await followJob(job, log);
     refreshMap();
   } catch (e) { showJobError(log, e.message); } finally { finish(); }
+};
+
+
+let deepSweepFollowing = null;
+function renderDeepSweepResults(status) {
+  const rows = status.improvements || [];
+  $("deepSweepResults").innerHTML = `<p><b>${status.improved || 0} functions improved</b> by deep permutation</p>`
+    + (rows.length ? `<div class="compiler-table"><table><thead><tr><th>Function</th><th>Starting score</th><th>Starting match</th><th>New score</th><th>New match</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td><button type="button" class="ghost small-btn mono" data-deep-result="${i}">${esc(r.function)}</button></td><td>${esc(r.starting_score)}</td><td>${esc(r.starting_percent_text)}</td><td><b>${esc(r.new_score)}</b></td><td><b>${esc(r.new_percent_text)}</b></td></tr>`).join("")}</tbody></table></div><p class="small muted">Lower scores and higher match percentages are better. Saved across restarts and repeat passes; each function appears once, from its first recorded improvement to its best deep-pass result.</p>` : "");
+  $("deepSweepResults").querySelectorAll("[data-deep-result]").forEach(button => {
+    button.onclick = () => openFn(rows[Number(button.dataset.deepResult)].function);
+  });
+}
+async function renderDeepSweep() {
+  const slug = S.slug;
+  if (!slug) return;
+  try {
+    const status = await api(`/api/permuter/pass?slug=${encodeURIComponent(slug)}`);
+    if (S.slug !== slug) return;
+    if ($("deepSweepPanel").dataset.slug !== slug) {
+      $("deepSweepPanel").dataset.slug = slug;
+      $("deepSweepMinutes").value = status.minutes;
+      $("deepSweepVariants").value = status.max_variants;
+      $("deepSweepRepeat").checked = false;
+    }
+    renderDeepSweepResults(status);
+    $("deepSweepStart").disabled = status.state === "running";
+    $("deepSweepStop").hidden = status.state !== "running";
+    $("deepSweepStatus").textContent = `${status.completed} saved completed passes · ${status.errors} need attention · ${status.ready} of ${status.total} unmatched functions have scored C`;
+    if (status.error) $("deepSweepStatus").textContent += ` · ${status.error}`;
+    if (status.state === "running" && deepSweepFollowing !== status.job) followDeepSweep(slug, status.job);
+  } catch (error) { if (S.slug === slug) showJobError($("deepSweepLog"), error.message); }
+}
+async function followDeepSweep(slug, job) {
+  deepSweepFollowing = job;
+  const host = $("deepSweepLog"), log = document.createElement("pre");
+  host.textContent = ""; host.append(log);
+  $("deepSweepStart").disabled = true;
+  const done = beginWork(log, "Deep permutation pass", [], "Deep pass finished");
+  let lastResults = 0, refreshing = false;
+  try {
+    await followJob(job, log, (_, state) => {
+      const progress = state.progress || {};
+      if (S.slug !== slug) return;
+      if (!refreshing && Date.now() - lastResults >= 2000) {
+        refreshing = true; lastResults = Date.now();
+        api(`/api/permuter/pass?slug=${encodeURIComponent(slug)}`).then(status => {
+          if (S.slug === slug) renderDeepSweepResults(status);
+        }).catch(() => {}).finally(() => { refreshing = false; });
+      }
+      $("deepSweepStatus").textContent = `${progress.function || "Queue"} · ${progress.phase || "working"} · ${progress.functions_tested || 0} functions tested · ${progress.matches || 0} matches`;
+    }, () => S.slug === slug);
+  } catch (error) { if (S.slug === slug) showJobError(log, error.message); }
+  finally {
+    done();
+    if (deepSweepFollowing === job) deepSweepFollowing = null;
+    if (S.slug === slug) renderDeepSweep();
+  }
+}
+$("deepSweepStart").onclick = async () => {
+  const slug = S.slug, log = $("deepSweepLog");
+  const done = beginWork(log, "Starting deep pass", [$("deepSweepStart")], "Deep pass started");
+  let job = null;
+  try {
+    const result = await api("/api/permuter/pass", {method:"POST", body:{slug, action:"start", minutes:Number($("deepSweepMinutes").value), max_variants:Number($("deepSweepVariants").value), repeat:$("deepSweepRepeat").checked}});
+    job = result.job;
+  } catch (error) { showJobError(log, error.message); }
+  finally { done(); }
+  if (job && S.slug === slug) { $("deepSweepStop").hidden = false; followDeepSweep(slug, job); }
+};
+$("deepSweepStop").onclick = async () => {
+  try { await api("/api/permuter/pass", {method:"POST", body:{slug:S.slug, action:"stop"}}); }
+  catch (error) { showJobError($("deepSweepLog"), error.message); }
 };

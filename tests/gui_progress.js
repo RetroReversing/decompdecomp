@@ -53,7 +53,7 @@ function setup(file, marker, end, logId, buttonId, ranges = "") {
   let polls = 0;
   const ctx = {
     $: get, document: { createElement: element },
-    deepPermuterBusy: false, deepPermuterJob: null, refreshFn: async () => {},
+    followDeepSweep: () => {}, deepPermuterBusy: false, deepPermuterJob: null, refreshFn: async () => {},
     S: { slug: "test", fn: "f", ov: { kind: "fork" } }, info: {}, box, body: box, n: get("compilerNotice"), log, inst: button,
     b: Object.assign(button, { dataset: { inst: "test" } }), a: { id: "test", name: "Test" }, ROOM_PORT: 6481,
     results: get("localResults"), scan: { folder: "/synthetic/collection", projects: [] }, picked: new Set(), renderList() {},
@@ -123,6 +123,35 @@ async function main() {
         assert.equal(log._workStatus.textContent, "Stopped");
       }
     }
+  }
+  // A project sweep has separate start and long-running follow phases, including page navigation.
+  for (const failed of [false, true]) {
+    const test = setup("steering", '$("deepSweepStart").onclick = async () => {', '\n};', "deepSweepLog", "deepSweepStart");
+    const followed = [];
+    test.ctx.followDeepSweep = (...args) => followed.push(args);
+    const running = test.ctx.run();
+    assert.equal(test.button.disabled, true);
+    assert.ok(test.log.bar && !test.log.bar.removed);
+    if (failed) test.start.reject(new Error("Cannot start"));
+    else test.start.resolve({job:"sweep"});
+    await running;
+    assert.equal(test.log.bar.removed, true);
+    assert.equal(test.button.disabled, false);
+    assert.equal(followed.length, failed ? 0 : 1);
+  }
+  for (const outcome of ["done", "error", "cancelled", "detached"]) {
+    const test = setup("steering", 'async function followDeepSweep(slug, job) {', '\n}\n', "deepSweepLog", "deepSweepStart");
+    Object.assign(test.ctx, {slug:"test", job:"sweep", deepSweepFollowing:null, renderDeepSweep:()=>{}});
+    const running = test.ctx.run();
+    await tick();
+    const log = test.log.children[0];
+    assert.ok(log.bar && !log.bar.removed);
+    if (outcome === "detached") test.ctx.S.slug = "other";
+    test.poll.resolve({state:outcome === "detached" ? "done" : outcome, log:["Working"], error:"Stopped", progress:{function:"f", phase:"local repairs"}, result:{}});
+    await running;
+    assert.equal(log.bar.removed, true);
+    if (outcome === "detached") assert.equal(log.textContent, "");
+    else if (outcome !== "done") assert.equal(log.error, "Stopped");
   }
   // SDK indexing includes optional local C and always clears its foreground progress bar.
   for (const fail of [false, true]) {
@@ -276,4 +305,21 @@ main().catch((error) => { console.error(error); process.exitCode = 1; });
     assert.equal(bar.className, state === "running" ? "workbar" : "upbar");
     if (state === "running") assert.equal(bar.firstElementChild.style.width, "");
   }
+}
+
+// Durable deep-pass results show every improvement and keep the function link usable.
+{
+  const source = read("steering"), start = source.indexOf("function renderDeepSweepResults(status) {");
+  const end = source.indexOf("async function renderDeepSweep()", start);
+  const result = {innerHTML:"", querySelectorAll:()=>[button]}, button = {dataset:{deepResult:"0"}};
+  let opened;
+  const ctx = {$:()=>result, esc:s=>String(s).replaceAll("<", "&lt;"), openFn:name=>{opened=name;}};
+  vm.createContext(ctx); vm.runInContext(source.slice(start,end), ctx);
+  ctx.renderDeepSweepResults({improved:1, improvements:[{function:"f<0", starting_score:50,
+    new_score:25, starting_percent_text:"95.0%", new_percent_text:"97.5%"}]});
+  for (const text of ["1 functions improved", "f&lt;0", "50", "25", "95.0%", "97.5%"])
+    assert.ok(result.innerHTML.includes(text));
+  button.onclick(); assert.equal(opened,"f<0");
+  ctx.renderDeepSweepResults({improved:0, improvements:[]});
+  assert.ok(!result.innerHTML.includes("<table>"));
 }
