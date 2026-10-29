@@ -92,7 +92,9 @@ def test_busy_and_unusable_candidates_wait_without_completion(sweep, monkeypatch
     def pause(seconds):
         log.cancelled=True
     monkeypatch.setattr(deep_sweep,'POLL_SECONDS',1)
-    monkeypatch.setattr(deep_sweep.time,'sleep',pause)
+    # Replacing time.sleep globally also intercepts Windows subprocess polling during
+    # input fingerprinting, cancelling before the queue reaches its own waiting state.
+    monkeypatch.setattr(deep_sweep, 'time', SimpleNamespace(time=time.time, sleep=pause))
     with pytest.raises(RuntimeError,match='cancelled'):
         obj.run('game',1,10,log)
     assert calls == []
