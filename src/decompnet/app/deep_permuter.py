@@ -56,6 +56,8 @@ class Search(Permuter):
         self.recorded_best = None
         self.local_seen = set()
         self.refinement_rounds = 0
+        self.winner_diff = None
+        self.winner_source = None
 
     def check(self):
         self.log.check_cancel()
@@ -160,6 +162,16 @@ class Search(Permuter):
             fresh = self.net._function(fn['name'], proj['slug'])
             return self.local_repairs(agent, proj, fresh, best, fork, max_trials=AFTER_RANDOM_TRIALS)
         finally:
+            if self.winner_diff is not None:
+                # A losing local trial must not steer the next random batch's weights. Restore
+                # evidence for the saved winner, without spending another compiler invocation.
+                if hasattr(self.net, 'keep_diff'):
+                    self.net.keep_diff(agent.id, fn['id'], self.winner_diff[0])
+                else:
+                    self.net._last_diffs[agent.id, fn['id']] = self.winner_diff
+                if hasattr(self.net, '_agent_outcomes'):
+                    self.net._agent_outcomes[agent.id, fn['id']] = {
+                        'source': self.winner_source, 'score': self.best, 'rows': self.winner_diff[0]}
             self.phase = previous
 
     def _score(self, agent, proj, fn, source, best, fork):
@@ -189,13 +201,19 @@ class Search(Permuter):
                     db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
                                (fn['id'], key, 'miss', 'deep function search', json.dumps(score)))
         if score is not None:
+            winner = False
             if self.measuring_baseline and not self.baseline_measured:
                 self.starting_score = self.best = score
                 self.baseline_measured = True
+                winner = True
             elif not reused and not self.measuring_baseline and (self.best is None or score < self.best):
                 if self.best is not None:
                     self.improvements += 1
                 self.best = score
+                winner = True
+            if winner:
+                self.winner_diff = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']))
+                self.winner_source = source
         self.report()
         return score
 

@@ -176,3 +176,19 @@ def test_constant_register_reuse_can_recover_a_real_exact_object(tmp_path):
     results=[compile_source(cfg,'',s) for s in candidates]
     assert all(result.ok for result in results)
     assert any(scoring.diff(expected,extract_function(result.obj,'f')).score==0 for result in results)
+
+
+def test_losing_local_trials_do_not_replace_evidence_for_the_next_random_batch(monkeypatch):
+    net=setup(monkeypatch)
+    net._last_diffs={}
+    net._agent_outcomes={}
+    monkeypatch.setattr(draft_repairs,'variants',lambda *a,**k: ['losing local'])
+    def judge(self,agent,proj,fn,source,best,fork):
+        net._last_diffs[agent.id,fn['id']]=([source],'')
+        return 20 if source=='winner' else 50
+    monkeypatch.setattr(Permuter,'_score',judge)
+    search=deep_permuter.Search(net,1,100,Log(),net.function())
+    search._score(AGENT,net.project_row('game'),net.function(),'winner',40,None)
+    search._after_improvement(AGENT,net.project_row('game'),net.function(),State(),None,20,'winner')
+    assert net._last_diffs[AGENT.id,1][0]==['winner']
+    assert net._agent_outcomes[AGENT.id,1]['source']=='winner'
