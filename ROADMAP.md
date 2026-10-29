@@ -1,5 +1,10 @@
 # Roadmap
 
+Deep search now chains bounded local repairs after random improvements. Register reuse hypotheses share
+all normal draft/permuter paths. Fresh exact judgments repair score-zero/open bookkeeping; plain return
+conflicts can recover a buildable ROM candidate with an honest baseline and retained history. Adaptive
+per-function budgets and a pool of alternative search candidates remain planned follow-ups.
+
 Bounded integer/call repairs now include evidence-led local widening, candidate-owned callee prototype widths,
 integer lifetime splits/merges, call distribution into branches, terminal goto leaves and switch layout variants.
 They share the ROM/imported-project judge and existing budgets; a better similarity score remains a draft.

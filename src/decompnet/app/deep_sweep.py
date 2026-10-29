@@ -16,8 +16,17 @@ SCHEMA = '''CREATE TABLE IF NOT EXISTS deep_permutation_passes(
 
 
 def signature(net, proj, fn, minutes, variants):
-    return hashlib.sha256(repr(('deep-pass-v1', agent_tokens.target_scope(net, fn, ''),
-                               fn['best_source'], minutes, variants)).encode()).hexdigest()
+    inputs = ('deep-pass-v1', agent_tokens.target_scope(net, fn, ''), fn['best_source'], minutes, variants)
+    # Retry the two formerly blocked states once under the new recovery rules. Keep unrelated
+    # completed passes resumable; users can explicitly repeat them to try the new search recipes.
+    if fn['status'] == 'open' and fn['best_score'] == 0:
+        inputs += ('reverify-zero-v1',)
+    elif fn['best_source'] and not net.fork_slug(proj['slug']):
+        from .prototype_alignment import variants as align
+        ctx = net._context(proj['id'], fn['unit'])
+        if ctx and align(fn['best_source'], fn['name'], ctx['header']):
+            inputs += ('return-alignment-v1',)
+    return hashlib.sha256(repr(inputs).encode()).hexdigest()
 
 
 class Sweeps:

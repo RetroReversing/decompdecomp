@@ -365,6 +365,10 @@ class Permuter:
         with self.net.store.tx() as db:
             db.execute("DELETE FROM claims WHERE function_id=? AND agent_id=?", (fn["id"], agent.id))
 
+    def _after_improvement(self, agent, proj, fn, st, fork, best, source):
+        """Deep search can run bounded local repairs here without changing normal random turns."""
+        return best, source
+
     def _permute(self, agent, proj, fn, st: State) -> None:
         seconds = self.seconds
         if st.stop.is_set() or not self._hold(agent, fn, seconds=seconds):
@@ -435,13 +439,18 @@ class Permuter:
                         continue
                     if score < best:
                         best, best_src = score, cand
+                        st.add(improved=1)
+                        if best > 0:
+                            best, best_src = self._after_improvement(agent, proj, fn, st, fork, best, best_src)
                         rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
                         focus, boosts = permuter_focus.classify(rows), permuter_focus.boosts(rows)
-                        st.add(improved=1)
-                        if score == 0:
+                        if best == 0:
                             st.add(matched=1)
                             log.info("permuter: %s matched", fn["name"])
                             break
+                        if best < score:
+                            cur, cur_src = best, best_src
+                            break  # generate the next batch from the refined winner, not its parent
                     if score <= cur or rng.random() < 0.02:  # mostly downhill, now and then sideways off a plateau
                         cur, cur_src = score, cand
         finally:
@@ -574,6 +583,6 @@ class Permuter:
         if not hasattr(self.net, '_agent_outcomes'):
             self.net._agent_outcomes = {}
         self.net._agent_outcomes[agent.id, fn['id']] = {'source': source, 'score': d.score, 'rows': d.rows}
-        if d.score < best:
+        if d.score < best or (d.bytes_match and fn['status'] != 'matched'):
             self.net._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match, via="permuter", effective_settings=getattr(result,"effective_settings",None))
         return 0 if d.bytes_match else max(1, d.score)

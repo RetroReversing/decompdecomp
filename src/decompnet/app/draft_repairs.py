@@ -24,6 +24,7 @@ from . import (
     pattern_repairs,
     pointer_cast_repairs,
     register_repairs,
+    register_reuse_repairs,
     stack_padding_repairs,
     stack_repairs,
     storage_scope_repairs,
@@ -55,6 +56,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
         proposals.append(text)
         labels[text] = family
     for family, text in register_repairs.variants(source, name, arch):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in register_reuse_repairs.variants(source, name):
         proposals.append(text)
         labels[text] = family
     for text in mmio_repairs.variants(source, name, arch):

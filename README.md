@@ -44,6 +44,14 @@ project-wide prototypes stay unchanged. These are hypotheses: an improved simila
 and only a byte-exact result counts as matched. The families also reach iterative/deep search and
 `try_local_repairs`; loops, incoming jumps, shadowing and ambiguous declarations limit what is proposed.
 
+Deep search now revisits local repairs after a random rewrite improves the saved candidate. Each burst
+tries at most 32 proposals and shares the original time/compile allowance. Small constant/copy reuse and
+final integer shift/scale candidates target register-only differences without assigning machine registers.
+A score-zero open function is still freshly verified before being marked matched. If an otherwise unusable
+ROM draft conflicts with one plain shared return declaration, deep search can align the candidate to that
+header and remeasure it. The old draft stays in history, the shared header stays unchanged, and the new
+baseline may have a lower percentage. Ambiguous signatures still need review.
+
 For close ROM misses it also tests cached compiler flag alternatives, two probes per pass. Later passes skip
 already tested choices and can reach optimization levels as well as debug flags. Only exact results qualify for a
 narrow compiler-range change. When automatic compiler changes are disabled, the result becomes a suggestion for
