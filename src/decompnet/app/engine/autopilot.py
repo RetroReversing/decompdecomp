@@ -111,6 +111,11 @@ class AutopilotMixin:
                     self._event(db, proj["id"], agent.id, "autopilot",
                                 f"{drafts} of {state['tried']} functions matched from machine drafts")
 
+    def on_improvement(self, proj, function_id: int) -> None:
+        # Imported automatic cascades remain unavailable; manual free passes cover both modes.
+        if proj is not None:
+            self.cascades.notify(proj, function_id)
+
     def on_match(self, proj, function_id: int, agent: Agent | None = None) -> None:
         """Its twins get its code, at once. (Not for the full twins pass's own matches while it runs: it tries
         those twins itself.)"""

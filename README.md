@@ -178,7 +178,14 @@ Every accepted candidate must compile and link to the destination's exact bytes.
   self-contained declarations header. Matching fingerprints select C to try with the project's compiler.
   Sources stay local; nothing is downloaded or built by an SDK's scripts. Import with the compiler settings you
   intend to use; reimport after changing them. Ambiguous definitions are excluded.
-- **Automatic follow-up:** a new verified match queues compatible projects on one low-priority worker, so useful
+- **Better partial candidates:** after verified transfers, identical instruction fingerprints can reuse a
+  better saved C attempt from another local game. The receiving compiler and judge must confirm its own
+  improvement; donor percentages are never copied. Partial improvements stay unmatched, record their origin,
+  and never provide naming or SDK evidence. Unchanged trials are cached; changed source, target, context,
+  symbols or compiler settings allow another check. Each pass tries at most 64 partial transfers, within any
+  shared free-search budget. ROM and imported projects can participate. Imported partials remain saved best
+  attempts rather than replacing source files; large imported input trees are skipped conservatively.
+- **Automatic follow-up:** a new verified match or better unfinished ROM candidate queues compatible projects on one low-priority worker, so useful
   code can spread without repeatedly clicking Run again. Stop pauses that project's automatic reuse until Run again.
 
 Settings lets you disable automatic reuse and adjust its time and compile limits (defaults: two minutes and

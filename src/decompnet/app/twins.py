@@ -621,7 +621,8 @@ class Twins:
         """Matched code from the user's other games, tried on this game's identical functions: libraries (an SDK's,
         a compiler's runtime, middleware) come in the same code from one game to the next, built by the same
         compiler. Same kind of processor, same compiler and flags, code identical once addresses are masked; the
-        names swapped as each game's relocations say; the judge decides. Returns how many matched."""
+        names swapped as each game's relocations say; the judge decides. Better partial donors are tried
+        afterwards through the same destination judge. Returns matches only, never partial improvements."""
         proj = self.net.project_row(slug)
         fork = bool(self.net.fork_slug(slug))
         if not (fork or self.net.is_rom(proj)) or slug in self.net.links:
@@ -644,8 +645,8 @@ class Twins:
             if bounded and exhausted(job):
                 return 0
             self.index_project(other)
-        agent, _ = self.net.local_agent("autopilot")
         matched = 0
+        agent, _ = self.net.local_agent("autopilot")
         for other in self.net.store.all("SELECT * FROM projects WHERE id != ? AND arch=? AND big_endian=?",
                                         proj["id"], proj["arch"], proj["big_endian"]):
             if job is not None and job.stop.is_set():
@@ -724,7 +725,8 @@ class Twins:
                     if job is not None:
                         job.cross_matched += 1
                     log.info("twins: %s matched from %s in %s", b["name"], a["name"], other["slug"])
-        return matched
+        from .partial_reuse import run as reuse_partial
+        return matched + reuse_partial(self, proj, wanted, mine, job)
 
     @staticmethod
     def _compiler_key(compiler: dict) -> str:
