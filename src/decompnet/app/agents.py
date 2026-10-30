@@ -1189,6 +1189,16 @@ class Manager:
             text += f"\n{known}\n"
         if (wish := self.net.instructions(s.slug)):
             text += f"\nThe user's instructions for this project (they come first):\n{wish}\n"
+        if s.options.get('task') != 'readable':
+            from . import agent_tokens, local_experiments
+            row = self.net.store.one('SELECT id,name,owner,trusted FROM agents WHERE name=?',s.agent_name)
+            agent = network.Agent(row['id'],row['name'],row['owner'],bool(row['trusted'])) if row else None
+            if agent:
+                held = self.net.store.all('SELECT f.* FROM functions f JOIN claims c ON c.function_id=f.id '
+                                          'JOIN projects p ON p.id=f.project_id WHERE c.agent_id=? AND p.slug=? LIMIT 6',agent.id,s.slug)
+                for fn in held:
+                    source,revision = agent_tokens.candidate(self.net,agent,s.slug,fn['name'])
+                    text += '\n'+fn['name']+': '+local_experiments.summary(self.net,agent,s.slug,fn,source,revision)
         return text
 
     def _prompt(self, s: Session) -> str:

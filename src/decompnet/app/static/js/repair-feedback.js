@@ -131,7 +131,7 @@ $("repairExamples").onclick = async () => {
         for (const report of quality.reports || []) {
           const panel = document.createElement('details'); panel.className = 'repair-card';
           const heading = document.createElement('summary');
-          heading.textContent = `${report.function} · ${report.slug} · automatic work paused`;
+          heading.textContent = `${report.function} · ${report.slug}${report.issue ? ' · ' + report.issue.replaceAll('_', ' ') : ''} · automatic work paused`;
           const body = document.createElement('div'); body.className = 'repair-card-body';
           const warning = document.createElement('p'); warning.textContent = report.warning;
           const hint = document.createElement('p'); hint.className = 'muted small';

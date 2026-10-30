@@ -193,8 +193,8 @@ class JudgeMixin:
         On a demo fork and a large x86 game, agents released functions seconds after claiming them, untried,
         for reasons a compile would have shown were none (12,565 releases, median 5 s after the claim): so a release
         before compile_and_diff's move-on rule says so is answered once with what to do instead, and goes through
-        when asked again. `needs`: another function this one needs done first (a callee whose convention or body it
-        depends on, an inlined helper): recorded (it waits, that one goes first) and claimed for the agent when free.
+        when asked again. `needs`: a direct callee in original assembly which blocks this work. It is recorded and may be
+        claimed once per unchanged input, respecting quality/exhaustion pauses; inline/header concerns stay notes.
         A release without a compile doesn't count against the session's claims, and says so. `not_c`: the agent's
         verdict that no C makes it (Network.release), which isn't pushed back: it's a finding, not giving up, and
         it counts only once agents of two models agree."""
@@ -213,7 +213,7 @@ class JudgeMixin:
             self.wait_for(agent, fn, need)
             said += (f"\n{fn['name']} now waits for {need['name']}: it's claimed after everything else until "
                      f"{need['name']} matches, and {need['name']} goes first meanwhile.")
-            said += self._pivot(agent, project, need)
+            said += self._pivot(agent, project, need, fn)
         if progress is not None and not progress["compiles"]:
             said += ("\nYou didn't compile it, so this release doesn't count against your session's claims: claim "
                      "another one.")
@@ -222,13 +222,21 @@ class JudgeMixin:
                      "functions left are the hard ones, and that's no reason to stop early.")
         return said
 
-    def _pivot(self, agent: Agent, project: str | None, need) -> str:
+    def _pivot(self, agent: Agent, project: str | None, need, caller=None) -> str:
         """The function a release said it needs, claimed for the agent when it's free: what to tell it."""
+        from .. import dependency_guard
+        if caller is not None and not dependency_guard.permitted(self,caller,need):
+            return '\nDependency pivot skipped: paused or already investigated for these inputs. Claim another eligible function.'
         fork = self.fork_slug(project)
         try:
             if self._link(project) is not None:  # a room's host hands functions out
-                return f" You hold {need['name']} now:\n\n{self.claim(agent, project, need['name'])}"
+                claimed = self.claim(agent, project, need['name'])
+                if caller is not None:
+                    dependency_guard.remember(self,caller,need)
+                return f" You hold {need['name']} now:\n\n{claimed}"
             row = self.claim_row(agent, project, need["name"])
+            if caller is not None:
+                dependency_guard.remember(self,caller,need)
         except NetworkError as e:
             return f" ({e}: claim another function meanwhile.)"
         try:
@@ -264,6 +272,8 @@ class JudgeMixin:
             if at in seen:
                 break
             seen.add(at)
+        from .. import dependency_guard
+        dependency_guard.validate(self,fn,need)
         return need
 
     def _push_back(self, agent: Agent, fn, progress: dict, project: str | None) -> str | None:

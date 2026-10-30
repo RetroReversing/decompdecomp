@@ -125,6 +125,8 @@ def test_a_release_naming_what_it_needs_waits_and_that_one_goes_first(tmp_path):
         net.release_function(a, "f", "", "game", needs="f")
     with pytest.raises(NetworkError, match="you already hold f; .*needs=\"g\""):
         net.claim_row(a, "game", "g")
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET asm='bl g' WHERE name='f'")
     said = net.release_function(a, "f", "calls g with esi; its convention comes from g's definition", "game", needs="g")
     assert said.startswith("Released f") and "f now waits for g" in said
     assert _held(net, a) == "g"  # handed over (no push-back: the agent said why compiling can't help yet)

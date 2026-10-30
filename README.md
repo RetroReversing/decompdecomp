@@ -54,14 +54,19 @@ baseline may have a lower percentage. Ambiguous signatures still need review.
 
 The repair pass can also keep a table slot address live before loading its pointer, combine unsigned
 word temporaries with assignment reuse, and turn a returning guard into a forward jump. In-place final
-shift/scale reuse is disabled in functions with loops or gotos: last use in the text need not be last use
-at runtime. All candidates still use the ordinary exact judge.
+shift/scale reuse can run inside a braced loop when an unconditional reset precedes every use and the
+loop header and earlier body do not read the old value. Loop-carried values, nested/ambiguous loops and
+gotos remain excluded. All candidates still use the ordinary exact judge.
 
 When an agent reports a suspected invalid candidate, automatic claims, autopilot and the permuter pause
 that saved source. Open **Agents → Repair examples** to read the report and compiled alternatives, then
 choose **Reviewed: resume this candidate**. Reports are hypotheses; they never invalidate a match or replace
-saved C automatically. Explicit agent claims remain available for investigation. Exhausted inputs retain
+saved C automatically. Agents can use `report_candidate_issue` with an issue type, affected revision and
+optional compiled alternative; each revision is checked against that function’s saved sources. Explicit agent claims remain available for investigation. Exhausted inputs retain
 retry history when workers return to an earlier source, and changed build inputs reopen the search.
+Claim briefs, candidate reads and resumed sessions show cached counts of remaining local repair proposals
+without compiling them. Dependency pivots require a direct call in the original assembly, respect paused
+candidates and run once per unchanged caller/callee inputs. Indirect, inline and header concerns stay in notes.
 Repair examples separate missing baselines and unchanged C from source changes; captures already produced
 by deterministic repairs are retained as implemented unless someone has deliberately reopened their review.
 

@@ -6,6 +6,7 @@ They do not prescribe machine registers or edit the generated object.
 """
 import re
 
+from . import loop_liveness
 from .integer_repair_support import IDENT, INTEGER, NUMBER, edit, refs, view
 
 LIMIT = 16
@@ -23,7 +24,7 @@ def variants(source, name):
             continue
         variable = decl['name']
         shadows = re.findall(rf'\b(?:{INTEGER}|void|float|double)\s*\**\s*{variable}\s*(?=[;=,\[])', part.body)
-        if len(shadows) != 1 or re.search(rf'&\s*\(?\s*{variable}\b', part.body):
+        if len(shadows) != 1 or re.search(rf'&\s*(?:\(\s*)*{variable}\b', part.body):
             continue
         locals_.append(decl)
     result = []
@@ -81,11 +82,11 @@ def variants(source, name):
             if (selected and decl['value'] is None and prefix[-1:] in {';', '{', '}'}
                     and all(hit.start() in covered for hit in hits)):
                 add('copy_register_reuse', selected+[(assignment_start, end, ''), (decl.start(), decl.end(), '')])
-        # Textual last use is not dynamic last use in a loop or a backward jump. Until we have
-        # dominance/liveness evidence, only straight-line/branch-only functions may reuse this input.
+        # In a loop, a final textual use is reusable only when a direct reset dominates it on
+        # every iteration and neither the header nor an earlier body read observes the mutation.
         # A final 32-bit shift can use its input's register directly. The shift is unchanged and
         # assigning its result adds no narrowing conversion; never do this for a byte/short local.
-        if hits and not re.search(r'\b(?:for|while|do|goto)\b', part.body) and decl['type'] in {'s32', 'u32', 'int', 'signed int', 'unsigned int'}:
+        if hits and loop_liveness.final_reuse(part,decl,hits[-1]) and decl['type'] in {'s32', 'u32', 'int', 'signed int', 'unsigned int'}:
             last = hits[-1]
             shift = re.match(r'\s*<<\s*([1-9]|[12][0-9]|3[01])\b', part.clean[last.end():])
             if shift and not re.match(r'\s*[+*/%.\-]', part.clean[last.end()+shift.end():]):

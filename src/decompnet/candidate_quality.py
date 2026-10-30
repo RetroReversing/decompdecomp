@@ -33,6 +33,8 @@ def capture(net,fn,agent,notes,progress):
     saved=records(net,fn)
     for previous in saved:
         if previous['source_hash']==report['source_hash']:
+            if previous.get('structured'):
+                report.update(issue=previous['issue'], structured=True, warning=previous['warning'])
             report['review']=previous.get('review','pending')
             report['alternatives']=list(dict.fromkeys(report['alternatives']+previous['alternatives']))[:3]
     saved=[r for r in saved if r['source_hash']!=report['source_hash']]
@@ -65,6 +67,8 @@ def view(net,fn):
          'compile and judge them again in the current context. Best C and exact-match status are unchanged.']
     for report in records(net,fn)[-4:]:
         out += [report['agent']+': '+report['warning']]
+        if report.get('structured'):
+            out += ['Reported issue: '+report['issue']+'; source revision '+report['source_hash'][:20]+'.']
         for ident in report['alternatives']:
             row=net.store.one('SELECT source,score FROM attempts WHERE id=? AND function_id=?',ident,fn['id'])
             if row:
@@ -122,3 +126,40 @@ def review(net, slug, function, source_hash):
     from . import claim_stalls
     claim_stalls.resume(net,fn)
     return {'resumed': fn['name']}
+
+
+ISSUES = ('uninitialized', 'loop_mutation', 'wrong_store', 'wrong_value', 'other')
+
+
+def report(net, agent, slug, function, revision, issue, reason, alternative_revision=''):
+    """Record explicit source-scoped evidence, never an assertion that the judge was wrong."""
+    from .network import NetworkError
+    fn = net._function(function,slug)
+    if fn['status'] != 'open' or not net.store.one('SELECT 1 FROM claims WHERE function_id=? AND agent_id=?',fn['id'],agent.id):
+        raise NetworkError('Report a quality concern for an unmatched function you currently hold.')
+    if issue not in ISSUES or not isinstance(reason,str) or not 10 <= len(reason.strip()) <= 600:
+        raise NetworkError('Choose a supported issue and explain the concern in 10–600 characters.')
+    for value in (revision, alternative_revision):
+        if value and not re.fullmatch(r'(?:[0-9a-f]{20}|[0-9a-f]{64})',value):
+            raise NetworkError('Use a 20-character candidate revision or full source hash.')
+    rows = net.store.all('SELECT id,source,compiled,score FROM attempts WHERE function_id=? AND source IS NOT NULL ORDER BY id DESC LIMIT 1000',fn['id'])
+    def find(value, *, compiled=False):
+        return next((r for r in rows if hashlib.sha256(r['source'].encode()).hexdigest().startswith(value)
+                     and (not compiled or r['compiled'] and r['score'] is not None)),None)
+    bad = find(revision) if revision else None
+    best = hashlib.sha256((fn['best_source'] or '').encode()).hexdigest()
+    if not revision or not bad and not (fn['best_source'] and best.startswith(revision)):
+        raise NetworkError('The reported revision is not saved for this function. Read get_candidate or quality history first.')
+    digest = hashlib.sha256(bad['source'].encode()).hexdigest() if bad else best
+    alternative = find(alternative_revision,compiled=True) if alternative_revision else None
+    if alternative_revision and (not alternative or hashlib.sha256(alternative['source'].encode()).hexdigest()==digest):
+        raise NetworkError('The alternative must be a different, compiled and scored revision of this function.')
+    saved = records(net,fn)
+    previous = next((r for r in saved if r['source_hash']==digest),{})
+    item = {'source_hash':digest,'issue':issue,'warning':reason.strip(),'agent':agent.name,
+            'alternatives':list(dict.fromkeys(([alternative['id']] if alternative else [])+previous.get('alternatives',[])))[:3],
+            'review':previous.get('review','pending'),'structured':True}
+    saved = [r for r in saved if r['source_hash']!=digest]+[item]
+    with net.store.tx() as db:
+        db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',(PREFIX+str(fn['id']),json.dumps(saved[-4:])))
+    return 'Candidate issue recorded as a hypothesis, tied to revision '+digest[:20]+'. Best C, score and exact-match status unchanged. Release with notes when finished; automatic work pauses only if that source is selected.'

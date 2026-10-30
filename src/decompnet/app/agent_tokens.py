@@ -41,7 +41,9 @@ def candidate(net, agent, slug, function):
 
 def get_candidate(net, agent, slug, function):
     source, revision = candidate(net, agent, slug, function)
-    return f'Candidate revision {revision}\n```c\n{source}\n```'
+    from . import local_experiments
+    remaining = local_experiments.summary(net,agent,slug,net._function(function,slug),source,revision)
+    return f'Candidate revision {revision}\n```c\n{source}\n```\n{remaining}'
 
 
 def stale(net, agent, fn, submitted, source, actual):
@@ -169,6 +171,8 @@ def brief(net, text, slug=None, agent=None):
                 if source and source.strip() in text:
                     text += agent_targets.suggestions(source)
                     text += f"{fn['name']}: candidate revision {revision}; use compile_patch directly on the candidate above.\n"
+                    from . import local_experiments
+                    text += local_experiments.summary(net,agent,slug,fn,source,revision)+'\n'
         except NetworkError:
             pass
     return text

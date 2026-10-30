@@ -46,69 +46,8 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         source,actual = agent_tokens.candidate(net,agent,slug,function)
         if actual!=revision:
             raise agent_tokens.stale(net,agent,fn,revision,source,actual)
-        proj=net._project(slug);cfg=json.loads(proj['config'])
-        flags=compiler_for(cfg,fn['vram']).get('flags',[]) if not net.fork_slug(slug) else []
-        debug=any(re.fullmatch(r'-g[1-3]?',flag) for flag in flags)
-        pools={family:[] for family in requested}
-        for family in ('signedness','declaration_order'):
-            if family not in pools:
-                continue
-            for target in agent_targets.valid_targets(source,family):
-                if agent_tokens.target_tried(net,fn,revision,family,target['old']):
-                    continue
-                for patch in agent_tokens.family_patches(family,target['old']):
-                    edited=agent_targets.replace_anchor(source,patch['old'],patch['new'])
-                    pools[family].append(edited)
-        if any(f in pools for f in ('table_slot_lifetime','unsigned_assignment_reuse','guard_forward_jump')):
-            ctx = net._context(proj['id'],fn['unit'])
-            header = net.forks.permuter_header(slug,fn['name']) if net.fork_slug(slug) else (ctx['header'] if ctx else '')
-            for family,candidate in evidence_repairs.variants(source,fn['name'],header):
-                if family in pools:
-                    pools[family].append(candidate)
-        for family,candidate in pattern_repairs.variants(source,fn['name'],debug):
-            if family in pools:
-                pools[family].append(candidate)
-        for family,candidate in register_repairs.variants(source,fn['name'],proj['arch']):
-            if family in pools:
-                pools[family].append(candidate)
-        for family,candidate in captured_repairs.variants(source,fn['name']):
-            if family in pools:
-                pools[family].append(candidate)
-        for family,candidate in lifetime_repairs.variants(source,fn['name']):
-            if family in pools:
-                pools[family].append(candidate)
-        for module in (callee_prototype_repairs, integer_lifetime_repairs, branch_layout_repairs, register_reuse_repairs):
-            for family, candidate in module.variants(source, fn['name']):
-                if family in pools:
-                    pools[family].append(candidate)
-        if 'local_widening' in pools:
-            pools['local_widening'] = local_widening_repairs.variants(source, fn['name'])
-        if 'pointer_cast_inline' in pools:
-            pools['pointer_cast_inline'] = pointer_cast_repairs.variants(source,fn['name'],proj['arch'])
-        if 'local_width' in pools:
-            pools['local_width'] = local_width_repairs.variants(source,fn['name'])
-        if 'stack_padding' in pools:
-            pools['stack_padding'] = stack_padding_repairs.variants(source,fn['name'])
-            measured = getattr(net,'_agent_outcomes',{}).get((agent.id,fn['id']))
-            if measured and measured.get('source') == source:
-                pools['stack_padding'] += stack_padding_repairs.grow(source,fn['name'],proj['arch'],measured.get('rows') or [])
-        if 'store_address_lifetime' in pools:
-            pools['store_address_lifetime'] = store_address_repairs.variants(source,fn['name'],proj['arch'])
-        if 'paired_load_order' in pools:
-            pools['paired_load_order']=load_pair_repairs.variants(source,fn['name'])
-        if 'mmio_address' in pools:
-            pools['mmio_address'] = mmio_repairs.variants(source,fn['name'],proj['arch'])
-        if 'narrowing' in pools:
-            masks=lambda text:len(re.findall(r'&\s*0x(?:[fF]{4}|[fF]{2})\b',text))
-            pools['narrowing'] += [s for s in expression_repairs.variants(source,fn['name'],proj['arch']) if masks(s)<masks(source)]
-        from .repair_preflight import invalid_call
-        pools = {f: [s for s in pool if not invalid_call(s, fn['name'])] for f, pool in pools.items()}
-        durable_scope=agent_tokens.target_scope(net,fn,'')
-        pools={f:[s for s in dict.fromkeys(pool) if s!=source and not agent_tokens.compiled_before(net,fn,s,durable_scope) and not agent_tokens.target_tried(net,fn,revision,'local:'+f,s)] for f,pool in pools.items()}
-        ranked = repair_ranking.order(pools,repair_ranking.evidence(net,fn['id'],agent.id))
+        pools = available(net,agent,slug,fn,source,revision,requested)
         effect_scope=agent_tokens.target_scope(net,fn,'')
-        ranked=repair_ranking.demote(net,effect_scope,ranked)
-        pools = {f:pools[f] for f in ranked}
         selected=[];seen=set()
         while len(selected)<max_trials and any(pools.values()):
             for family,pool in pools.items():
@@ -133,3 +72,98 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
                 db.execute('INSERT OR IGNORE INTO agent_family_targets VALUES(?,?,?,?)',
                            (fn['id'],scope,'local:'+family,hashlib.sha256(candidate.encode()).hexdigest()))
         return 'Local families: '+', '.join(f'{i}: {f}' for i,(f,_) in enumerate(selected,1))+'\n'+result
+
+
+def available(net, agent, slug, fn, source, revision, requested):
+    proj=net._project(slug);cfg=json.loads(proj['config'])
+    flags=compiler_for(cfg,fn['vram']).get('flags',[]) if not net.fork_slug(slug) else []
+    debug=any(re.fullmatch(r'-g[1-3]?',flag) for flag in flags)
+    pools={family:[] for family in requested}
+    for family in ('signedness','declaration_order'):
+        if family not in pools:
+            continue
+        for target in agent_targets.valid_targets(source,family):
+            if agent_tokens.target_tried(net,fn,revision,family,target['old']):
+                continue
+            for patch in agent_tokens.family_patches(family,target['old']):
+                edited=agent_targets.replace_anchor(source,patch['old'],patch['new'])
+                pools[family].append(edited)
+    if any(f in pools for f in ('table_slot_lifetime','unsigned_assignment_reuse','guard_forward_jump')):
+        ctx = net._context(proj['id'],fn['unit'])
+        header = net.forks.permuter_header(slug,fn['name']) if net.fork_slug(slug) else (ctx['header'] if ctx else '')
+        for family,candidate in evidence_repairs.variants(source,fn['name'],header):
+            if family in pools:
+                pools[family].append(candidate)
+    for family,candidate in pattern_repairs.variants(source,fn['name'],debug):
+        if family in pools:
+            pools[family].append(candidate)
+    for family,candidate in register_repairs.variants(source,fn['name'],proj['arch']):
+        if family in pools:
+            pools[family].append(candidate)
+    for family,candidate in captured_repairs.variants(source,fn['name']):
+        if family in pools:
+            pools[family].append(candidate)
+    for family,candidate in lifetime_repairs.variants(source,fn['name']):
+        if family in pools:
+            pools[family].append(candidate)
+    for module in (callee_prototype_repairs, integer_lifetime_repairs, branch_layout_repairs, register_reuse_repairs):
+        for family, candidate in module.variants(source, fn['name']):
+            if family in pools:
+                pools[family].append(candidate)
+    if 'local_widening' in pools:
+        pools['local_widening'] = local_widening_repairs.variants(source, fn['name'])
+    if 'pointer_cast_inline' in pools:
+        pools['pointer_cast_inline'] = pointer_cast_repairs.variants(source,fn['name'],proj['arch'])
+    if 'local_width' in pools:
+        pools['local_width'] = local_width_repairs.variants(source,fn['name'])
+    if 'stack_padding' in pools:
+        pools['stack_padding'] = stack_padding_repairs.variants(source,fn['name'])
+        measured = getattr(net,'_agent_outcomes',{}).get((agent.id,fn['id']))
+        if measured and measured.get('source') == source:
+            pools['stack_padding'] += stack_padding_repairs.grow(source,fn['name'],proj['arch'],measured.get('rows') or [])
+    if 'store_address_lifetime' in pools:
+        pools['store_address_lifetime'] = store_address_repairs.variants(source,fn['name'],proj['arch'])
+    if 'paired_load_order' in pools:
+        pools['paired_load_order']=load_pair_repairs.variants(source,fn['name'])
+    if 'mmio_address' in pools:
+        pools['mmio_address'] = mmio_repairs.variants(source,fn['name'],proj['arch'])
+    if 'narrowing' in pools:
+        masks=lambda text:len(re.findall(r'&\s*0x(?:[fF]{4}|[fF]{2})\b',text))
+        pools['narrowing'] += [s for s in expression_repairs.variants(source,fn['name'],proj['arch']) if masks(s)<masks(source)]
+    from .repair_preflight import invalid_call
+    pools = {f: [s for s in pool if not invalid_call(s, fn['name'])] for f, pool in pools.items()}
+    durable_scope=agent_tokens.target_scope(net,fn,'')
+    pools={f:[s for s in dict.fromkeys(pool) if s!=source and not agent_tokens.compiled_before(net,fn,s,durable_scope) and not agent_tokens.target_tried(net,fn,revision,'local:'+f,s)] for f,pool in pools.items()}
+    ranked = repair_ranking.order(pools,repair_ranking.evidence(net,fn['id'],agent.id))
+    effect_scope=agent_tokens.target_scope(net,fn,'')
+    ranked=repair_ranking.demote(net,effect_scope,ranked)
+    pools = {f:pools[f] for f in ranked}
+    return pools
+
+
+def summary(net, agent, slug, fn, source, revision):
+    """Exact counts from the runner's remaining proposal pool; no compiler/provider calls."""
+    from ..forks.project import ForkError
+    try:
+        scope = agent_tokens.target_scope(net,fn,'')
+        count = net.store.one('SELECT COUNT(*) AS n FROM agent_family_targets WHERE function_id=?',fn['id'])['n']
+        measured = getattr(net,'_agent_outcomes',{}).get((agent.id,fn['id']))
+        evidence = hashlib.sha256(repr((measured.get('score'),measured.get('rows')) if measured and measured.get('source')==source else None).encode()).hexdigest()
+        key = (fn['id'],agent.id,revision,scope,count,evidence)
+        cache = getattr(net,'_remaining_repairs',{})
+        net._remaining_repairs = cache
+        if key not in cache:
+            pools = available(net,agent,slug,fn,source,revision,list(FAMILIES))
+            counts = [(family,len(set(pool))) for family,pool in pools.items() if pool]
+            total = len(set(candidate for pool in pools.values() for candidate in pool))
+            cache[key] = (total,counts)
+            while len(cache)>32:
+                del cache[next(iter(cache))]
+        total,counts = cache[key]
+        if not total:
+            return f'Remaining local repairs [{revision}]: 0. Do not retry unchanged families; inspect the diff or release with notes.'
+        families = ', '.join(f'{family}={count}' for family,count in counts[:4])
+        suffix = f'; {len(counts)-4} more families' if len(counts)>4 else ''
+        return f'Remaining local repairs [{revision}]: {total} distinct proposals; {families}{suffix}. Use try_local_repairs to run up to six.'
+    except (ForkError,NetworkError,OSError,KeyError):
+        return 'Remaining local repairs: unavailable until build inputs are ready; this is not proof of exhaustion.'
