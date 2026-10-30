@@ -16,6 +16,12 @@ function deepProgressView() {
     el.fnDeepTested.textContent = number(p.tested ?? 0);
     el.fnDeepSkipped.textContent = number(p.skipped ?? 0);
     el.fnDeepTime.textContent = p.seconds_left == null ? "" : `${Math.floor(p.seconds_left / 60)}m ${p.seconds_left % 60}s left`;
+    const now = $("fnDeepNow");
+    if (now) {
+      const family = p.current_family ? p.current_family.replaceAll("_", " ") : "preparing";
+      const outcome = p.last_outcome ? ` · ${p.last_outcome}${p.last_score == null ? "" : ` · score ${number(p.last_score)}`}` : "";
+      now.textContent = `${p.phase || "Starting"} · ${family}${outcome} · ${number(p.visited ?? 0)} candidates considered · ${number(p.rejected ?? 0)} invalid calls skipped`;
+    }
     el.fnDeepMetrics.dataset.matched = String(p.best_percent === 100);
     el.fnDeepMetrics.dataset.improved = String((p.improvements ?? 0) > 0);
   };

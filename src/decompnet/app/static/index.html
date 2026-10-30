@@ -393,7 +393,14 @@
         <label class="check"><input id="deepSweepRepeat" type="checkbox"><span>Repeat previously completed passes</span></label>
         <div class="row"><button id="deepSweepStart" type="button" class="primary">Deep permute untested functions</button><button id="deepSweepStop" type="button" class="ghost" hidden>Stop deep pass</button></div>
         <p class="small muted">One function at a time. Busy functions and those without scored C wait for their agent or draft. Only the ordinary byte judge can save a match. A completed pass means its bounded turn finished, not that every possible rewrite was tried.</p>
+        <div class="deep-sweep-counts" id="deepSweepCounts" aria-label="Deep pass progress">
+          <div><b id="deepSweepDone">0</b><span>functions done</span></div>
+          <div><b id="deepSweepLeft">0</b><span>functions left with scored C</span></div>
+          <div><b id="deepSweepWaiting">0</b><span>waiting for scored C</span></div>
+        </div>
+        <progress class="deep-sweep-bar" id="deepSweepBar" max="1" value="0" aria-label="Deep pass functions completed"></progress>
         <p class="small" id="deepSweepStatus" role="status"></p>
+        <div id="deepSweepRecipes"></div>
         <div id="deepSweepResults" aria-live="polite"></div>
         <div id="deepSweepLog"></div>
       </div>
@@ -606,7 +613,8 @@
         </div>
         <p class="small muted" id="fnDeepStatus" role="status"></p>
         <div id="fnDeepWork"></div>
-        <details class="deep-output" id="fnDeepOutput"><summary>Technical output</summary><pre class="joblog" id="fnDeepLog" hidden></pre></details>
+        <details class="deep-output" id="fnDeepOutput"><summary>Technical output</summary>
+          <p class="small muted" id="fnDeepNow" role="status">Waiting for the first candidate.</p><pre class="joblog" id="fnDeepLog" hidden></pre></details>
         <p class="small muted deep-note">Search is bounded by these limits; it cannot try every possible C program.</p>
       </details>
       <div class="fn-tabs">

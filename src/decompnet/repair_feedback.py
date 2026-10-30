@@ -48,6 +48,10 @@ def trial(provenance):
         _TRIAL.reset(token)
 
 
+def current_trial():
+    return _TRIAL.get()
+
+
 def _settings(proj, fn):
     cfg = json.loads(proj['config'])
     if cfg.get('kind') == 'fork':

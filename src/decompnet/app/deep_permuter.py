@@ -10,6 +10,7 @@ import time
 from .. import scoring
 from ..network import NetworkError
 from ..project import compiler_for
+from ..repair_feedback import current_trial
 from ..repair_feedback import trial as repair_trial
 from . import agent_tokens, draft_repairs, permuter_local, stack_padding_repairs
 from .permute import Permuter, State
@@ -58,6 +59,13 @@ class Search(Permuter):
         self.refinement_rounds = 0
         self.winner_diff = None
         self.winner_source = None
+        self.trace_variants = True
+        self.recipe_counts = {}
+        self.recipe_wins = []
+        self.recipe_fn = fn['id'] if fn is not None else None
+        self.current_family = ''
+        self.last_outcome = ''
+        self.last_score = None
 
     def check(self):
         self.log.check_cancel()
@@ -81,7 +89,37 @@ class Search(Permuter):
             self.recorded_best = self.best
         self.log.progress({'phase': self.phase, 'tested': self.tested, 'skipped': self.skipped,
                            **self.metrics(), 'variant_limit': self.limit, 'rejected': self.rejected,
-                           'seconds_left': max(0, round(self.deadline-time.monotonic())), 'refinement_rounds': self.refinement_rounds})
+                           'seconds_left': max(0, round(self.deadline-time.monotonic())), 'refinement_rounds': self.refinement_rounds,
+                           'current_family': self.current_family, 'last_outcome': self.last_outcome,
+                           'last_score': self.last_score, 'visited': self.visited})
+
+    def recipe(self, fn, source, best, score, outcome):
+        provenance = current_trial() or {'kind': self.phase, 'family': 'unattributed'}
+        family = provenance.get('family') or 'unattributed'
+        self.current_family, self.last_outcome, self.last_score = (
+            family, 'no score' if outcome == 'tested' and score is None else outcome, score)
+        self.recipe_fn = fn['id']
+        counts = self.recipe_counts.setdefault(family, [0, 0, 0, 0, 0, 0])
+        counts[{'tested': 0, 'skipped': 1, 'rejected': 2}[outcome]] += 1
+        if outcome == 'tested' and score is not None and score < best:
+            self.last_outcome = 'improved'
+            counts[3] += 1
+            counts[4] += int(score == 0)
+            counts[5] += best - score
+            info = dict(provenance) | {'source_sha256': hashlib.sha256(source.encode()).hexdigest(),
+                                      'phase': self.phase}
+            self.recipe_wins.append((family, best, score, json.dumps(info), time.time()))
+            self.flush_recipes()
+            self.log(f'Improved with {family}: score {best:,} → {score:,}; verified and saved.')
+        elif sum(sum(v[:3]) for v in self.recipe_counts.values()) >= 64:
+            self.flush_recipes()
+
+    def flush_recipes(self):
+        sweeps = getattr(self.net, 'deep_sweeps', None)
+        if sweeps and self.recipe_fn is not None and (self.recipe_counts or self.recipe_wins):
+            sweeps.record_recipes(self.recipe_fn, self.recipe_counts, self.recipe_wins)
+        self.recipe_counts.clear()
+        self.recipe_wins.clear()
 
     def _baseline(self, agent, proj, fn, state, fork):
         # Baseline evidence must come from today's compiler/header, including score-zero open rows.
@@ -130,8 +168,13 @@ class Search(Permuter):
             rows = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0]
             labels = {}
             choices = draft_repairs.variants(source, fn['name'], proj['arch'], fn['asm'] or '', flags, labels=labels, limit=None)
-            choices += stack_padding_repairs.grow(source, fn['name'], proj['arch'], rows)
-            choices += [s for _, s in permuter_local.variants(source, fn['name'])]
+            stack = stack_padding_repairs.grow(source, fn['name'], proj['arch'], rows)
+            for candidate in stack:
+                labels.setdefault(candidate, 'stack_padding')
+            choices += stack
+            for family, candidate in permuter_local.variants(source, fn['name']):
+                labels.setdefault(candidate, family)
+                choices.append(candidate)
             for candidate in dict.fromkeys(choices):
                 if candidate in self.local_seen:
                     continue
@@ -182,6 +225,7 @@ class Search(Permuter):
             header = self.net._context(proj['id'], fn['unit'])['header']
             if invalid_call(source, fn['name'], header):
                 self.rejected += 1
+                self.recipe(fn, source, best, None, 'rejected')
                 self.report()
                 return None
         # Scope includes the actual compiler/header/target and imported build dependencies. A previous
@@ -195,11 +239,21 @@ class Search(Permuter):
             self.skipped += 1
         else:
             self.tested += 1
+            self.current_family = (current_trial() or {}).get('family', 'baseline' if self.measuring_baseline else 'unattributed')
+            self.last_outcome, self.last_score = 'compiling', None
+            self.report()
             score = super()._score(agent, proj, fn, source, best, fork)
             if score is not None and score > 0:
                 with self.net.store.tx() as db:
                     db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
                                (fn['id'], key, 'miss', 'deep function search', json.dumps(score)))
+        if not self.measuring_baseline:
+            self.recipe(fn, source, best, score, 'skipped' if reused else 'tested')
+            if self.tested and self.tested % 100 == 0 and not reused:
+                family = (current_trial() or {}).get('family', 'unattributed')
+                self.log(f'{self.phase}: {self.tested:,} compiled, {self.skipped:,} cached, '
+                         f'{self.rejected:,} rejected; latest {family}, best score {self.best}; '
+                         f'{max(0, round(self.deadline-time.monotonic()))} seconds left.')
         if score is not None:
             winner = False
             if self.measuring_baseline and not self.baseline_measured:
@@ -236,19 +290,23 @@ def run(net, slug, name, minutes, max_variants, log):
     warning = warnings(net, proj, fn)
     if warning:
         log('Compiler preflight (advisory): '+warning)
-    log('Testing supported local repairs, then bounded random rewrites. This cannot exhaust every possible C program.')
+    log(f'Searching {name}: {minutes} minutes, up to {max_variants:,} compiled candidates. Checking the saved baseline first.')
+    log('Local repairs follow the current instruction differences; then random rewrites explore further variants.')
     try:
         if not search._hold(agent, fn, count_turn=False):
             raise NetworkError('This function was claimed meanwhile; try again after it is released.')
         try:
             fork = net.fork_slug(slug)
             # Fresh baseline evidence also diagnoses obsolete candidate-owned prototypes.
+            search.phase = 'checking baseline'
             baseline, _ = search._baseline(agent, proj, fn, state, fork)
             if baseline is None:
                 raise NetworkError('The saved C does not compile in the current context; fix its declarations before deep search.')
             if baseline == 0:
                 reason = 'Matched'
             else:
+                search.phase = 'local repairs'
+                search.log('Baseline measured; trying targeted local repairs before random rewriting.')
                 best, _ = search.local_repairs(agent, proj, net._function(name, slug), baseline, fork)
                 if best == 0:
                     reason = 'Matched'
@@ -257,6 +315,7 @@ def run(net, slug, name, minutes, max_variants, log):
         if reason != 'Matched':
             search.check()
             search.phase = 'random rewrites'
+            search.log('Local repairs finished; generating random rewrites and judging each compiled candidate.')
             search.seconds = max(1, search.deadline-time.monotonic())
             current = net._function(name, slug)
             if current['status'] == 'matched':
@@ -272,6 +331,8 @@ def run(net, slug, name, minutes, max_variants, log):
                     reason = 'Time limit reached'
     except SearchLimit as error:
         reason = str(error)
+    finally:
+        search.flush_recipes()
     search.report()
     log(f'{reason}: {search.tested} candidates tested, {search.skipped} cached misses skipped, {search.rejected} invalid calls skipped. Verified improvements are saved immediately.')
     result = {'function': name, 'reason': reason, 'tested': search.tested, 'skipped': search.skipped,

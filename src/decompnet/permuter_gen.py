@@ -81,12 +81,26 @@ def main() -> int:
 
         seen = {own_part(first.ast)}  # the source as decomp-permuter prints it: not a variant
         cand = first
+        lineage = []
+        def trace(candidate):
+            def wrap(method):
+                def call(*args):
+                    result = method(*args)
+                    lineage.append(method.__name__)
+                    return result
+                return call
+            candidate.randomizer.methods = [(wrap(method), weight) for method, weight in candidate.randomizer.methods]
+        if job.get('trace'):
+            trace(cand)
         for _ in range(count * TRIES_PER_VARIANT):
             if len(seen) > count:
                 break
             try:
                 if cand is None or rng.random() >= KEEP:
                     cand = Candidate.from_source(unit, EvalState(), name, weights, rng.randrange(1, MAX_SEED))
+                    lineage = []
+                    if job.get('trace'):
+                        trace(cand)
                 cand.randomize_ast()
                 variant = own_part(cand.ast)
             except Exception:  # a rewrite that trips over this code: start again from the source
@@ -94,7 +108,10 @@ def main() -> int:
                 continue
             if variant not in seen:
                 seen.add(variant)
-                yield {"variant": directives + variant}
+                result = {"variant": directives + variant}
+                if job.get('trace'):
+                    result['lineage'] = list(lineage)
+                yield result
 
     for line in sys.stdin:
         if line.strip():

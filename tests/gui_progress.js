@@ -268,7 +268,8 @@ async function main() {
     assert.equal(test.log._followTail, false);
     test.start.resolve({job:"deep"}); await tick();
     const metrics = {starting_score:14639,starting_percent:76.3,best_score:0,best_percent:100,
-      improvements:4,tested:268,skipped:1,reason:"Matched",seconds_left:165};
+      improvements:4,tested:268,skipped:1,reason:"Matched",seconds_left:165,phase:"random rewrites",
+      current_family:"perm_cast",last_outcome:"improved",last_score:0,visited:269,rejected:2};
     test.poll.resolve({state:"done",log:[],progress:metrics,result:metrics}); await running;
     assert.equal(test.get("fnDeepStartPercent").textContent,"76.3%");
     assert.equal(test.get("fnDeepBestPercent").textContent,"100%");
@@ -276,6 +277,7 @@ async function main() {
     assert.equal(test.get("fnDeepImproved").textContent,"4");
     assert.equal(test.get("fnDeepTime").textContent,"2m 45s left");
     assert.equal(test.get("fnDeepMetrics").dataset.matched,"true");
+    assert.match(test.get("fnDeepNow").textContent, /random rewrites.*perm cast.*improved.*score 0.*269.*2 invalid/);
     assert.equal(test.log.bar.removed,true);
   }
   // A range-only compiler setting remains immediate and has no progress bar.
