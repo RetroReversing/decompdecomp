@@ -115,6 +115,7 @@ async function showSettingsPage() {
     <label class="check"><input type="checkbox" id="iterativeEnabled" ${st.settings.iterative_enabled ? "checked" : ""}><span>After normal autopilot, run deeper iterative repairs (experimental, no AI calls). Uses its own extra budget; background reuse is unchanged.</span></label>
     <label class="field"><span>Iterative repairs: additional seconds per pass</span><input id="iterativeSeconds" type="number" min="1" max="600" value="${st.settings.iterative_seconds || 120}"></label>
     <label class="field"><span>Iterative repairs: additional compile attempts per pass</span><input id="iterativeAttempts" type="number" min="1" max="1024" value="${st.settings.iterative_attempts || 128}"></label>
+    <label class="field"><span>Iterative repairs: threads (1–${st.settings.worker_threads_max ?? 1}; empty = automatic, ${st.settings.worker_threads_default ?? 1} on this computer). Each thread repairs a different function. More threads finish a pass sooner and leave the app slower to respond.</span><input id="iterativeThreads" type="number" min="1" max="${st.settings.worker_threads_max ?? 1}" placeholder="${st.settings.worker_threads_default ?? 1}" value="${st.settings.iterative_threads || ""}"></label>
     <h3>Permuter limits</h3>
     <p class="small muted">Global limits for random permutation of near misses (within 6% of an exact match). Larger functions take longer per compile. Changes apply to new turns; running turns keep their deadline. Raising the turn limit gives previously exhausted functions more turns. Targeted deterministic repairs have separate budgets.</p>
     <label class="field"><span>Maximum instructions per function (1–100,000)</span><input id="permuterMaxInsns" type="number" min="1" max="100000" value="${st.settings.permuter_max_insns ?? 400}"></label>
@@ -197,6 +198,7 @@ async function showSettingsPage() {
   $("reuseAuto").onchange = () => save({ reuse_auto: $("reuseAuto").checked }, "Saved.");
   $("iterativeEnabled").onchange = () => save({ iterative_enabled: $("iterativeEnabled").checked }, "Saved.");
   $("iterativeSeconds").onchange = () => save({ iterative_seconds: Number($("iterativeSeconds").value) || 120 }, "Saved.");
+  $("iterativeThreads").onchange = () => save({ iterative_threads: Number($("iterativeThreads").value) || 0 }, "Iterative repair threads saved.");
   $("iterativeAttempts").onchange = () => save({ iterative_attempts: Number($("iterativeAttempts").value) || 128 }, "Saved.");
   $("reuseSeconds").onchange = () => save({ reuse_seconds: Number($("reuseSeconds").value) || 120 }, "Saved.");
   $("reuseAttempts").onchange = () => save({ reuse_attempts: Number($("reuseAttempts").value) || 128 }, "Saved.");

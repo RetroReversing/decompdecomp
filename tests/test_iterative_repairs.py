@@ -112,6 +112,7 @@ def test_wave_quota_resumes_and_claims_are_skipped(pair, monkeypatch):
 
 def test_rotation_survives_new_jobs(pair, monkeypatch):
     from decompnet.app import address_repairs, free_candidates, similar_matches
+    pair.cascades.iterative_threads = 1  # (the order the functions are visited in is the thing tested)
     with pair.store.tx() as db:
         db.execute("UPDATE functions SET best_source='seed',best_score=20,n_insns=8 WHERE id=2")
         db.execute("INSERT INTO functions(id,project_id,name,target,relocs,status,vram,size,n_insns,best_source,best_score) "
@@ -209,3 +210,59 @@ def test_new_repair_rules_reopen_frontier_and_reuse_cached_seed(pair,monkeypatch
     monkeypatch.setattr(search,'targeted_variants',lambda s,*a:['new-shape'] if s=='seed' else [])
     search.run(pair.twins,'destination',Job())
     assert calls==['seed','new-shape']
+
+
+def two_open_functions(pair, monkeypatch):
+    from decompnet.app import address_repairs, similar_matches
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET best_source='seed',best_score=20,n_insns=8 WHERE id=2")
+        db.execute("INSERT INTO functions(id,project_id,name,target,relocs,status,vram,size,n_insns,best_source,best_score) "
+                   "SELECT 3,project_id,'later',target,relocs,status,vram+32,size,n_insns,best_source,best_score FROM functions WHERE id=2")
+    monkeypatch.setattr(address_repairs, 'variants', lambda s, *a: [])
+    monkeypatch.setattr(similar_matches, 'repair_variants', lambda *a: [])
+
+
+def test_functions_are_repaired_on_several_threads_at_once(pair, monkeypatch):
+    """Two threads: each function's judge waits for the other's (a barrier that one thread alone could never pass)."""
+    import threading
+
+    two_open_functions(pair, monkeypatch)
+    meeting = threading.Barrier(2, timeout=10)
+    threads = set()
+
+    def judge(agent, proj, fn, source):
+        threads.add(threading.current_thread().name)
+        meeting.wait()
+        return dict(matched=False, score=20)
+
+    monkeypatch.setattr(pair, 'try_quietly', judge)
+    pair.cascades.iterative_threads = 2
+    job = Job()
+    search.run(pair.twins, 'destination', job)
+    assert len(threads) == 2 and all(n.startswith('iterative-repair') for n in threads)
+    assert job.reuse_attempts == 2  # (the job's count, with both threads adding to it)
+
+
+def test_one_thread_repairs_one_function_after_another(pair, monkeypatch):
+    import threading
+
+    two_open_functions(pair, monkeypatch)
+    threads = set()
+    monkeypatch.setattr(pair, 'try_quietly', lambda *a: threads.add(threading.current_thread().name) or dict(matched=False, score=20))
+    pair.cascades.iterative_threads = 1
+    search.run(pair.twins, 'destination', Job())
+    assert len(threads) == 1
+
+
+def test_the_default_is_what_the_computer_can_spare(pair, monkeypatch):
+    from decompnet.app import workers
+
+    two_open_functions(pair, monkeypatch)
+    sizes = []
+    real = search.ThreadPoolExecutor
+    monkeypatch.setattr(search, 'ThreadPoolExecutor', lambda n, **kw: sizes.append(n) or real(n, **kw))
+    monkeypatch.setattr(pair, 'try_quietly', lambda *a: dict(matched=False, score=20))
+    search.run(pair.twins, 'destination', Job())
+    pair.cascades.iterative_threads = 3
+    search.run(pair.twins, 'destination', Job())
+    assert sizes == [workers.default_workers(), min(3, workers.max_workers())]

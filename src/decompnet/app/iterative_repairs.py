@@ -2,12 +2,15 @@
 
 import hashlib
 import json
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from itertools import zip_longest
 from pathlib import Path
 
 from ..network import NetworkError
 from ..project import compiler_for
+from . import workers
 
 WIDTH, DEPTH, PER_FUNCTION = 3, 3, 8
 
@@ -87,7 +90,7 @@ def run(twins, slug, job):
     symbols = [(r['name'], r['address']) for r in net.store.all(
         'SELECT name,address FROM symbols WHERE project_id=? ORDER BY name', proj['id'])]
     known = {name for name, _ in symbols}
-    matched = 0
+    matched = [0]
     rules = repair_rules()
     rows = net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open' AND best_source IS NOT NULL "
                          "AND best_score>0 AND best_score<=?*MAX(1,n_insns) "
@@ -95,13 +98,15 @@ def run(twins, slug, job):
     cursor = net.store.one('SELECT function_id FROM repair_cursors WHERE project_id=?', proj['id'])
     last = cursor['function_id'] if cursor else 0
     rows.sort(key=lambda fn: (fn['id'] <= last, fn['id']))
-    for fn in rows:
+    guard = threading.Lock()  # (the job's counters are shared by every thread's function)
+
+    def visit(fn):
         if free_candidates.exhausted(job) or job.reuse_attempts >= limit or time.monotonic() >= deadline:
-            break
+            return
         with net.store.tx() as db:
             db.execute('INSERT OR REPLACE INTO repair_cursors VALUES(?,?)', (proj['id'], fn['id']))
         if net.store.one('SELECT 1 FROM claims WHERE function_id=?', fn['id']):
-            continue
+            return
         header = net._context(proj['id'], fn['unit'])['header']
         settings = compiler_for(cfg, fn['vram'])
         context = similar_matches.trial_key('', header, settings, fn, ['beam-v2', symbols, rules])
@@ -110,13 +115,13 @@ def run(twins, slug, job):
         if state is None or fn['best_source'] not in state['seen']:
             state = dict(pending=[dict(source=fn['best_source'], depth=0, ceiling=fn['best_score'])],
                          next=[], seen=[fn['best_source']])
-        start = job.reuse_attempts
+        tries = [0]  # this function's own attempts: other threads are spending the job's at the same time
 
-        def stopped(start=start):
-            return (free_candidates.exhausted(job) or job.reuse_attempts >= min(limit, start + PER_FUNCTION)
+        def stopped():
+            return (free_candidates.exhausted(job) or job.reuse_attempts >= limit or tries[0] >= PER_FUNCTION
                     or time.monotonic() >= deadline)
 
-        def evaluate(source, fn=fn, header=header, settings=settings):
+        def evaluate(source):
             # Reuse the ordinary free-search cache, including old seed probes.
             for kind in ('address-repair', 'address-probe'):
                 key = similar_matches.trial_key(source, header, settings, fn, [kind, symbols])
@@ -125,7 +130,9 @@ def run(twins, slug, job):
                 if cached:
                     return json.loads(cached['feedback'])
             key = similar_matches.trial_key(source, header, settings, fn, ['address-repair', symbols])
-            job.reuse_attempts += 1
+            with guard:
+                job.reuse_attempts += 1
+            tries[0] += 1
             try:
                 report = net.try_quietly(agent, proj, fn, source)
             except NetworkError:
@@ -139,7 +146,7 @@ def run(twins, slug, job):
                            (proj['id'], fn['id'], 'iterative-repair', outcome, reason, time.time()))
             return report
 
-        def variants(source, report, fn=fn, settings=settings, header=header):
+        def variants(source, report):
             guided = address_repairs.variants(source, report, fn, bool(proj['big_endian']), known)
             if report.get('candidate_target'):
                 compiled = dict(target=bytes.fromhex(report['candidate_target']), relocs=report.get('candidate_relocs', '[]'))
@@ -151,13 +158,20 @@ def run(twins, slug, job):
                                       for item in group if item is not None))
 
         if advance(state, evaluate, variants, stopped):
-            matched += 1
-            job.reuse_matched += 1
-            job.reuse_bytes += fn['size']
+            with guard:
+                matched[0] += 1
+                job.reuse_matched += 1
+                job.reuse_bytes += fn['size']
             net.add_note(agent, slug, 'Autopilot matched with iterative local repairs', fn['name'])
         with net.store.tx() as db:
             db.execute('INSERT OR REPLACE INTO repair_frontiers VALUES(?,?,?)', (fn['id'], context, json.dumps(state)))
-    return matched
+
+    # One thread to a function at a time (Settings: "Iterative repairs: threads"), on a pool of their own: this
+    # runs on one of the shared workers, which would wait for the very threads it is waiting on.
+    threads = workers.clamp(getattr(getattr(net, 'cascades', None), 'iterative_threads', 0))
+    with ThreadPoolExecutor(threads, thread_name_prefix='iterative-repair', initializer=workers.lower_priority) as pool:
+        list(pool.map(visit, rows))
+    return matched[0]
 
 
 def optional_phase(twins, slug, parent):

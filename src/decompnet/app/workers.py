@@ -48,7 +48,7 @@ _pool: ThreadPoolExecutor | None = None
 _lock = threading.Lock()
 
 
-def _lower_priority() -> None:
+def lower_priority() -> None:
     """Lower only this worker, without lowering the GUI or the agent threads beside it."""
     if os.name == "nt":
         import ctypes
@@ -88,5 +88,5 @@ def pool() -> ThreadPoolExecutor:
     global _pool
     with _lock:
         if _pool is None:
-            _pool = ThreadPoolExecutor(WORKERS, thread_name_prefix="background-worker", initializer=_lower_priority)
+            _pool = ThreadPoolExecutor(WORKERS, thread_name_prefix="background-worker", initializer=lower_priority)
         return _pool

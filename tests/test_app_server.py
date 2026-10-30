@@ -889,6 +889,21 @@ def test_the_worker_thread_setting_applies_immediately_and_survives_reloading(ap
     assert response.json()['worker_threads'] == 0 and workers.WORKERS == workers.default_workers()
 
 
+def test_the_iterative_repair_thread_setting_applies_immediately_and_survives_reloading(app):
+    from decompnet.app import workers
+    from decompnet.app.support import Settings
+
+    client, net, manager = app
+    response = client.post('/api/settings', json={'iterative_threads': 3}, headers={'X-Decomp': '1'})
+    assert response.status_code == 200 and response.json()['iterative_threads'] == min(3, workers.max_workers())
+    assert net.cascades.iterative_threads == min(3, workers.max_workers())
+    assert Settings(manager.home / 'settings.json').public()['iterative_threads'] == net.cascades.iterative_threads
+    response = client.post('/api/settings', json={'iterative_threads': 9999}, headers={'X-Decomp': '1'})
+    assert response.json()['iterative_threads'] == workers.max_workers()
+    response = client.post('/api/settings', json={'iterative_threads': 0}, headers={'X-Decomp': '1'})
+    assert response.json()['iterative_threads'] == 0 and net.cascades.iterative_threads == 0
+
+
 def test_reset_agent_metrics_requires_app_auth_and_rejects_missing_helper(app):
     client, _, _ = app
     assert client.post('/api/agents/reset-metrics', json={'id': 'missing'}, headers={'X-Decomp': '1'}).status_code == 400

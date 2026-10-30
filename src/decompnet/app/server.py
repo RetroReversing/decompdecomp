@@ -66,7 +66,8 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         settings.save()
     net.cascades.configure(settings.data.get('reuse_auto', True), settings.data.get('reuse_seconds', 120),
                            settings.data.get('reuse_attempts', 128), settings.data.get('iterative_enabled', False),
-                           settings.data.get('iterative_seconds', 120), settings.data.get('iterative_attempts', 128))
+                           settings.data.get('iterative_seconds', 120), settings.data.get('iterative_attempts', 128),
+                           settings.data.get('iterative_threads', 0))
     net.permuter.configure(settings.data)
     workers.configure(settings.data.get("worker_threads"))
     net.auto_compiler = bool(settings.data.get("auto_compiler"))

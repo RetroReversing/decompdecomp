@@ -258,6 +258,7 @@ class Settings:
                 "iterative_enabled": self.data.get("iterative_enabled", False),
                 "iterative_seconds": self.data.get("iterative_seconds", 120),
                 "iterative_attempts": self.data.get("iterative_attempts", 128),
+                "iterative_threads": self.data.get("iterative_threads", 0),
                 "autopilot": self.data.get("autopilot", True), "budget_usd": self.data.get("budget_usd") or 0,
                 "auto_update": bool(self.data.get("auto_update")), "check_updates": self.data.get("check_updates", True) is not False,
                 "auto_compiler": bool(self.data.get("auto_compiler")),

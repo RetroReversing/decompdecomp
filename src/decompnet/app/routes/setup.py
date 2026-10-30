@@ -222,10 +222,13 @@ def register(app: App) -> None:
         for key, maximum in [('reuse_seconds', 600), ('reuse_attempts', 1024), ('iterative_seconds', 600), ('iterative_attempts', 1024)]:
             if key in data:
                 settings.data[key] = max(1, min(maximum, int(data[key])))
-        if any(key in data for key in ('reuse_auto', 'reuse_seconds', 'reuse_attempts', 'iterative_enabled', 'iterative_seconds', 'iterative_attempts')):
+        if 'iterative_threads' in data:  # nothing or 0: as many as the computer can spare
+            settings.data['iterative_threads'] = max(0, min(workers.max_workers(), int(data['iterative_threads'] or 0)))
+        if any(key in data for key in ('reuse_auto', 'reuse_seconds', 'reuse_attempts', 'iterative_enabled', 'iterative_seconds', 'iterative_attempts', 'iterative_threads')):
             net.cascades.configure(settings.data.get('reuse_auto', True), settings.data.get('reuse_seconds', 120),
                                    settings.data.get('reuse_attempts', 128), settings.data.get('iterative_enabled', False),
-                                   settings.data.get('iterative_seconds', 120), settings.data.get('iterative_attempts', 128))
+                                   settings.data.get('iterative_seconds', 120), settings.data.get('iterative_attempts', 128),
+                                   settings.data.get('iterative_threads', 0))
         for key, maximum in [('permuter_max_insns', 100000), ('permuter_seconds', 3600), ('permuter_max_turns', 1000)]:
             if key in data:
                 settings.data[key] = max(1, min(maximum, int(data[key])))
