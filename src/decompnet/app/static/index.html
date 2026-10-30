@@ -277,9 +277,10 @@
       </div>
       <section class="panel" id="crossGamePanel" hidden>
         <header class="panel-head"><h2>Matches from other games</h2>
-          <select id="crossGameFilter" aria-label="Show transfer results"><option value="matches">Successful matches</option><option value="all">All recent attempts</option></select></header>
-        <p class="muted small" id="crossGameSummary" style="padding: 13px 16px; margin: 0"></p>
-        <ol class="mini-list" id="crossGameRecent"></ol>
+          <span class="transfer-filter-wrap"><select class="transfer-filter" id="crossGameFilter" aria-label="Show transfer results"><option value="matches">Successful matches</option><option value="improved">Recent improvements</option><option value="all">All recent attempts</option></select></span></header>
+        <div class="transfer-summary" id="crossGameSummary"></div>
+        <ol class="transfer-list" id="crossGameRecent"></ol>
+        <details class="transfer-help"><summary>How to read these results</summary><p>Verified matches reproduce this game’s bytes exactly. Partial improvements are better saved candidates, still unmatched. A lower mismatch score is better; 0 is exact. Assembly similarity is only a search hint. Open either function name to inspect its code.</p></details>
       </section>
     </div>
 

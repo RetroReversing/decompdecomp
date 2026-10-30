@@ -1187,3 +1187,38 @@ details.more[open] > summary::before { content: "− "; }
 .ptab[data-pane="agents"] .agents-grid { align-items: start; }
 .ptab[data-pane="agents"] .agents-grid > .agents-panel { height: auto; }
 .ptab[data-pane="agents"] .agents-grid .sessions { overflow: visible; flex: none; }
+
+/* Cross-game transfers: a result, its provenance, and one clear score change per row. */
+#crossGamePanel .panel-head { flex-wrap: wrap; gap: 12px; }
+.transfer-filter { max-width: 100%; padding: 7px 32px 7px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--ink); font: 12px var(--sans); }
+.transfer-summary { padding: 16px; border-bottom: 1px solid var(--line); }
+.transfer-totals { display: flex; flex-wrap: wrap; gap: 12px 28px; color: var(--muted); font-size: 12px; }
+.transfer-totals span { display: flex; align-items: baseline; gap: 7px; }
+.transfer-totals strong { font: 600 20px var(--mono); color: var(--ink); }
+.transfer-summary p { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+.transfer-list { list-style: none; margin: 0; padding: 0; }
+.transfer-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(160px, .8fr); gap: 12px 24px; align-items: center; padding: 14px 16px; }
+.transfer-row + .transfer-row { border-top: 1px solid var(--line-soft); }
+.transfer-target, .transfer-source, .transfer-score { display: grid; gap: 5px; min-width: 0; }
+.transfer-row .fn { font: 12px var(--mono); color: var(--ink); text-align: left; overflow-wrap: anywhere; justify-self: start; }
+.transfer-row .fn:hover { text-decoration: underline; text-underline-offset: 3px; }
+.transfer-row .fn:focus-visible { outline: 2px solid var(--hl); outline-offset: 3px; }
+.transfer-source > span, .transfer-score > span { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.transfer-status { font-size: 11px; color: var(--muted); }
+.transfer-status.verified { color: var(--match-ink); }
+.transfer-status.improved { color: var(--move); }
+.transfer-score strong { font: 500 13px var(--mono); }
+.transfer-score.improved strong { color: var(--move); }
+.transfer-help { border-top: 1px solid var(--line); padding: 12px 16px; color: var(--muted); font-size: 12px; }
+.transfer-help summary { cursor: pointer; }
+.transfer-help p { max-width: 80ch; margin: 10px 0 0; line-height: 1.6; }
+.transfer-empty { padding: 20px 16px; color: var(--muted); font-size: 12px; }
+@media (max-width: 650px) {
+  .transfer-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .transfer-source { grid-column: 1; grid-row: 2; }
+  .transfer-score { grid-column: 2; grid-row: 1 / span 2; }
+}
+
+.transfer-filter-wrap { position: relative; max-width: 100%; }
+.transfer-filter-wrap::after { content: ''; position: absolute; right: 12px; top: 11px; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg); pointer-events: none; }
+.transfer-filter:focus-visible { outline: 2px solid var(--hl); outline-offset: 2px; }
