@@ -920,3 +920,5 @@ Trials are cached by candidate/target/context/settings, capped at 64 per pass an
 Configured automatic MIPS ROM cascades also react to partial improvements. Imported automatic cascades and
 tracking dependencies outside an imported checkout remain planned; imported reuse runs through manual free
 passes and snapshots local source/header/build inputs (at most 10,000 files / 32 MiB).
+
+Cross-game transfer results use compact, responsive rows with separate provenance, result labels and score changes; recent partial improvements can be filtered independently.

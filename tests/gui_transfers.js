@@ -24,8 +24,8 @@ get("crossGameFilter").value = "all";
 get("crossGameFilter").onchange();
 assert.match(get("crossGameRecent").innerHTML, /Not matched/);
 assert.match(get("crossGameRecent").innerHTML, /Assembly similarity: 93%/);
-assert.match(get("crossGameRecent").innerHTML, /Mismatch score: 430 \(0 = exact\)/);
-assert.doesNotMatch(get("crossGameRecent").innerHTML, /; transfer;/);
+assert.match(get("crossGameRecent").innerHTML, /Score: 430/);
+assert.doesNotMatch(get("crossGameRecent").innerHTML.replace(/title="[^"]*"/g, ""), /; transfer;/);
 ctx.renderAutopilot({ slug: "target-game", kind: "rom", matched: 0, cross_game: { counts: { match: 1 }, recent: [], matches: [good] } });
 assert.equal(get("crossGameFilter").value, "all");
 assert.match(get("crossGameRecent").innerHTML, /No recent transfer attempts/);
@@ -34,5 +34,12 @@ const improved = {...miss, outcome: 'improved', reason: 'Partial donor; locally 
 ctx.renderAutopilot({slug:'target-game',kind:'fork',matched:0,cross_game:{counts:{improved:1},recent:[improved],matches:[]}});
 assert.equal(get('crossGamePanel').hidden,false);
 assert.match(get('crossGameRecent').innerHTML,/Improved · not matched/);
-assert.match(get('crossGameRecent').innerHTML,/previous score 100/);
-assert.match(get('crossGameSummary').textContent,/0 verified matches · 1 partial improvements/);
+assert.match(get('crossGameRecent').innerHTML,/100 → 20/);
+assert.match(get('crossGameSummary').innerHTML,/<strong>1<\/strong> partial improvements/);
+
+assert.doesNotMatch(get('crossGameRecent').innerHTML,/previous score None|Candidate source:/);
+const first = {...improved,reason:'Partial donor; locally checked score 75; previous score None'};
+ctx.renderAutopilot({slug:'target-game',kind:'rom',matched:0,cross_game:{counts:{improved:1},recent:[first],matches:[]}});
+assert.match(get('crossGameRecent').innerHTML,/First score: 75/);
+get('crossGameFilter').value='improved';get('crossGameFilter').onchange();
+assert.match(get('crossGameRecent').innerHTML,/Improved · not matched/);

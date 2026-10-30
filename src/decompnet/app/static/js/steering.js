@@ -223,26 +223,24 @@ function renderAutopilot(ov) {
   const cross = ov.cross_game || { counts: {}, recent: [] };
   const count = cross.counts.match || 0, tried = Object.values(cross.counts).reduce((a, b) => a + b, 0);
   $("crossGamePanel").hidden = count === 0 && !cross.counts.improved;
-  $("crossGameSummary").textContent = `${count} verified matches · ${cross.counts.improved || 0} partial improvements · ${tried} attempts. A verified match reproduces this game's bytes exactly. Assembly similarity is only a search hint.`;
-  if (ov.free_search && ov.free_search.seconds > 0) {
-    const r = ov.free_search;
-    $("crossGameSummary").textContent += ` Last free pass: ${r.matched} matches from ${r.attempts} checks.`;
-  }
+  $("crossGameSummary").innerHTML = `<div class="transfer-totals"><span><strong>${count.toLocaleString()}</strong> verified matches</span><span><strong>${(cross.counts.improved || 0).toLocaleString()}</strong> partial improvements</span><span><strong>${tried.toLocaleString()}</strong> attempts</span></div>${ov.free_search?.seconds > 0 ? `<p>Last free pass <b>${ov.free_search.matched} matches</b> from ${ov.free_search.attempts} checks</p>` : ''}`;
   const renderTransfers = () => {
-    const successes = $("crossGameFilter").value !== "all";
-    const rows = successes ? (cross.matches || cross.recent.filter(r => r.outcome === "match")) : cross.recent;
+    const filter = $("crossGameFilter").value;
+    const rows = filter === 'matches' ? (cross.matches || cross.recent.filter(r => r.outcome === 'match')) : filter === 'improved' ? cross.recent.filter(r => r.outcome === 'improved') : cross.recent;
     $("crossGameRecent").innerHTML = rows.slice(0, 12).map((r) => {
-      const matched = r.outcome === "match";
-      const status = matched ? "Verified byte match" : r.outcome === "improved" ? "Improved · not matched" : r.outcome === "miss" ? "Not matched" : r.outcome === "skip" ? "Skipped" : r.outcome === "asm" ? "Assembly only" : r.outcome;
-      const similarity = (r.reason || "").match(/similar code \((\d+)%\)/);
-      const score = (r.reason || "").match(/score\s+(\d+)/);
-      const detail = [r.outcome === "improved" ? r.reason : "", similarity ? `Assembly similarity: ${similarity[1]}%` : "", !matched && score ? `Mismatch score: ${score[1]} (0 = exact)` : ""].filter(Boolean).join(" · ");
+      const matched = r.outcome === 'match', improved = r.outcome === 'improved';
+      const status = matched ? 'Verified byte match' : improved ? 'Improved · not matched' : r.outcome === 'miss' ? 'Not matched' : r.outcome === 'skip' ? 'Skipped' : r.outcome === 'asm' ? 'Assembly only' : r.outcome;
+      const similarity = (r.reason || '').match(/similar code \((\d+)%\)/);
+      const score = (r.reason || '').match(/score\s+(\d+)/);
+      const previous = (r.reason || '').match(/previous score\s+(\d+|None)/);
+      const scoreText = matched ? 'Exact match' : score ? previous && previous[1] !== 'None' ? `${previous[1]} → ${score[1]}` : previous ? `First score: ${score[1]}` : `Score: ${score[1]}` : 'No score';
       const targetLink = `<button class="fn" type="button" data-transfer-function="${esc(r.target)}" data-slug="${esc(ov.slug)}" title="Open target function"><b>${esc(r.target)}</b></button>`;
       const sourceLink = r.source_slug ? `<button class="fn" type="button" data-transfer-function="${esc(r.source)}" data-slug="${esc(r.source_slug)}" title="Open original function in ${esc(r.game)}">${esc(r.source)}</button>` : esc(r.source);
-      return `<li><div class="row">${targetLink}<span class="badge ${matched ? "matched" : ""}">${esc(status)}</span></div>
-        <div class="muted small">Candidate source: ${esc(r.game)} → ${sourceLink}</div>
-        ${detail ? `<div class="muted small">${esc(detail)}</div>` : ""}</li>`;
-    }).join("") || `<li class="muted small">${successes ? "No verified transfers to show." : "No recent transfer attempts."}</li>`;
+      const hint = similarity ? `Assembly similarity: ${similarity[1]}%` : '';
+      return `<li class="transfer-row"><div class="transfer-target">${targetLink}<span class="transfer-status ${matched ? 'verified' : improved ? 'improved' : ''}">${esc(status)}</span></div>
+        <div class="transfer-source"><span>From ${esc(r.game)}</span>${sourceLink}</div>
+        <div class="transfer-score ${improved ? 'improved' : ''}" title="${esc(r.reason || (matched ? 'The receiving game verified identical bytes.' : 'No scored result.'))}"><strong>${esc(scoreText)}</strong><span>${matched ? 'Byte for byte' : score ? 'Mismatch score · lower is better' : hint || 'Not compiled'}</span>${score && hint ? `<span>${hint}</span>` : ''}</div></li>`;
+    }).join('') || `<li class="transfer-empty">${filter === 'matches' ? 'No verified transfers to show.' : filter === 'improved' ? 'No partial improvements among recent attempts.' : 'No recent transfer attempts.'}</li>`;
   };
   $("crossGameRecent").onclick = e => {
     const button = e.target.closest("button[data-transfer-function]");
