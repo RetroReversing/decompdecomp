@@ -910,3 +910,6 @@ rewrite lineage of each recorded improvement. The settings view shows current sc
 latest saved evidence; single-function output reports its phase and latest candidate. Tracking starts with
 new trials; a final random rewrite can depend on earlier changes in its lineage. Results are evidence for
 manual review and do not automatically reorder the search.
+
+Agent cards show results first, with compact usage and timing, expandable details,
+and a keyboard-accessible actions menu. The agent list scrolls with the page.
