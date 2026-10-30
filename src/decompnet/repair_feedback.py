@@ -71,6 +71,12 @@ class RepairFeedback:
         with self.store.tx() as db:
             for statement in SCHEMA:
                 db.execute(statement)
+            # Older automatic captures predate their implemented default. Preserve deliberate
+            # reviews and agent annotations; only move untouched, provenance-backed captures.
+            db.execute("UPDATE repair_examples SET status='implemented',review_note=? WHERE status='new' "
+                       "AND explanation='' AND automation='' AND review_note='' "
+                       "AND json_extract(evidence,'$.provenance.kind')='deterministic draft repair'",
+                       ('Already produced by an automatic repair; retained for regression review.',))
 
     def attempt(self, db, fn, attempt_id, context_version, effective_settings=None):
         proj = db.execute('SELECT * FROM projects WHERE id=?', (fn['project_id'],)).fetchone()
@@ -143,9 +149,13 @@ class RepairFeedback:
             'comparable_settings':bool(comparable),
             'comparison': 'closest comparable-settings failed attempt when available, otherwise closest historical failure; previous retains last own failed trial',
         }
-        db.execute('INSERT INTO repair_examples(project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence) '
-                   'VALUES(?,?,?,?,?,?,?)', (fn['project_id'], fn['id'], attempt_id, before['id'] if before else None,
-                                             agent_id, time.time(), json.dumps(evidence)))
+        # Retain deterministic successes for regression analysis without proposing the installed
+        # rule as new work. Agent explanations still cannot mark their own hypotheses implemented.
+        automated = (evidence.get('provenance') or {}).get('kind') == 'deterministic draft repair'
+        db.execute('INSERT INTO repair_examples(project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence,status,review_note) '
+                   'VALUES(?,?,?,?,?,?,?,?,?)', (fn['project_id'], fn['id'], attempt_id, before['id'] if before else None,
+                                             agent_id, time.time(), json.dumps(evidence), 'implemented' if automated else 'new',
+                                             'Installed deterministic repair, verified by the normal judge.' if automated else ''))
 
     def report(self, agent, slug, function, change, category='other', automation='', case_id=0):
         fn = self.net._function(function, slug)
@@ -174,12 +184,14 @@ class RepairFeedback:
                 raise NetworkError('Unknown review state.')
             clauses.append('e.status=?'); args.append(status)
         if comparable:
-            clauses.append('e.before_attempt_id IS NOT NULL')
+            clauses.append("e.before_attempt_id IS NOT NULL AND json_extract(e.evidence,'$.before.source_sha256') != json_extract(e.evidence,'$.after.source_sha256')")
         return ' AND '.join(clauses), args
 
     def listing(self, slug='', category='', status='', before=0, comparable=False):
         where, args = self._where(slug, category, status, comparable)
         rows = self.store.all('SELECT e.id,e.created_at,e.category,e.explanation,e.automation,e.status,'
+                              "CASE WHEN e.before_attempt_id IS NULL THEN 'no failed baseline' WHEN json_extract(e.evidence,'$.before.source_sha256')=json_extract(e.evidence,'$.after.source_sha256') THEN 'same source / settings' WHEN json_extract(e.evidence,'$.comparable_settings')=1 THEN 'source repair' ELSE 'settings also changed' END AS evidence_kind,"
+                              "json_extract(e.evidence,'$.provenance.kind')='deterministic draft repair' AS automation_known,"
                               'p.slug,p.name AS project,f.name AS function,a.name AS agent FROM repair_examples e '
                               'JOIN projects p ON p.id=e.project_id JOIN functions f ON f.id=e.function_id '
                               'LEFT JOIN agents a ON a.id=e.agent_id WHERE ' + where +

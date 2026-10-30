@@ -81,12 +81,14 @@ def variants(source, name):
             if (selected and decl['value'] is None and prefix[-1:] in {';', '{', '}'}
                     and all(hit.start() in covered for hit in hits)):
                 add('copy_register_reuse', selected+[(assignment_start, end, ''), (decl.start(), decl.end(), '')])
+        # Textual last use is not dynamic last use in a loop or a backward jump. Until we have
+        # dominance/liveness evidence, only straight-line/branch-only functions may reuse this input.
         # A final 32-bit shift can use its input's register directly. The shift is unchanged and
         # assigning its result adds no narrowing conversion; never do this for a byte/short local.
-        if hits and decl['type'] in {'s32', 'u32', 'int', 'signed int', 'unsigned int'}:
+        if hits and not re.search(r'\b(?:for|while|do|goto)\b', part.body) and decl['type'] in {'s32', 'u32', 'int', 'signed int', 'unsigned int'}:
             last = hits[-1]
             shift = re.match(r'\s*<<\s*([1-9]|[12][0-9]|3[01])\b', part.clean[last.end():])
-            if shift:
+            if shift and not re.match(r'\s*[+*/%.\-]', part.clean[last.end()+shift.end():]):
                 add('last_shift_reuse', [(last.start(), last.end()+shift.end(), f'({variable} <<= {shift[1]})')])
             scale = re.match(r'\s*\*\s*(2|4|8|16)\b', part.clean[last.end():])
             if scale:

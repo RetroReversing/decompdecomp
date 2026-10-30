@@ -241,3 +241,16 @@ def test_spare_pointer_staging_uses_the_normal_mode_judge(imported):
     perm._repair_round(AGENT,net.project_row('game'),state)
     assert expected in perm.judged and state.matched==1
     assert not net.store.all('SELECT * FROM claims')
+
+
+def test_a_cached_success_is_rejudged_when_a_function_is_reopened():
+    net=setup_repair_net()
+    winner='int f1(int x) { return send(x); }'
+    perm=ScriptedPermuter(net,{winner:0})
+    perm._repair_round(AGENT,net.project_row('game'),State())
+    assert winner in perm.judged
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET status='open',best_score=200,best_source=?",('int f1(int x) { return send(x, 7); }',))
+    before=len(perm.judged)
+    perm._repair_round(AGENT,net.project_row('game'),State())
+    assert perm.judged[before:]==[winner]

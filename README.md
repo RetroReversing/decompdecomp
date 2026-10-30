@@ -52,6 +52,19 @@ ROM draft conflicts with one plain shared return declaration, deep search can al
 header and remeasure it. The old draft stays in history, the shared header stays unchanged, and the new
 baseline may have a lower percentage. Ambiguous signatures still need review.
 
+The repair pass can also keep a table slot address live before loading its pointer, combine unsigned
+word temporaries with assignment reuse, and turn a returning guard into a forward jump. In-place final
+shift/scale reuse is disabled in functions with loops or gotos: last use in the text need not be last use
+at runtime. All candidates still use the ordinary exact judge.
+
+When an agent reports a suspected invalid candidate, automatic claims, autopilot and the permuter pause
+that saved source. Open **Agents → Repair examples** to read the report and compiled alternatives, then
+choose **Reviewed: resume this candidate**. Reports are hypotheses; they never invalidate a match or replace
+saved C automatically. Explicit agent claims remain available for investigation. Exhausted inputs retain
+retry history when workers return to an earlier source, and changed build inputs reopen the search.
+Repair examples separate missing baselines and unchanged C from source changes; captures already produced
+by deterministic repairs are retained as implemented unless someone has deliberately reopened their review.
+
 For close ROM misses it also tests cached compiler flag alternatives, two probes per pass. Later passes skip
 already tested choices and can reach optimization levels as well as debug flags. Only exact results qualify for a
 narrow compiler-range change. When automatic compiler changes are disabled, the result becomes a suggestion for

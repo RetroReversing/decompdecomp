@@ -33,6 +33,9 @@ def validate(net, slug, name, minutes, max_variants):
         raise NetworkError('Run deep permuter on the room host’s project.')
     if fn['status'] != 'open' or not fn['best_source'] or fn['best_score'] is None:
         raise NetworkError('Choose an unmatched function with saved, scored C first.')
+    from .. import candidate_quality
+    if candidate_quality.pending(net,fn):
+        raise NetworkError('Review candidate quality in Repair examples before running deep permuter.')
     if net.store.one('SELECT 1 FROM claims WHERE function_id=? AND expires_at>?', fn['id'], time.time()):
         raise NetworkError('This function is working; stop its agent or wait for its claim to finish.')
     return proj, fn
@@ -162,12 +165,14 @@ class Search(Permuter):
         flags = compiler_for(self.net.cfg(proj), fn['vram']).get('flags', []) if not fork else []
         trials = 0
         source = fn['best_source']
+        context = self.net._context(proj['id'],fn['unit'])
+        header = self.net.forks.permuter_header(fork,fn['name']) if fork else (context['header'] if context else '')
         while best > 0:
             self.check()
             self.local_seen.add(source)
             rows = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0]
             labels = {}
-            choices = draft_repairs.variants(source, fn['name'], proj['arch'], fn['asm'] or '', flags, labels=labels, limit=None)
+            choices = draft_repairs.variants(source, fn['name'], proj['arch'], fn['asm'] or '', flags, labels=labels, limit=None, header=header)
             stack = stack_padding_repairs.grow(source, fn['name'], proj['arch'], rows)
             for candidate in stack:
                 labels.setdefault(candidate, 'stack_padding')

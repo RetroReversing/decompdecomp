@@ -10,9 +10,9 @@ class Element {
   remove(){this.isConnected=false;}
 }
 const body=new Element('body'), calls=[],opened=[];
-const context={document:{body,createElement:t=>new Element(t)},S:{slug:'demo'},
+const context={document:{body,createElement:t=>new Element(t),addEventListener(){}},S:{slug:'demo'},
  esc:s=>String(s).replaceAll('<','&lt;'),beginWork:()=>()=>{},toast:()=>{},openFn:n=>opened.push(n),
- pctOf:()=>75, agentRuntime:()=>60,agentTokenRate:()=>null,LIVE:['working'],
+ pctOf:()=>75, compactAgentNumber:n=>String(n), agentRuntime:()=>60,agentTokenRate:()=>null,LIVE:['working'],
  api:async url=>{calls.push(url);return {functions:[{id:calls.length===1?7:3,name:'function<one>',status:'open',best_score:250,n_insns:10}],more:calls.length===1};}};
 vm.createContext(context);
 const source=fs.readFileSync(require('path').join(__dirname,'../src/decompnet/app/static/js/agents.js'),'utf8');
@@ -29,7 +29,8 @@ vm.runInContext(source.slice(source.indexOf('async function showAgentResults'),s
  const metrics=context.agentMetrics({id:'one',label:'Worker',state:'working',tokens:123456}, {matched:2,improved:3,last_improvement:Date.now()/1000-120});
  assert(metrics.includes('data-result-kind="matched"') && metrics.includes('data-result-kind="improved"'));
  assert(metrics.includes('View 3 improved functions'));
- assert(metrics.includes('123,456') && metrics.includes('total tokens used'));
- assert(metrics.includes('since last improvement') && metrics.includes('2m'));
+ const usage=context.agentUsage({tokens:123456});
+ assert(usage.includes('123,456 reported tokens') && usage.includes('including cache reads and writes'));
+ assert(metrics.includes('Last improvement') && metrics.includes('2m'));
  console.log('Agent metric links, paged results, safe names and function navigation passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
