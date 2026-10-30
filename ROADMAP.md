@@ -913,3 +913,10 @@ manual review and do not automatically reorder the search.
 
 Agent cards show results first, with compact usage and timing, expandable details,
 and a keyboard-accessible actions menu. The agent list scrolls with the page.
+
+Exact-fingerprint partial C reuse now rejudges better saved candidates across local ROM and imported
+projects, retaining only destination improvements and recording provenance separately from verified matches.
+Trials are cached by candidate/target/context/settings, capped at 64 per pass and share existing search budgets.
+Configured automatic MIPS ROM cascades also react to partial improvements. Imported automatic cascades and
+tracking dependencies outside an imported checkout remain planned; imported reuse runs through manual free
+passes and snapshots local source/header/build inputs (at most 10,000 files / 32 MiB).

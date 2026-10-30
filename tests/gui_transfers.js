@@ -30,3 +30,9 @@ ctx.renderAutopilot({ slug: "target-game", kind: "rom", matched: 0, cross_game: 
 assert.equal(get("crossGameFilter").value, "all");
 assert.match(get("crossGameRecent").innerHTML, /No recent transfer attempts/);
 console.log("Transfer filters and labels passed");
+const improved = {...miss, outcome: 'improved', reason: 'Partial donor; locally checked score 20; previous score 100'};
+ctx.renderAutopilot({slug:'target-game',kind:'fork',matched:0,cross_game:{counts:{improved:1},recent:[improved],matches:[]}});
+assert.equal(get('crossGamePanel').hidden,false);
+assert.match(get('crossGameRecent').innerHTML,/Improved · not matched/);
+assert.match(get('crossGameRecent').innerHTML,/previous score 100/);
+assert.match(get('crossGameSummary').textContent,/0 verified matches · 1 partial improvements/);

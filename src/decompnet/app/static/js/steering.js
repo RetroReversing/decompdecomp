@@ -222,8 +222,8 @@ async function togglePrio(name, on) {
 function renderAutopilot(ov) {
   const cross = ov.cross_game || { counts: {}, recent: [] };
   const count = cross.counts.match || 0, tried = Object.values(cross.counts).reduce((a, b) => a + b, 0);
-  $("crossGamePanel").hidden = ov.kind === "fork" || count === 0;
-  $("crossGameSummary").textContent = `${count} verified matches · ${tried} attempts. A verified match reproduces this game's bytes exactly. Assembly similarity is only a search hint.`;
+  $("crossGamePanel").hidden = count === 0 && !cross.counts.improved;
+  $("crossGameSummary").textContent = `${count} verified matches · ${cross.counts.improved || 0} partial improvements · ${tried} attempts. A verified match reproduces this game's bytes exactly. Assembly similarity is only a search hint.`;
   if (ov.free_search && ov.free_search.seconds > 0) {
     const r = ov.free_search;
     $("crossGameSummary").textContent += ` Last free pass: ${r.matched} matches from ${r.attempts} checks.`;
@@ -233,10 +233,10 @@ function renderAutopilot(ov) {
     const rows = successes ? (cross.matches || cross.recent.filter(r => r.outcome === "match")) : cross.recent;
     $("crossGameRecent").innerHTML = rows.slice(0, 12).map((r) => {
       const matched = r.outcome === "match";
-      const status = matched ? "Verified byte match" : r.outcome === "miss" ? "Not matched" : r.outcome === "skip" ? "Skipped" : r.outcome === "asm" ? "Assembly only" : r.outcome;
+      const status = matched ? "Verified byte match" : r.outcome === "improved" ? "Improved · not matched" : r.outcome === "miss" ? "Not matched" : r.outcome === "skip" ? "Skipped" : r.outcome === "asm" ? "Assembly only" : r.outcome;
       const similarity = (r.reason || "").match(/similar code \((\d+)%\)/);
       const score = (r.reason || "").match(/score\s+(\d+)/);
-      const detail = [similarity ? `Assembly similarity: ${similarity[1]}%` : "", !matched && score ? `Mismatch score: ${score[1]} (0 = exact)` : ""].filter(Boolean).join(" · ");
+      const detail = [r.outcome === "improved" ? r.reason : "", similarity ? `Assembly similarity: ${similarity[1]}%` : "", !matched && score ? `Mismatch score: ${score[1]} (0 = exact)` : ""].filter(Boolean).join(" · ");
       const targetLink = `<button class="fn" type="button" data-transfer-function="${esc(r.target)}" data-slug="${esc(ov.slug)}" title="Open target function"><b>${esc(r.target)}</b></button>`;
       const sourceLink = r.source_slug ? `<button class="fn" type="button" data-transfer-function="${esc(r.source)}" data-slug="${esc(r.source_slug)}" title="Open original function in ${esc(r.game)}">${esc(r.source)}</button>` : esc(r.source);
       return `<li><div class="row">${targetLink}<span class="badge ${matched ? "matched" : ""}">${esc(status)}</span></div>

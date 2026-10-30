@@ -1413,6 +1413,7 @@ class Network:
                 prepared_header=None, prepared_inputs=None):
         now = time.time()
         compiled = score is not None if compiled is None else compiled
+        improved = False
         with self.store.tx() as db:
             current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
             # A compiler check can finish while this candidate is still compiling with the old flags.
@@ -1455,6 +1456,11 @@ class Network:
                 pass  # the attempt itself still returns its diff; the next claim moves on
         if matched:
             self.on_match(self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"]), fn["id"], agent)
+        elif improved:
+            self.on_improvement(self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"]), fn["id"])
+
+    def on_improvement(self, proj, function_id: int) -> None:
+        """A better unfinished candidate was saved; subclasses may schedule bounded reuse."""
 
     def on_match(self, proj, function_id: int, agent: Agent | None = None) -> None:
         """A function just matched (subclasses try its code on its twins)."""

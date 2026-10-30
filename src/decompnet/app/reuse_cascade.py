@@ -54,8 +54,8 @@ class Cascade:
     def notify(self, donor, fid):
         if not self.enabled or not self.net.is_rom(donor) or donor['arch'] != 'mips':
             return
-        fn = self.net.store.one('SELECT size,status FROM functions WHERE id=?', fid)
-        if not fn or fn['status'] != 'matched':
+        fn = self.net.store.one('SELECT size,status,best_source FROM functions WHERE id=?', fid)
+        if not fn or (fn['status'] != 'matched' and not fn['best_source']):
             return
         # Only compatible projects with open functions in this donor's size neighbourhood are affected.
         projects = self.net.store.all("SELECT DISTINCT p.* FROM projects p JOIN functions f ON f.project_id=p.id "
