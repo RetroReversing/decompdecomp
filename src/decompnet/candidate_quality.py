@@ -90,6 +90,12 @@ def view(net,fn):
     return '\n\n'.join(out)
 
 
+def reported_source(net, fn, source):
+    """Do not reselect a still-reported historical shape after a reviewer chose its correction."""
+    digest = hashlib.sha256(source.encode()).hexdigest()
+    return any(r['source_hash'] == digest and r.get('review', 'pending') == 'pending' for r in records(net, fn))
+
+
 def pending(net, fn):
     """Pause automatic edits of the reported source, without declaring the agent correct."""
     if fn['status'] != 'open':

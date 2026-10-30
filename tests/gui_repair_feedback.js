@@ -16,10 +16,11 @@ class Element {
   remove() { this.isConnected = false; }
 }
 const body = new Element('body'), button = new Element('button');
-let state = 'new', qualityPending = true;
+let state = 'new', qualityPending = true, confirmed = false;
 const row = () => ({id: 42, project: '<b>demo</b>', function: 'target', category: 'types', status: state});
 const context = { S: {slug: 'demo'}, document: {body, createElement: (tag) => new Element(tag)}, $: () => button,
   beginWork: () => () => {}, toast: (message, kind) => { if (kind === 'err') throw Error(message); notices.push(message); }, esc: (s) => s,
+  confirm: () => confirmed,
   copyText: async (value) => copied.push(await value),
   followJob: async () => ({message: 'Opened terminal', repository: '/private/repository'}),
   setTimeout: (fn) => fn(), URL: {createObjectURL: () => 'blob:local', revokeObjectURL: () => {}},
@@ -29,7 +30,7 @@ const context = { S: {slug: 'demo'}, document: {body, createElement: (tag) => ne
     if (url.includes('/quality')) {
       if (opts?.method === 'POST') { qualityPending = false; return {resumed: 'suspect'}; }
       if (url.includes('function=')) return {evidence: 'Compiled alternative, quality unverified'};
-      return {reports: qualityPending ? [{function:'suspect', slug:'demo', source_hash:'hash', warning:'Reported uninitialized value'}] : []};
+      return {reports: qualityPending ? [{function:'suspect', slug:'demo', source_hash:'hash', warning:'Reported uninitialized value', alternatives:[123]}] : []};
     }
     if (url.includes('/investigate')) return opts?.method === 'POST' ? {job: 'j1'} :
       {prompt: 'Investigate these examples safely.', agents: [{id: 'codex', name: 'Codex CLI', installed: true}]};
@@ -50,7 +51,18 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   const reportBody = quality.children[0].children[1];
   await reportBody.children[2].onclick();
   assert(reportBody.children[4].textContent.includes('quality unverified'));
-  await reportBody.children[3].onclick();
+  const choose = reportBody.children[5];
+  assert(choose.textContent.includes('#123'));
+  await choose.onclick();
+  assert(!requests.some(r => r.opts?.body.action === 'adopt'));
+  confirmed = true;
+  await choose.onclick();
+  const adopted = requests.find(r => r.opts?.body.action === 'adopt');
+  assert.equal(adopted.opts.body.attempt_id, 123);
+  assert.equal(adopted.opts.body.source_hash, 'hash');
+  qualityPending = true;
+  await dialog.querySelector('[data-refresh]').onclick();
+  await quality.children[0].children[1].children[3].onclick();
   const reviewed = requests.find(r => r.opts?.body.source_hash === 'hash');
   assert.equal(reviewed.opts.body.function, 'suspect'); assert.equal(reviewed.opts.body.slug, 'demo');
   assert.equal(quality.children.length, 0);

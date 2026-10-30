@@ -1434,7 +1434,9 @@ class Network:
             if matched and not stale:
                 self.repair_feedback.capture(db, current, source, agent.id, via, ctx_version, attempt)
             db.execute("UPDATE functions SET attempts=attempts+1 WHERE id=?", (fn["id"],))
-            if score is not None and not stale:
+            from . import candidate_quality
+            reported = not matched and candidate_quality.reported_source(self, current, source)
+            if score is not None and not stale and not reported:
                 improved = db.execute("UPDATE functions SET best_score=?, best_source=?, best_agent_id=? "
                                       "WHERE id=? AND status='open' AND (best_score IS NULL OR best_score > ?)",
                                       (score, source, agent.id, fn["id"], score)).rowcount

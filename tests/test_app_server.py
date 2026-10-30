@@ -1039,3 +1039,14 @@ def test_cross_game_run_failure_releases_busy_state(app, monkeypatch):
             break
         time.sleep(.01)
     assert job['state'] == 'error' and net.twins.jobs['cross-failure'].state == 'done'
+
+
+def test_quality_alternative_selection_uses_explicit_review_route(app, monkeypatch):
+    from decompnet import candidate_recovery
+    client, net, _ = app
+    calls = []
+    monkeypatch.setattr(candidate_recovery, 'adopt', lambda *args: calls.append(args[1:]) or {'score':55})
+    body = {'slug':'example', 'function':'selected', 'source_hash':'revision', 'action':'adopt', 'attempt_id':123}
+    response = client.post('/api/repair-examples/quality', json=body, headers={'X-Decomp':'1'})
+    assert response.status_code == 200 and response.json()['score'] == 55
+    assert calls == [('example', 'selected', 'revision', 123)]
