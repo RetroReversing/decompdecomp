@@ -149,7 +149,21 @@ $("repairExamples").onclick = async () => {
             try { await api('/api/repair-examples/quality', {method:'POST', body:{slug:report.slug, function:report.function, source_hash:report.source_hash}}); await load(); }
             catch (error) { toast(esc(error.message), 'err'); } finally { finish(); }
           };
-          body.append(warning, hint, inspect, resume, evidence); panel.append(heading, body); area.append(panel);
+          body.append(warning, hint, inspect, resume, evidence);
+          for (const id of report.alternatives || []) {
+            const select = document.createElement('button');
+            select.textContent = `Rejudge and select alternative #${id}…`;
+            select.onclick = async () => {
+              if (!confirm(`Select alternative #${id} after reviewing its source and target? It will be compiled again and can replace the saved C even with a worse score. Previous source and warnings are retained.`)) return;
+              const finish = beginWork(body, 'Rejudging corrective alternative', [select, resume]);
+              try {
+                await api('/api/repair-examples/quality', {method:'POST', body:{slug:report.slug, function:report.function, source_hash:report.source_hash, action:'adopt', attempt_id:id}});
+                await load();
+              } catch (error) { toast(esc(error.message), 'err'); } finally { finish(); }
+            };
+            body.append(select);
+          }
+          panel.append(heading, body); area.append(panel);
         }
       }
       options(category, data.categories); options(status, data.states);

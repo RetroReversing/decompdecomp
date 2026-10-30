@@ -17,6 +17,10 @@ def register(app):
             q = request.query_params
             if request.method == 'POST':
                 data = await app.body(request)
+                if data.get('action') == 'adopt':
+                    from ... import candidate_recovery
+                    return JSONResponse(await app.call(candidate_recovery.adopt, app.net, str(data['slug']),
+                                                       str(data['function']), str(data['source_hash']), data['attempt_id']))
                 return JSONResponse(await app.call(candidate_quality.review, app.net, str(data['slug']),
                                                    str(data['function']), str(data['source_hash'])))
             slug = '' if q.get('all') == '1' else q.get('slug', '')
