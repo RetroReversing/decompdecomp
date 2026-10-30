@@ -10,9 +10,6 @@ log = logging.getLogger('decompdecomp')
 def run(net, slug, fn):
     if slug in net.links or fn['status'] != 'open' or not fn['best_source'] or not fn['best_score']:
         return ''
-    from .. import candidate_quality
-    if candidate_quality.pending(net, fn):
-        return '\nAutomatic repairs paused: candidate quality needs user review in Repair examples. Best score and exact-match judge are unchanged.'
     state = State(stop=threading.Event())
     agent, _ = net.local_agent('permuter')
     try:

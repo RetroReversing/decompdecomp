@@ -660,7 +660,7 @@ class Network:
         from . import claim_stalls
         paused = claim_stalls.blocked(self,proj)
         if paused:
-            lines.append(f'{len(paused)} unchanged candidates are paused after repeated releases or pending quality review. Review quality reports in Repair examples. Exhausted candidates retry when '
+            lines.append(f'{len(paused)} unchanged candidates are paused after repeated releases. Quality warnings do not block work. Exhausted candidates retry when '
                          'source, build context, symbols or repair rules change. Explicit claim_function(function=name) '
                          'can still select one; do not loop on automatic claims.')
         if held:

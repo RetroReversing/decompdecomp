@@ -50,7 +50,7 @@ def brief(net,fn):
     saved=[r for r in records(net,fn) if r['source_hash']==current]
     if saved:
         return ['### Candidate quality (agent report, not proven)',saved[-1]['warning'][:300],
-                ('Automatic workers pause this source until user review; explicit claims remain available. ' if saved[-1].get('review','pending') == 'pending' else 'User reviewed and resumed this candidate; the historical warning is retained. ')+
+                ('Work continues while this concern awaits review. ' if saved[-1].get('review','pending') == 'pending' else 'User reviewed this candidate; the historical warning is retained. ')+
                 'Compiled alternatives and evidence: get_function(section="quality"). Rejudge before using; '
                 'a lower score alone does not establish valid C.']
     # Older notes remain discoverable; do not falsely anchor them to today's source.
@@ -97,7 +97,7 @@ def reported_source(net, fn, source):
 
 
 def pending(net, fn):
-    """Pause automatic edits of the reported source, without declaring the agent correct."""
+    """List unresolved concerns about the selected source; these do not block work."""
     if fn['status'] != 'open':
         return []
     digest = hashlib.sha256((fn['best_source'] or '').encode()).hexdigest()
@@ -105,9 +105,8 @@ def pending(net, fn):
 
 
 def blocked(net, proj):
-    return [fn['id'] for fn in net.store.all(
-        "SELECT f.* FROM functions f JOIN settings s ON s.key=? || f.id WHERE f.project_id=? AND f.status='open'",
-        PREFIX, proj['id']) if pending(net, fn)]
+    """Quality reports are advisory; keep existing callers from treating them as scheduling blocks."""
+    return []
 
 
 def listing(net, slug=''):
@@ -168,4 +167,4 @@ def report(net, agent, slug, function, revision, issue, reason, alternative_revi
     saved = [r for r in saved if r['source_hash']!=digest]+[item]
     with net.store.tx() as db:
         db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',(PREFIX+str(fn['id']),json.dumps(saved[-4:])))
-    return 'Candidate issue recorded as a hypothesis, tied to revision '+digest[:20]+'. Best C, score and exact-match status unchanged. Release with notes when finished; automatic work pauses only if that source is selected.'
+    return 'Candidate issue recorded as a hypothesis, tied to revision '+digest[:20]+'. Best C, score and exact-match status unchanged. Release with notes when finished; agents and automatic repairs can continue while this concern is reviewed.'

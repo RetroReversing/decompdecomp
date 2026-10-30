@@ -372,10 +372,6 @@ class Permuter:
             log.info("permuter: %s: %s", fn["name"], e, exc_info=True)
 
     def _hold(self, agent, fn, *, count_turn=True, seconds=None) -> bool:
-        from .. import candidate_quality
-        current = self.net.store.one('SELECT * FROM functions WHERE id=?', fn['id'])
-        if current is not None and candidate_quality.pending(self.net, current):
-            return False
         now = time.time()
         with self.net.store.tx() as db:
             self.net._expire_claims(db)

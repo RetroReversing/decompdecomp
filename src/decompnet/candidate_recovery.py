@@ -54,7 +54,7 @@ def _adopt(net, slug, function, source_hash, attempt_id, agent):
                        (source, result['score'], agent.id, fn['id']))
             from .app.permuter_inputs import external_seed
             external_seed(db, current, source, agent.name)
-        # Retain the old warning and attempts; a new source hash naturally removes the old quality pause.
+        # Retain the old warning and attempts; a new source hash naturally resolves the old current-source concern.
         net.add_note(agent, slug, f'Review selected corrective alternative attempt {attempt_id}; rejudged score '
                      f'{result["score"]}, replacing reported source {source_hash[:20]}. Selection is a reviewer '
                      'decision, not an automatic semantic proof.', function)

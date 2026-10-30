@@ -2,7 +2,7 @@
 import hashlib
 import json
 
-from .. import candidate_quality, claim_stalls
+from .. import claim_stalls
 from ..arch.call_evidence import direct
 from ..forks.project import ForkError
 from ..network import NetworkError
@@ -11,7 +11,7 @@ from ..network import NetworkError
 def validate(net, fn, need):
     proj = net.store.one('SELECT * FROM projects WHERE id=?',fn['project_id'])
     if need['id'] in claim_stalls.blocked(net,proj):
-        raise NetworkError('needs: this candidate is paused for exhaustion or quality review. Release without needs; '
+        raise NetworkError('needs: this candidate is paused after exhausting unchanged work. Release without needs; '
                            'automatic pivots cannot override pauses. The user can review it in Repair examples.')
     meta = json.loads(need['meta'] or '{}')
     names = [need['name'].split('@')[0],meta.get('symbol'),meta.get('real')]
@@ -37,7 +37,7 @@ def pivot_key(net, fn, need):
 
 def permitted(net, fn, need):
     proj = net.store.one('SELECT * FROM projects WHERE id=?',fn['project_id'])
-    if candidate_quality.pending(net,need) or need['id'] in claim_stalls.blocked(net,proj):
+    if need['id'] in claim_stalls.blocked(net,proj):
         return False
     key,stamp = pivot_key(net,fn,need)
     row = net.store.one('SELECT value FROM settings WHERE key=?',key)
