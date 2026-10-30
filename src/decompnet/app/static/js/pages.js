@@ -119,6 +119,7 @@ async function showSettingsPage() {
     <p class="small muted">Global limits for random permutation of near misses (within 6% of an exact match). Larger functions take longer per compile. Changes apply to new turns; running turns keep their deadline. Raising the turn limit gives previously exhausted functions more turns. Targeted deterministic repairs have separate budgets.</p>
     <label class="field"><span>Maximum instructions per function (1–100,000)</span><input id="permuterMaxInsns" type="number" min="1" max="100000" value="${st.settings.permuter_max_insns ?? 400}"></label>
     <label class="field"><span>Seconds per function per turn (1–3,600)</span><input id="permuterSeconds" type="number" min="1" max="3600" value="${st.settings.permuter_seconds ?? 60}"></label>
+    <label class="field"><span>Background worker threads for the permuter and machine drafts (1–${st.settings.worker_threads_max ?? 1}; empty = automatic, ${st.settings.worker_threads_default ?? 1} on this computer). More threads match faster and leave the app slower to respond.</span><input id="workerThreads" type="number" min="1" max="${st.settings.worker_threads_max ?? 1}" placeholder="${st.settings.worker_threads_default ?? 1}" value="${st.settings.worker_threads || ""}"></label>
     <label class="field"><span>Maximum turns per function (1–1,000)</span><input id="permuterMaxTurns" type="number" min="1" max="1000" value="${st.settings.permuter_max_turns ?? 4}"></label>
     <label class="check"><input type="checkbox" id="autopilotSet" ${st.settings.autopilot !== false ? "checked" : ""}><span><b>Autopilot after each import</b>: try every function's machine draft first, so free matches cost no agent time.</span></label>`;
   const theme = savedTheme();
@@ -190,6 +191,7 @@ async function showSettingsPage() {
   for (const [id, key] of [["permuterMaxInsns", "permuter_max_insns"], ["permuterSeconds", "permuter_seconds"], ["permuterMaxTurns", "permuter_max_turns"]]) {
     $(id).onchange = () => save({ [key]: Number($(id).value) }, "Permuter limit saved.");
   }
+  $("workerThreads").onchange = () => save({ worker_threads: Number($("workerThreads").value) || 0 }, "Worker threads saved.");
   $("perSession").onchange = () => save({ per_session: Number($("perSession").value) }, "Saved.");
   $("autopilotSet").onchange = () => save({ autopilot: $("autopilotSet").checked }, "Saved.");
   $("reuseAuto").onchange = () => save({ reuse_auto: $("reuseAuto").checked }, "Saved.");

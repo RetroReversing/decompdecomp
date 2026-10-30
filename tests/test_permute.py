@@ -203,7 +203,7 @@ def test_workers_yield_the_cpu_to_the_app():
     if app >= 19:
         pytest.skip("this test already runs at the lowest priority")
     assert workers.pool().submit(priority).result() == min(19, app + workers.NICE) and priority() == app
-    assert 1 <= workers.WORKERS <= workers.MAX_WORKERS
+    assert 1 <= workers.WORKERS <= workers.max_workers()
 
 
 def test_drafts_and_the_permuter_share_one_pool_of_workers(monkeypatch):
@@ -223,7 +223,7 @@ def test_drafts_and_the_permuter_share_one_pool_of_workers(monkeypatch):
     d._one = lambda *args: d.stop("game")
     d._loop("game", d.jobs.setdefault("game", drafts.State()))
     assert used == ["pool", "pool"]
-    assert workers.WORKERS <= workers.MAX_WORKERS == 4
+    assert workers.WORKERS == workers.default_workers()
 
 
 def test_compilers_pick_decomp_permuters_weights():
@@ -373,3 +373,43 @@ def test_traced_generator_keeps_successful_rewrite_lineage_without_changing_cand
         gen.close()
     assert ordinary == traced and len(traced) == 12
     assert all(v.lineage and all(name.startswith('perm_') for name in v.lineage) for v in traced)
+
+
+def test_the_worker_count_defaults_to_what_the_computer_can_spare_and_is_a_setting(monkeypatch):
+    """Cores less two by default; a setting of 0 or nothing is automatic; never more than a worker to a core. A new
+    count replaces the pool, and what the old one was given finishes there."""
+    monkeypatch.setattr(workers, "CORES", 16)
+    monkeypatch.setattr(workers, "_pool", None)
+    monkeypatch.setattr(workers, "WORKERS", workers.default_workers())
+    assert workers.default_workers() == 14 and workers.max_workers() == 16
+    assert [workers.clamp(v) for v in (None, 0, "junk", -3, 1, 6, 99)] == [14, 14, 14, 14, 1, 6, 16]
+    monkeypatch.setattr(workers, "CORES", 2)
+    assert workers.default_workers() == 1 and workers.clamp(None) == 1
+    monkeypatch.setattr(workers, "CORES", 16)
+    first = workers.pool()
+    assert first._max_workers == 14
+    assert workers.configure(3) == 3
+    second = workers.pool()
+    assert second is not first and second._max_workers == 3
+    assert workers.configure(3) == 3 and workers.pool() is second  # (the same count keeps the pool)
+    assert workers.configure(None) == 14 and workers.pool()._max_workers == 14
+    workers.pool().shutdown(wait=False)
+
+
+def test_the_permuter_queues_a_function_for_every_worker(monkeypatch):
+    net = FakeNet()
+    monkeypatch.setattr(workers, "WORKERS", 30)
+    seen = []
+    net.store.all = lambda *a, **k: seen.append(a[-1]) or []
+    from decompnet.app import permuter_inputs
+
+    monkeypatch.setattr(permuter_inputs, "refresh", lambda *a: None)
+    Permuter(net).candidates(net.store.one("SELECT * FROM projects WHERE id=1"))
+    assert seen[-1] == 60  # (twice the workers, where 20 would leave ten of them idle)
+
+
+def test_the_permuters_status_says_how_many_threads_it_has(monkeypatch):
+    monkeypatch.setattr(workers, "WORKERS", 7)
+    p = Permuter(FakeNet())
+    p.jobs["game"] = State()
+    assert p.status("game")["threads"] == 7 and p.status("other") is None

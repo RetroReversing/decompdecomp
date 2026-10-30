@@ -25,7 +25,7 @@ from starlette.responses import JSONResponse, Response
 from .. import agents as kinds
 from .. import hostenv
 from ..network import NetworkError
-from . import agents, collab, routes, saves, tools, updates, window
+from . import agents, collab, routes, saves, tools, updates, window, workers
 from .engine import RomNetwork
 from .routes import forks, life, pages, projects, repair_feedback, rooms, setup, state
 from .support import Jobs, Settings, session_options
@@ -68,6 +68,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
                            settings.data.get('reuse_attempts', 128), settings.data.get('iterative_enabled', False),
                            settings.data.get('iterative_seconds', 120), settings.data.get('iterative_attempts', 128))
     net.permuter.configure(settings.data)
+    workers.configure(settings.data.get("worker_threads"))
     net.auto_compiler = bool(settings.data.get("auto_compiler"))
     manager.budget = lambda: float(settings.data.get("budget_usd") or 0)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}

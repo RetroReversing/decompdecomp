@@ -15,7 +15,7 @@ from decompnet.hostenv import NO_WINDOW
 from ... import agents as kinds
 from ... import linuxvm, toolchains
 from ...network import NetworkError
-from .. import agents
+from .. import agents, workers
 from ..support import session_options, spread_sessions
 from . import App
 
@@ -231,6 +231,9 @@ def register(app: App) -> None:
                 settings.data[key] = max(1, min(maximum, int(data[key])))
         if any(key in data for key in ('permuter_max_insns', 'permuter_seconds', 'permuter_max_turns')):
             net.permuter.configure(settings.data)
+        if "worker_threads" in data:  # nothing or 0: as many as the computer can spare (workers.py)
+            settings.data["worker_threads"] = max(0, min(workers.max_workers(), int(data["worker_threads"] or 0)))
+            workers.configure(settings.data["worker_threads"])
         if "auto_update" in data:
             settings.data["auto_update"] = bool(data["auto_update"])
         if "check_updates" in data:

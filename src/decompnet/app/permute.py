@@ -198,7 +198,9 @@ class Permuter:
 
     def status(self, slug: str) -> dict | None:
         st = self.jobs.get(slug)
-        return None if st is None else {k: v for k, v in st.__dict__.items() if k != "stop" and not k.startswith("_")}
+        if st is None:
+            return None
+        return {k: v for k, v in st.__dict__.items() if k != "stop" and not k.startswith("_")} | {"threads": workers.WORKERS}
 
     def start(self, slug: str) -> State | None:
         """Run on the project's near misses until there are none (looking again every few minutes while the
@@ -215,7 +217,8 @@ class Permuter:
         if (st := self.jobs.get(slug)) is not None:
             st.stop.set()
 
-    def candidates(self, proj, limit: int = CANDIDATES) -> list:
+    def candidates(self, proj, limit: int | None = None) -> list:
+        limit = limit or max(CANDIDATES, 2 * workers.WORKERS)  # (a worker for each, and the next ones waiting)
         from . import permuter_inputs
         rows = self.net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open' "
                                   "AND best_source IS NOT NULL AND best_score>0 AND best_score<=n_insns*100*? "

@@ -873,6 +873,22 @@ def test_permuter_settings_apply_immediately_and_survive_reloading(app):
                                      'permuter_max_turns': 4}, headers={'X-Decomp': '1'})
 
 
+def test_the_worker_thread_setting_applies_immediately_and_survives_reloading(app):
+    from decompnet.app import workers
+    from decompnet.app.support import Settings
+
+    client, net, manager = app
+    response = client.post('/api/settings', json={'worker_threads': 3}, headers={'X-Decomp': '1'})
+    assert response.status_code == 200 and response.json()['worker_threads'] == min(3, workers.max_workers())
+    assert workers.WORKERS == min(3, workers.max_workers())
+    assert Settings(manager.home / 'settings.json').public()['worker_threads'] == workers.WORKERS
+    assert response.json()['worker_threads_default'] == workers.default_workers()
+    response = client.post('/api/settings', json={'worker_threads': 9999}, headers={'X-Decomp': '1'})
+    assert response.json()['worker_threads'] == workers.max_workers()
+    response = client.post('/api/settings', json={'worker_threads': 0}, headers={'X-Decomp': '1'})
+    assert response.json()['worker_threads'] == 0 and workers.WORKERS == workers.default_workers()
+
+
 def test_reset_agent_metrics_requires_app_auth_and_rejects_missing_helper(app):
     client, _, _ = app
     assert client.post('/api/agents/reset-metrics', json={'id': 'missing'}, headers={'X-Decomp': '1'}).status_code == 400

@@ -288,7 +288,7 @@ function renderAutopilot(ov) {
   $("apBar").className = reuseRunning ? "workbar" : "upbar";
   if (reuseRunning) $("apBar").firstElementChild.style.width = "";
   const perm = pm && (pm.tried || pm.state === "running")
-    ? ` The permuter ${pm.state === "running" ? `is rewriting near misses${pm.current ? ` (now ${pm.current})` : ""}` : "rewrote near misses"}: ${plural(pm.tried, "function")}, ${pm.matched} matched.` : "";
+    ? ` The permuter ${pm.state === "running" ? `is rewriting near misses${pm.threads ? ` on ${plural(pm.threads, "thread")}` : ""}${pm.current ? ` (now ${pm.current})` : ""}` : "rewrote near misses"}: ${plural(pm.tried, "function")}, ${pm.matched} matched.` : "";
   const twinsDone = (ap && ap.twins) || (tw && tw.matched) || 0;
   if (running && ap.phase === "twins") {
     $("apTitle").textContent = "Autopilot: trying verified C from this game and other projects";
