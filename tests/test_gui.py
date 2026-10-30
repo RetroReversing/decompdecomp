@@ -307,3 +307,10 @@ assert.match(boxes.deepSweepRecipes.innerHTML,/typed temporary/);
 assert.match(boxes.deepSweepRecipes.innerHTML,/5 attempted, 2 improved, 1 matched, 40 score reduction; 1.5s/);
 """
     subprocess.run([NODE, '-e', script], check=True, capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_deep_pass_is_project_scoped_and_keeps_table_scroll():
+    if NODE is None:
+        pytest.skip('needs node')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_deep_pass_ui.js'))], check=True,
+                   cwd=Path(__file__).resolve().parents[1], timeout=GUI_TIMEOUT_SECONDS)
