@@ -1222,3 +1222,11 @@ details.more[open] > summary::before { content: "− "; }
 .transfer-filter-wrap { position: relative; max-width: 100%; }
 .transfer-filter-wrap::after { content: ''; position: absolute; right: 12px; top: 11px; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg); pointer-events: none; }
 .transfer-filter:focus-visible { outline: 2px solid var(--hl); outline-offset: 2px; }
+
+.transfer-toggle { display: inline-flex; gap: 10px; align-items: center; text-align: left; font: inherit; color: inherit; }
+.transfer-chevron { width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); margin: -4px 2px 0; flex-shrink: 0; }
+.transfer-toggle[aria-expanded="false"] .transfer-chevron { transform: rotate(-45deg); margin-top: 0; }
+.transfer-toggle:focus-visible { outline: 2px solid var(--hl); outline-offset: 4px; }
+#crossGameBody[hidden], #crossGameWork[hidden] { display: none; }
+#crossGameWork { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+#crossGameLog { max-height: 140px; }

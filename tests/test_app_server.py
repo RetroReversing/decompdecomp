@@ -960,3 +960,50 @@ def test_deep_sweep_routes_validate_start_stop_and_status(app, monkeypatch):
     assert not client.post('/api/permuter/pass', json={'slug':'example','action':'stop'}, headers={'X-Decomp':'1'}).json()['enabled']
     assert client.post('/api/permuter/pass', json={'slug':'example','repeat':'yes'}, headers={'X-Decomp':'1'}).status_code == 400
     assert client.post('/api/permuter/pass', json={'slug':'example','action':'unknown'}, headers={'X-Decomp':'1'}).status_code == 400
+
+
+def test_cross_game_run_is_dedicated_and_rejects_duplicate_passes(app, monkeypatch):
+    client, net, _ = app
+    entered, release = threading.Event(), threading.Event()
+    monkeypatch.setattr(net, 'project_row', lambda slug: {'slug':slug})
+    monkeypatch.setattr(net, 'autopilot_status', lambda slug: None)
+    monkeypatch.setattr(net.twins, 'cross_game_results', lambda slug: {'counts':{'improved':2}})
+    def across(slug, job):
+        assert slug == 'cross-demo' and job.reuse_limit == 128
+        entered.set()
+        assert release.wait(5)
+        job.cross_tried = 3
+        return 1
+    monkeypatch.setattr(net.twins, 'across_games', across)
+    monkeypatch.setattr(net, 'start_autopilot', lambda *a: pytest.fail('must not launch full autopilot'))
+    try:
+        response = client.post('/api/cross-game/run', headers={'X-Decomp':'1'}, json={'slug':'cross-demo'})
+        assert response.status_code == 200
+        assert entered.wait(5)
+        assert client.post('/api/cross-game/run', headers={'X-Decomp':'1'}, json={'slug':'cross-demo'}).status_code == 400
+    finally:
+        release.set()
+    for _ in range(100):
+        job = client.get('/api/job', params={'id':response.json()['job']}).json()
+        if job['state'] != 'running':
+            break
+        time.sleep(.01)
+    assert job['state'] == 'done' and job['result'] == {'matched':1,'improved':0,'tried':3}
+    assert net.twins.jobs['cross-demo'].state == 'done'
+
+
+def test_cross_game_run_failure_releases_busy_state(app, monkeypatch):
+    client, net, _ = app
+    monkeypatch.setattr(net, 'project_row', lambda slug: {'slug':slug})
+    monkeypatch.setattr(net, 'autopilot_status', lambda slug: None)
+    monkeypatch.setattr(net.twins, 'cross_game_results', lambda slug: {'counts':{}})
+    def fail(*args):
+        raise ValueError('Test compiler unavailable')
+    monkeypatch.setattr(net.twins, 'across_games', fail)
+    response = client.post('/api/cross-game/run', headers={'X-Decomp':'1'}, json={'slug':'cross-failure'})
+    for _ in range(100):
+        job = client.get('/api/job', params={'id':response.json()['job']}).json()
+        if job['state'] != 'running':
+            break
+        time.sleep(.01)
+    assert job['state'] == 'error' and net.twins.jobs['cross-failure'].state == 'done'

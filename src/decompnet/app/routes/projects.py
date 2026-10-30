@@ -277,6 +277,35 @@ def register(app: App) -> None:
             net.start_autopilot(slug)
         return net.overview(slug)
 
+    def p_cross_run(slug, request, data):
+        from ..twins import Job
+        net.project_row(slug)
+        if slug in net.links:
+            raise ValueError('Run cross-game checks on the room host.')
+        with net.twins._lock:
+            if net.twins._full_running(slug) or (net.autopilot_status(slug) or {}).get('state') == 'running':
+                raise ValueError('A free matching pass is already running. Wait for it to finish.')
+            check = Job()
+            check.ordered.set()
+            net.twins.jobs[slug] = check
+        def work(log):
+            from ..free_candidates import budget
+            budget(check, seconds=120, attempts=128)
+            try:
+                log('Checking identical functions and better partial candidates in other local games…')
+                before = net.twins.cross_game_results(slug)['counts'].get('improved', 0)
+                matched = net.twins.across_games(slug, check)
+                improved = net.twins.cross_game_results(slug)['counts'].get('improved', 0) - before
+                log(f'{matched} verified matches · {improved} partial improvements · {check.cross_tried} checks.')
+                return {'matched': matched, 'improved': improved, 'tried': check.cross_tried}
+            finally:
+                check.state = 'stopped' if check.stop.is_set() else 'done'
+        try:
+            return {'job': jobs.start('cross-game', work)}
+        except Exception:
+            check.state = 'done'
+            raise
+
     def p_sdk(slug, request, data):
         path = hostenv.local_path(str(data.get("path") or ""))
         corpus = str(data.get("corpus") or path.stem).strip()[:80]
@@ -353,6 +382,7 @@ def register(app: App) -> None:
                             "suggestions": net.twins.suggestions(s, r.query_params.get("function", ""))
                             if r.query_params.get("function") else []}, ["GET"]),
         "/api/sdk-signatures": (p_sdk, ["POST"]),
+        "/api/cross-game/run": (p_cross_run, ["POST"]),
         "/api/cross-game/name": (p_cross_name, ["POST"]),
         "/api/priority": (p_priority, ["POST"]), "/api/note": (p_note, ["POST"]), "/api/scope": (p_scope, ["POST"]),
         "/api/unanalysed": (p_unanalysed, ["POST"]),

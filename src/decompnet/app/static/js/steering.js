@@ -220,6 +220,34 @@ async function togglePrio(name, on) {
 /* Autopilot: free matches before any agent spends a token: identical code (twins) of what's matched, then every
    function's machine draft through the judge; the permuter works on near misses meanwhile. */
 function renderAutopilot(ov) {
+  const collapsed = renderAutopilot.collapsed ||= new Set();
+  const toggle = $("crossGameToggle"), body = $("crossGameBody");
+  body.hidden = collapsed.has(ov.slug);
+  toggle.setAttribute('aria-expanded', String(!body.hidden));
+  toggle.onclick = () => {
+    body.hidden = !body.hidden;
+    if (body.hidden) collapsed.add(ov.slug); else collapsed.delete(ov.slug);
+    toggle.setAttribute('aria-expanded', String(!body.hidden));
+  };
+  $("crossGameWork").hidden = $("crossGameLog")._slug !== ov.slug;
+  const run = $("crossGameRun");
+  const busy = ov.twins?.state === 'running' || ov.autopilot?.state === 'running';
+  run.disabled = !!run._working || busy;
+  run.textContent = busy || run._working ? 'Checking…' : 'Run now';
+  run.onclick = async () => {
+    if (run._working) return;
+    const slug = ov.slug, log = $("crossGameLog");
+    run._working = true; log._slug = slug; $("crossGameWork").hidden = false;
+    showJobError(log, '');
+    const finish = beginWork(log, 'Checking other games', [run], 'Cross-game check finished.');
+    try {
+      const {job} = await api('/api/cross-game/run', {method:'POST', body:{slug}});
+      const result = await followJob(job, log);
+      if (S.slug === slug) { await poll(false); refreshMap(); }
+      toast(`${result.matched} matches · ${result.improved} partial improvements from other games.`, 'match');
+    } catch (error) { showJobError(log, error.message); }
+    finally { finish(); run._working = false; run.textContent = 'Run now'; }
+  };
   const cross = ov.cross_game || { counts: {}, recent: [] };
   const count = cross.counts.match || 0, tried = Object.values(cross.counts).reduce((a, b) => a + b, 0);
   $("crossGamePanel").hidden = count === 0 && !cross.counts.improved;
