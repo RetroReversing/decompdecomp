@@ -218,6 +218,29 @@ def test_zcode_creates_one_session_with_only_decomps_tools(tmp_path, monkeypatch
                           "options": {"reasoningLevel": "high"}}
 
 
+def test_zcode_hands_the_session_the_built_in_provider_registry(tmp_path, monkeypatch):
+    """The desktop app ships the CLI's provider registry in its versioned runtime folder, not beside the CLI script a
+    launcher runs; without it the helper starts five times and gives up. The CLI takes the built-in and personal
+    provider configs together, or looks for them itself."""
+    m = _manager(tmp_path, monkeypatch, "zcode")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for var in ("ZCODE_BUILTIN_PROVIDER_CONFIG_FILE", "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE"):
+        monkeypatch.delenv(var, raising=False)  # the app itself may run inside the ZCode desktop: no borrowed paths
+    (tmp_path / "zcode").mkdir()
+    s = agents.Session("zcode-5", "zcode", "z", "demo", "zcode-5", {})
+    assert "ZCODE_BUILTIN_PROVIDER_CONFIG_FILE" not in m._command(s, "tok", tmp_path / "zcode")[1]  # nothing installed yet: the CLI looks for itself
+    runtime = tmp_path / ".zcode" / "v2" / "runtime" / "provider" / "darwin-aarch64" / "3.16.3" / "endpoint-abc"
+    runtime.mkdir(parents=True)
+    (runtime / "zcode-builtin.json").write_text("{}")
+    personal = tmp_path / ".zcode" / "v2" / "provider_config.json"
+    personal.write_text('{"schemaVersion": 1, "config": {}}')
+    env = m._command(s, "tok", tmp_path / "zcode")[1]
+    assert env["ZCODE_BUILTIN_PROVIDER_CONFIG_FILE"] == str(runtime / "zcode-builtin.json")
+    assert env["ZCODE_PERSONAL_PROVIDER_CONFIG_FILE"] == str(personal)
+    personal.unlink()  # without its other half the built-in path isn't given either
+    assert "ZCODE_BUILTIN_PROVIDER_CONFIG_FILE" not in m._command(s, "tok", tmp_path / "zcode")[1]
+
+
 def test_zcode_bare_model_stays_zcodes_own_default(tmp_path, monkeypatch):
     """A bare model name can't be resolved to a provider from outside: the session runs on zcode's own selection, and
     a "#effort" still reaches it as the thought level."""
@@ -230,6 +253,35 @@ def test_zcode_bare_model_stays_zcodes_own_default(tmp_path, monkeypatch):
     _, _, script = m._command(agents.Session("zcode-3", "zcode", "z", "demo", "zcode-3", {}), "tok", tmp_path / "zcode")
     p = json.loads(script.splitlines()[0])["params"]
     assert "model" not in p and "thoughtLevel" not in p
+
+
+def test_zcode_models_come_from_the_provider_registry(tmp_path, monkeypatch):
+    """The launcher's dropdown reads the built-in provider registry the way zcode's own standalone login does: the
+    coding-plan providers in it and their models, as picker ids, of the service this sign-in is on."""
+    from decompnet.agents import zcode as zcode_agent
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("ZCODE_BUILTIN_PROVIDER_CONFIG_FILE", raising=False)  # the app may run inside ZCode desktop
+    runtime = tmp_path / ".zcode" / "v2" / "runtime" / "provider" / "darwin-aarch64" / "3.16.3" / "endpoint-abc"
+    runtime.mkdir(parents=True)
+    (runtime / "zcode-builtin.json").write_text(json.dumps({"schemaVersion": 1, "revision": 4, "config": {
+        "providerConfigRules": {"providerRules": [
+            {"providerId": "account:zai-start-plan", "config": {"access": {"type": "zhipu-account", "accountType":
+             "zai", "mode": "start-plan"}, "builtinModelIds": ["GLM-5.3-Flash", "GLM-5.2"]}},
+            {"providerId": "account:bigmodel-start-plan", "config": {"access": {"type": "zhipu-account", "accountType":
+             "bigmodel", "mode": "start-plan"}, "builtinModelIds": ["GLM-5.3"]}},
+            {"providerId": "api-zai", "config": {"access": {"type": "api-key"}, "builtinModelIds": ["GLM-5.3"]}}]}}}))
+    monkeypatch.setattr(zcode_agent, "_models", {})
+    (tmp_path / ".zcode" / "v2").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".zcode" / "v2" / "credentials.json").write_text('{"oauth:zai:access_token": "x"}')
+    rows = zcode_agent.ZCODE.models("zcode")
+    assert rows == [{"id": "account:zai-start-plan/GLM-5.3-Flash", "name": "GLM-5.3-Flash", "note": "zai-start-plan"},
+                    {"id": "account:zai-start-plan/GLM-5.2", "name": "GLM-5.2", "note": "zai-start-plan"}]
+    (runtime / "zcode-builtin.json").write_text("{}")  # asked again soon, it says what it said before
+    assert zcode_agent.ZCODE.models("zcode") == rows
+    assert zcode_agent.ZCODE.models("zcode", run=False) == rows
+    monkeypatch.setattr(zcode_agent, "_models", {})
+    assert zcode_agent.ZCODE.models("zcode", run=False) == []
 
 
 def test_zcode_feed_reads_the_protocol():
