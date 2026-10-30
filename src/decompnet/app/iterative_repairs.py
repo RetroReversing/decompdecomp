@@ -60,10 +60,10 @@ def output_key(report):
     return hashlib.sha256(repr((report['candidate_target'], report.get('candidate_relocs'))).encode()).hexdigest()
 
 
-def targeted_variants(source, report, fn, arch, flags):
+def targeted_variants(source, report, fn, arch, flags, header=''):
     from . import draft_repairs, repair_ranking, stack_padding_repairs
     labels = {}
-    proposals = draft_repairs.variants(source, fn['name'], arch, fn['asm'] or '', flags, labels)
+    proposals = draft_repairs.variants(source, fn['name'], arch, fn['asm'] or '', flags, labels, header=header)
     for text in stack_padding_repairs.grow(source, fn['name'], arch, report.get('rows') or []):
         proposals.append(text)
         labels[text] = 'stack_padding'
@@ -139,12 +139,12 @@ def run(twins, slug, job):
                            (proj['id'], fn['id'], 'iterative-repair', outcome, reason, time.time()))
             return report
 
-        def variants(source, report, fn=fn, settings=settings):
+        def variants(source, report, fn=fn, settings=settings, header=header):
             guided = address_repairs.variants(source, report, fn, bool(proj['big_endian']), known)
             if report.get('candidate_target'):
                 compiled = dict(target=bytes.fromhex(report['candidate_target']), relocs=report.get('candidate_relocs', '[]'))
                 guided += similar_matches.literal_variants(source, compiled, fn, bool(proj['big_endian']))
-            targeted = targeted_variants(source, report, fn, proj['arch'], settings.get('flags', []))
+            targeted = targeted_variants(source, report, fn, proj['arch'], settings.get('flags', []), header)
             # Interleave pools so address proposals cannot starve targeted families (or vice versa).
             pools = [guided[:4], targeted[:8], similar_matches.repair_variants(source, report)[:4]]
             return list(dict.fromkeys(item for group in zip_longest(*pools)

@@ -327,3 +327,39 @@ def test_unknown_inline_category_preserves_patch_and_original_annotation(setup,m
     row=net.repair_feedback.listing('demo')['examples'][0]
     assert row['category']=='other'
     assert row['explanation']=='[Original category: load_store_order] Preserved load order.'
+
+
+def test_unchanged_c_and_missing_baselines_are_separate_from_source_repairs(setup):
+    net,winner,_,_,fid=setup
+    net._record(fn(net,fid),winner,10,'int target(){return 1;}',1)
+    net._record(fn(net,fid),winner,0,'int target(){return 1;}',1,matched=True)
+    assert net.repair_feedback.listing('demo')['examples'][0]['evidence_kind']=='same source / settings'
+    assert not net.repair_feedback.listing('demo',comparable=True)['examples']
+
+
+def test_installed_deterministic_successes_are_retained_as_implemented(setup):
+    from decompnet.repair_feedback import trial
+    net,winner,_,_,fid=setup
+    net._record(fn(net,fid),winner,10,'int target(){return 1;}',1)
+    with trial({'kind':'deterministic draft repair','family':'constant_local'}):
+        net._record(fn(net,fid),winner,0,'int target(){return 2;}',1,matched=True)
+    case=net.repair_feedback.listing('demo')['examples'][0]
+    assert case['status']=='implemented' and case['automation_known']
+    assert not net.repair_feedback.listing('demo',status='new')['examples']
+
+
+def test_legacy_automatic_captures_are_triaged_without_overwriting_review_notes(setup):
+    from decompnet.repair_feedback import RepairFeedback, trial
+    net,winner,_,_,fid=setup
+    net._record(fn(net,fid),winner,10,'int target(){return 1;}',1)
+    with trial({'kind':'deterministic draft repair','family':'constant_local'}):
+        net._record(fn(net,fid),winner,0,'int target(){return 2;}',1,matched=True)
+    case=net.repair_feedback.listing('demo')['examples'][0]['id']
+    with net.store.tx() as db:
+        db.execute("UPDATE repair_examples SET status='new',review_note='' WHERE id=?",(case,))
+    RepairFeedback(net)
+    assert net.repair_feedback.detail('demo',case)['status']=='implemented'
+    with net.store.tx() as db:
+        db.execute("UPDATE repair_examples SET status='new',review_note='Investigate further' WHERE id=?",(case,))
+    RepairFeedback(net)
+    assert net.repair_feedback.detail('demo',case)['status']=='new'

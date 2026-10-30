@@ -66,11 +66,11 @@ def stale(net, agent, fn, submitted, source, actual):
 def next_action(net, agent, fn, source, revision):
     for family in ('signedness','declaration_order'):
         targets = agent_targets.valid_targets(source,family)
-        if any(not target_tried(net,fn,revision,family,t['old']) for t in targets):
+        if any(available_target(net,fn,source,revision,family,t['old']) for t in targets):
             return f'Next valid local experiment: compile_family(function="{fn["name"]}", revision="{revision}", family="{family}", target="next").'
     for family,proposal in pattern_repairs.variants(source,fn['name']):
         used = net.store.one('SELECT 1 FROM agent_variant_runs WHERE function_id=? AND revision=? AND family=?',fn['id'],revision,family)
-        if not used and not target_tried(net,fn,revision,'local:'+family,proposal):
+        if not used and not target_tried(net,fn,revision,'local:'+family,proposal) and not compiled_before(net,fn,proposal):
             return f'Next applicable repair: compile_family(function="{fn["name"]}", revision="{revision}", family="{family}").'
     return 'Next: inspect the first differing region with last_diff; fix structure, calls or types rather than repeating ineffective edits.'
 

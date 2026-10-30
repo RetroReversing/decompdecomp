@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .. import consoles, m2cfix, scoring, seeds, toolchains
+from ..forks.project import ForkError
 from ..hostenv import NO_WINDOW
 from ..network import NetworkError
 from ..permuter import mutate
@@ -283,8 +284,14 @@ class Permuter:
                 break
             with self.net.store.tx() as db:
                 db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (key, str(fn['id'])))
+            try:
+                context = self.net._context(proj['id'], fn['unit'])
+                header = self.net.forks.permuter_header(fork, fn['name']) if fork else (context['header'] if context else '')
+            except (ForkError, NetworkError, OSError) as error:
+                log.info('permuter: %s: header unavailable: %s', fn['name'], error)
+                continue
             labels = {}
-            candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels)
+            candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels,header=header)
             from . import repair_ranking
             ranked = repair_ranking.order(dict.fromkeys(labels.get(text, 'draft_repair') for text in candidates),repair_ranking.evidence(self.net,fn['id'],agent.id))
             from . import agent_tokens
@@ -319,7 +326,10 @@ class Permuter:
                         break
                     digest = hashlib.sha256((context + candidate).encode()).hexdigest()
                     trial = f"draft-repair-v15:{fn['id']}:{digest}"
-                    if self.net.store.one("SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?", fn['id'], trial):
+                    cached = self.net.store.one("SELECT outcome FROM reuse_trials WHERE function_id=? AND signature=?", fn['id'], trial)
+                    # A reopened or restored draft may need an old winner again. Cache hits can
+                    # avoid misses, but never substitute for rejudging a possible improvement.
+                    if cached and (not cached['outcome'].isdecimal() or int(cached['outcome']) >= best):
                         continue
                     attempts += 1
                     st.add(variants=1, repairs=1)
@@ -359,6 +369,10 @@ class Permuter:
             log.info("permuter: %s: %s", fn["name"], e, exc_info=True)
 
     def _hold(self, agent, fn, *, count_turn=True, seconds=None) -> bool:
+        from .. import candidate_quality
+        current = self.net.store.one('SELECT * FROM functions WHERE id=?', fn['id'])
+        if current is not None and candidate_quality.pending(self.net, current):
+            return False
         now = time.time()
         with self.net.store.tx() as db:
             self.net._expire_claims(db)

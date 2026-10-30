@@ -43,16 +43,40 @@ def released(net, fn, *, exhausted=False):
     with net.store.tx() as db:
         row = db.execute('SELECT value FROM settings WHERE key=?',(key,)).fetchone()
         old = json.loads(row['value']) if row else {}
-        count = RELEASES if exhausted else (old.get('count',0)+1 if old.get('stamp') == stamp else 1)
-        db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',(key,json.dumps({'stamp':stamp,'count':count})))
+        history = old.get('history', {})
+        if old.get('stamp'):
+            history[old['stamp']] = old.get('count', 0)
+        count = RELEASES if exhausted else history.get(stamp, 0)+1
+        history[stamp] = count
+        history = dict(list(history.items())[-32:])
+        db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',(key,json.dumps({'stamp':stamp,'count':count,'history':history})))
 
 
 def blocked(net, proj):
     rows = net.store.all('SELECT f.*,s.value AS stall FROM functions f JOIN settings s ON s.key=? || f.id WHERE f.project_id=? AND f.status=\'open\'',PREFIX,proj['id'])
-    result = []
+    from . import candidate_quality
+    result = candidate_quality.blocked(net, proj)
     common = common_state(net,proj) if rows else None
     for fn in rows:
         old = json.loads(fn['stall'])
-        if old.get('count',0) >= RELEASES and old.get('stamp') == signature(net,proj,fn,common):
+        stamp = signature(net,proj,fn,common)
+        count = old.get('count',0) if old.get('stamp') == stamp else old.get('history',{}).get(stamp,0)
+        if count >= RELEASES:
             result.append(fn['id'])
-    return result
+    return list(dict.fromkeys(result))
+
+
+def resume(net, fn):
+    """User review grants a fresh automatic turn to this input, retaining other exhausted shapes."""
+    proj = net.store.one('SELECT * FROM projects WHERE id=?',fn['project_id'])
+    stamp = signature(net,proj,fn)
+    key = PREFIX+str(fn['id'])
+    with net.store.tx() as db:
+        row = db.execute('SELECT value FROM settings WHERE key=?',(key,)).fetchone()
+        old = json.loads(row['value']) if row else {}
+        history = old.get('history',{})
+        if old.get('stamp'):
+            history[old['stamp']] = old.get('count',0)
+        history[stamp] = 0
+        db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',
+                   (key,json.dumps({'stamp':stamp,'count':0,'history':dict(list(history.items())[-32:])})))

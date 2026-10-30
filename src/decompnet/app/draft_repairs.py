@@ -13,6 +13,7 @@ from . import (
     branch_locals,
     callee_prototype_repairs,
     captured_repairs,
+    evidence_repairs,
     expression_repairs,
     integer_lifetime_repairs,
     lifetime_repairs,
@@ -36,7 +37,7 @@ _IDENT = r'[A-Za-z_]\w*'
 _MEMBER = rf'{_IDENT}(?:\s*(?:->|\.)\s*{_IDENT})*'
 
 
-def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=None, *, limit=LIMIT) -> list[str]:
+def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=None, *, limit=LIMIT, header='') -> list[str]:
     span = find(source, name)
     if span is None:
         return []
@@ -56,6 +57,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
         proposals.append(text)
         labels[text] = family
     for family, text in register_repairs.variants(source, name, arch):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in evidence_repairs.variants(source, name, header):
         proposals.append(text)
         labels[text] = family
     for family, text in register_reuse_repairs.variants(source, name):

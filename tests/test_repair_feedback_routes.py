@@ -90,3 +90,33 @@ def test_investigation_route_requires_write_guard_and_scoped_example(repair_app,
             break
         time.sleep(.01)
     assert launched == [case]
+
+
+def test_quality_review_is_guarded_scoped_and_rejects_a_stale_source(repair_app):
+    import hashlib
+
+    from decompnet import candidate_quality
+    client, net, _ = repair_app
+    agent,_=net.local_agent('quality-test')
+    with net.store.tx() as db:
+        pid=db.execute('INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)',('quality','Quality','/unused','{}')).lastrowid
+        fid=db.execute('INSERT INTO functions(project_id,name,unit,status,n_insns,size) VALUES(?,?,?,?,?,?)',
+                       (pid,'f','','open',1,4)).lastrowid
+    net.claim_row(agent,'quality','f');fn=net._function('f','quality')
+    source='int f(){int x;return x;}'
+    net._record(fn,agent,10,source,0)
+    net._record(fn,agent,20,'int f(){return 1;}',0)
+    net.release(agent,'f','Historical candidate uses an uninitialized value.','quality')
+    url='/api/repair-examples/quality'
+    assert client.get(url+'?slug=quality',headers={'User-Agent':'outside'}).status_code==401
+    assert client.get(url).status_code==400
+    reports=client.get(url+'?slug=quality').json()['reports']
+    assert len(reports)==1 and reports[0]['function']=='f'
+    assert client.get(url+'?slug=quality&function=f').json()['evidence'].find('return 1')>=0
+    data={'slug':'quality','function':'f','source_hash':hashlib.sha256(source.encode()).hexdigest()}
+    assert client.post(url,json=data).status_code==403
+    assert client.post(url,json=data|{'source_hash':'stale'},headers={'X-Decomp':'1'}).status_code==400
+    assert client.post(url,json=data,headers={'X-Decomp':'1'}).status_code==200
+    assert not candidate_quality.pending(net,net._function('f','quality'))
+    assert client.post(url,json=data,headers={'X-Decomp':'1'}).status_code==400
+    assert net.store.one('SELECT best_score FROM functions WHERE id=?',fid)['best_score']==10

@@ -16,7 +16,7 @@ class Element {
   remove() { this.isConnected = false; }
 }
 const body = new Element('body'), button = new Element('button');
-let state = 'new';
+let state = 'new', qualityPending = true;
 const row = () => ({id: 42, project: '<b>demo</b>', function: 'target', category: 'types', status: state});
 const context = { S: {slug: 'demo'}, document: {body, createElement: (tag) => new Element(tag)}, $: () => button,
   beginWork: () => () => {}, toast: (message, kind) => { if (kind === 'err') throw Error(message); notices.push(message); }, esc: (s) => s,
@@ -26,6 +26,11 @@ const context = { S: {slug: 'demo'}, document: {body, createElement: (tag) => ne
   fetch: async (url) => { requests.push({url}); return {ok: true, blob: async () => ({})}; },
   api: async (url, opts) => {
     requests.push({url, opts});
+    if (url.includes('/quality')) {
+      if (opts?.method === 'POST') { qualityPending = false; return {resumed: 'suspect'}; }
+      if (url.includes('function=')) return {evidence: 'Compiled alternative, quality unverified'};
+      return {reports: qualityPending ? [{function:'suspect', slug:'demo', source_hash:'hash', warning:'Reported uninitialized value'}] : []};
+    }
     if (url.includes('/investigate')) return opts?.method === 'POST' ? {job: 'j1'} :
       {prompt: 'Investigate these examples safely.', agents: [{id: 'codex', name: 'Codex CLI', installed: true}]};
     if (opts?.method === 'POST') { state = opts.body.status; return {message: 'Saved'}; }
@@ -40,10 +45,19 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
 (async () => {
   await button.onclick();
   const dialog = body.children[0], list = dialog.querySelector('[data-list]');
+  const quality = dialog.querySelector('[data-quality]');
+  assert.equal(quality.children.length, 1);
+  const reportBody = quality.children[0].children[1];
+  await reportBody.children[2].onclick();
+  assert(reportBody.children[4].textContent.includes('quality unverified'));
+  await reportBody.children[3].onclick();
+  const reviewed = requests.find(r => r.opts?.body.source_hash === 'hash');
+  assert.equal(reviewed.opts.body.function, 'suspect'); assert.equal(reviewed.opts.body.slug, 'demo');
+  assert.equal(quality.children.length, 0);
   assert(requests[0].url.includes('comparable=1'));
   assert(requests[0].url.includes('status=new'));
   const statusFilter = dialog.querySelector('[data-status]'); statusFilter.value = ''; await statusFilter.onchange();
-  assert(requests.at(-1).url.includes('status='));
+  assert(requests.filter(r => !r.url.includes('/quality')).at(-1).url.includes('status='));
   const details = list.children[0]; details.open = true; await details.listeners.toggle();
   const evidence = details.children[1], evidencePanel = evidence.children[5];
   const pre = evidencePanel.children.find((child) => child.tag === 'pre');
@@ -63,7 +77,7 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   const posted = requests.find((item) => item.opts?.body.status === 'reviewed');
   assert.equal(posted.opts.body.note, 'Add an AST rule'); assert.equal(posted.opts.body.status, 'reviewed');
   const all = dialog.querySelector('[data-all]'); all.checked = true; await all.onchange();
-  assert(requests.at(-1).url.includes('all=1'));
+  assert(requests.filter(r => !r.url.includes('/quality')).at(-1).url.includes('all=1'));
   const summary = dialog.querySelector('[data-export]'); await summary.onclick({currentTarget: summary});
   assert(requests.at(-1).url.includes('include_source=0')); assert.equal(downloads.at(-1), 'repair-examples-summary.json');
   const full = dialog.querySelector('[data-export-full]'); await full.onclick({currentTarget: full});

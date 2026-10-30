@@ -33,6 +33,7 @@ def capture(net,fn,agent,notes,progress):
     saved=records(net,fn)
     for previous in saved:
         if previous['source_hash']==report['source_hash']:
+            report['review']=previous.get('review','pending')
             report['alternatives']=list(dict.fromkeys(report['alternatives']+previous['alternatives']))[:3]
     saved=[r for r in saved if r['source_hash']!=report['source_hash']]
     saved.append(report)
@@ -47,6 +48,7 @@ def brief(net,fn):
     saved=[r for r in records(net,fn) if r['source_hash']==current]
     if saved:
         return ['### Candidate quality (agent report, not proven)',saved[-1]['warning'][:300],
+                ('Automatic workers pause this source until user review; explicit claims remain available. ' if saved[-1].get('review','pending') == 'pending' else 'User reviewed and resumed this candidate; the historical warning is retained. ')+
                 'Compiled alternatives and evidence: get_function(section="quality"). Rejudge before using; '
                 'a lower score alone does not establish valid C.']
     # Older notes remain discoverable; do not falsely anchor them to today's source.
@@ -82,3 +84,41 @@ def view(net,fn):
                 out += [f'Historical compiled alternative {row["id"]}, score {row["score"]}; quality unverified:',
                         '```c\n'+row['source'][:3000]+'\n```']
     return '\n\n'.join(out)
+
+
+def pending(net, fn):
+    """Pause automatic edits of the reported source, without declaring the agent correct."""
+    if fn['status'] != 'open':
+        return []
+    digest = hashlib.sha256((fn['best_source'] or '').encode()).hexdigest()
+    return [r for r in records(net, fn) if r['source_hash'] == digest and r.get('review', 'pending') == 'pending']
+
+
+def blocked(net, proj):
+    return [fn['id'] for fn in net.store.all(
+        "SELECT f.* FROM functions f JOIN settings s ON s.key=? || f.id WHERE f.project_id=? AND f.status='open'",
+        PREFIX, proj['id']) if pending(net, fn)]
+
+
+def listing(net, slug=''):
+    rows = net.store.all("SELECT f.*,p.slug FROM functions f JOIN projects p ON p.id=f.project_id "
+                         "JOIN settings s ON s.key=? || f.id WHERE (?='' OR p.slug=?) AND f.status='open'",
+                         PREFIX, slug, slug)
+    return [{'function': fn['name'], 'slug': fn['slug'], **report}
+            for fn in rows for report in pending(net, fn)]
+
+
+def review(net, slug, function, source_hash):
+    from .network import NetworkError
+    fn = net._function(function, slug)
+    if not any(r['source_hash'] == source_hash for r in pending(net, fn)):
+        raise NetworkError('This candidate changed or was already reviewed. Refresh the quality reports.')
+    saved = records(net, fn)
+    for report in saved:
+        if report['source_hash'] == source_hash:
+            report['review'] = 'resume'
+    with net.store.tx() as db:
+        db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)', (PREFIX+str(fn['id']), json.dumps(saved)))
+    from . import claim_stalls
+    claim_stalls.resume(net,fn)
+    return {'resumed': fn['name']}
