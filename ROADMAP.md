@@ -904,3 +904,9 @@ projects. Each function's completed bounded turn is persisted with its source/bu
 turns resume after restart; changed inputs become eligible again. Busy functions and candidates without scored C
 wait without being marked complete. The pass uses the same local/random searches, claims and judges as a single
 function, with a visible progress bar and stop button. No paid helper is launched.
+
+Deep searches record trial counts and verified score reductions by rewrite family, with the complete random
+rewrite lineage of each recorded improvement. The settings view shows current scoped queue counts and the
+latest saved evidence; single-function output reports its phase and latest candidate. Tracking starts with
+new trials; a final random rewrite can depend on earlier changes in its lineage. Results are evidence for
+manual review and do not automatically reorder the search.

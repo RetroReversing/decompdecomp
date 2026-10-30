@@ -251,3 +251,19 @@ def test_single_search_publishes_improvements_before_completion(monkeypatch):
     assert 1 in observed
     row = obj.status('game')['improvements'][0]
     assert (row['starting_score'], row['new_score']) == (40, 20)
+
+
+def test_queue_counts_distinguish_current_completions_stale_sources_and_unscored(sweep):
+    obj, net, _, _ = sweep
+    obj.save('game', {'enabled': False, 'minutes': 1, 'max_variants': 10})
+    initial = obj.status('game')
+    assert (initial['queue_done'], initial['queue_left'], initial['awaiting_source']) == (0, 2, 0)
+    obj.run('game', 1, 10, Log())
+    complete = obj.status('game')
+    assert (complete['queue_done'], complete['queue_left']) == (2, 0)
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET best_source='changed' WHERE name='f0'")
+        db.execute("UPDATE functions SET best_source=NULL,best_score=NULL WHERE name='f1'")
+    obj.queue_cache.clear()  # Cache expires shortly after an external edit.
+    changed = obj.status('game')
+    assert (changed['queue_done'], changed['queue_left'], changed['awaiting_source']) == (0, 1, 1)

@@ -1151,3 +1151,11 @@ details.more[open] > summary::before { content: "− "; }
   .deep-scores > div { padding: 12px 8px; }
   .deep-scores dd { font-size: 22px; }
 }
+
+.deep-sweep-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin-top: 16px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.deep-sweep-counts div { padding: 12px 14px; background: var(--panel); display: grid; gap: 4px; }
+.deep-sweep-counts b { font-size: 22px; line-height: 1.1; }
+.deep-sweep-counts span { color: var(--muted); font-size: 12px; }
+.deep-sweep-bar { width: 100%; height: 7px; accent-color: var(--match); margin-top: 10px; }
+.deep-recipe-results { margin: 14px 0; }
+.deep-recipe-results summary { cursor: pointer; font-weight: 600; }

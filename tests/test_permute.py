@@ -360,3 +360,16 @@ def test_configured_size_and_turn_limits_admit_large_exhausted_near_misses():
     assert p.candidates(proj) == []
     p.configure({})
     assert (p.max_insns, p.seconds, p.max_turns) == (400, 60, 4)
+
+
+@needs_tool
+def test_traced_generator_keeps_successful_rewrite_lineage_without_changing_candidates():
+    job = {'header': HEADER, 'source': SOURCE, 'function': 'f', 'family': 'gcc', 'seed': 3, 'count': 12}
+    gen = permute.Generator()
+    try:
+        ordinary = gen.batch(job)
+        traced = gen.batch(job | {'trace': True})
+    finally:
+        gen.close()
+    assert ordinary == traced and len(traced) == 12
+    assert all(v.lineage and all(name.startswith('perm_') for name in v.lineage) for v in traced)

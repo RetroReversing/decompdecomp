@@ -9,6 +9,7 @@ from ..network import NetworkError
 from . import agent_tokens, deep_permuter
 
 POLL_SECONDS = 15
+QUEUE_CACHE_SECONDS = 10
 SCHEMA = '''CREATE TABLE IF NOT EXISTS deep_permutation_passes(
  function_id INTEGER PRIMARY KEY, scope TEXT NOT NULL, state TEXT NOT NULL,
  minutes INTEGER NOT NULL, max_variants INTEGER NOT NULL, completed_at REAL,
@@ -33,13 +34,53 @@ class Sweeps:
     def __init__(self, net, jobs):
         self.net, self.jobs = net, jobs
         self.active = {}
+        self.queue_cache = {}
         self.lock = threading.RLock()
         with net.store.tx() as db:
             db.execute(SCHEMA)
+            db.execute('''CREATE TABLE IF NOT EXISTS deep_permutation_recipes(
+                function_id INTEGER NOT NULL REFERENCES functions(id) ON DELETE CASCADE, family TEXT NOT NULL,
+                tested INTEGER NOT NULL, skipped INTEGER NOT NULL, rejected INTEGER NOT NULL,
+                improvements INTEGER NOT NULL, matches INTEGER NOT NULL, score_gain INTEGER NOT NULL,
+                PRIMARY KEY(function_id,family))''')
+            db.execute('''CREATE TABLE IF NOT EXISTS deep_permutation_recipe_wins(
+                id INTEGER PRIMARY KEY, function_id INTEGER NOT NULL REFERENCES functions(id) ON DELETE CASCADE,
+                family TEXT NOT NULL, previous_score INTEGER NOT NULL, new_score INTEGER NOT NULL,
+                provenance TEXT NOT NULL, created_at REAL NOT NULL)''')
             db.execute('''CREATE TABLE IF NOT EXISTS deep_permutation_improvements(
                 function_id INTEGER PRIMARY KEY, starting_score INTEGER NOT NULL,
                 starting_percent REAL, new_score INTEGER NOT NULL,
                 new_percent REAL, updated_at REAL NOT NULL)''')
+
+    def record_recipes(self, function_id, totals, wins):
+        """Save counts and individual verified improvements, including searches stopped part way through."""
+        with self.net.store.tx() as db:
+            for family, values in totals.items():
+                db.execute("""INSERT INTO deep_permutation_recipes
+                    (function_id,family,tested,skipped,rejected,improvements,matches,score_gain)
+                    VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(function_id,family) DO UPDATE SET
+                    tested=tested+excluded.tested, skipped=skipped+excluded.skipped,
+                    rejected=rejected+excluded.rejected, improvements=improvements+excluded.improvements,
+                    matches=matches+excluded.matches, score_gain=score_gain+excluded.score_gain""",
+                    (function_id, family, *values))
+            for win in wins:
+                db.execute("""INSERT INTO deep_permutation_recipe_wins
+                    (function_id,family,previous_score,new_score,provenance,created_at)
+                    VALUES(?,?,?,?,?,?)""", (function_id, *win))
+
+    def recipes(self, project_id):
+        rows = self.net.store.all("""SELECT r.family, SUM(r.tested) tested, SUM(r.skipped) skipped,
+            SUM(r.rejected) rejected, SUM(r.improvements) improvements, SUM(r.matches) matches,
+            SUM(r.score_gain) score_gain, COUNT(DISTINCT r.function_id) functions
+            FROM deep_permutation_recipes r JOIN functions f ON f.id=r.function_id
+            WHERE f.project_id=? GROUP BY r.family ORDER BY improvements DESC, tested DESC, r.family""", project_id)
+        return [dict(row) for row in rows]
+
+    def recipe_wins(self, project_id):
+        rows = self.net.store.all("""SELECT w.family,w.previous_score,w.new_score,w.provenance,w.created_at,
+            f.name AS function FROM deep_permutation_recipe_wins w JOIN functions f ON f.id=w.function_id
+            WHERE f.project_id=? ORDER BY w.id DESC LIMIT 50""", project_id)
+        return [dict(row) | {'provenance': json.loads(row['provenance'])} for row in rows]
 
     def config(self, slug):
         proj = self.net.project_row(slug)
@@ -97,11 +138,35 @@ class Sweeps:
                                       "WHERE f.project_id=? AND d.state='completed'", proj['id'])['n']
         errors = self.net.store.one("SELECT COUNT(*) n FROM deep_permutation_passes d JOIN functions f ON f.id=d.function_id WHERE f.project_id=? AND d.state='error'", proj['id'])['n']
         improvements = self.improvements(proj['id'])
+        cfg = self.config(slug)
+        # Matching the current build can inspect project files. Cache the result briefly so opening
+        # details or polling a running pass does not repeatedly hash every completed function.
+        ready = counts['ready'] or 0
+        cache_key = (proj['id'], cfg['minutes'], cfg['max_variants'])
         with self.lock:
+            cached = self.queue_cache.get(cache_key)
             current = dict(self.active.get(slug, {}))
+        if cached and cached[0] > time.monotonic():
+            done_open, done_matched = cached[1:]
+        else:
+            done_open = done_matched = 0
+            rows = self.net.store.all("""SELECT f.*,d.scope AS pass_scope,d.minutes AS pass_minutes,
+                d.max_variants AS pass_variants FROM functions f JOIN deep_permutation_passes d ON d.function_id=f.id
+                WHERE f.project_id=? AND d.state='completed' AND f.status IN ('open','matched')""", proj['id'])
+            for row in rows:
+                if (row['best_source'] and row['best_score'] is not None
+                        and row['pass_minutes'] == cfg['minutes'] and row['pass_variants'] == cfg['max_variants']
+                        and row['pass_scope'] == signature(self.net, proj, row, cfg['minutes'], cfg['max_variants'])):
+                    if row['status'] == 'open':
+                        done_open += 1
+                    else:
+                        done_matched += 1
+            with self.lock:
+                self.queue_cache[cache_key] = (time.monotonic() + QUEUE_CACHE_SECONDS, done_open, done_matched)
         job = self.jobs.jobs.get(current.get('job'), {})
-        return self.config(slug) | {'total': counts['total'], 'ready': counts['ready'] or 0,
-                                   'improved': len(improvements), 'improvements': improvements,
+        return cfg | {'total': counts['total'], 'ready': ready, 'queue_done': done_open + done_matched,
+                      'queue_left': max(0, ready - done_open), 'awaiting_source': max(0, counts['total'] - ready),
+                                   'improved': len(improvements), 'improvements': improvements, 'recipes': self.recipes(proj['id']), 'recipe_wins': self.recipe_wins(proj['id']),
                                    'completed': completed, 'errors': errors, 'state': job.get('state', 'idle'), **current,
                                    'progress': job.get('progress', {}), 'error': job.get('error')}
 
@@ -117,6 +182,7 @@ class Sweeps:
             if self.jobs.jobs.get(previous.get('job'), {}).get('state') == 'running':
                 raise NetworkError('A deep pass is already running for this project. Stop it before starting another.')
             if repeat:
+                self.queue_cache.clear()
                 with self.net.store.tx() as db:
                     db.execute("DELETE FROM deep_permutation_passes WHERE function_id IN "
                                "(SELECT id FROM functions WHERE project_id=? AND status='open')",
@@ -162,6 +228,8 @@ class Sweeps:
                     'completed' if stable else 'pending', minutes, variants, result)
 
     def record(self, fn, scope, state, minutes, variants, result=None, error=''):
+        with self.lock:
+            self.queue_cache.clear()
         with self.net.store.tx() as db:
             db.execute('INSERT OR REPLACE INTO deep_permutation_passes '
                        '(function_id,scope,state,minutes,max_variants,completed_at,result,error) VALUES(?,?,?,?,?,?,?,?)',

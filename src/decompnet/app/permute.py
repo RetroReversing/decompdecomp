@@ -80,6 +80,14 @@ def generator_argv() -> list[str]:
     return [str(toolchains.venv_bin(tool / "venv", "python")), "-I", str(GENERATOR), str(tool)]
 
 
+class TracedVariant(str):
+    """A generated source with the randomizer's successful rewrite history."""
+    def __new__(cls, source, lineage):
+        value = super().__new__(cls, source)
+        value.lineage = lineage
+        return value
+
+
 class Generator:
     """The generator (permuter_gen.py) for one turn, in decomp-permuter's environment. It stays up for the turn, so
     it parses the header once per C it starts from: that takes a second for a header of 300 KB (debug symbols give a
@@ -133,7 +141,7 @@ class Generator:
                 log.info("permuter: decomp-permuter can't read %s: %s", job["function"], str(out["error"])[:300])
                 variants = None
             elif variants is not None and isinstance(out.get("variant"), str):
-                variants.append(out["variant"])
+                variants.append(TracedVariant(out["variant"], out["lineage"]) if isinstance(out.get("lineage"), list) else out["variant"])
     def _line(self, deadline: float):
         """The generator's next line, or None when it has stopped or hasn't answered by `deadline`."""
         try:
@@ -416,7 +424,8 @@ class Permuter:
                     # Alternate upstream defaults with focused weights: preserve an exploratory lane when
                     # the advisory mismatch category is incomplete or points at the wrong repair.
                     batch = gen.batch({"header": header, "source": base, "function": fn["name"], "family": family,
-                                       "seed": rng.randrange(MAX_SEED), "count": BATCH, "weight_boosts": boosts if batches % 2 == 0 else {}})
+                                       "seed": rng.randrange(MAX_SEED), "count": BATCH, "weight_boosts": boosts if batches % 2 == 0 else {},
+                                       "trace": bool(getattr(self, "trace_variants", False))})
                     if batch is None:  # C it can't read: the simple rewrites can still try
                         gen.close()
                         gen = None
@@ -424,7 +433,8 @@ class Permuter:
                     if not batch:  # nothing new left to write from this C
                         break
                 else:  # one simple rewrite, mostly of the last C kept
-                    batch = [mutate(cur_src if rng.random() < 0.85 else best_src, rng, focus)]
+                    base = cur_src if rng.random() < 0.85 else best_src
+                    batch = [mutate(base, rng, focus)]
                     # none of them applies to this C (lerp's `a + (b - a) * t`): a minute of trying burnt a core
                     misses = 0 if batch[0] else misses + 1
                     if misses >= REWRITE_MISSES:
@@ -432,9 +442,14 @@ class Permuter:
                 for cand in batch:
                     if cand is None or time.monotonic() >= deadline or st.stop.is_set():
                         break
+                    lineage = getattr(cand, 'lineage', None)
                     cand = m2cfix.static_helpers(cand)  # (a global helper would not link: m2cfix.py)
                     st.add(variants=1)
-                    score = self._score(agent, proj, fn, cand, best, fork)
+                    provenance = {'kind': 'random rewrite', 'family': lineage[-1] if lineage else 'random_rewrite_unattributed',
+                                  'lineage': lineage or [], 'base_source_sha256': hashlib.sha256(base.encode()).hexdigest(),
+                                  'source_sha256': hashlib.sha256(cand.encode()).hexdigest()}
+                    with repair_trial(provenance):
+                        score = self._score(agent, proj, fn, cand, best, fork)
                     if score is None:
                         continue
                     if score < best:

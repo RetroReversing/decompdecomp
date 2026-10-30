@@ -250,3 +250,29 @@ def test_chained_local_repairs_share_the_original_compile_limit(monkeypatch):
     assert result['tested'] == 2 and len(generated) == 2
     assert net.function()['best_score'] == 38
     assert net.store.one('SELECT COUNT(*) n FROM claims')['n'] == 0
+
+
+def test_recipe_counts_and_winner_provenance_survive_reopening(monkeypatch):
+    from decompnet.app.deep_sweep import Sweeps
+    from decompnet.app.support import Jobs
+    from decompnet.repair_feedback import trial
+
+    net = setup(monkeypatch)
+    net.deep_sweeps = Sweeps(net, Jobs())
+    fn, proj = net.function(), net.project_row('game')
+    search = deep_permuter.Search(net, 1, 20, Log(), fn)
+    answers = iter([30, 30, None])
+    monkeypatch.setattr(Permuter, '_score', lambda *args: next(answers))
+    provenance = {'kind': 'random rewrite', 'family': 'perm_cast', 'lineage': ['perm_temp', 'perm_cast']}
+    with trial(provenance):
+        assert search._score(AGENT, proj, fn, 'winner', 40, None) == 30
+        assert search._score(AGENT, proj, fn, 'worse', 30, None) == 30
+        assert search._score(AGENT, proj, fn, 'bad', 30, None) is None
+    search.flush_recipes()
+    reopened = Sweeps(net, Jobs())
+    stats = reopened.recipes(proj['id'])[0]
+    assert (stats['family'], stats['tested'], stats['improvements'], stats['score_gain']) == ('perm_cast', 3, 1, 10)
+    winner = reopened.recipe_wins(proj['id'])[0]
+    assert (winner['previous_score'], winner['new_score']) == (40, 30)
+    assert winner['provenance']['lineage'] == ['perm_temp', 'perm_cast']
+    assert winner['provenance']['source_sha256']
