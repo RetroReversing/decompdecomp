@@ -45,6 +45,12 @@ class Sweeps:
                 tested INTEGER NOT NULL, skipped INTEGER NOT NULL, rejected INTEGER NOT NULL,
                 improvements INTEGER NOT NULL, matches INTEGER NOT NULL, score_gain INTEGER NOT NULL,
                 PRIMARY KEY(function_id,family))''')
+            db.execute('''CREATE TABLE IF NOT EXISTS deep_permutation_measurements(
+                function_id INTEGER NOT NULL REFERENCES functions(id) ON DELETE CASCADE,
+                family TEXT NOT NULL, phase TEXT NOT NULL, attempted INTEGER NOT NULL,
+                compile_failed INTEGER NOT NULL, unscored INTEGER NOT NULL, unchanged INTEGER NOT NULL,
+                worse INTEGER NOT NULL, improved INTEGER NOT NULL, matched INTEGER NOT NULL,
+                elapsed_ms INTEGER NOT NULL, score_gain INTEGER NOT NULL, PRIMARY KEY(function_id,family,phase))''')
             db.execute('''CREATE TABLE IF NOT EXISTS deep_permutation_recipe_wins(
                 id INTEGER PRIMARY KEY, function_id INTEGER NOT NULL REFERENCES functions(id) ON DELETE CASCADE,
                 family TEXT NOT NULL, previous_score INTEGER NOT NULL, new_score INTEGER NOT NULL,
@@ -54,7 +60,7 @@ class Sweeps:
                 starting_percent REAL, new_score INTEGER NOT NULL,
                 new_percent REAL, updated_at REAL NOT NULL)''')
 
-    def record_recipes(self, function_id, totals, wins):
+    def record_recipes(self, function_id, totals, wins, measurements=None):
         """Save counts and individual verified improvements, including searches stopped part way through."""
         with self.net.store.tx() as db:
             for family, values in totals.items():
@@ -65,6 +71,16 @@ class Sweeps:
                     rejected=rejected+excluded.rejected, improvements=improvements+excluded.improvements,
                     matches=matches+excluded.matches, score_gain=score_gain+excluded.score_gain""",
                     (function_id, family, *values))
+            for (family, phase), values in (measurements or {}).items():
+                db.execute("""INSERT INTO deep_permutation_measurements
+                    (function_id,family,phase,attempted,compile_failed,unscored,unchanged,worse,improved,matched,elapsed_ms,score_gain)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(function_id,family,phase) DO UPDATE SET
+                    attempted=attempted+excluded.attempted, compile_failed=compile_failed+excluded.compile_failed,
+                    unscored=unscored+excluded.unscored, unchanged=unchanged+excluded.unchanged,
+                    worse=worse+excluded.worse, improved=improved+excluded.improved,
+                    matched=matched+excluded.matched, elapsed_ms=elapsed_ms+excluded.elapsed_ms,
+                    score_gain=score_gain+excluded.score_gain""",
+                    (function_id, family, phase, *values))
             for win in wins:
                 db.execute("""INSERT INTO deep_permutation_recipe_wins
                     (function_id,family,previous_score,new_score,provenance,created_at)
@@ -77,7 +93,7 @@ class Sweeps:
                for job in self.jobs.jobs.values()):
             raise NetworkError('Stop active deep permuter searches before resetting metrics.')
         with self.net.store.tx() as db:
-            for table in ('deep_permutation_recipes', 'deep_permutation_improvements'):
+            for table in ('deep_permutation_recipes', 'deep_permutation_improvements', 'deep_permutation_measurements'):
                 db.execute(f'DELETE FROM {table} WHERE function_id IN '
                            '(SELECT id FROM functions WHERE project_id=?)', (project_id,))
             last = db.execute('SELECT COALESCE(MAX(id),0) FROM deep_permutation_recipe_wins').fetchone()[0]
@@ -91,6 +107,15 @@ class Sweeps:
             SUM(r.score_gain) score_gain, COUNT(DISTINCT r.function_id) functions
             FROM deep_permutation_recipes r JOIN functions f ON f.id=r.function_id
             WHERE f.project_id=? GROUP BY r.family ORDER BY improvements DESC, tested DESC, r.family""", project_id)
+        return [dict(row) for row in rows]
+
+    def measurements(self, project_id):
+        rows = self.net.store.all("""SELECT m.family,m.phase,SUM(m.attempted) attempted,
+            SUM(m.compile_failed) compile_failed,SUM(m.unscored) unscored,SUM(m.unchanged) unchanged,
+            SUM(m.worse) worse,SUM(m.improved) improved,SUM(m.matched) matched,SUM(m.elapsed_ms) elapsed_ms,
+            SUM(m.score_gain) score_gain
+            FROM deep_permutation_measurements m JOIN functions f ON f.id=m.function_id
+            WHERE f.project_id=? GROUP BY m.family,m.phase ORDER BY improved DESC,attempted DESC""", project_id)
         return [dict(row) for row in rows]
 
     def recipe_wins(self, project_id):
@@ -186,6 +211,7 @@ class Sweeps:
                       'total': counts['total'], 'ready': ready, 'queue_done': done_open + done_matched,
                       'queue_left': max(0, ready - done_open), 'awaiting_source': max(0, counts['total'] - ready),
                                    'improved': len(improvements), 'improvements': improvements, 'recipes': self.recipes(proj['id']), 'recipe_wins': self.recipe_wins(proj['id']),
+                                   'measurements': self.measurements(proj['id']),
                                    'completed': completed, 'errors': errors, 'state': job.get('state', 'idle'), **current,
                                    'progress': job.get('progress', {}), 'error': job.get('error')}
 

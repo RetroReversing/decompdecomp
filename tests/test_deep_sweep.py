@@ -333,9 +333,12 @@ def test_reset_metrics_preserves_progress_passes_and_evidence(sweep):
         other = db.execute("INSERT INTO projects(slug,name,arch,root,config) VALUES('other','Other','mips',?,'{}')", (str(path),)).lastrowid
         other_fn = db.execute("INSERT INTO functions(project_id,name) VALUES(?,'other_fn')", (other,)).lastrowid
     obj.record_recipes(other_fn, {'rewrite': [1, 0, 0, 1, 0, 25]}, [])
+    obj.record_recipes(fn['id'], {}, [], {('rewrite', 'random rewrites'): [1, 0, 0, 0, 0, 1, 0, 10, 25]})
+    obj.record_recipes(other_fn, {}, [], {('rewrite', 'random rewrites'): [1, 0, 0, 0, 0, 1, 0, 10, 25]})
     before = dict(net._function('f0', 'game'))
     result = obj.reset_metrics('game')
-    assert result['recipes'] == result['recipe_wins'] == result['improvements'] == []
+    assert result['recipes'] == result['recipe_wins'] == result['improvements'] == result['measurements'] == []
+    assert obj.measurements(other)[0]['attempted'] == 1
     assert result['completed'] == 2
     assert dict(net._function('f0', 'game')) == before
     assert obj.recipes(other)[0]['tested'] == 1
@@ -387,3 +390,19 @@ def test_restart_reshuffles_interrupted_functions(sweep, monkeypatch):
     with pytest.raises(RuntimeError, match='stopped'):
         obj.run('game', 1, 10, Log())
     assert selected == ['f0', 'f1']
+
+
+def test_measurements_accumulate_by_family_and_phase_without_rewriting_old_totals(sweep):
+    obj, net, _, _ = sweep
+    fn = net._function('f0', 'game')
+    obj.record_recipes(fn['id'], {'rewrite': [5, 1, 0, 1, 0, 10]}, [],
+                       {('rewrite', 'random rewrites'): [3, 1, 0, 1, 0, 1, 0, 100, 10]})
+    obj.record_recipes(fn['id'], {'rewrite': [2, 0, 0, 1, 1, 5]}, [],
+                       {('rewrite', 'random rewrites'): [1, 0, 1, 0, 0, 0, 0, 50, 0],
+                        ('rewrite', 'local repairs after random improvement'): [1, 0, 0, 0, 0, 1, 1, 20, 5]})
+    rows = {r['phase']: r for r in obj.measurements(fn['project_id'])}
+    random = rows['random rewrites']
+    assert (random['attempted'], random['compile_failed'], random['unscored'], random['unchanged'],
+            random['improved'], random['elapsed_ms'], random['score_gain']) == (4, 1, 1, 1, 1, 150, 10)
+    assert rows['local repairs after random improvement']['matched'] == 1
+    assert obj.recipes(fn['project_id'])[0]['tested'] == 7
