@@ -871,10 +871,27 @@ async function renderForkSetup() {
         <ol class="steps"><li>Open a terminal in the project folder.</li><li>Follow the README: it says where your copy of the game goes and how to build.</li><li>Come back and click <b>Check again</b>.</li></ol>
         ${cmdBox(`cd "${S.ov.folder}"`)}
         ${n.readme ? `<p class="col-title">From the project's README</p><pre class="readme" id="fsReadme"></pre>` : ""}
-        <div class="row"><button class="primary" id="fsCheck" type="button">Check again</button></div>
+        <div class="row"><button class="primary" id="fsCheck" type="button">Check again</button>
+          <select id="fsAgent" aria-label="Coding agent" hidden></select><button class="ghost" id="fsFix" type="button" hidden>Fix with agent</button></div>
+        <p class="muted small" id="fsFixNote" hidden>Opens your coding agent in a terminal in the project folder, with the README and the error above. It uses its own account and permissions, may consume allowance, and can run commands there. Then come back and click Check again.</p>
         <div class="workbar" role="progressbar" aria-label="Building project" hidden><i></i></div>
         <pre class="joblog tall" id="fsLog" hidden></pre>
       </div><aside class="fs-side">${facts}</aside>`;
+    api("/api/fork/fix-setup").then(({ agents: list }) => {
+      const pick = $("fsAgent"), ready = list.filter((a) => a.installed);
+      if (!pick || !ready.length) return;
+      pick.innerHTML = ready.map((a) => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
+      pick.hidden = $("fsFix").hidden = $("fsFixNote").hidden = false;
+      $("fsFix").onclick = async () => {
+        const log = $("fsLog"), error = (log.hidden ? "" : log.textContent);
+        $("fsFix").disabled = true;
+        try {
+          const { job } = await api("/api/fork/fix-setup", { method: "POST", body: { slug: S.slug, agent: pick.value, error } });
+          const result = await followJob(job, log);
+          toast(esc(result.message), "match");
+        } catch (e) { toast(esc(e.message), "err"); } finally { $("fsFix").disabled = false; }
+      };
+    }).catch(() => {});
     if (n.readme) $("fsReadme").textContent = n.readme;
     wireCopies(box);
     $("fsCheck").onclick = () => run(() => api("/api/fork/check", { method: "POST", body: { slug: S.slug } }));
