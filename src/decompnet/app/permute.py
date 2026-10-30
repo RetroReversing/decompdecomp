@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .. import consoles, m2cfix, scoring, seeds, toolchains
+from ..forks.project import ForkError
 from ..hostenv import NO_WINDOW
 from ..network import NetworkError
 from ..permuter import mutate
@@ -283,8 +284,12 @@ class Permuter:
                 break
             with self.net.store.tx() as db:
                 db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (key, str(fn['id'])))
-            header = (self.net.forks.permuter_header(fork, fn['name']) if fork else
-                      self.net._context(proj['id'], fn['unit'])['header'])
+            try:
+                context = self.net._context(proj['id'], fn['unit'])
+                header = self.net.forks.permuter_header(fork, fn['name']) if fork else (context['header'] if context else '')
+            except (ForkError, NetworkError, OSError) as error:
+                log.info('permuter: %s: header unavailable: %s', fn['name'], error)
+                continue
             labels = {}
             candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels,header=header)
             from . import repair_ranking
