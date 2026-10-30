@@ -36,6 +36,7 @@ def _git(cwd: Path, *args: str) -> str:
 
 @pytest.mark.parametrize("byte_order,width", [("z64", 1), ("v64", 2), ("n64", 4)])
 def test_splat_setup_accepts_n64_rom_byte_orders(tmp_path, byte_order, width):
+    from decompnet.app.forkroom import game_identity
     from decompnet.forks.project import ForkError, ForkProject
 
     original = b"\x80\x37\x12\x40" + bytes(range(256)) * 4097
@@ -46,6 +47,7 @@ def test_splat_setup_accepts_n64_rom_byte_orders(tmp_path, byte_order, width):
     supplied = b"".join(original[i:i + width][::-1] for i in range(0, len(original), width))
     source = tmp_path / f"my-copy.{byte_order}"
     source.write_bytes(supplied)
+    assert game_identity(source) == expected  # rooms agree even when members supply different byte orders
 
     project = ForkProject(tmp_path)
     assert project.kind() == "splat"
@@ -63,6 +65,22 @@ def test_splat_setup_accepts_n64_rom_byte_orders(tmp_path, byte_order, width):
     incomplete.write_bytes(supplied[:-1])
     with pytest.raises(ForkError, match="truncated"):
         project.place_game(incomplete, incomplete.name)
+
+
+@pytest.mark.parametrize("byte_order,width", [("v64", 2), ("n64", 4)])
+def test_splat_setup_normalizes_without_a_hash_and_removes_converted_upload(tmp_path, byte_order, width):
+    from decompnet.forks.project import ForkProject
+
+    original = b"\x80\x37\x12\x40" + bytes(range(256)) * 8
+    supplied = b"".join(original[i:i + width][::-1] for i in range(0, len(original), width))
+    (tmp_path / "Makefile").write_text("all:\n\t@true\n")
+    (tmp_path / "game.yaml").write_text("options:\n  target_path: baserom.z64\nsegments: []\n")
+    upload = tmp_path / ".decomp-wtf" / "upload.tmp"
+    project = ForkProject(tmp_path)
+    upload.write_bytes(supplied)
+    assert "project's build" in project.needs()["help"]
+    assert project.place_game(upload, upload.name, move=True).read_bytes() == original
+    assert not upload.exists()
 
 
 @pytest.fixture(scope="module")

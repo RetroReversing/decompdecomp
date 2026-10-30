@@ -55,14 +55,7 @@ def to_z64(data: bytes) -> tuple[bytes, str]:
         raise RomError("this doesn't look like an N64 ROM image (.z64, .n64 or .v64)")
     if len(data) % 4:
         raise RomError("ROM size is not a multiple of 4 bytes; the file may be truncated")
-    if fmt == "v64":
-        b = bytearray(data)
-        b[0::2], b[1::2] = data[1::2], data[0::2]
-        return bytes(b), fmt
-    if fmt == "n64":
-        words = struct.unpack(f"<{len(data) // 4}I", data)
-        return struct.pack(f">{len(words)}I", *words), fmt
-    return data, fmt
+    return _z64_chunk(data, fmt), fmt
 
 
 def z64_file_sha1(path: Path) -> tuple[str, str] | None:
