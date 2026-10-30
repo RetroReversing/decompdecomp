@@ -11,19 +11,21 @@ answers back on stdin. decompdecomp speaks it through the feed kinds this module
   stream in `part.delta` pieces gathered per step (like Antigravity's), a tool call is a `part.upserted` whose part
   is a tool, and `turn.completed` brings what the session spent.
 
-A session runs on ZCode's own model selection. The launcher offers zcode's default (empty) and any of its picker ids
-("provider/model", exactly what its `/model` shows, with an optional "#effort" after it). ZCode 0.17 has no way to
-list them from outside, so none are offered up front.
+A session runs on the model the launcher picked, as one of zcode's picker ids ("provider/model", what its `/model`
+shows, with an optional "#effort" after it). The launcher's dropdown reads the same built-in provider registry the
+session gets, the way zcode's own standalone login does: the coding-plan providers in it and their models.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import threading
+import time
 import uuid
 from pathlib import Path
 
-from . import SAID_CHARS, Agent, args_brief, error_text, tool_name, usage_item
+from . import MODELS_CACHE, MODELS_LISTED, SAID_CHARS, Agent, args_brief, error_text, read_json, tool_name, usage_item
 
 TOOL_ALLOW = "mcp__decomp__*"  # the app's tools and nothing else: no shell, no file edits, no web, no plugin tools
 MCP_TIMEOUT_MS = 180_000  # one tool call may take this long (a fork's build)
@@ -41,6 +43,7 @@ class _PerSession(threading.local):
 
 
 _here = _PerSession()
+_models: dict[str, tuple[float, list[dict]]] = {}  # what the registry said, with when it was read: {id: (time, list)}
 
 
 def _provider_config_env() -> dict[str, str]:
@@ -55,6 +58,42 @@ def _provider_config_env() -> dict[str, str]:
         return {}
     return {"ZCODE_BUILTIN_PROVIDER_CONFIG_FILE": str(builtin[-1]),
             "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE": str(personal)}
+
+
+def _registry_file() -> Path | None:
+    """The built-in provider registry: the one this session would hand over, the one the environment names, or the
+    newest copy the desktop app downloaded."""
+    if env := _provider_config_env():
+        return Path(env["ZCODE_BUILTIN_PROVIDER_CONFIG_FILE"])
+    if env := os.environ.get("ZCODE_BUILTIN_PROVIDER_CONFIG_FILE", "").strip():
+        return Path(env)
+    newest = sorted((Path.home() / ".zcode" / "v2" / "runtime" / "provider")
+                    .glob("*/*/endpoint-*/zcode-builtin.json"), key=lambda p: p.stat().st_mtime)
+    return newest[-1] if newest else None
+
+
+def catalog() -> list[dict]:
+    """The coding-plan providers in the registry, the way zcode's own standalone login reads them: each plan's
+    provider with its models, as picker ids the launcher offers ("provider/model")."""
+    registry = read_json(registry) if (registry := _registry_file()) else {}
+    rules = ((registry.get("config") or {}).get("providerConfigRules") or {}).get("providerRules") or []
+    signed_in = {family for family in ("zai", "bigmodel")
+                 if (Path.home() / ".zcode" / "v2" / "credentials.json").exists()
+                 and family in (Path.home() / ".zcode" / "v2" / "credentials.json").read_text(encoding="utf-8",
+                                                                                                 errors="replace")}
+    out = []
+    for rule in rules:
+        config = rule.get("config") or {}
+        access = config.get("access") or {}
+        if access.get("type") != "zhipu-account":
+            continue
+        if signed_in and access.get("accountType") not in signed_in:
+            continue  # a plan of a service this sign-in isn't on
+        for model in config.get("builtinModelIds") or []:
+            if isinstance(model, str) and model.strip():
+                out.append({"id": f"{rule['providerId']}/{model.strip()}", "name": model.strip(),
+                            "note": str(rule["providerId"]).removeprefix("account:")})
+    return out
 
 
 def selection(model: str) -> dict | None:
@@ -84,6 +123,18 @@ class Zcode(Agent):
     docs = "https://zcode.z.ai"
     takes_effort = True  # the thought level, after a "#" in the model's picker id
     keeps_stdin = True  # it speaks a protocol: the app answers its questions and ends it (("stop", line)) when done
+
+    def models(self, path: str | None, run: bool = True) -> list[dict]:
+        """The registry's coding-plan models, asked at most every MODELS_CACHE seconds (the base class's caching,
+        without a CLI subcommand: the registry file is what there is to read)."""
+        cached = _models.get(self.id)
+        if cached and (not run or time.time() - cached[0] < MODELS_CACHE):
+            return cached[1]
+        if not run:
+            return []
+        out = catalog()[:MODELS_LISTED]
+        _models[self.id] = (time.time(), out)
+        return out
 
     def session_command(self, exe: str, workdir, mcp_url: str, token: str, model: str) -> tuple[list[str], dict]:
         """`zcode app-server` speaks the ZCode Protocol on stdio. The app's MCP address, the token and the model reach
