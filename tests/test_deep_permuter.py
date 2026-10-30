@@ -276,3 +276,47 @@ def test_recipe_counts_and_winner_provenance_survive_reopening(monkeypatch):
     assert (winner['previous_score'], winner['new_score']) == (40, 30)
     assert winner['provenance']['lineage'] == ['perm_temp', 'perm_cast']
     assert winner['provenance']['source_sha256']
+
+
+def test_outcome_measurements_classify_trials_and_followup_phase(monkeypatch):
+    from decompnet.app.deep_sweep import Sweeps
+    from decompnet.app.support import Jobs
+    from decompnet.repair_feedback import trial
+
+    net = setup(monkeypatch)
+    net.deep_sweeps = Sweeps(net, Jobs())
+    fn, proj = net.function(), net.project_row('game')
+    search = deep_permuter.Search(net, 1, 30, Log(), fn)
+    answers = iter([(None, 'compile_failed'), (None, 'unscored'), (40, 'scored'),
+                    (45, 'scored'), (30, 'scored'), (0, 'scored')])
+    def judge(self, *args):
+        result, self._trial_outcome = next(answers)
+        return result
+    monkeypatch.setattr(Permuter, '_score', judge)
+    search.phase = 'local repairs after random improvement'
+    with trial({'family': 'typed_temporary'}):
+        for i in range(6):
+            search._score(AGENT, proj, fn, f'candidate {i}', 40, None)
+    search.flush_recipes()
+    row = net.deep_sweeps.measurements(proj['id'])[0]
+    assert row['phase'] == 'local repairs after random improvement'
+    assert tuple(row[k] for k in ('attempted', 'compile_failed', 'unscored', 'unchanged',
+                                  'worse', 'improved', 'matched')) == (6, 1, 1, 1, 1, 2, 1)
+    assert row['elapsed_ms'] >= 0 and row['score_gain'] == 50
+    assert Sweeps(net, Jobs()).measurements(proj['id']) == [row]
+
+
+def test_rom_trial_distinguishes_compile_failure_from_unscored_object(monkeypatch):
+    from types import SimpleNamespace
+
+    net = setup(monkeypatch)
+    permuter = Permuter(net)
+    fn, proj = net.function(), net.project_row('game')
+    monkeypatch.setattr(net, '_context', lambda *args: {'header': '', 'version': 1})
+    monkeypatch.setattr(net, '_compile', lambda *args: SimpleNamespace(ok=False), raising=False)
+    assert permuter._score(AGENT, proj, fn, fn['best_source'], 40, None) is None
+    assert permuter._trial_outcome == 'compile_failed'
+    monkeypatch.setattr(net, '_compile', lambda *args: SimpleNamespace(ok=True, obj=b'object'))
+    monkeypatch.setattr(net, '_evaluate', lambda *args: (None, None, []), raising=False)
+    assert permuter._score(AGENT, proj, fn, fn['best_source'], 40, None) is None
+    assert permuter._trial_outcome == 'unscored'

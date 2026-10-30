@@ -595,8 +595,11 @@ class Permuter:
 
     def _score(self, agent, proj, fn, source: str, best: int, fork: str | None) -> int | None:
         """A variant's score; recorded (as the function's best attempt, or its match) only when it beats `best`."""
+        self._trial_outcome = 'unscored'
         if fork:
             res = self.net.forks.attempt(agent, fork, fn["name"], source, keep=False, quiet=best)
+            if res.get('score') is not None:
+                self._trial_outcome = 'scored'
             return res.get("score")
         ctx = self.net._context(proj["id"], fn["unit"])
         from .repair_preflight import invalid_call
@@ -604,10 +607,12 @@ class Permuter:
             return None
         result = self.net._compile(proj, ctx["header"], source, fn)
         if not result.ok:
+            self._trial_outcome = 'compile_failed'
             return None
         cand, verdict, _ = self.net._evaluate(fn, proj, result.obj)
         if cand is None:
             return None
+        self._trial_outcome = 'scored'
         d = scoring.diff(self.net._target_obj(fn, proj), cand)
         if verdict is not None:
             d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)

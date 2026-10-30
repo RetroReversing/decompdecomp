@@ -291,3 +291,19 @@ def test_deep_metrics_history_and_reset():
         pytest.skip('needs node')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_deep_metrics.js'))], check=True,
                    cwd=Path(__file__).resolve().parents[1])
+
+
+def test_deep_trial_outcomes_and_followup_summary_are_visible():
+    if NODE is None:
+        pytest.skip('needs node')
+    source = (Path(__file__).parents[1] / 'src/decompnet/app/static/js/steering.js').read_text()
+    function = source[source.index('function renderDeepSweepResults('):source.index('async function renderDeepSweep(')]
+    script = """const assert=require('node:assert/strict');
+const boxes={}; function $(id) { return boxes[id] ||= {innerHTML:'',querySelectorAll:()=>[]}; }
+function esc(x){return String(x)}; function openFn(){};
+""" + function + """
+renderDeepSweepResults({measurements:[{family:'typed_temporary',phase:'local repairs after random improvement',attempted:5,compile_failed:1,unscored:1,unchanged:1,worse:0,improved:2,matched:1,elapsed_ms:1500,score_gain:40}]});
+assert.match(boxes.deepSweepRecipes.innerHTML,/typed temporary/);
+assert.match(boxes.deepSweepRecipes.innerHTML,/5 attempted, 2 improved, 1 matched, 40 score reduction; 1.5s/);
+"""
+    subprocess.run([NODE, '-e', script], check=True, capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)

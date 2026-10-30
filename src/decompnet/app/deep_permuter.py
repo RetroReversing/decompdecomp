@@ -64,6 +64,7 @@ class Search(Permuter):
         self.winner_source = None
         self.trace_variants = True
         self.recipe_counts = {}
+        self.measurement_counts = {}
         self.recipe_wins = []
         self.recipe_fn = fn['id'] if fn is not None else None
         self.current_family = ''
@@ -96,14 +97,29 @@ class Search(Permuter):
                            'current_family': self.current_family, 'last_outcome': self.last_outcome,
                            'last_score': self.last_score, 'visited': self.visited})
 
-    def recipe(self, fn, source, best, score, outcome):
+    def recipe(self, fn, source, best, score, outcome, elapsed_ms=0):
         provenance = current_trial() or {'kind': self.phase, 'family': 'unattributed'}
         family = provenance.get('family') or 'unattributed'
+        detail = ('compile failed' if getattr(self, '_trial_outcome', '') == 'compile_failed' else 'unscored')
         self.current_family, self.last_outcome, self.last_score = (
-            family, 'no score' if outcome == 'tested' and score is None else outcome, score)
+            family, detail if outcome == 'tested' and score is None else outcome, score)
         self.recipe_fn = fn['id']
         counts = self.recipe_counts.setdefault(family, [0, 0, 0, 0, 0, 0])
         counts[{'tested': 0, 'skipped': 1, 'rejected': 2}[outcome]] += 1
+        if outcome == 'tested':
+            values = self.measurement_counts.setdefault((family, self.phase), [0, 0, 0, 0, 0, 0, 0, 0, 0])
+            values[0] += 1
+            if score is None:
+                values[1 if getattr(self, '_trial_outcome', '') == 'compile_failed' else 2] += 1
+            elif score == best:
+                values[3] += 1
+            elif score > best:
+                values[4] += 1
+            else:
+                values[5] += 1
+                values[6] += int(score == 0)
+                values[8] += best - score
+            values[7] += elapsed_ms
         if outcome == 'tested' and score is not None and score < best:
             self.last_outcome = 'improved'
             counts[3] += 1
@@ -119,10 +135,11 @@ class Search(Permuter):
 
     def flush_recipes(self):
         sweeps = getattr(self.net, 'deep_sweeps', None)
-        if sweeps and self.recipe_fn is not None and (self.recipe_counts or self.recipe_wins):
-            sweeps.record_recipes(self.recipe_fn, self.recipe_counts, self.recipe_wins)
+        if sweeps and self.recipe_fn is not None and (self.recipe_counts or self.recipe_wins or self.measurement_counts):
+            sweeps.record_recipes(self.recipe_fn, self.recipe_counts, self.recipe_wins, self.measurement_counts)
         self.recipe_counts.clear()
         self.recipe_wins.clear()
+        self.measurement_counts.clear()
 
     def _baseline(self, agent, proj, fn, state, fork):
         # Baseline evidence must come from today's compiler/header, including score-zero open rows.
@@ -240,6 +257,7 @@ class Search(Permuter):
         cached = self.net.store.one('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], key)
         score = json.loads(cached['feedback']) if cached and cached['feedback'] else None
         reused = not self.measuring_baseline and isinstance(score, int) and score >= best
+        elapsed_ms = 0
         if reused:
             self.skipped += 1
         else:
@@ -247,13 +265,16 @@ class Search(Permuter):
             self.current_family = (current_trial() or {}).get('family', 'baseline' if self.measuring_baseline else 'unattributed')
             self.last_outcome, self.last_score = 'compiling', None
             self.report()
+            self._trial_outcome = 'unscored'
+            started = time.monotonic()
             score = super()._score(agent, proj, fn, source, best, fork)
+            elapsed_ms = max(0, round((time.monotonic() - started) * 1000))
             if score is not None and score > 0:
                 with self.net.store.tx() as db:
                     db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
                                (fn['id'], key, 'miss', 'deep function search', json.dumps(score)))
         if not self.measuring_baseline:
-            self.recipe(fn, source, best, score, 'skipped' if reused else 'tested')
+            self.recipe(fn, source, best, score, 'skipped' if reused else 'tested', elapsed_ms)
             if self.tested and self.tested % 100 == 0 and not reused:
                 family = (current_trial() or {}).get('family', 'unattributed')
                 self.log(f'{self.phase}: {self.tested:,} compiled, {self.skipped:,} cached, '

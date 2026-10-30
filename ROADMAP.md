@@ -924,3 +924,8 @@ passes and snapshots local source/header/build inputs (at most 10,000 files / 32
 Cross-game transfer results use compact, responsive rows with separate provenance, result labels and score changes; recent partial improvements can be filtered independently.
 
 Cross-game results can be collapsed per project without losing state on live refresh; Run now launches a dedicated, bounded cross-game check with progress and duplicate-run protection, in ROM and imported modes.
+
+Deep-permuter trial measurements now retain scoring outcomes and elapsed judge time by rewrite family and phase.
+Local follow-up candidates after a random improvement are counted separately, so their improvements and cost can
+be evaluated without conflating them with initial repairs. Historic attempts remain in their existing counters;
+new outcome and timing measurements begin when this version runs.
