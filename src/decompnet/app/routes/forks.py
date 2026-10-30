@@ -13,8 +13,8 @@ from starlette.responses import JSONResponse, Response
 from ... import hostenv
 from ...forks.local import MAX_REPOSITORIES
 from ...network import NetworkError
-from ..support import MAX_DISC
 from .. import setup_fix
+from ..support import MAX_DISC
 from . import App
 
 

@@ -8,6 +8,7 @@ from decompnet.app import deep_permuter, deep_sweep
 from decompnet.app.deep_sweep import Sweeps
 from decompnet.app.engine import RomNetwork
 from decompnet.app.support import Jobs
+from decompnet.network import NetworkError
 from tests.test_deep_permuter import Log
 
 
@@ -319,3 +320,36 @@ def test_the_thread_count_is_saved_validated_and_shown(sweep, monkeypatch):
     assert obj.config('game') | {'threads': 0} == obj.config('game') | {'threads': 0}
     obj.start('game', 1, 10)
     assert obj.config('game')['threads'] == 0
+
+
+def test_reset_metrics_preserves_progress_passes_and_evidence(sweep):
+    obj, net, _, path = sweep
+    obj.run('game', 1, 10, Log())
+    fn = net._function('f0', 'game')
+    obj.record_recipes(fn['id'], {'rewrite': [1, 0, 0, 1, 0, 25]},
+                       [('rewrite', 50, 25, '{}', 1234)])
+    with net.store.tx() as db:
+        other = db.execute("INSERT INTO projects(slug,name,arch,root,config) VALUES('other','Other','mips',?,'{}')", (str(path),)).lastrowid
+        other_fn = db.execute("INSERT INTO functions(project_id,name) VALUES(?,'other_fn')", (other,)).lastrowid
+    obj.record_recipes(other_fn, {'rewrite': [1, 0, 0, 1, 0, 25]}, [])
+    before = dict(net._function('f0', 'game'))
+    result = obj.reset_metrics('game')
+    assert result['recipes'] == result['recipe_wins'] == result['improvements'] == []
+    assert result['completed'] == 2
+    assert dict(net._function('f0', 'game')) == before
+    assert obj.recipes(other)[0]['tested'] == 1
+    assert net.store.one('SELECT COUNT(*) n FROM deep_permutation_recipe_wins')['n'] == 1
+    reopened = Sweeps(net, Jobs())
+    assert reopened.recipe_wins(fn['project_id']) == []
+    reopened.record_recipes(fn['id'], {'rewrite': [1, 0, 0, 1, 0, 5]},
+                            [('rewrite', 25, 20, '{}', 1235)])
+    assert reopened.recipes(fn['project_id'])[0]['tested'] == 1
+    assert reopened.recipe_wins(fn['project_id'])[0]['created_at'] == 1235
+
+
+@pytest.mark.parametrize('kind', ['deep-permuter', 'deep-permutation-pass'])
+def test_reset_metrics_rejects_active_searches(sweep, kind):
+    obj, net, _, _ = sweep
+    obj.jobs.jobs['active'] = {'state': 'running', 'kind': kind}
+    with pytest.raises(NetworkError, match='Stop active deep'):
+        obj.reset_metrics('game')
