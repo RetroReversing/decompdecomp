@@ -53,10 +53,13 @@ def register(app):
             limit = data.get('limit', 20)
             if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
                 raise NetworkError('Choose 1–200 functions per recovery batch.')
+            retry_failed = data.get('retry_failed', False)
+            if not isinstance(retry_failed, bool):
+                raise NetworkError('Retry failed measurements must be true or false.')
             with app.jobs._lock:
                 if any(j['kind'] == 'candidate-recovery' and j['state'] == 'running' for j in app.jobs.jobs.values()):
                     raise NetworkError('A recovery batch is running. Stop it or wait before starting another.')
-                job = app.jobs.start('candidate-recovery', lambda log: candidate_rechecks.run(app.net, slug, limit, log),
+                job = app.jobs.start('candidate-recovery', lambda log: candidate_rechecks.run(app.net, slug, limit, log, retry_failed),
                                      cancel_message='Recovery stopped. Finished measurements are saved; selected C is unchanged.')
             return JSONResponse({'job':job})
         except (NetworkError, ValueError, KeyError, TypeError) as error:

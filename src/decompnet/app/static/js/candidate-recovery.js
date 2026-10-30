@@ -5,9 +5,9 @@ function setupCandidateRecovery(dialog, slug, reload) {
   const host = get('[data-recovery-work]'), summary = get('[data-recovery-summary]');
   let job;
   start.onclick = async () => {
-    const finish = beginWork(host, 'Rejudging saved alternatives', [start, get('[data-recovery-limit]')]);
+    const finish = beginWork(host, 'Rejudging saved alternatives', [start, get('[data-recovery-limit]'), get('[data-recovery-retry]')]);
     try {
-      job = (await api('/api/repair-examples/recovery', {method:'POST', body:{slug, limit:Number(get('[data-recovery-limit]').value)}})).job;
+      job = (await api('/api/repair-examples/recovery', {method:'POST', body:{slug, limit:Number(get('[data-recovery-limit]').value), retry_failed:!!get('[data-recovery-retry]').checked}})).job;
       stop.hidden = false;
       const result = await followJob(job, host);
       summary.textContent = `${result.tested} alternatives tested · ${result.functions} functions · ${result.cached} cached · ${result.busy} busy · ${result.failed} failed · ${result.exact} exact. Review is required to select any alternative.`;

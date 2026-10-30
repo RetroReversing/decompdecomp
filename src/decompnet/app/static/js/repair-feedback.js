@@ -15,6 +15,7 @@ $("repairExamples").onclick = async () => {
     <section class="repair-help" aria-label="Batch candidate recovery"><h3>Recover paused candidates · this project · no AI tokens</h3>
     <p>Rejudge saved alternatives, smallest functions first. Measurements are saved across runs; unchanged results are skipped. This does not replace C, clear warnings or mark matches.</p>
     <label>Functions per batch <input data-recovery-limit type="number" min="1" max="200" value="20"></label>
+    <label><input data-recovery-retry type="checkbox"> Retry failed measurements</label>
     <button data-recovery-start type="button">Rejudge next batch</button><button data-recovery-stop type="button" hidden>Stop</button>
     <p data-recovery-summary class="muted small" role="status"></p><div data-recovery-work></div></section>
     <section data-quality class="repair-list" aria-label="Candidate quality review"></section>

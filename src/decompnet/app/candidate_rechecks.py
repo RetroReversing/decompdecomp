@@ -98,9 +98,11 @@ def measure(net, agent, proj, fn, source):
             'error':'', 'link_notes':problems}
 
 
-def run(net, slug, limit, log):
+def run(net, slug, limit, log, retry_failed=False):
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
         raise NetworkError('Choose 1–200 functions per recovery batch.')
+    if not isinstance(retry_failed, bool):
+        raise NetworkError('Retry failed measurements must be true or false.')
     if slug in net.links:
         raise NetworkError('Rejudge alternatives on the room host’s project.')
     ensure(net)
@@ -117,7 +119,8 @@ def run(net, slug, limit, log):
         todo = []
         for alt in alternatives(net, fn, report):
             scope = stamp(net, proj, fn, alt)
-            if saved(net, fn, report, alt, scope):
+            previous = saved(net, fn, report, alt, scope)
+            if previous and (not retry_failed or previous['score'] is not None):
                 stats['cached'] += 1
             else:
                 todo.append((alt, scope))

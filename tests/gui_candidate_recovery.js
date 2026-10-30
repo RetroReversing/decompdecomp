@@ -11,7 +11,7 @@ let reloads=0;ctx.setupCandidateRecovery({querySelector:get},'current-project',a
 (async()=>{
  const pending=get('[data-recovery-start]').onclick();
  await new Promise(setImmediate);
- assert.deepEqual(JSON.parse(JSON.stringify(posts[0][1].body)),{slug:'current-project',limit:20});
+ assert.deepEqual(JSON.parse(JSON.stringify(posts[0][1].body)),{slug:'current-project',limit:20,retry_failed:false});
  assert.equal(get('[data-recovery-stop]').hidden,false);
  await get('[data-recovery-stop]').onclick();
  assert.equal(posts[1][0],'/api/job/cancel');assert.equal(posts[1][1].body.id,'batch');

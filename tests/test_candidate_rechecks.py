@@ -127,3 +127,13 @@ def test_missing_toolchain_is_a_recorded_failure_and_releases_claim(batch, monke
     monkeypatch.setattr(checks, 'measure', missing)
     assert checks.run(net, 'game', 1, Log())['failed'] == 1
     assert net.store.one('SELECT COUNT(*) n FROM claims')['n'] == 0
+
+
+def test_explicit_retry_remeasures_failed_results_without_changing_source(batch, monkeypatch):
+    net, fn, digest, ident, tested = batch
+    monkeypatch.setattr(checks, 'measure', lambda *args: {'score':None,'percent':None,'exact':False,'error':'missing tool'})
+    checks.run(net, 'game', 1, Log())
+    assert checks.run(net, 'game', 1, Log())['tested'] == 0
+    monkeypatch.setattr(checks, 'measure', lambda *args: {'score':20,'percent':80,'exact':False,'error':''})
+    assert checks.run(net, 'game', 1, Log(), retry_failed=True)['tested'] == 1
+    assert candidate_quality.pending(net, net._function('caller','game'))
