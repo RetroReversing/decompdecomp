@@ -137,15 +137,40 @@ async function showAgentResults(session, kind) {
   }
   more.onclick = load; await load();
 }
+const agentDetailsOpen = new Set();
+const agentMenusOpen = new Set();
+function compactAgentNumber(value) {
+  const n = Number(value || 0);
+  for (const [size, suffix] of [[1e9, 'B'], [1e6, 'M'], [1e3, 'k']]) {
+    if (n >= size) return `${(n / size).toFixed(1).replace(/\.0$/, '')}${suffix}`;
+  }
+  return String(n);
+}
 function agentMetrics(s, stats) {
-  const elapsed = agentRuntime(s), rate = agentTokenRate(s, stats);
+  const elapsed = agentRuntime(s);
   const runtime = LIVE.includes(s.state) ? `${Math.floor(elapsed / 3600)}h ${Math.floor(elapsed % 3600 / 60)}m` : "Not running";
   const metric = (kind,count) => `<button type="button" class="agent-metric-link" data-agent-results="${esc(s.id)}" data-result-kind="${kind}" ${count ? '' : 'disabled'} aria-label="View ${count} ${kind} functions for ${esc(s.label)}"><strong>${count}</strong><span>${kind} <span aria-hidden="true">↗</span></span></button>`;
   const last = stats?.last_improvement;
   const seconds = last ? Math.max(0, Date.now() / 1000 - last) : null;
   const ago = seconds == null ? "None yet" : seconds < 60 ? `${Math.floor(seconds)}s` : seconds < 3600 ? `${Math.floor(seconds / 60)}m` : `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m`;
-  return `<div class="agent-metrics"><div><strong>${Number(s.tokens || 0).toLocaleString()}</strong><span title="Reported tokens since the last metrics reset, including cache reads and writes">total tokens used</span></div><div><strong>${ago}</strong><span>since last improvement</span></div>${s.task === 'readable' ? `<div><strong>${stats?.polished || 0}</strong><span>polished</span></div>` : metric('matched',stats?.matched || 0)}${metric('improved',stats?.improved || 0)}<div><strong>${runtime}</strong><span>since latest start</span></div><div><strong>${rate == null ? "—" : (rate / 1000).toFixed(1) + "k"}</strong><span title="Recorded tokens since the last reset, including cache reads, divided by matches in that period; not a dollar cost">tokens / match</span></div></div>`;
+  return `<div class="agent-results-summary">${s.task === 'readable' ? `<span><strong>${stats?.polished || 0}</strong> polished</span>` : metric('matched',stats?.matched || 0)}${metric('improved',stats?.improved || 0)}</div>
+    <div class="agent-timing"><span>${runtime} <span class="muted">since latest start</span></span><span><span class="muted">Last improvement</span> ${ago === 'None yet' ? ago : ago + ' ago'}</span></div>`;
 }
+function agentUsage(s) {
+  return `<div class="agent-usage"><span title="${Number(s.tokens || 0).toLocaleString()} reported tokens, including cache reads and writes">${compactAgentNumber(s.tokens)} tokens</span>${s.estimated_cost != null ? `<span title="Estimate at standard API rates, not your subscription bill">≈ ${money(s.estimated_cost)} API-equivalent</span>` : s.usd ? `<span>${money(s.usd)} reported cost</span>` : ''}</div>`;
+
+}
+document.addEventListener('click', event => {
+  document.querySelectorAll('.agent-menu[open]').forEach(menu => {
+    if (!menu.contains(event.target)) { menu.open = false; agentMenusOpen.delete(menu.dataset.agentMenu); }
+  });
+});
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  document.querySelectorAll('.agent-menu[open]').forEach(menu => {
+    menu.open = false; agentMenusOpen.delete(menu.dataset.agentMenu); menu.querySelector('summary').focus();
+  });
+});
 $("agentSort").onchange = () => { agentSort = $("agentSort").value; renderSessions(S.sessions || []); };
 
 function renderSessions(sessions) {
@@ -165,24 +190,42 @@ function renderSessions(sessions) {
     const dot = s.state === "paused" ? "err" : s.state === "working" ? "on" : s.state === "stopped" ? "" : "work";
     const live = LIVE.includes(s.state), id = esc(s.id), b = s.metrics || board.get(s.agent);
     const facts = [s.task === "readable" ? `<b>polishing</b>` : "", esc(s.kind_name), s.model ? esc(s.model) : "its default model", s.task === "readable" ? helperResults(b, s.task) : "", b ? plural(b.compiles, "compile") : "",
-      s.usd ? money(s.usd) : s.tokens ? `${(s.tokens / 1000).toFixed(0)}k tokens` : "", s.runs ? plural(s.runs, "session") : "",
+      s.usd ? money(s.usd) : "", s.runs ? plural(s.runs, "session") : "",
       s.restarts ? `started again ${plural(s.restarts, "time")}` : "", live && s.started_at ? `since ${hhmm(s.started_at)}` : ""].filter(Boolean);
     const todo = s.todo ? `${sentence(s.todo.replace(/\.$/, ""))}.${s.state === "paused" ? " Then press Start again." : ""}` : "";
-    return `${head}<div class="session${rowTint(s.agent)}" data-state="${esc(s.state)}"><div class="session-top"><span class="dot ${dot}"></span><b title="${esc(s.agent)}">${esc(s.label)}</b><button class="link-btn" data-rename="${id}" type="button" aria-label="Rename ${esc(s.label)}">Rename</button>
-        ${live ? `<button class="ghost" data-stop="${id}" type="button">Stop</button>`
-          : `<button class="ghost" data-again="${id}" type="button">Start again</button><button class="ghost" data-remove="${id}" type="button">Remove</button>`}</div>
-      <span class="state ${s.state === "paused" ? "err" : ""}">${helperState(s, claim)}</span>
-      ${todo ? `<span class="todo-line">${esc(todo)}</span>` : ""}
-      ${s.last_message ? `<details class="agent-message"><summary>Latest update</summary><q class="said">${esc(s.last_message)}</q></details>` : ""}
+    const rate = agentTokenRate(s, b);
+    return `${head}<div class="session${rowTint(s.agent)}" data-state="${esc(s.state)}"><div class="session-top"><span class="dot ${dot}"></span><b title="${esc(s.agent)}">${esc(s.label)}</b>
+        ${live ? `<button class="ghost" data-stop="${id}" type="button">Stop</button>` : `<button class="ghost" data-again="${id}" type="button">Start again</button>`}
+        <details class="agent-menu" data-agent-menu="${id}" ${agentMenusOpen.has(s.id) ? 'open' : ''}><summary aria-label="Actions for ${esc(s.label)}" title="Agent actions">⋮</summary><div class="agent-menu-items">
+          <button data-rename="${id}" type="button">Rename</button><button data-queue="${id}" type="button">Work settings</button>
+          <button data-log="${id}" type="button" aria-pressed="${S.logFor === s.id}">${S.logFor === s.id ? 'Back to everything' : 'What it said and did'}</button>
+          <button data-reset-metrics="${id}" type="button" class="agent-menu-reset">Reset metrics</button>
+          ${live ? '' : `<button data-remove="${id}" type="button">Remove agent</button>`}</div></details></div>
       ${agentMetrics(s, b)}
-      ${s.metrics_since ? `<span class="small muted">Metrics since reset · ${new Date(s.metrics_since * 1000).toLocaleString()}</span>` : ""}
-      <span class="facts-line">${facts.join(" · ")}</span>
-      ${s.estimated_cost != null ? `<span class="small muted" title="Standard API rates checked 26 Oct 2026, using recorded input, cached input and output. Excludes cache-write, long-context, fast-mode and regional premiums. This is not your subscription bill.">≈ ${money(s.estimated_cost)} API-equivalent${b?.matched ? ` · ≈ ${money(s.estimated_cost / b.matched)} / match` : ""}</span>` : ""}
-      <button class="link-btn" data-queue="${id}" type="button">Work settings · ${s.per_session || 8} functions/session${s.task === "readable" ? "" : ` · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.model_untried ? " · never checked by this model" : ""}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.stall_compiles ? ` · move on after ${esc(s.selection.stall_compiles)} without improvement` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}`}</button>
-      <button class="link-btn" data-reset-metrics="${id}" type="button">Reset metrics</button>
-      <button class="link-btn" data-log="${id}" type="button" aria-pressed="${S.logFor === s.id}">${S.logFor === s.id ? "Back to everything" : "What it said and did"}</button></div>`;
+      <span class="state ${s.state === 'paused' ? 'err' : ''}">${helperState(s, claim)}</span>
+      ${todo ? `<span class="todo-line">${esc(todo)}</span>` : ''}
+      ${agentUsage(s)}
+      <details class="agent-details" data-agent-details="${id}" ${agentDetailsOpen.has(s.id) ? 'open' : ''}><summary>Details</summary><div class="agent-details-body">
+      <span class="facts-line">${facts.join(' · ')}</span>
+      <span class="small muted">${Number(s.tokens || 0).toLocaleString()} total tokens used · ${rate == null ? '—' : compactAgentNumber(rate)} tokens / match${s.estimated_cost != null && b?.matched ? ` · ≈ ${money(s.estimated_cost / b.matched)} / match` : ''}</span>
+      ${s.metrics_since ? `<span class="small muted">Metrics since reset · ${new Date(s.metrics_since * 1000).toLocaleString()}</span>` : ''}
+      <span class="small muted">Work settings · ${s.per_session || 8} functions/session${s.task === "readable" ? "" : ` · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.model_untried ? " · never checked by this model" : ""}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.stall_compiles ? ` · move on after ${esc(s.selection.stall_compiles)} without improvement` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}`}</span>
+      ${s.last_message ? `<div class="agent-message"><b class="small">Latest update</b><q class="said">${esc(s.last_message)}</q></div>` : ''}
+      </div></details></div>`;
   }).join("");
   setHtml(box, html);
+  for (const [selector, state] of [['[data-agent-details]', agentDetailsOpen], ['[data-agent-menu]', agentMenusOpen]]) {
+    box.querySelectorAll(selector).forEach(details => {
+      details.ontoggle = () => {
+        if (!details.isConnected) return;
+        const id = details.dataset.agentDetails || details.dataset.agentMenu;
+        if (details.open) state.add(id); else state.delete(id);
+      };
+    });
+  }
+  box.querySelectorAll('.agent-menu button').forEach(button => button.addEventListener('click', () => {
+    const menu = button.closest('details'); menu.open = false; agentMenusOpen.delete(menu.dataset.agentMenu);
+  }));
   box.querySelectorAll('[data-agent-results]').forEach(button => {
     button.onclick = () => showAgentResults(sessions.find(s => String(s.id) === button.dataset.agentResults), button.dataset.resultKind);
   });

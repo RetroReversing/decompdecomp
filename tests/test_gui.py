@@ -229,7 +229,8 @@ def test_agent_cards_sort_metrics_and_handle_unavailable_rates(gui):
                               ['b', 'c', 'a'], ['b', 'a', 'c']]
     assert cards['elapsed'] == 300 and cards['stopped'] == 0
     assert cards['rate'] == 5000 and cards['empty'] is None
-    assert '5.0k' in cards['html'] and 'since latest start' in cards['html']
+    assert 'since latest start' in cards['html']
+    assert 'matched' in cards['html'] and 'improved' in cards['html']
     assert cards['least']
 
 
@@ -276,3 +277,10 @@ def test_function_recency_and_model_filter_controls():
         pytest.skip('needs node')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_function_recency.js'))], check=True,
                    capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_compact_agent_cards_keep_results_and_secondary_actions_accessible():
+    if NODE is None:
+        pytest.skip('needs node')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_compact_agents.js'))], check=True,
+                   capture_output=True, text=True, encoding='utf-8', timeout=GUI_TIMEOUT_SECONDS)

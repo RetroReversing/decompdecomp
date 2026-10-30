@@ -1159,3 +1159,31 @@ details.more[open] > summary::before { content: "− "; }
 .deep-sweep-bar { width: 100%; height: 7px; accent-color: var(--match); margin-top: 10px; }
 .deep-recipe-results { margin: 14px 0; }
 .deep-recipe-results summary { cursor: pointer; font-weight: 600; }
+
+/* Compact cards keep results visible; secondary data and actions stay one click away. */
+.session-top b { min-width: 0; overflow-wrap: anywhere; flex: 1; }
+.agent-results-summary { display: flex; align-items: baseline; gap: 24px; padding: 3px 0; }
+.agent-results-summary .agent-metric-link { display: flex; align-items: baseline; gap: 6px; margin: 0; padding: 2px 0; font-size: 12px; }
+.agent-results-summary strong { font: 600 18px var(--mono); }
+.agent-timing, .agent-usage { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; }
+.agent-usage { color: var(--muted); }
+.agent-menu { position: relative; flex-shrink: 0; }
+.agent-menu > summary { display: grid; place-items: center; cursor: pointer; list-style: none; width: 28px; height: 28px; font-size: 23px; border-radius: var(--r-sm); }
+.agent-menu > summary::-webkit-details-marker { display: none; }
+.agent-menu > summary:hover, .agent-menu[open] > summary { background: var(--bg-alt); }
+.agent-menu-items { position: absolute; right: 0; top: 32px; z-index: 20; min-width: 190px; padding: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 6px 20px #0002; }
+.agent-menu-items button { display: block; width: 100%; padding: 9px 10px; text-align: left; font-size: 12px; border-radius: var(--r-sm); }
+.agent-menu-items button:hover { background: var(--bg-alt); }
+.agent-menu-items .agent-menu-reset { border-top: 1px solid var(--line); border-radius: 0; margin-top: 4px; }
+.agent-menu summary:focus-visible, .agent-details summary:focus-visible { outline: 2px solid var(--hl); outline-offset: 2px; }
+.agent-details > summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.agent-details-body { display: grid; gap: 8px; padding-top: 10px; margin-top: 8px; border-top: 1px solid var(--line-soft); }
+.agent-details .said { display: block; overflow: visible; -webkit-line-clamp: unset; }
+.agents-panel > .panel-head { flex-wrap: wrap; gap: 10px; }
+.agents-panel .agent-toolbar { padding: 0; border: 0; margin-left: auto; gap: 6px; }
+.agents-panel .agent-sort-select { width: 150px; }
+.agents-panel .agent-sort-select select { height: 30px; padding-left: 8px; }
+.agents-panel .agent-sort-select::after { top: 10px; }
+.ptab[data-pane="agents"] .agents-grid { align-items: start; }
+.ptab[data-pane="agents"] .agents-grid > .agents-panel { height: auto; }
+.ptab[data-pane="agents"] .agents-grid .sessions { overflow: visible; flex: none; }
