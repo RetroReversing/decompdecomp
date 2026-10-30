@@ -93,7 +93,8 @@ def test_a_used_up_plan_waits_instead_of_stopping():
 
 def _manager(tmp_path, monkeypatch, kind):
     (tmp_path / "bin").mkdir(exist_ok=True)
-    exe = tmp_path / "bin" / {"claude": "claude", "codex": "codex", "antigravity": "agy", "opencode": "opencode"}[kind]
+    exe = tmp_path / "bin" / {"claude": "claude", "codex": "codex", "antigravity": "agy", "opencode": "opencode",
+                              "zcode": "zcode"}[kind]
     exe.write_text("#!/bin/sh\n")
     exe.chmod(0o755)
     monkeypatch.setattr(agents, "_which", lambda cmd: str(exe))
@@ -192,6 +193,123 @@ def test_codex_helpers_cannot_search_the_web(tmp_path, monkeypatch):
 
 def test_gemini_cli_helpers_carry_on_as_antigravity():
     assert kinds.kind_id("gemini") == "antigravity" and kinds.kind_id("agy") == "antigravity"
+
+
+def test_zcode_creates_one_session_with_only_decomps_tools(tmp_path, monkeypatch):
+    """`zcode app-server` speaks the ZCode Protocol on stdio: the app's MCP server alone, session-scoped, with the
+    token in its Authorization header and only the app's tools allowed — the token never on the command line."""
+    m = _manager(tmp_path, monkeypatch, "zcode")
+    s = agents.Session("zcode-1", "zcode", "z", "demo", "zcode-1",
+                       {"model": "account:zai-start-plan/GLM-5.3-Flash#high"})
+    work = tmp_path / "zcode"
+    work.mkdir()
+    cmd, _, script = m._command(s, "tok", work)
+    assert cmd == [str(tmp_path / "bin" / "zcode"), "app-server"]
+    assert not any("tok" in a or "zai-start-plan" in a for a in cmd)
+    create, send = (json.loads(line) for line in script.splitlines())
+    p = create["params"]
+    assert send["params"]["sessionId"] == p["sessionId"]
+    assert send["params"]["content"].startswith("line one\nline two")
+    assert p["mcpServers"] == [{"name": "decomp", "type": "http", "url": "http://127.0.0.1:6464/mcp",
+                                "headers": [{"name": "Authorization", "value": "Bearer tok"}],
+                                "isolation": "session", "alwaysLoad": True, "timeoutMs": 180_000}]
+    assert p["toolAllowlist"] == ["mcp__decomp__*"] and p["mode"] == "yolo"
+    assert p["model"] == {"providerId": "account:zai-start-plan", "modelId": "GLM-5.3-Flash",
+                          "options": {"reasoningLevel": "high"}}
+
+
+def test_zcode_bare_model_stays_zcodes_own_default(tmp_path, monkeypatch):
+    """A bare model name can't be resolved to a provider from outside: the session runs on zcode's own selection, and
+    a "#effort" still reaches it as the thought level."""
+    m = _manager(tmp_path, monkeypatch, "zcode")
+    s = agents.Session("zcode-2", "zcode", "z", "demo", "zcode-2", {"model": "GLM-5.3-Flash#max"})
+    (tmp_path / "zcode").mkdir()
+    _, _, script = m._command(s, "tok", tmp_path / "zcode")
+    p = json.loads(script.splitlines()[0])["params"]
+    assert "model" not in p and p["thoughtLevel"] == "max"
+    _, _, script = m._command(agents.Session("zcode-3", "zcode", "z", "demo", "zcode-3", {}), "tok", tmp_path / "zcode")
+    p = json.loads(script.splitlines()[0])["params"]
+    assert "model" not in p and "thoughtLevel" not in p
+
+
+def test_zcode_feed_reads_the_protocol():
+    """The server's questions answered on stdin, the model's step gathered from its deltas, the turn's usage, and the
+    ("stop", "turn.completed") that ends a process that would otherwise sit there forever."""
+    z, state = kinds.get("zcode"), {}
+
+    def feed(line):
+        return z.parse_line(json.dumps(line), state)
+
+    out = feed({"id": "server-1", "method": "session/requestRuntimePreferences", "params": {"scope": "x"}})
+    assert out[0][0] == "stdin" and json.loads(out[0][1])["result"]["toolSearchMode"] == "off"
+    out = feed({"id": "server-2", "method": "interaction/requestOfficialMcpAuthHeaders", "params": {}})
+    assert out[0][0] == "stdin" and json.loads(out[0][1])["error"]["code"] == -32601
+    assert feed({"id": 1, "result": {"session": {"sessionId": "s"}}}) == []
+    feed({"method": "session/event", "payload": {"type": "part.delta", "field": "reasoning", "delta": "hmm "}})
+    feed({"method": "session/event", "payload": {"type": "part.delta", "field": "text", "delta": "Claiming "}})
+    feed({"method": "session/event", "payload": {"type": "part.delta", "field": "text", "delta": "the next one."}})
+    out = feed({"method": "session/event", "payload": {"type": "part.upserted", "part": {
+        "type": "tool", "callId": "c1", "tool": "mcp__decomp__claim_function",
+        "state": {"input": {"strategy": "easiest"}}}}})
+    assert out == [("tool", "claim_function(easiest)")]
+    assert feed({"method": "session/event", "payload": {"type": "part.upserted", "part": {
+        "type": "tool", "callId": "c1", "tool": "mcp__decomp__claim_function",
+        "state": {"input": {"strategy": "easiest"}}}}}) == []  # the same call isn't a second one
+    out = feed({"method": "session/event", "payload": {"type": "part.upserted",
+                                                       "part": {"type": "step-finish", "reason": "end"}}})
+    assert out == [("think", "hmm"), ("text", "Claiming the next one.")]
+    out = feed({"method": "session/event", "payload": {"type": "turn.completed", "response": "", "tokenCount": 1200,
+                                                       "duration": 12.3, "usage": {}, "cacheStats": {}}})
+    assert out == [("info", "session finished (12s)"), ("usage", json.dumps({"tokens": 1200, "turns": 1})),
+                   ("stop", "turn.completed")]
+    assert feed({"method": "session/event", "payload": {"type": "turn.failed",
+                                                        "error": {"message": "over the limit"}}})[-1] == ("stop", "turn.failed")
+
+
+def test_zcode_session_ends_when_the_turn_is_done(tmp_path, monkeypatch):
+    """The harness keeps stdin open for zcode, answers the server's questions, and ends the process on ("stop", "turn.completed") —
+    a stand-in app-server that would sleep forever after the turn proves all three."""
+    (tmp_path / "bin").mkdir(exist_ok=True)
+    exe = tmp_path / "bin" / "zcode"
+    exe.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys, time\n"
+        "create = json.loads(sys.stdin.readline())\n"
+        "send = json.loads(sys.stdin.readline())\n"
+        "sid = create['params']['sessionId']\n"
+        "assert send['params']['sessionId'] == sid and 'Bearer tok' in json.dumps(create['params']['mcpServers'])\n"
+        "print(json.dumps({'id': 1, 'result': {'session': {'sessionId': sid}}}), flush=True)\n"
+        "print(json.dumps({'id': 'server-1', 'method': 'session/requestRuntimePreferences', 'params': {}}),"
+        " flush=True)\n"
+        "assert json.loads(sys.stdin.readline())['result']['toolSearchMode'] == 'off'\n"
+        "print(json.dumps({'method': 'session/event', 'payload': {'type': 'part.upserted', 'part': {\n"
+        "    'type': 'tool', 'callId': 'c1', 'tool': 'mcp__decomp__claim_function',\n"
+        "    'state': {'input': {}}}}}), flush=True)\n"
+        "print(json.dumps({'method': 'session/event', 'payload': {'type': 'turn.completed', 'response': '',\n"
+        "    'tokenCount': 0, 'toolCallCount': 1, 'duration': 1, 'usage': {}, 'cacheStats': {}}}), flush=True)\n"
+        "time.sleep(60)  # a real app-server wouldn't exit on its own\n")
+    exe.chmod(0o755)
+    monkeypatch.setattr(agents, "_which", lambda cmd: str(exe))
+    m = agents.Manager.__new__(agents.Manager)
+    m.mcp_url, m.home = "http://127.0.0.1:6464/mcp", tmp_path
+    m.prompt = lambda s: "work the function"
+
+    import contextlib
+
+    class _Net:
+        add_spend = staticmethod(lambda *a: None)
+        store = type("Store", (), {"tx": staticmethod(lambda: contextlib.nullcontext(
+            type("Db", (), {"execute": staticmethod(lambda *a, **k: None)})()))})()
+
+    m.net = _Net()
+    s = agents.Session("zcode-4", "zcode", "z", "demo", "zcode-4", {})
+    work = tmp_path / "zcode"
+    work.mkdir()
+    started = time.monotonic()
+    assert m._run_cli(s, "tok", work) is True
+    assert time.monotonic() - started < 30, "the helper waited out the stand-in's sleep instead of ending it"
+    assert s.usage["tool_calls"] == 1
+
     assert "gemini" not in {a.id for a in kinds.AGENTS} and kinds.get("antigravity").command == "agy"
     assert kinds.get("gemini") is kinds.get("antigravity")
 

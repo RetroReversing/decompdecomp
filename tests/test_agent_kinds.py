@@ -46,7 +46,9 @@ def test_every_agent_says_everything_the_app_asks(agent, stand_in, tmp_path):
         work = tmp_path / "work"
         work.mkdir()
         cmd, env = agent.session_command(str(stand_in), work, "http://127.0.0.1:1/mcp", TOKEN, "some-model")
-        assert cmd[0] == str(stand_in) and "some-model" in cmd
+        assert cmd[0] == str(stand_in)
+        assert "some-model" in cmd or agent.keeps_stdin, "the launcher's model reaches the session (zcode's arrives " \
+                                                           "in its opening script, agents/zcode.py stdin)"
         assert not any(TOKEN in a for a in cmd), "a token on the command line is there for every process to read"
         assert all(isinstance(k, str) and isinstance(v, str) for k, v in env.items())
         assert "line one" in agent.stdin(PROMPT) and agent.parse_line("not json") == [("info", "not json")]

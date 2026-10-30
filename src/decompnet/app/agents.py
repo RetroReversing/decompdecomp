@@ -1264,7 +1264,8 @@ class Manager:
         def feed_prompt():
             try:
                 proc.stdin.write(("\x01" if os.name == "nt" else "") + prompt)
-                proc.stdin.close()  # end of input: the agent works on this one prompt, then exits
+                if not k.keeps_stdin:
+                    proc.stdin.close()  # end of input: the agent works on this one prompt, then exits
             except OSError:  # it exited before reading (stderr says why)
                 pass
 
@@ -1277,12 +1278,22 @@ class Manager:
         saw_tool = False
         said: collections.deque = collections.deque(maxlen=20)
         state: dict = {}
-        last_error = refused = ""
+        last_error = refused = finished = ""
         for line in proc.stdout:
             for kind, text in k.parse_line(line, state):
                 if kind == "usage":
                     self.account(s, json.loads(text))
                     continue
+                if kind == "stdin":  # the agent answers its protocol's questions back on stdin (agents/zcode.py)
+                    try:
+                        proc.stdin.write(text + "\n")
+                        proc.stdin.flush()
+                    except OSError:  # it went away mid-answer (stderr says why)
+                        pass
+                    continue
+                if kind == "stop":  # the agent said the work is done: its process wouldn't exit on its own
+                    finished = text or "finished"
+                    break
                 if kind == "tool":
                     saw_tool = True
                     s.usage["tool_calls"] += 1
@@ -1291,7 +1302,7 @@ class Manager:
                     last_error = text
                     refused = refused or (text if k.fatal(text) else "")
                 s.push(kind, text)
-            if s.stop.is_set():
+            if finished or s.stop.is_set():
                 _terminate(proc)
                 break
         code = proc.wait()
@@ -1307,6 +1318,13 @@ class Manager:
             s.limit_until = limit_reset(everything)
         elif code != 0 and (why := no_credit(everything)):
             raise Fatal(why)  # every agent on this account fails the same way until it's topped up
+        if finished:
+            if saw_tool:  # it said its work is done and used the tools: done, whatever the exit code
+                s.error = ""
+                return True
+            s.error = "the agent never used the decomp tools" + (f": {list(errors)[-1]}" if errors else "")
+            s.push("error", s.error)
+            return False
         if code != 0 and THROTTLED.search(everything):
             s.throttled = True
         if code != 0 and _SIGNED_OUT.search(everything):
