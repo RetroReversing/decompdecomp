@@ -1389,9 +1389,9 @@ class Network:
                             f"compile_and_diff(function=\"{fn['name']}, {row['name']}\", source=both definitions)."]
             else:
                 out += ["", f"### Waits for {row['name']}: {row['agent'] or 'an agent'} found this function needs it "
-                            f"first (a callee or an inlined helper), so it's claimed after everything else until "
-                            f"{row['name']} matches. Work on it if you can; else release_function with "
-                            f"needs=\"{row['name']}\"."]
+                            f"first. This is a historical agent report, not proof that its body must match. "
+                            f"Inspect the actual call and fix declarations here; do not repeat needs to skip work. "
+                            f"New dependency pivots require original direct-call evidence and obey pause rules."]
         waiting = self.store.all("SELECT b.name FROM waits w JOIN functions b ON b.id=w.function_id WHERE w.needs_id=? "
                                  "AND b.status='open' ORDER BY b.name LIMIT 8", fn["id"])
         if waiting and fn["status"] != "matched":
