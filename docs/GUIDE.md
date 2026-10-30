@@ -156,6 +156,7 @@ These additional searches currently support MIPS ROM projects; imported reposito
 | **Antigravity CLI** | The same, through the MCP configuration of the workspace (`agy`). |
 | **Kimi Code** | Install `npm install -g @moonshot-ai/kimi-code` (Node.js 22.19+), then `kimi login`. Uses your Kimi Code account and configured models. The legacy Python `kimi-cli` is not supported. |
 | **opencode** | The same, with each provider that you set up: DeepSeek, Qwen, Kimi and more. |
+| **ZCode** | Z.AI's agent CLI: the desktop app's `zcode` on your PATH, signed in with `zcode login`. It speaks the ZCode Protocol, and the app answers it over stdio. |
 
 The app starts each helper itself, from **Start agents** in the project's header. A helper that stops starts again
 by itself. On a usage limit it waits until the limit resets. Five fast failures in a row pause it, and the app says

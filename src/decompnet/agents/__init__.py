@@ -8,7 +8,10 @@ An agent is one of two sorts:
 - A program the user installs and signs in to (Claude Code, Codex, Antigravity CLI, opencode). The app runs it
   headless, once per session, in a private working folder, connected only to the app's own MCP endpoint on 127.0.0.1
   with a token of its own (`session_command`): MCP is the app's private wiring to it. The prompt goes in on stdin
-  (`stdin`); what it prints, one JSON object a line, is read into the helper's feed (`parse`).
+  (`stdin`); what it prints, one JSON object a line, is read into the helper's feed (`parse`). Most programs read one
+  prompt and exit; one that speaks a protocol instead (zcode's app-server) keeps stdin open (`keeps_stdin`), asks its
+  questions as ("stdin", line) feed items — answered on its stdin by the app — and says ("stop", "") when the work is
+  done.
 - An agent built into the app (the API helper): no program, a loop in the app that talks to a model's API itself and
   calls the tools directly (`run`).
 
@@ -116,6 +119,7 @@ class Agent:
     takes_effort = False  # the launcher offers a reasoning effort: with the model's name ("provider/model#high"), or
     # for an agent whose model is an endpoint's, as the helper's `effort` option
     efforts: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max")  # the efforts it offers, when it takes one
+    keeps_stdin = False  # a program that answers its protocol's questions on stdin, and says ("stop", "") when done
 
     def __repr__(self) -> str:
         return f"<agent {self.id}>"
@@ -326,9 +330,10 @@ def _registry() -> list[Agent]:
     from .cursor import CURSOR
     from .kimi import KIMI
     from .opencode import OPENCODE
+    from .zcode import ZCODE
 
     # the order the Agents page lists them in (the launcher puts the recommended one first)
-    return [CLAUDE, CODEX, CURSOR, KIMI, ANTIGRAVITY, OPENCODE, API]
+    return [CLAUDE, CODEX, CURSOR, KIMI, ANTIGRAVITY, OPENCODE, ZCODE, API]
 
 
 AGENTS: list[Agent] = _registry()
