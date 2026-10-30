@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import threading
 import uuid
+from pathlib import Path
 
 from . import SAID_CHARS, Agent, args_brief, error_text, tool_name, usage_item
 
@@ -40,6 +41,20 @@ class _PerSession(threading.local):
 
 
 _here = _PerSession()
+
+
+def _provider_config_env() -> dict[str, str]:
+    """The desktop app ships the CLI's built-in provider registry in its versioned runtime folder, not beside the CLI
+    script a `zcode` launcher runs (a helper then starts five times and gives up, saying 无法定位 CLI ZCode Built-in
+    Provider Config). The newest copy is handed to the session, with the user's own personal provider config beside it
+    — the CLI takes the two only together."""
+    builtin = sorted((Path.home() / ".zcode" / "v2" / "runtime" / "provider")
+                     .glob("*/*/endpoint-*/zcode-builtin.json"), key=lambda p: p.stat().st_mtime)
+    personal = Path.home() / ".zcode" / "v2" / "provider_config.json"
+    if not builtin or not personal.is_file():
+        return {}
+    return {"ZCODE_BUILTIN_PROVIDER_CONFIG_FILE": str(builtin[-1]),
+            "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE": str(personal)}
 
 
 def selection(model: str) -> dict | None:
@@ -75,7 +90,7 @@ class Zcode(Agent):
         it through `session/create` in `stdin`'s script, so they ride on the helper thread, never the command line."""
         _here.mcp_url, _here.token, _here.model = mcp_url, token, model
         _here.workdir = str(workdir)
-        return [exe, "app-server"], {}
+        return [exe, "app-server"], _provider_config_env()
 
     def stdin(self, prompt: str) -> str:
         """The opening script: one session, created with only the app's MCP server and tools, then the prompt."""

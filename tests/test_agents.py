@@ -218,6 +218,29 @@ def test_zcode_creates_one_session_with_only_decomps_tools(tmp_path, monkeypatch
                           "options": {"reasoningLevel": "high"}}
 
 
+def test_zcode_hands_the_session_the_built_in_provider_registry(tmp_path, monkeypatch):
+    """The desktop app ships the CLI's provider registry in its versioned runtime folder, not beside the CLI script a
+    launcher runs; without it the helper starts five times and gives up. The CLI takes the built-in and personal
+    provider configs together, or looks for them itself."""
+    m = _manager(tmp_path, monkeypatch, "zcode")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for var in ("ZCODE_BUILTIN_PROVIDER_CONFIG_FILE", "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE"):
+        monkeypatch.delenv(var, raising=False)  # the app itself may run inside the ZCode desktop: no borrowed paths
+    (tmp_path / "zcode").mkdir()
+    s = agents.Session("zcode-5", "zcode", "z", "demo", "zcode-5", {})
+    assert "ZCODE_BUILTIN_PROVIDER_CONFIG_FILE" not in m._command(s, "tok", tmp_path / "zcode")[1]  # nothing installed yet: the CLI looks for itself
+    runtime = tmp_path / ".zcode" / "v2" / "runtime" / "provider" / "darwin-aarch64" / "3.16.3" / "endpoint-abc"
+    runtime.mkdir(parents=True)
+    (runtime / "zcode-builtin.json").write_text("{}")
+    personal = tmp_path / ".zcode" / "v2" / "provider_config.json"
+    personal.write_text('{"schemaVersion": 1, "config": {}}')
+    env = m._command(s, "tok", tmp_path / "zcode")[1]
+    assert env["ZCODE_BUILTIN_PROVIDER_CONFIG_FILE"] == str(runtime / "zcode-builtin.json")
+    assert env["ZCODE_PERSONAL_PROVIDER_CONFIG_FILE"] == str(personal)
+    personal.unlink()  # without its other half the built-in path isn't given either
+    assert "ZCODE_BUILTIN_PROVIDER_CONFIG_FILE" not in m._command(s, "tok", tmp_path / "zcode")[1]
+
+
 def test_zcode_bare_model_stays_zcodes_own_default(tmp_path, monkeypatch):
     """A bare model name can't be resolved to a provider from outside: the session runs on zcode's own selection, and
     a "#effort" still reaches it as the thought level."""
