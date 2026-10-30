@@ -25,6 +25,7 @@ def sweep(tmp_path, monkeypatch):
     obj = Sweeps(net, Jobs())
     net.deep_sweeps = obj
     monkeypatch.setattr(deep_sweep, 'POLL_SECONDS', 0)
+    monkeypatch.setattr(deep_sweep.random, 'shuffle', lambda batch: None)
     calls = []
     def search(net, slug, name, minutes, variants, log):
         calls.append(name)
@@ -291,7 +292,7 @@ def test_functions_are_searched_on_several_threads_at_once(sweep, monkeypatch):
     assert all(obj.history('game', net._function(n, 'game'))['completed'] for n in ('f0', 'f1'))
 
 
-def test_one_thread_searches_in_order_and_zero_means_what_the_computer_can_spare(sweep, monkeypatch):
+def test_one_thread_searches_serially_and_zero_means_what_the_computer_can_spare(sweep, monkeypatch):
     from decompnet.app import workers
 
     obj, net, calls, _ = sweep
@@ -353,3 +354,36 @@ def test_reset_metrics_rejects_active_searches(sweep, kind):
     obj.jobs.jobs['active'] = {'state': 'running', 'kind': kind}
     with pytest.raises(NetworkError, match='Stop active deep'):
         obj.reset_metrics('game')
+
+
+@pytest.mark.parametrize('threads', [1, 2])
+def test_random_queue_uses_only_eligible_functions_once(sweep, monkeypatch, threads):
+    obj, net, calls, _ = sweep
+    shuffled = []
+    def reverse(batch):
+        shuffled.append([fn['name'] for fn, scope in batch])
+        batch.reverse()
+    monkeypatch.setattr(deep_sweep.random, 'shuffle', reverse)
+    obj.run('game', 1, 10, Log(), threads)
+    assert shuffled[0] == ['f0', 'f1']
+    assert sorted(calls) == ['f0', 'f1']
+    if threads == 1:
+        assert calls == ['f1', 'f0']
+    calls.clear()
+    obj.run('game', 1, 10, Log(), threads)
+    assert calls == []  # Completed passes remain skipped despite random selection.
+
+
+def test_restart_reshuffles_interrupted_functions(sweep, monkeypatch):
+    obj, net, calls, _ = sweep
+    selected = []
+    def interrupted(*args):
+        selected.append(args[2])
+        raise RuntimeError('stopped')
+    monkeypatch.setattr(deep_permuter, 'run', interrupted)
+    with pytest.raises(RuntimeError, match='stopped'):
+        obj.run('game', 1, 10, Log())
+    monkeypatch.setattr(deep_sweep.random, 'shuffle', lambda batch: batch.reverse())
+    with pytest.raises(RuntimeError, match='stopped'):
+        obj.run('game', 1, 10, Log())
+    assert selected == ['f0', 'f1']

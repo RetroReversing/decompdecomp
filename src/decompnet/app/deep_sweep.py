@@ -1,6 +1,7 @@
 """Durable project-wide deep passes; each candidate gets a bounded turn through the normal judges."""
 import hashlib
 import json
+import random
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -285,6 +286,8 @@ class Sweeps:
                     waiting += 1
                     continue
                 batch.append((fn, scope))
+            # Random order without replacement: interrupted restarts do not always favor small functions.
+            random.shuffle(batch)
             total, blocked = len(rows), waiting
 
             def search(item, proj=proj, total=total, blocked=blocked):
