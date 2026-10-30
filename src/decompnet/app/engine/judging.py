@@ -194,7 +194,7 @@ class JudgeMixin:
         for reasons a compile would have shown were none (12,565 releases, median 5 s after the claim): so a release
         before compile_and_diff's move-on rule says so is answered once with what to do instead, and goes through
         when asked again. `needs`: a direct callee in original assembly which blocks this work. It is recorded and may be
-        claimed once per unchanged input, respecting quality/exhaustion pauses; inline/header concerns stay notes.
+        claimed once per unchanged input, respecting exhaustion pauses; inline/header concerns stay notes.
         A release without a compile doesn't count against the session's claims, and says so. `not_c`: the agent's
         verdict that no C makes it (Network.release), which isn't pushed back: it's a finding, not giving up, and
         it counts only once agents of two models agree."""

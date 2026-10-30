@@ -31,6 +31,8 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
 
 ## Automatic repairs before paid agents
 
+Candidate-quality reports are advisory: agents, autopilot and the deep permuter can keep working while a concern awaits review. Repair examples retains the warning and saved alternatives; exact matches still require the normal byte or objdiff judge.
+
 The permuter's bounded repair pass tries unused scalar locals, local and parameter `register` storage, and adjacent
 local declaration order before random permutation. It keeps original line layout and leaves shared headers alone.
 These hypotheses run through the same compiler and exact judge as agents, in ROM and supported 32-bit imported

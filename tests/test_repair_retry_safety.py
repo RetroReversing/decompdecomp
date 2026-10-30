@@ -34,7 +34,7 @@ def test_returning_to_an_exhausted_source_does_not_reset_its_history(tmp_path):
     assert claim_stalls.blocked(net,net._project('game'))==[fn['id']]
 
 
-def test_quality_report_pauses_automatic_workers_but_keeps_scores_and_explicit_claims(tmp_path):
+def test_quality_report_keeps_work_available_and_preserves_evidence(tmp_path, monkeypatch):
     net,_=_game(tmp_path,[('f',10,'open')]);agent,_=net.local_agent('worker')
     net.claim_row(agent,'game','f');fn=net._function('f','game')
     original='int f(){int x;return x;}'
@@ -42,16 +42,27 @@ def test_quality_report_pauses_automatic_workers_but_keeps_scores_and_explicit_c
     net.release(agent,'f','Historical candidate uses an uninitialized value.','game')
     fn=net._function('f','game')
     assert fn['best_score']==10 and fn['best_source']==original
-    assert candidate_quality.blocked(net,net._project('game'))==[fn['id']]
-    assert not Permuter(net)._hold(agent,fn)
-    proj=net._project('game')
-    assert net._autopilot_one(agent,proj,fn['id'])=='skip'
-    assert net.forks.autopilot_one(agent,proj,fn['id'])=='skip'
-    assert net.forks._hold_for_try('game','f',agent) is None
-    with pytest.raises(Exception,match='quality needs review'):
-        net.try_quietly(agent,proj,fn,original)
-    assert 'quality needs user review' in release_repairs.run(net,'game',fn)
-    assert net.claim_row(agent,'game','f')['id']==fn['id']
+    assert candidate_quality.blocked(net,net._project('game')) == []
+    assert not claim_stalls.blocked(net,net._project('game'))
+    assert candidate_quality.pending(net,fn)
+    assert 'Work continues' in ' '.join(candidate_quality.brief(net,fn))
+    assert Permuter(net)._hold(agent,fn)
+    with net.store.tx() as db: db.execute('DELETE FROM claims')
+    assert net.forks._hold_for_try('game','f',agent) == fn['id']
+    with net.store.tx() as db: db.execute('DELETE FROM claims')
+    from decompnet.app import deep_permuter
+    assert deep_permuter.validate(net,'game','f',1,10)[1]['id'] == fn['id']
+    from types import SimpleNamespace
+    monkeypatch.setattr(net,'_context',lambda *args: {'header':''})
+    monkeypatch.setattr(net,'_compile',lambda *args: SimpleNamespace(ok=False))
+    assert net.try_quietly(agent,net._project('game'),fn,original)['score'] is None
+    calls=[]
+    monkeypatch.setattr(Permuter,'_repair_round',lambda *args,**kwargs: calls.append(kwargs['function_id']))
+    release_repairs.run(net,'game',fn)
+    assert calls == [fn['id']]
+    # A generic claim must see the function, without an explicit name override.
+    next_agent,_=net.local_agent('next-worker')
+    assert net.claim_row(next_agent,'game',None)['id']==fn['id']
     digest=hashlib.sha256(original.encode()).hexdigest()
     with pytest.raises(Exception,match='changed|reviewed'):
         candidate_quality.review(net,'game','f','old hash')
@@ -62,7 +73,7 @@ def test_quality_report_pauses_automatic_workers_but_keeps_scores_and_explicit_c
     assert not claim_stalls.blocked(net,net._project('game'))
 
 
-def test_changed_source_does_not_inherit_another_candidates_quality_pause(tmp_path):
+def test_changed_source_does_not_inherit_another_candidates_quality_report(tmp_path):
     net,_=_game(tmp_path,[('f',10,'open')]);agent,_=net.local_agent('worker')
     net.claim_row(agent,'game','f');fn=net._function('f','game')
     net._record(fn,agent,10,'int f(){int x;return x;}',1)

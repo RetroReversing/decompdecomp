@@ -132,10 +132,6 @@ class AutopilotMixin:
     def try_quietly(self, agent, proj, fn, source: str) -> dict:
         """Judge one candidate for a function nobody holds (autopilot's tries): held only while it compiles,
         recorded as an attempt like any other. {"matched", "score"}."""
-        from ... import candidate_quality
-        current = self.store.one('SELECT * FROM functions WHERE id=?',fn['id'])
-        if current is not None and candidate_quality.pending(self,current):
-            raise NetworkError('Candidate quality needs review in Repair examples before automatic work resumes.')
         now = time.time()
         with self.store.tx() as db:
             self._expire_claims(db)
@@ -173,9 +169,6 @@ class AutopilotMixin:
             fn = db.execute("SELECT * FROM functions WHERE id=?", (fid,)).fetchone()
             if fn is None or fn["status"] != "open" or db.execute("SELECT 1 FROM claims WHERE function_id=?", (fid,)).fetchone():
                 return "skip"
-            from ... import candidate_quality
-            if candidate_quality.pending(self,fn):
-                return 'skip'
             db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fid, agent.id, now, now + 300))
         try:
             self._seed_for(fn, proj)  # the readable draft, for the agents that come after

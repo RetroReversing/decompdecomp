@@ -165,5 +165,5 @@ def run(net, slug, limit, log, retry_failed=False):
         finally:
             with net.store.tx() as db:
                 db.execute('DELETE FROM claims WHERE function_id=? AND agent_id=?', (fn['id'], agent.id))
-    log('Recovery batch finished. Measurements saved; selected C, matches and quality pauses were not changed.')
+    log('Recovery batch finished. Measurements saved; selected C, matches and quality reports were not changed.')
     return stats

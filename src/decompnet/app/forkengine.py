@@ -2741,9 +2741,6 @@ class ForkEngine:
             self.net._expire_claims(db)
             if fn["status"] != "open" or db.execute("SELECT 1 FROM claims WHERE function_id=?", (fn["id"],)).fetchone():
                 return None
-            from .. import candidate_quality
-            if candidate_quality.pending(self.net,fn):
-                return None
             db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fn["id"], agent.id, now, now + 300))
         return fn["id"]
 
@@ -3229,9 +3226,6 @@ class ForkEngine:
             fn = db.execute("SELECT * FROM functions WHERE id=?", (fid,)).fetchone()
             if fn is None or fn["status"] != "open" or db.execute("SELECT 1 FROM claims WHERE function_id=?", (fid,)).fetchone():
                 return "skip"
-            from .. import candidate_quality
-            if candidate_quality.pending(self.net,fn):
-                return 'skip'
             db.execute("INSERT INTO claims VALUES(?,?,?,?)", (fid, agent.id, now, now + 300))
         try:
             _, fp, cfg = self.get(proj["slug"])

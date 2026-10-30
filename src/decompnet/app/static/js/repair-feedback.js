@@ -12,7 +12,7 @@ $("repairExamples").onclick = async () => {
     <button data-refresh type="button">Refresh</button></div>
     <div class="repair-filter-checks"><label><input type="checkbox" data-all> Across all projects</label>
     <label><input type="checkbox" data-comparable checked> Only with changed failed C</label></div></div>
-    <section class="repair-help" aria-label="Batch candidate recovery"><h3>Recover paused candidates · this project · no AI tokens</h3>
+    <section class="repair-help" aria-label="Batch candidate recovery"><h3>Recheck reported candidates · this project · no AI tokens</h3>
     <p>Rejudge saved alternatives, smallest functions first. Measurements are saved across runs; unchanged results are skipped. This does not replace C, clear warnings or mark matches.</p>
     <label>Functions per batch <input data-recovery-limit type="number" min="1" max="200" value="20"></label>
     <label><input data-recovery-retry type="checkbox"> Retry failed measurements</label>
@@ -138,7 +138,7 @@ $("repairExamples").onclick = async () => {
         for (const report of quality.reports || []) {
           const panel = document.createElement('details'); panel.className = 'repair-card';
           const heading = document.createElement('summary');
-          heading.textContent = `${report.function} · ${report.slug}${report.issue ? ' · ' + report.issue.replaceAll('_', ' ') : ''} · ${report.instructions ?? "—"} instructions · automatic work paused`;
+          heading.textContent = `${report.function} · ${report.slug}${report.issue ? ' · ' + report.issue.replaceAll('_', ' ') : ''} · ${report.instructions ?? "—"} instructions · quality concern · work can continue`;
           const body = document.createElement('div'); body.className = 'repair-card-body';
           const warning = document.createElement('p'); warning.textContent = report.warning;
           const hint = document.createElement('p'); hint.className = 'muted small';
@@ -150,7 +150,7 @@ $("repairExamples").onclick = async () => {
             try { evidence.textContent = (await api(`/api/repair-examples/quality?slug=${encodeURIComponent(report.slug)}&function=${encodeURIComponent(report.function)}`)).evidence; evidence.hidden = false; }
             catch (error) { toast(esc(error.message), 'err'); } finally { finish(); }
           };
-          const resume = document.createElement('button'); resume.textContent = 'Reviewed: resume this candidate';
+          const resume = document.createElement('button'); resume.textContent = 'Mark concern reviewed';
           resume.onclick = async () => {
             const finish = beginWork(body, 'Saving candidate review', [resume]);
             try { await api('/api/repair-examples/quality', {method:'POST', body:{slug:report.slug, function:report.function, source_hash:report.source_hash}}); await load(); }
