@@ -842,8 +842,11 @@ function renderDeepSweepResults(status) {
   const detailsOpen = [...$("deepSweepRecipes").querySelectorAll("details")].map(d => d.open);
   $("deepSweepRecipes").innerHTML = recipes.length ? `<details class="deep-recipe-results"><summary>Rewrite results · ${recipes.length} families</summary><p class="small muted">Tracking starts with new runs and is saved across restarts. Improvements are verified score reductions; random candidates can contain several rewrites, so their final rewrite is shown alongside their saved history. Cached skips and rejected candidates were not recompiled. Score reductions depend on function size; compare them alongside trial counts.</p><div class="compiler-table"><table><thead><tr><th>Rewrite</th><th>Tested</th><th>Improved</th><th>Matched</th><th>Score reduced</th><th>Cached / rejected</th></tr></thead><tbody>${recipes.map(r => `<tr><td>${esc(r.family.replaceAll("_", " "))}</td><td>${r.tested}</td><td>${r.improvements}</td><td>${r.matches}</td><td>${r.score_gain}</td><td>${r.skipped} / ${r.rejected}</td></tr>`).join("")}</tbody></table></div></details>` : "";
   const wins = status.recipe_wins || [];
-  if (wins.length) $("deepSweepRecipes").innerHTML += `<details class="deep-recipe-results"><summary>Recent verified rewrite improvements</summary><div class="compiler-table"><table><thead><tr><th>Function</th><th>Rewrite history</th><th>Score before → after</th></tr></thead><tbody>${wins.map(w => `<tr><td>${esc(w.function)}</td><td>${esc((w.provenance.lineage || []).join(" → ") || w.family.replaceAll("_", " "))}</td><td>${w.previous_score} → ${w.new_score}</td></tr>`).join("")}</tbody></table></div><p class="small muted">The latest 50 improvements are shown; the complete history is stored locally. Rewrites in a random history build on one another.</p></details>`;
+  if (wins.length) $("deepSweepRecipes").innerHTML += `<details class="deep-recipe-results"><summary>Recent verified rewrite improvements</summary><div class="compiler-table"><table><thead><tr><th>Date / time</th><th>Function</th><th>Rewrite history</th><th>Score before → after</th></tr></thead><tbody>${wins.map((w, i) => `<tr><td><time datetime="${esc(new Date(w.created_at * 1000).toISOString())}">${esc(new Date(w.created_at * 1000).toLocaleString())}</time></td><td><button type="button" class="ghost small-btn mono" data-deep-win="${i}">${esc(w.function)}</button></td><td>${esc((w.provenance.lineage || []).join(" → ") || w.family.replaceAll("_", " "))}</td><td>${w.previous_score} → ${w.new_score}</td></tr>`).join("")}</tbody></table></div><p class="small muted">The latest 50 improvements are shown; the complete history is stored locally. Rewrites in a random history build on one another.</p></details>`;
   $("deepSweepRecipes").querySelectorAll("details").forEach((detail, i) => { detail.open = !!detailsOpen[i]; });
+  $("deepSweepRecipes").querySelectorAll("[data-deep-win]").forEach(button => {
+    button.onclick = () => openFn(wins[Number(button.dataset.deepWin)].function);
+  });
   const rows = status.improvements || [];
   $("deepSweepResults").innerHTML = `<p><b>${status.improved || 0} functions improved</b> by deep permutation</p>`
     + (rows.length ? `<div class="compiler-table"><table><thead><tr><th>Function</th><th>Starting score</th><th>Starting match</th><th>New score</th><th>New match</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td><button type="button" class="ghost small-btn mono" data-deep-result="${i}">${esc(r.function)}</button></td><td>${esc(r.starting_score)}</td><td>${esc(r.starting_percent_text)}</td><td><b>${esc(r.new_score)}</b></td><td><b>${esc(r.new_percent_text)}</b></td></tr>`).join("")}</tbody></table></div><p class="small muted">Lower scores and higher match percentages are better. Saved across restarts and repeat passes; each function appears once, from its first recorded improvement to its best deep-pass result.</p>` : "");
@@ -927,4 +930,15 @@ $("deepSweepStart").onclick = async () => {
 $("deepSweepStop").onclick = async () => {
   try { await api("/api/permuter/pass", {method:"POST", body:{slug:S.slug, action:"stop"}}); }
   catch (error) { showJobError($("deepSweepLog"), error.message); }
+};
+
+$("deepSweepReset").onclick = async () => {
+  if (!confirm("Reset this project’s deep permuter totals and visible improvement lists? Saved code, matches, completed passes and rewrite evidence are kept. Stop active deep searches first.")) return;
+  const slug = S.slug, log = $("deepSweepLog");
+  const done = beginWork(log, "Resetting deep permuter metrics", [$("deepSweepReset")], "Metrics reset");
+  try {
+    const status = await api("/api/permuter/pass", {method:"POST", body:{slug, action:"reset-metrics"}});
+    if (S.slug === slug) renderDeepSweepResults(status);
+  } catch (error) { showJobError(log, error.message); }
+  finally { done(); }
 };

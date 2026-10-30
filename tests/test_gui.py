@@ -284,3 +284,10 @@ def test_compact_agent_cards_keep_results_and_secondary_actions_accessible():
         pytest.skip('needs node')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_compact_agents.js'))], check=True,
                    capture_output=True, text=True, encoding='utf-8', timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_deep_metrics_history_and_reset():
+    if not NODE:
+        pytest.skip('needs node')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_deep_metrics.js'))], check=True,
+                   cwd=Path(__file__).resolve().parents[1])

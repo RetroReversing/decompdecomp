@@ -13,7 +13,7 @@ from pathlib import Path
 from .. import agents
 from ..network import NetworkError
 from .agents import _which
-from .repair_investigations import choices, terminal_command
+from .repair_investigations import terminal_command
 
 ERROR_CHARS = 6000
 

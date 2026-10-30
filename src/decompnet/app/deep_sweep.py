@@ -69,6 +69,21 @@ class Sweeps:
                     (function_id,family,previous_score,new_score,provenance,created_at)
                     VALUES(?,?,?,?,?,?)""", (function_id, *win))
 
+    def reset_metrics(self, slug):
+        """Reset this project's counters without deleting code, pass records or rewrite evidence."""
+        project_id = self.net.project_row(slug)['id']
+        if any(job.get('state') == 'running' and job.get('kind') in {'deep-permuter', 'deep-permutation-pass'}
+               for job in self.jobs.jobs.values()):
+            raise NetworkError('Stop active deep permuter searches before resetting metrics.')
+        with self.net.store.tx() as db:
+            for table in ('deep_permutation_recipes', 'deep_permutation_improvements'):
+                db.execute(f'DELETE FROM {table} WHERE function_id IN '
+                           '(SELECT id FROM functions WHERE project_id=?)', (project_id,))
+            last = db.execute('SELECT COALESCE(MAX(id),0) FROM deep_permutation_recipe_wins').fetchone()[0]
+            db.execute('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)',
+                       (f'deep-metrics-reset:{project_id}', str(last)))
+        return self.status(slug)
+
     def recipes(self, project_id):
         rows = self.net.store.all("""SELECT r.family, SUM(r.tested) tested, SUM(r.skipped) skipped,
             SUM(r.rejected) rejected, SUM(r.improvements) improvements, SUM(r.matches) matches,
@@ -80,7 +95,8 @@ class Sweeps:
     def recipe_wins(self, project_id):
         rows = self.net.store.all("""SELECT w.family,w.previous_score,w.new_score,w.provenance,w.created_at,
             f.name AS function FROM deep_permutation_recipe_wins w JOIN functions f ON f.id=w.function_id
-            WHERE f.project_id=? ORDER BY w.id DESC LIMIT 50""", project_id)
+            WHERE f.project_id=? AND w.id>COALESCE((SELECT CAST(value AS INTEGER) FROM settings WHERE key=?),0)
+            ORDER BY w.id DESC LIMIT 50""", project_id, f'deep-metrics-reset:{project_id}')
         return [dict(row) | {'provenance': json.loads(row['provenance'])} for row in rows]
 
     def config(self, slug):
