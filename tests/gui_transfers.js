@@ -2,7 +2,7 @@
 const fs = require("fs"), path = require("path"), vm = require("vm"), assert = require("assert");
 const elements = new Map();
 const get = id => {
-  if (!elements.has(id)) elements.set(id, { value: id === "crossGameFilter" ? "matches" : "", hidden: false, innerHTML: "", textContent: "" });
+  if (!elements.has(id)) elements.set(id, { value: id === "crossGameFilter" ? "matches" : "", hidden: false, innerHTML: "", textContent: "", setAttribute(name,value) {this[name]=value;} });
   return elements.get(id);
 };
 const opened = [];
@@ -43,3 +43,24 @@ ctx.renderAutopilot({slug:'target-game',kind:'rom',matched:0,cross_game:{counts:
 assert.match(get('crossGameRecent').innerHTML,/First score: 75/);
 get('crossGameFilter').value='improved';get('crossGameFilter').onchange();
 assert.match(get('crossGameRecent').innerHTML,/Improved · not matched/);
+
+get('crossGameToggle').onclick();
+assert.equal(get('crossGameBody').hidden,true);
+assert.equal(get('crossGameToggle')['aria-expanded'],'false');
+ctx.renderAutopilot({slug:'target-game',kind:'rom',matched:0,cross_game:{counts:{improved:1},recent:[],matches:[]}});
+assert.equal(get('crossGameBody').hidden,true);
+get('crossGameToggle').onclick();assert.equal(get('crossGameBody').hidden,false);
+assert.equal(get('crossGameToggle')['aria-expanded'],'true');
+assert.equal(typeof get('crossGameRun').onclick,'function');
+
+let started=0,finished=0,posted='';
+ctx.S={slug:'target-game'};
+ctx.showJobError=()=>{};
+ctx.beginWork=()=>{started++;return ()=>finished++;};
+ctx.api=async url=>{posted=url;return {job:'check'};};
+ctx.followJob=async()=>({matched:1,improved:2});
+ctx.poll=async()=>{};ctx.refreshMap=()=>{};ctx.toast=()=>{};
+get('crossGameRun').onclick().then(()=>{
+  assert.equal(posted,'/api/cross-game/run');assert.equal(started,1);assert.equal(finished,1);
+  assert.equal(get('crossGameRun')._working,false);
+}).catch(error=>{console.error(error);process.exitCode=1;});

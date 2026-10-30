@@ -1043,7 +1043,8 @@ class Twins:
         for a in self.net.store.all("SELECT * FROM functions WHERE project_id=? AND status='matched'", other["id"]):
             pa = theirs.get(a["id"])
             for b_id in (wanted.get(pa.key, []) if pa is not None else []):
-                if job is not None and job.stop.is_set():
+                from .free_candidates import exhausted
+                if job is not None and (job.stop.is_set() or (hasattr(job, 'reuse_limit') and exhausted(job))):
                     return matched
                 b = self.net.store.one("SELECT * FROM functions WHERE id=? AND status='open'", b_id)
                 if b is None or _file_compiler(con_a, fp_a, a) != _file_compiler(con_b, fp_b, b):
@@ -1055,9 +1056,19 @@ class Twins:
                     source = None
                 if not source or self._missed(b_id, source):
                     continue
+                if job is not None:
+                    job.cross_candidates += 1
+                    job.cross_tried += 1
+                    if hasattr(job, 'reuse_limit'):
+                        job.reuse_attempts += 1
                 outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}", theirs=True)
                 if outcome == "match":
                     matched += 1
+                    if job is not None:
+                        job.cross_matched += 1
+                        if hasattr(job, 'reuse_limit'):
+                            job.reuse_matched += 1
+                            job.reuse_bytes += b['size']
                     log.info("twins: %s matched from %s in %s", b["name"], a["name"], other["slug"])
                 elif outcome == "miss":
                     with self.net.store.tx() as db:
