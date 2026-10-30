@@ -1,7 +1,7 @@
 """Bounded source hypotheses from reviewed repairs; each still needs the ordinary exact judge."""
 import re
 
-from .integer_repair_support import IDENT, edit, view
+from .integer_repair_support import IDENT, INTEGER, edit, view
 from .pattern_repairs import close
 
 LIMIT = 12
@@ -31,7 +31,10 @@ def variants(source, name, header=''):
             continue
         positions = [start]
         array = re.search(rf'(?:^|;)\s*(?:extern\s+)?(?:u8|s8|char|unsigned\s+char)\s*\*\s*{re.escape(table)}\s*\[[^;]*\]\s*;', header+'\n'+source[:part.opening])
-        if array and not re.search(rf'&\s*{index}\b', part.body) and not re.search(r'\b(?:goto|for|while|do|if|switch)\b', prefix):
+        local_index = re.search(rf'\b{INTEGER}\s+{index}\s*;', prefix)
+        parameters = part.clean[:part.opening].rsplit(name,1)[-1]
+        shadow = re.search(rf'\b{table}\b', parameters) or re.search(rf'\b{IDENT}\s+\*+\s*{table}\b', part.body)
+        if array and local_index and not shadow and not re.search(rf'&\s*{index}\b', part.body) and not re.search(r'\b(?:goto|for|while|do|if|switch)\b', prefix):
             writes = list(re.finditer(rf'\b{index}\s*=(?!=)[^;{{}}]+;', prefix))
             if writes:
                 pos = part.opening+1+writes[-1].end()

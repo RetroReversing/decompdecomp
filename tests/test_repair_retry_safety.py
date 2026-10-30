@@ -77,6 +77,8 @@ def test_table_slot_is_staged_early_only_for_a_known_array():
     early=[s for f,s in variants if f=='table_slot_lifetime' and s.index('&table[index]')<s.index('b=next()')]
     assert early
     assert not any(s.index('&table[index]')<s.index('b=next()') for _,s in evidence_repairs.variants(source,'f'))
+    for unsafe in (source.replace('u16 index;', ''), source.replace('void f()', 'void f(u8 **table)')):
+        assert not any(s.index('&table[index]')<s.index('b=next()') for _,s in evidence_repairs.variants(unsafe,'f','extern u8 *table[];'))
 
 
 def test_signedness_and_assignment_reuse_are_one_bounded_hypothesis():

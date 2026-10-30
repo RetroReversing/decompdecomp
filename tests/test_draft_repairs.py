@@ -254,3 +254,19 @@ def test_a_cached_success_is_rejudged_when_a_function_is_reopened():
     before=len(perm.judged)
     perm._repair_round(AGENT,net.project_row('game'),State())
     assert perm.judged[before:]==[winner]
+
+
+def test_one_unavailable_project_header_does_not_stop_the_remaining_repairs():
+    from decompnet.forks.project import ForkError
+    net=setup_repair_net(2)
+    net.fork_slug=lambda _: 'fork'
+    class Headers(ProjectStub):
+        def permuter_header(self,slug,name):
+            if name=='f1':
+                raise ForkError('Build this unit first.')
+            return ''
+    net.forks=Headers()
+    perm=ScriptedPermuter(net,{})
+    perm._repair_round(AGENT,net.project_row('game'),State())
+    assert perm.judged and all('f2(' in source for source in perm.judged)
+    assert not net.store.all('SELECT * FROM claims')
