@@ -248,7 +248,8 @@ def register(app: App) -> None:
             raise ValueError('Choose start or stop for the deep pass.')
         if not isinstance(data.get('repeat', False), bool):
             raise ValueError('Repeat must be true or false.')
-        return sweeps.start(slug, data.get('minutes', 5), data.get('max_variants', 10000), data.get('repeat', False))
+        return sweeps.start(slug, data.get('minutes', 5), data.get('max_variants', 10000), data.get('repeat', False),
+                            data.get('threads', 0))
 
     def p_deep_permuter(slug, request, data):
         from .. import deep_permuter

@@ -14,6 +14,7 @@ from ... import hostenv
 from ...forks.local import MAX_REPOSITORIES
 from ...network import NetworkError
 from ..support import MAX_DISC
+from .. import setup_fix
 from . import App
 
 
@@ -169,6 +170,25 @@ def register(app: App) -> None:
         except NetworkError as e:
             return fail(e)
         return JSONResponse({"job": jobs.start("fork-check", lambda log: net.forks.check(slug, log=log, build=True))})
+
+    @mcp.custom_route("/api/fork/fix-setup", methods=["GET", "POST"])
+    async def api_fork_fix_setup(request: Request) -> Response:
+        """A coding CLI, in a terminal in the project folder, to get a failed hand-built project to build."""
+        if (bad := guard(request, write=request.method == "POST")):
+            return bad
+        if request.method == "GET":
+            return JSONResponse({"agents": await call(setup_fix.choices)})
+        data = await body(request)
+        kind, slug = str(data.get("agent") or ""), str(data.get("slug", ""))
+        try:
+            fork_of(slug)
+            if not any(a["id"] == kind and a["installed"] for a in setup_fix.choices()):
+                raise NetworkError("Choose an installed coding CLI.")
+            folder = Path(hostenv.local_path(net.overview(slug)["folder"]))
+        except (NetworkError, ValueError) as e:
+            return fail(e)
+        return JSONResponse({"job": jobs.start("fix-setup", lambda log: setup_fix.launch(
+            app.home, folder, str(data.get("error") or ""), kind, log))})
 
     @mcp.custom_route("/api/fork/rom-check", methods=["POST"])
     async def api_fork_rom_check(request: Request) -> Response:

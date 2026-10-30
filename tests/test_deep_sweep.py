@@ -162,7 +162,7 @@ def test_start_stop_and_restart_keep_enabled_intent_and_prevent_parallel_sweeps(
     restarted=Sweeps(net,Jobs())
     monkeypatch.setattr(restarted,'start',lambda *args:starts.append(args))
     restarted.resume()
-    assert starts==[('game',1,10)]
+    assert starts==[('game',1,10,False,0)]
     obj.stop('game')
     assert not obj.config('game')['enabled']
 
@@ -267,3 +267,55 @@ def test_queue_counts_distinguish_current_completions_stale_sources_and_unscored
     obj.queue_cache.clear()  # Cache expires shortly after an external edit.
     changed = obj.status('game')
     assert (changed['queue_done'], changed['queue_left'], changed['awaiting_source']) == (0, 1, 1)
+
+
+def test_functions_are_searched_on_several_threads_at_once(sweep, monkeypatch):
+    """Two threads: each search waits for the other's (a barrier one thread alone could never pass)."""
+    import threading
+
+    obj, net, calls, _ = sweep
+    meeting = threading.Barrier(2, timeout=10)
+    names = {}
+
+    def search(net, slug, name, minutes, variants, log):
+        names[name] = threading.current_thread().name
+        meeting.wait()
+        return {'tested': 3, 'matched': False, 'reason': 'Time limit reached', 'best_score': 25}
+
+    monkeypatch.setattr(deep_permuter, 'run', search)
+    result = obj.run('game', 1, 10, Log(), 2)
+    assert result['functions_tested'] == 2 and result['tested'] == 6
+    assert set(names) == {'f0', 'f1'} and len(set(names.values())) == 2
+    assert all(n.startswith('deep-pass') for n in names.values())
+    assert all(obj.history('game', net._function(n, 'game'))['completed'] for n in ('f0', 'f1'))
+
+
+def test_one_thread_searches_in_order_and_zero_means_what_the_computer_can_spare(sweep, monkeypatch):
+    from decompnet.app import workers
+
+    obj, net, calls, _ = sweep
+    obj.run('game', 1, 10, Log(), 1)
+    assert calls == ['f0', 'f1']
+    sizes = []
+    real = deep_sweep.ThreadPoolExecutor
+    monkeypatch.setattr(deep_sweep, 'ThreadPoolExecutor', lambda n, **kw: sizes.append(n) or real(n, **kw))
+    obj.run('game', 2, 10, Log(), 0)
+    obj.run('game', 3, 10, Log(), 5000)  # (no limit)
+    assert sizes == [workers.default_workers(), 5000]
+
+
+def test_the_thread_count_is_saved_validated_and_shown(sweep, monkeypatch):
+    from decompnet.app import workers
+    from decompnet.network import NetworkError
+
+    obj, net, calls, _ = sweep
+    monkeypatch.setattr(obj.jobs, 'start', lambda *args, **kw: 'job')
+    for bad in (-1, 1.5, True, '4'):
+        with pytest.raises(NetworkError, match='threads'):
+            obj.start('game', 1, 10, False, bad)
+    status = obj.start('game', 1, 10, False, 40)
+    assert status['threads'] == 40 and obj.config('game')['threads'] == 40
+    assert status['threads_default'] == workers.default_workers()
+    assert obj.config('game') | {'threads': 0} == obj.config('game') | {'threads': 0}
+    obj.start('game', 1, 10)
+    assert obj.config('game')['threads'] == 0

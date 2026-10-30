@@ -288,7 +288,7 @@ function renderAutopilot(ov) {
   $("apBar").className = reuseRunning ? "workbar" : "upbar";
   if (reuseRunning) $("apBar").firstElementChild.style.width = "";
   const perm = pm && (pm.tried || pm.state === "running")
-    ? ` The permuter ${pm.state === "running" ? `is rewriting near misses${pm.current ? ` (now ${pm.current})` : ""}` : "rewrote near misses"}: ${plural(pm.tried, "function")}, ${pm.matched} matched.` : "";
+    ? ` The permuter ${pm.state === "running" ? `is rewriting near misses${pm.threads ? ` on ${plural(pm.threads, "thread")}` : ""}${pm.current ? ` (now ${pm.current})` : ""}` : "rewrote near misses"}: ${plural(pm.tried, "function")}, ${pm.matched} matched.` : "";
   const twinsDone = (ap && ap.twins) || (tw && tw.matched) || 0;
   if (running && ap.phase === "twins") {
     $("apTitle").textContent = "Autopilot: trying verified C from this game and other projects";
@@ -861,9 +861,11 @@ async function renderDeepSweep() {
       $("deepSweepPanel").dataset.slug = slug;
       $("deepSweepMinutes").value = status.minutes;
       $("deepSweepVariants").value = status.max_variants;
+      $("deepSweepThreads").value = status.threads || "";
       $("deepSweepRepeat").checked = false;
     }
     renderDeepSweepResults(status);
+    $("deepSweepThreads").placeholder = status.threads_default ? `auto (${status.threads_default})` : "auto";
     $("deepSweepStart").disabled = status.state === "running";
     $("deepSweepStop").hidden = status.state !== "running";
     const done = status.queue_done || 0, left = status.queue_left || 0;
@@ -916,7 +918,7 @@ $("deepSweepStart").onclick = async () => {
   const done = beginWork(log, "Starting deep pass", [$("deepSweepStart")], "Deep pass started");
   let job = null;
   try {
-    const result = await api("/api/permuter/pass", {method:"POST", body:{slug, action:"start", minutes:Number($("deepSweepMinutes").value), max_variants:Number($("deepSweepVariants").value), repeat:$("deepSweepRepeat").checked}});
+    const result = await api("/api/permuter/pass", {method:"POST", body:{slug, action:"start", minutes:Number($("deepSweepMinutes").value), max_variants:Number($("deepSweepVariants").value), repeat:$("deepSweepRepeat").checked, threads:Number($("deepSweepThreads").value) || 0}});
     job = result.job;
   } catch (error) { showJobError(log, error.message); }
   finally { done(); }
