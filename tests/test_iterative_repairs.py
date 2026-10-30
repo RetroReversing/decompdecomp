@@ -265,4 +265,4 @@ def test_the_default_is_what_the_computer_can_spare(pair, monkeypatch):
     search.run(pair.twins, 'destination', Job())
     pair.cascades.iterative_threads = 3
     search.run(pair.twins, 'destination', Job())
-    assert sizes == [workers.default_workers(), min(3, workers.max_workers())]
+    assert sizes == [workers.default_workers(), 3]

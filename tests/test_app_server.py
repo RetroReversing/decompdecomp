@@ -879,27 +879,26 @@ def test_the_worker_thread_setting_applies_immediately_and_survives_reloading(ap
 
     client, net, manager = app
     response = client.post('/api/settings', json={'worker_threads': 3}, headers={'X-Decomp': '1'})
-    assert response.status_code == 200 and response.json()['worker_threads'] == min(3, workers.max_workers())
-    assert workers.WORKERS == min(3, workers.max_workers())
+    assert response.status_code == 200 and response.json()['worker_threads'] == 3
+    assert workers.WORKERS == 3
     assert Settings(manager.home / 'settings.json').public()['worker_threads'] == workers.WORKERS
     assert response.json()['worker_threads_default'] == workers.default_workers()
     response = client.post('/api/settings', json={'worker_threads': 9999}, headers={'X-Decomp': '1'})
-    assert response.json()['worker_threads'] == workers.max_workers()
+    assert response.json()['worker_threads'] == 9999 and workers.WORKERS == 9999  # (no limit)
     response = client.post('/api/settings', json={'worker_threads': 0}, headers={'X-Decomp': '1'})
     assert response.json()['worker_threads'] == 0 and workers.WORKERS == workers.default_workers()
 
 
 def test_the_iterative_repair_thread_setting_applies_immediately_and_survives_reloading(app):
-    from decompnet.app import workers
     from decompnet.app.support import Settings
 
     client, net, manager = app
     response = client.post('/api/settings', json={'iterative_threads': 3}, headers={'X-Decomp': '1'})
-    assert response.status_code == 200 and response.json()['iterative_threads'] == min(3, workers.max_workers())
-    assert net.cascades.iterative_threads == min(3, workers.max_workers())
+    assert response.status_code == 200 and response.json()['iterative_threads'] == 3
+    assert net.cascades.iterative_threads == 3
     assert Settings(manager.home / 'settings.json').public()['iterative_threads'] == net.cascades.iterative_threads
     response = client.post('/api/settings', json={'iterative_threads': 9999}, headers={'X-Decomp': '1'})
-    assert response.json()['iterative_threads'] == workers.max_workers()
+    assert response.json()['iterative_threads'] == 9999  # (no limit)
     response = client.post('/api/settings', json={'iterative_threads': 0}, headers={'X-Decomp': '1'})
     assert response.json()['iterative_threads'] == 0 and net.cascades.iterative_threads == 0
 
@@ -987,7 +986,7 @@ def test_deep_sweep_routes_validate_start_stop_and_status(app, monkeypatch):
     monkeypatch.setattr(net.deep_sweeps, 'status', lambda slug: {'project':slug,'completed':2})
     assert client.get('/api/permuter/pass?slug=example').json()['completed'] == 2
     response = client.post('/api/permuter/pass', json={'slug':'example','minutes':7,'max_variants':99,'repeat':True}, headers={'X-Decomp':'1'})
-    assert response.json()['job'] == 'sweep' and calls == [('example',7,99,True)]
+    assert response.json()['job'] == 'sweep' and calls == [('example',7,99,True,0)]
     assert not client.post('/api/permuter/pass', json={'slug':'example','action':'stop'}, headers={'X-Decomp':'1'}).json()['enabled']
     assert client.post('/api/permuter/pass', json={'slug':'example','repeat':'yes'}, headers={'X-Decomp':'1'}).status_code == 400
     assert client.post('/api/permuter/pass', json={'slug':'example','action':'unknown'}, headers={'X-Decomp':'1'}).status_code == 400

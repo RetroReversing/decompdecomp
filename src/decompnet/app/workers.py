@@ -27,18 +27,14 @@ def default_workers() -> int:
     return max(1, CORES - RESERVED_CORES)
 
 
-def max_workers() -> int:
-    """The most a setting may ask for: one worker to a core."""
-    return max(1, CORES)
-
-
 def clamp(threads) -> int:
-    """`threads` (a setting; nothing, 0 or junk means "automatic") as a count the computer has."""
+    """`threads` (a setting; nothing, 0 or junk means "automatic") as a count of workers. There is no upper limit:
+    the user knows whether a slow compiler or an idle computer can use more threads than it has cores."""
     try:
         wanted = int(threads or 0)
     except (TypeError, ValueError):
         wanted = 0
-    return default_workers() if wanted <= 0 else max(1, min(max_workers(), wanted))
+    return default_workers() if wanted <= 0 else wanted
 
 
 WORKERS = default_workers()  # how many the pool has (or will have when it starts): configure() changes it

@@ -223,7 +223,7 @@ def register(app: App) -> None:
             if key in data:
                 settings.data[key] = max(1, min(maximum, int(data[key])))
         if 'iterative_threads' in data:  # nothing or 0: as many as the computer can spare
-            settings.data['iterative_threads'] = max(0, min(workers.max_workers(), int(data['iterative_threads'] or 0)))
+            settings.data['iterative_threads'] = max(0, int(data['iterative_threads'] or 0))
         if any(key in data for key in ('reuse_auto', 'reuse_seconds', 'reuse_attempts', 'iterative_enabled', 'iterative_seconds', 'iterative_attempts', 'iterative_threads')):
             net.cascades.configure(settings.data.get('reuse_auto', True), settings.data.get('reuse_seconds', 120),
                                    settings.data.get('reuse_attempts', 128), settings.data.get('iterative_enabled', False),
@@ -235,7 +235,7 @@ def register(app: App) -> None:
         if any(key in data for key in ('permuter_max_insns', 'permuter_seconds', 'permuter_max_turns')):
             net.permuter.configure(settings.data)
         if "worker_threads" in data:  # nothing or 0: as many as the computer can spare (workers.py)
-            settings.data["worker_threads"] = max(0, min(workers.max_workers(), int(data["worker_threads"] or 0)))
+            settings.data["worker_threads"] = max(0, int(data["worker_threads"] or 0))
             workers.configure(settings.data["worker_threads"])
         if "auto_update" in data:
             settings.data["auto_update"] = bool(data["auto_update"])

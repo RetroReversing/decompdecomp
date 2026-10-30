@@ -34,7 +34,7 @@ class Cascade:
             self.iterative_enabled = bool(iterative_enabled)
             self.iterative_seconds = max(1, min(600, int(iterative_seconds)))
             self.iterative_attempts = max(1, min(1024, int(iterative_attempts)))
-            self.iterative_threads = max(0, min(workers.max_workers(), int(iterative_threads or 0)))
+            self.iterative_threads = max(0, int(iterative_threads or 0))
             self.enabled = bool(enabled)
             self.seconds = max(1, min(600, int(seconds)))
             self.attempts = max(1, min(1024, int(attempts)))

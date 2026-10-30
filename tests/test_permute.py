@@ -203,7 +203,7 @@ def test_workers_yield_the_cpu_to_the_app():
     if app >= 19:
         pytest.skip("this test already runs at the lowest priority")
     assert workers.pool().submit(priority).result() == min(19, app + workers.NICE) and priority() == app
-    assert 1 <= workers.WORKERS <= workers.max_workers()
+    assert workers.WORKERS >= 1
 
 
 def test_drafts_and_the_permuter_share_one_pool_of_workers(monkeypatch):
@@ -376,13 +376,13 @@ def test_traced_generator_keeps_successful_rewrite_lineage_without_changing_cand
 
 
 def test_the_worker_count_defaults_to_what_the_computer_can_spare_and_is_a_setting(monkeypatch):
-    """Cores less two by default; a setting of 0 or nothing is automatic; never more than a worker to a core. A new
+    """Cores less two by default; a setting of 0 or nothing is automatic; anything above is taken as it is. A new
     count replaces the pool, and what the old one was given finishes there."""
     monkeypatch.setattr(workers, "CORES", 16)
     monkeypatch.setattr(workers, "_pool", None)
     monkeypatch.setattr(workers, "WORKERS", workers.default_workers())
-    assert workers.default_workers() == 14 and workers.max_workers() == 16
-    assert [workers.clamp(v) for v in (None, 0, "junk", -3, 1, 6, 99)] == [14, 14, 14, 14, 1, 6, 16]
+    assert workers.default_workers() == 14
+    assert [workers.clamp(v) for v in (None, 0, "junk", -3, 1, 6, 99)] == [14, 14, 14, 14, 1, 6, 99]
     monkeypatch.setattr(workers, "CORES", 2)
     assert workers.default_workers() == 1 and workers.clamp(None) == 1
     monkeypatch.setattr(workers, "CORES", 16)

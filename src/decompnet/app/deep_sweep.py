@@ -3,10 +3,11 @@ import hashlib
 import json
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from .. import candidate_scope, scoring
 from ..network import NetworkError
-from . import agent_tokens, deep_permuter
+from . import agent_tokens, deep_permuter, workers
 
 POLL_SECONDS = 15
 QUEUE_CACHE_SECONDS = 10
@@ -85,7 +86,7 @@ class Sweeps:
     def config(self, slug):
         proj = self.net.project_row(slug)
         row = self.net.store.one('SELECT value FROM settings WHERE key=?', f'deep-sweep:{proj["id"]}')
-        return json.loads(row['value']) if row else {'enabled': False, 'minutes': 5, 'max_variants': 10000}
+        return {'threads': 0} | (json.loads(row['value']) if row else {'enabled': False, 'minutes': 5, 'max_variants': 10000})
 
     def save(self, slug, cfg):
         proj = self.net.project_row(slug)
@@ -164,16 +165,19 @@ class Sweeps:
             with self.lock:
                 self.queue_cache[cache_key] = (time.monotonic() + QUEUE_CACHE_SECONDS, done_open, done_matched)
         job = self.jobs.jobs.get(current.get('job'), {})
-        return cfg | {'total': counts['total'], 'ready': ready, 'queue_done': done_open + done_matched,
+        return cfg | {'threads_default': workers.default_workers(),
+                      'total': counts['total'], 'ready': ready, 'queue_done': done_open + done_matched,
                       'queue_left': max(0, ready - done_open), 'awaiting_source': max(0, counts['total'] - ready),
                                    'improved': len(improvements), 'improvements': improvements, 'recipes': self.recipes(proj['id']), 'recipe_wins': self.recipe_wins(proj['id']),
                                    'completed': completed, 'errors': errors, 'state': job.get('state', 'idle'), **current,
                                    'progress': job.get('progress', {}), 'error': job.get('error')}
 
-    def start(self, slug, minutes=5, max_variants=10000, repeat=False):
+    def start(self, slug, minutes=5, max_variants=10000, repeat=False, threads=0):
         if (isinstance(minutes, bool) or not isinstance(minutes, int) or not 1 <= minutes <= 120 or
                 isinstance(max_variants, bool) or not isinstance(max_variants, int) or not 1 <= max_variants <= 1000000):
             raise NetworkError('Choose 1–120 minutes and 1–1,000,000 variants per function.')
+        if isinstance(threads, bool) or not isinstance(threads, int) or not threads >= 0:
+            raise NetworkError('Choose a number of threads, or leave it empty for automatic.')
         self.net.project_row(slug)
         if slug in self.net.links:
             raise NetworkError('Run the deep pass on the room host’s project.')
@@ -187,8 +191,8 @@ class Sweeps:
                     db.execute("DELETE FROM deep_permutation_passes WHERE function_id IN "
                                "(SELECT id FROM functions WHERE project_id=? AND status='open')",
                                self.net.project_row(slug)['id'])
-            self.save(slug, {'enabled': True, 'minutes': minutes, 'max_variants': max_variants})
-            job = self.jobs.start('deep-permutation-pass', lambda log: self.run(slug, minutes, max_variants, log),
+            self.save(slug, {'enabled': True, 'minutes': minutes, 'max_variants': max_variants, 'threads': threads})
+            job = self.jobs.start('deep-permutation-pass', lambda log: self.run(slug, minutes, max_variants, log, threads),
                                   cancel_message='Deep pass stopped. Verified improvements and completed passes are saved.')
             self.active[slug] = {'job': job}
         return self.status(slug)
@@ -208,7 +212,7 @@ class Sweeps:
             cfg = self.config(proj['slug'])
             if cfg['enabled']:
                 try:
-                    self.start(proj['slug'], cfg['minutes'], cfg['max_variants'])
+                    self.start(proj['slug'], cfg['minutes'], cfg['max_variants'], False, cfg['threads'])
                 except NetworkError as error:
                     self.save(proj['slug'], cfg | {'enabled': False, 'resume_error': str(error)})
                     self.jobs.logger.warning('Deep pass could not resume: %s', error)
@@ -236,13 +240,17 @@ class Sweeps:
                        (fn['id'], scope, state, minutes, variants, time.time() if state == 'completed' else None,
                         json.dumps(result or {}), error))
 
-    def run(self, slug, minutes, variants, log):
-        """Finish one turn per unchanged candidate; wait for claims or usable C without marking them done."""
-        visited = tested = matched = 0
+    def run(self, slug, minutes, variants, log, threads=1):
+        """Finish one turn per unchanged candidate; wait for claims or usable C without marking them done. `threads`
+        functions are searched at once (0: what the computer can spare, workers.py); each is its own bounded turn."""
+        count = workers.clamp(threads) if threads != 1 else 1
+        stats = {'visited': 0, 'tested': 0, 'matched': 0}
+        lock = threading.Lock()  # (the counters are shared by every thread's function)
         while True:
             log.check_cancel()
             proj = self.net.project_row(slug)
             pending = waiting = 0
+            batch = []
             rows = self.net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open' ORDER BY size,id", proj['id'])
             for row in rows:
                 log.check_cancel()
@@ -260,42 +268,63 @@ class Sweeps:
                 if self.net.store.one('SELECT 1 FROM claims WHERE function_id=? AND expires_at>?', fn['id'], time.time()):
                     waiting += 1
                     continue
-                build_scope = candidate_scope.key(self.net, proj, fn)
-                self.record(fn, scope, 'running', minutes, variants)
-                log(f'Deep pass: {fn["name"]} · up to {minutes} minutes / {variants:,} variants')
-                total = len(rows)
-                def progress(value, name=fn['name'], done=visited, wins=matched, total=total, blocked=waiting):
-                    log.progress({'function': name, 'functions_tested': done, 'matches': wins,
-                                  'total_unmatched': total, 'waiting': blocked} | value)
-                def function_log(line):
-                    log(line)
-                function_log.check_cancel = log.check_cancel
-                function_log.progress = progress
+                batch.append((fn, scope))
+            total, blocked = len(rows), waiting
+
+            def search(item, proj=proj, total=total, blocked=blocked):
+                self.search_one(slug, proj, item[0], item[1], minutes, variants, log, stats, lock, total, blocked)
+            if count == 1:
+                for item in batch:
+                    search(item)
+            elif batch:
+                pool = ThreadPoolExecutor(count, thread_name_prefix='deep-pass', initializer=workers.lower_priority)
                 try:
-                    result = deep_permuter.run(self.net, slug, fn['name'], minutes, variants, function_log)
-                    # Also records test backends and older search providers that do not publish history.
-                    # The actual single-function search uses the same completion gate.
-                    self.completed(slug, fn, minutes, variants, result, build_scope)
-                    visited += 1
-                    tested += result['tested']
-                    matched += int(result['matched'])
-                except NetworkError as error:
-                    # Claim races are temporary. A bad unchanged candidate stays visible as an error,
-                    # not completed, and a changed source/header or an explicit repeat retries it.
-                    busy = self.net.store.one('SELECT 1 FROM claims WHERE function_id=? AND expires_at>?', fn['id'], time.time())
-                    self.record(fn, scope, 'pending' if busy or 'claim' in str(error).lower() or str(error).startswith('This function is working') else 'error', minutes, variants, error=str(error))
-                    log(f'{fn["name"]}: {error}')
-                except BaseException:
-                    self.record(fn, scope, 'pending', minutes, variants)
-                    raise
-                progress({'phase': 'moving to next function', 'tested': tested, 'functions_tested': visited, 'matches': matched})
+                    list(pool.map(search, batch))
+                finally:  # (what has not started is dropped: on a stop, or when one search raised)
+                    pool.shutdown(wait=True, cancel_futures=True)
             if not pending and not waiting:
                 self.save(slug, self.config(slug) | {'enabled': False})
                 log('Deep pass finished. Completed bounded passes are saved; this is not an exhaustive search of all C.')
-                return {'functions_tested': visited, 'tested': tested, 'matched': matched}
-            log.progress({'phase': 'waiting for unclaimed functions or scored C', 'functions_tested': visited,
-                          'matches': matched, 'waiting': waiting, 'total_unmatched': len(rows)})
+                return {'functions_tested': stats['visited'], 'tested': stats['tested'], 'matched': stats['matched']}
+            log.progress({'phase': 'waiting for unclaimed functions or scored C', 'functions_tested': stats['visited'],
+                          'matches': stats['matched'], 'waiting': waiting, 'total_unmatched': len(rows)})
             # Cancellation remains responsive while another worker owns the remaining functions.
             for _ in range(POLL_SECONDS):
                 log.check_cancel()
                 time.sleep(1)
+
+    def search_one(self, slug, proj, fn, scope, minutes, variants, log, stats, lock, total, blocked):
+        """One function's bounded turn, on whichever thread is free."""
+        log.check_cancel()
+        build_scope = candidate_scope.key(self.net, proj, fn)
+        self.record(fn, scope, 'running', minutes, variants)
+        log(f'Deep pass: {fn["name"]} · up to {minutes} minutes / {variants:,} variants')
+
+        def progress(value):
+            log.progress({'function': fn['name'], 'functions_tested': stats['visited'], 'matches': stats['matched'],
+                          'total_unmatched': total, 'waiting': blocked} | value)
+
+        def function_log(line):
+            log(line)
+        function_log.check_cancel = log.check_cancel
+        function_log.progress = progress
+        try:
+            result = deep_permuter.run(self.net, slug, fn['name'], minutes, variants, function_log)
+            # Also records test backends and older search providers that do not publish history.
+            # The actual single-function search uses the same completion gate.
+            self.completed(slug, fn, minutes, variants, result, build_scope)
+            with lock:
+                stats['visited'] += 1
+                stats['tested'] += result['tested']
+                stats['matched'] += int(result['matched'])
+        except NetworkError as error:
+            # Claim races are temporary. A bad unchanged candidate stays visible as an error,
+            # not completed, and a changed source/header or an explicit repeat retries it.
+            busy = self.net.store.one('SELECT 1 FROM claims WHERE function_id=? AND expires_at>?', fn['id'], time.time())
+            self.record(fn, scope, 'pending' if busy or 'claim' in str(error).lower() or str(error).startswith('This function is working') else 'error', minutes, variants, error=str(error))
+            log(f'{fn["name"]}: {error}')
+        except BaseException:
+            self.record(fn, scope, 'pending', minutes, variants)
+            raise
+        progress({'phase': 'moving to next function', 'tested': stats['tested'], 'functions_tested': stats['visited'],
+                  'matches': stats['matched']})
