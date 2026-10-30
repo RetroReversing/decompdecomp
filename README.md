@@ -61,7 +61,10 @@ gotos remain excluded. All candidates still use the ordinary exact judge.
 When an agent reports a suspected invalid candidate, automatic claims, autopilot and the permuter pause
 that saved source. Open **Agents → Repair examples** to read the report and compiled alternatives, then
 choose **Reviewed: resume this candidate** if the warning does not apply. To select a corrective alternative,
-use **Rejudge and select alternative** after inspecting its evidence. It recompiles with the current judge
+use **Rejudge and select alternative** after inspecting its evidence. **Rejudge next batch** measures
+saved alternatives locally, smallest functions first, without selecting C or clearing warnings. Finished
+measurements persist and unchanged inputs are skipped on the next run; busy functions wait. Expand each
+alternative to compare fresh/historical scores, the source diff and target assembly. It recompiles with the current judge
 and can replace an incorrect historical best even with a worse score. Old source and warnings remain saved;
 known, still-reported nonmatching shapes cannot automatically replace the correction. Reports are hypotheses; they never invalidate a match or replace
 saved C automatically. Agents can use `report_candidate_issue` with an issue type, affected revision and

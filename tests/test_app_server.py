@@ -1050,3 +1050,29 @@ def test_quality_alternative_selection_uses_explicit_review_route(app, monkeypat
     response = client.post('/api/repair-examples/quality', json=body, headers={'X-Decomp':'1'})
     assert response.status_code == 200 and response.json()['score'] == 55
     assert calls == [('example', 'selected', 'revision', 123)]
+
+
+def test_candidate_recovery_batches_are_bounded_and_do_not_duplicate_jobs(app, monkeypatch):
+    from decompnet.app import candidate_rechecks
+    client, net, _ = app
+    import threading
+    gate = threading.Event()
+    calls = []
+    def start(*args):
+        calls.append(args)
+        gate.wait(30)
+        return {'functions':1,'tested':1}
+    monkeypatch.setattr(candidate_rechecks, 'run', start)
+    response = client.post('/api/repair-examples/recovery', json={'slug':'missing','limit':20}, headers={'X-Decomp':'1'})
+    assert response.status_code == 400
+    # Reuse the same project fixture setup as the single-function route: project lookup is the only prerequisite.
+    monkeypatch.setattr(net, 'project_row', lambda slug: {'slug':slug})
+    for bad in (True, 0, 201, '20'):
+        assert client.post('/api/repair-examples/recovery', json={'slug':'example','limit':bad}, headers={'X-Decomp':'1'}).status_code == 400
+    response = client.post('/api/repair-examples/recovery', json={'slug':'example','limit':3}, headers={'X-Decomp':'1'})
+    try:
+        assert response.status_code == 200 and response.json()['job']
+        duplicate = client.post('/api/repair-examples/recovery', json={'slug':'example','limit':3}, headers={'X-Decomp':'1'})
+        assert duplicate.status_code == 400 and 'running' in duplicate.json()['error']
+    finally:
+        gate.set()

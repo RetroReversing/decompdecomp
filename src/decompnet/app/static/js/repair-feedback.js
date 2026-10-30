@@ -12,6 +12,12 @@ $("repairExamples").onclick = async () => {
     <button data-refresh type="button">Refresh</button></div>
     <div class="repair-filter-checks"><label><input type="checkbox" data-all> Across all projects</label>
     <label><input type="checkbox" data-comparable checked> Only with changed failed C</label></div></div>
+    <section class="repair-help" aria-label="Batch candidate recovery"><h3>Recover paused candidates · this project · no AI tokens</h3>
+    <p>Rejudge saved alternatives, smallest functions first. Measurements are saved across runs; unchanged results are skipped. This does not replace C, clear warnings or mark matches.</p>
+    <label>Functions per batch <input data-recovery-limit type="number" min="1" max="200" value="20"></label>
+    <label><input data-recovery-retry type="checkbox"> Retry failed measurements</label>
+    <button data-recovery-start type="button">Rejudge next batch</button><button data-recovery-stop type="button" hidden>Stop</button>
+    <p data-recovery-summary class="muted small" role="status"></p><div data-recovery-work></div></section>
     <section data-quality class="repair-list" aria-label="Candidate quality review"></section>
     <p data-count class="repair-count" role="status"></p><div data-list class="repair-list"></div>
     <button data-more hidden type="button">Older examples</button>
@@ -30,6 +36,7 @@ $("repairExamples").onclick = async () => {
   const investigationConfig = () => investigation ||= api('/api/repair-examples/investigate');
   const scope = () => `slug=${encodeURIComponent(slug)}&all=${all.checked ? 1 : 0}`;
   const filters = () => `${scope()}&comparable=${comparable.checked ? 1 : 0}&category=${encodeURIComponent(category.value)}&status=${encodeURIComponent(status.value)}`;
+  setupCandidateRecovery(dialog, slug, () => load());
   const controls = [category, status, all, comparable, get('[data-refresh]'), get('[data-more]')];
   function options(select, values) {
     for (const value of values) { if (Array.from(select.options).some((option) => option.value === value)) continue; const option = document.createElement('option'); option.value = value; option.textContent = value.replaceAll('_', ' '); select.append(option); }
@@ -131,7 +138,7 @@ $("repairExamples").onclick = async () => {
         for (const report of quality.reports || []) {
           const panel = document.createElement('details'); panel.className = 'repair-card';
           const heading = document.createElement('summary');
-          heading.textContent = `${report.function} · ${report.slug}${report.issue ? ' · ' + report.issue.replaceAll('_', ' ') : ''} · automatic work paused`;
+          heading.textContent = `${report.function} · ${report.slug}${report.issue ? ' · ' + report.issue.replaceAll('_', ' ') : ''} · ${report.instructions ?? "—"} instructions · automatic work paused`;
           const body = document.createElement('div'); body.className = 'repair-card-body';
           const warning = document.createElement('p'); warning.textContent = report.warning;
           const hint = document.createElement('p'); hint.className = 'muted small';
@@ -162,6 +169,7 @@ $("repairExamples").onclick = async () => {
               } catch (error) { toast(esc(error.message), 'err'); } finally { finish(); }
             };
             body.append(select);
+            recoveryAlternative(body, report, id);
           }
           panel.append(heading, body); area.append(panel);
         }

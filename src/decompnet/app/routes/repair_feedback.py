@@ -29,8 +29,40 @@ def register(app):
             if q.get('function'):
                 fn = app.net._function(q['function'], slug)
                 return JSONResponse({'evidence': await app.call(candidate_quality.view, app.net, fn)})
-            return JSONResponse({'reports': await app.call(candidate_quality.listing, app.net, slug)})
+            from .. import candidate_rechecks
+            return JSONResponse({'reports': await app.call(candidate_rechecks.listing, app.net, slug)})
         except (NetworkError, ValueError, KeyError) as error:
+            return app.fail(error)
+
+    @app.mcp.custom_route('/api/repair-examples/recovery', methods=['GET', 'POST'])
+    async def recovery(request):
+        if bad := app.guard(request, write=request.method == 'POST'):
+            return bad
+        from .. import candidate_rechecks
+        try:
+            if request.method == 'GET':
+                q = request.query_params
+                slug = str(q.get('slug') or '')
+                if not slug:
+                    raise NetworkError('Choose a project for candidate recovery.')
+                return JSONResponse(await app.call(candidate_rechecks.evidence, app.net, slug, str(q['function']),
+                                                   str(q['source_hash']), int(q['attempt_id'])))
+            data = await app.body(request)
+            slug = str(data.get('slug') or '')
+            app.net.project_row(slug)
+            limit = data.get('limit', 20)
+            if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+                raise NetworkError('Choose 1–200 functions per recovery batch.')
+            retry_failed = data.get('retry_failed', False)
+            if not isinstance(retry_failed, bool):
+                raise NetworkError('Retry failed measurements must be true or false.')
+            with app.jobs._lock:
+                if any(j['kind'] == 'candidate-recovery' and j['state'] == 'running' for j in app.jobs.jobs.values()):
+                    raise NetworkError('A recovery batch is running. Stop it or wait before starting another.')
+                job = app.jobs.start('candidate-recovery', lambda log: candidate_rechecks.run(app.net, slug, limit, log, retry_failed),
+                                     cancel_message='Recovery stopped. Finished measurements are saved; selected C is unchanged.')
+            return JSONResponse({'job':job})
+        except (NetworkError, ValueError, KeyError, TypeError) as error:
             return app.fail(error)
 
     @app.mcp.custom_route('/api/repair-examples', methods=['GET', 'POST'])

@@ -27,6 +27,7 @@ const context = { S: {slug: 'demo'}, document: {body, createElement: (tag) => ne
   fetch: async (url) => { requests.push({url}); return {ok: true, blob: async () => ({})}; },
   api: async (url, opts) => {
     requests.push({url, opts});
+    if (url.includes('/recovery')) return {diff:'- old\n+ <script>textOnly()</script>',source:'int candidate(){}',target:'target assembly',measurement:null};
     if (url.includes('/quality')) {
       if (opts?.method === 'POST') { qualityPending = false; return {resumed: 'suspect'}; }
       if (url.includes('function=')) return {evidence: 'Compiled alternative, quality unverified'};
@@ -42,6 +43,7 @@ const context = { S: {slug: 'demo'}, document: {body, createElement: (tag) => ne
       groups: [{category: 'types', status: state, count: 1}], more: false};
   }};
 vm.createContext(context);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/static/js/candidate-recovery.js'), 'utf8'), context);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/static/js/repair-feedback.js'), 'utf8'), context);
 (async () => {
   await button.onclick();
@@ -51,6 +53,10 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   const reportBody = quality.children[0].children[1];
   await reportBody.children[2].onclick();
   assert(reportBody.children[4].textContent.includes('quality unverified'));
+  const comparison = reportBody.children[6];
+  comparison.open = true; await comparison.listeners.toggle();
+  assert(comparison.children[2].textContent.includes('<script>textOnly()</script>'));
+  assert(comparison.children[0].textContent.includes('recheck needed'));
   const choose = reportBody.children[5];
   assert(choose.textContent.includes('#123'));
   await choose.onclick();
