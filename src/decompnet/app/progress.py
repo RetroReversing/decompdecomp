@@ -589,6 +589,27 @@ class Progress:
     def applying(self) -> bool:
         return getattr(self.local, "busy", False)
 
+    @property
+    def viewing(self) -> bool:
+        return getattr(self.local, "viewing", False)
+
+    @contextmanager
+    def view(self):
+        """Read the current database for the UI while background synchronization continues."""
+        previous = self.viewing
+        self.local.viewing = True
+        try:
+            yield
+        finally:
+            self.local.viewing = previous
+
+    def syncing(self, slug: str) -> bool:
+        lock = self._project_lock(slug)
+        if not lock.acquire(blocking=False):
+            return True
+        lock.release()
+        return False
+
     def sync(self, slug: str, *, force: bool = False, logger=None) -> bool:
         """Read contributions first, then publish only work changed locally since the last synchronization.
 

@@ -1401,3 +1401,30 @@ def test_project_list_reads_saved_summary_without_waiting_for_progress_sync(tmp_
     summary = net.summary('game')
     assert summary['title'] == 'Game'
     assert summary['functions'] == 0
+
+
+def test_project_overview_reads_database_while_progress_lock_is_busy(app, monkeypatch):
+    client, net, _ = app
+    with net.store.tx() as db:
+        db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                   ('busy-view', 'Busy project', 'mips', '/unused', '{}'))
+    monkeypatch.setattr(net, 'overview', lambda slug: {'title': net.project_row(slug)['name'],
+                                                     'progress_syncing': net.progress.syncing(slug)})
+    monkeypatch.setattr(net, 'warm_briefs_soon', lambda _: None)
+    done, result = threading.Event(), []
+    def request():
+        try:
+            result.append(client.get('/api/project?slug=busy-view'))
+        finally:
+            done.set()
+    worker = threading.Thread(target=request, daemon=True)
+    try:
+        with net.progress._project_lock('busy-view'):
+            worker.start()
+            assert done.wait(2), 'overview waited for saved-code verification'
+        assert result[0].status_code == 200
+        assert result[0].json() == {'title': 'Busy project', 'progress_syncing': True}
+    finally:
+        worker.join(timeout=3)
+        with net.store.tx() as db:
+            db.execute("DELETE FROM projects WHERE slug='busy-view'")
