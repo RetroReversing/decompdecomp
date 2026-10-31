@@ -5,12 +5,12 @@ def order(families, rows):
     focus = classify(rows)
     markers = {row[0] for row in rows if row[0] != ' '}
     if focus == 'call':
-        preferred = ('call_arity', 'callee_parameter_width', 'callee_return_width', 'call_result_inline', 'parameter_width', 'parameter_storage')
+        preferred = ('call_forwarded_arguments', 'call_arity', 'callee_parameter_width', 'callee_return_width', 'call_result_inline', 'parameter_width', 'parameter_storage')
     elif markers and markers <= {'r', 's'}:
         preferred = ('stack_padding', 'unused_scalar_local', 'local_storage', 'parameter_storage',
                      'local_declaration_order', 'stack_array', 'parameter_width', 'declaration_order') if 's' in markers else (
             'constant_register_reuse', 'copy_register_reuse', 'last_shift_reuse', 'unsigned_assignment_reuse', 'table_slot_lifetime', 'store_address_lifetime', 'pointer_cast_inline', 'comparison_reuse', 'integer_address_order',
-            'typed_temporary', 'value_lifetime', 'split_integer_lifetime', 'merge_integer_lifetimes',
+            'arithmetic_operand_order', 'typed_temporary', 'value_lifetime', 'split_integer_lifetime', 'merge_integer_lifetimes',
             'split_scalar_lifetime', 'array_index_width', 'local_width', 'declaration_order')
     elif markers & {'<', '>', '|', 'o'}:
         preferred = ('paired_load_order', 'pointer_before_store', 'guard_forward_jump', 'branch_call', 'goto_leaf', 'switch_layout',

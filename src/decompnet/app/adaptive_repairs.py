@@ -6,6 +6,7 @@ must not be attributed to today's settings. These weights choose work, never a m
 import hashlib
 import json
 import math
+import time
 from itertools import zip_longest
 
 from ..project import compiler_for
@@ -36,10 +37,11 @@ def prepare(net):
     if not getattr(net, '_repair_policy_ready', False):
         with net.store.tx() as db:
             db.execute(SCHEMA)
+            db.execute("CREATE TABLE IF NOT EXISTS repair_policy_coverage(origin TEXT PRIMARY KEY, first_at REAL NOT NULL,last_at REAL NOT NULL,attempted INTEGER NOT NULL,improved INTEGER NOT NULL,matched INTEGER NOT NULL,elapsed_ms INTEGER NOT NULL)")
         net._repair_policy_ready = True
 
 
-def record(net, key, focus, family, baseline, score, elapsed_ms=0):
+def record(net, key, focus, family, baseline, score, elapsed_ms=0, origin="local experiments"):
     """Called once per measured trial; unknown/failed results count as spent work, not wins."""
     if not family or not isinstance(baseline, (int, float)) or not math.isfinite(baseline):
         return
@@ -52,6 +54,9 @@ def record(net, key, focus, family, baseline, score, elapsed_ms=0):
             elapsed_ms=elapsed_ms+excluded.elapsed_ms''',
                    (key, focus, family, 1, int(improved), int(improved and score == 0),
                     int(score is None), max(0, int(elapsed_ms))))
+        now = time.time()
+        db.execute("INSERT INTO repair_policy_coverage VALUES(?,?,?,?,?,?,?) ON CONFLICT(origin) DO UPDATE SET last_at=excluded.last_at,attempted=attempted+1,improved=improved+excluded.improved,matched=matched+excluded.matched,elapsed_ms=elapsed_ms+excluded.elapsed_ms",
+                   (origin,now,now,1,int(improved),int(improved and score == 0),max(0,int(elapsed_ms))))
 
 
 def factors(net, key, focus):
@@ -80,3 +85,15 @@ def order(net, proj, fn, rows, families):
     # Interleave the original queue so a changed policy cannot starve unexplored families.
     return list(dict.fromkeys(family for pair in zip_longest(ranked, families)
                               for family in pair if family is not None))
+
+
+def coverage(net):
+    """Expose denominators and collection windows; legacy aggregates cannot be compared as one cohort."""
+    prepare(net)
+    policy = dict(net.store.one("SELECT COALESCE(SUM(attempted),0) attempted,COALESCE(SUM(improved),0) improved,COALESCE(SUM(matched),0) matched FROM repair_policy"))
+    sources = [dict(r) for r in net.store.all("SELECT * FROM repair_policy_coverage ORDER BY origin")]
+    deep = None
+    if net.store.one("SELECT 1 FROM sqlite_master WHERE type='table' AND name='deep_permutation_recipes'"):
+        deep = dict(net.store.one("SELECT COALESCE(SUM(tested),0) attempted,COALESCE(SUM(improvements),0) improved,COALESCE(SUM(matches),0) matched FROM deep_permutation_recipes"))
+    return {'policy':policy,'sources':sources,'deep':deep,
+            'scope':'All projects. Policy trials are uncached, scoped by build profile and mismatch. Deep history has a different collection window; do not compare rates directly. Coverage by origin starts with this update; elapsed time is summed trial time, not wall-clock duration.'}

@@ -1405,6 +1405,8 @@ class Manager:
             raise Fatal(why)  # every agent on this account fails the same way until it's topped up
         if re.search(r"invalid API token|(?:decomp tools|decomp MCP server)[^\n]{0,100}(?:not available|aren't available|not connected|unavailable)|none of the decomp tools|no decomp tools", everything, re.I):
             raise Fatal("The helper lost access to the app's tools. Restart this helper to reconnect; repeated paid retries are paused.")
+        if "Toolchain infrastructure failure" in everything:
+            raise Fatal("The compiler/converter setup failed. Fix the toolchain before restarting this helper; repair retries are paused.")
         if finished:
             if saw_tool:  # it said its work is done and used the tools: done, whatever the exit code
                 s.error = ""

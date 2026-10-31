@@ -131,3 +131,24 @@ def test_sn64_driver_and_all_tools_are_staged_for_wsl(tmp_path, monkeypatch):
     assert '/tools/compiler/cc1n64.exe' in cfg.cmd
     assert '/tools/converter/psyq-obj-parser' in cfg.cmd
     assert '{driver}' not in cfg.cmd
+
+
+def test_sn64_readonly_sections_keep_jump_table_data_and_symbol_names():
+    asm = '.section .rodata\n.rodata\n.section ".rodata", "a"\njtbl:\n.word .L1\n.text\n.L1:\nj $31\nnop\n# .rodata is data, not an identifier replacement\n'
+    converted = assembler_input(asm)
+    assert '.section .rdata' in converted and '\r\n.rdata\r\n' in converted
+    assert '.word .L1' in converted and 'jtbl:' in converted and '.L1:' in converted
+    assert '# .rodata' in converted
+
+
+def test_gcc_sn_switch_readonly_object_converts(tmp_path):
+    tid = 'gcc-2.8.1-pm-sn-as'
+    if any(toolchains.installed(t) is None for t in [tid, 'wibo', 'psyq-obj-parser']):
+        pytest.skip('needs installed GCC/SN pipeline')
+    cfg = compiler_config(tmp_path, {'compiler':{'toolchain':tid}})
+    cases = ' '.join(f'case {i}: return call({i*7+3});' for i in range(10))
+    result = compile_source(cfg, '', 'extern int call(int); int probe(int x){switch(x){'+cases+' default:return 0;}}')
+    assert result.ok, result.log
+    fn = extract_function(result.obj, 'probe')
+    assert fn.code
+    assert any(r.symbol == 'call' for r in fn.relocs)

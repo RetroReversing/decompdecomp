@@ -141,7 +141,7 @@ def test_replay_is_guarded_scoped_and_cancellable(repair_app,monkeypatch):
     from decompnet.app import repair_replay_jobs
     client,net,_=repair_app
     seen=[];entered=threading.Event()
-    monkeypatch.setattr(net.repair_feedback,'listing',lambda slug,*args,**kwargs: {'examples':[{'id':42}]})
+    monkeypatch.setattr(net.repair_feedback,'listing',lambda slug,*args,**kwargs: {'examples':[{'id':42,'slug':'demo','function':'f'},{'id':43,'slug':'demo','function':'f'}]})
     def run(feedback,slug,ids,trials,seconds,log):
         seen.append((slug,ids,trials,seconds));entered.set()
         for _ in range(100):
