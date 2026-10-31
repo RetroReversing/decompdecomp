@@ -777,6 +777,11 @@ This uses already-installed pinned ROM compilers, checks the captured baseline/c
 repair families under per-case trial/time limits. It reports recovered compiler output, improvements,
 neutral/regressed trials and errors without updating game progress. Imported builds and missing historical
 inputs are explicitly skipped. See [the replay guide](docs/repair-replay.md) for scope and options.
+
+Use **Agents → Repair examples → Test automatic repairs** for up to 20 examples matching the current
+filters, or test a single expanded example. Trial/time controls, progress, results and **Stop replay**
+are in the dialog. Replays do not apply source or change review states. Source hashes distinguish
+direct random-rewrite evidence from inherited cascade labels before suggesting a new deterministic rule.
 Compact project facts summarise compiler ranges; each claim retains its actual compiler and user instructions.
 Repeated unchanged claims return a short status, and oversized/sparse batch requests explain why only one
 function was returned.

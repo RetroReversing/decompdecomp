@@ -44,6 +44,7 @@ const context = { S: {slug: 'demo'}, document: {body, createElement: (tag) => ne
       groups: [{category: 'types', status: state, count: 1}], more: false};
   }};
 vm.createContext(context);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/static/js/repair-replay.js'), 'utf8'), context);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/static/js/candidate-recovery.js'), 'utf8'), context);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/static/js/repair-feedback.js'), 'utf8'), context);
 (async () => {
@@ -78,7 +79,7 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   const statusFilter = dialog.querySelector('[data-status]'); statusFilter.value = ''; await statusFilter.onchange();
   assert(requests.filter(r => !r.url.includes('/quality')).at(-1).url.includes('status='));
   const details = list.children[0]; details.open = true; await details.listeners.toggle();
-  const evidence = details.children[1], evidencePanel = evidence.children[5];
+  const evidence = details.children[1], evidencePanel = evidence.children[6];
   const pre = evidencePanel.children.find((child) => child.tag === 'pre');
   assert(evidencePanel.children.some((child) => child.tag === 'p' && child.textContent === 'C tokens changed'));
   assert(pre.children.some((line) => line.textContent.includes('<script>neverExecute()</script>')));
@@ -86,12 +87,12 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   assert(dialog.className.includes('repair-dialog'));
   assert(details.className === 'repair-card');
   assert(details.children[0].children[1].textContent.includes('<b>demo</b>'));
-  const advanced = evidence.children[6];
+  const advanced = evidence.children[7];
   const review = advanced.children[1], kind = advanced.children[2], note = advanced.children[3], save = advanced.children[4];
-  const send = evidence.children[2]; await send.onclick();
+  const send = evidence.children[3]; await send.onclick();
   const handoff = requests.find((item) => item.opts?.body.agent === 'codex');
   assert.equal(handoff.opts.body.id, 42); assert.equal(handoff.opts.body.slug, 'demo');
-  assert(evidence.children[4].textContent.includes('/private/repository'));
+  assert(evidence.children[5].textContent.includes('/private/repository'));
   review.value = 'reviewed'; kind.value = 'types'; note.value = 'Add an AST rule'; await save.onclick();
   const posted = requests.find((item) => item.opts?.body.status === 'reviewed');
   assert.equal(posted.opts.body.note, 'Add an AST rule'); assert.equal(posted.opts.body.status, 'reviewed');

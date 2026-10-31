@@ -235,3 +235,32 @@ An intermediate store can change rounding; every proposed match still requires t
 normalized KMC function bytes before/after expansion and yielded variants from the installed permuter.
 This fixes parser coverage, not evidence of extra matched functions. Three other captured repair replays
 found no control recovery under 12 trials each; offline replay reports them without applying candidates.
+
+## Captured pointer, initialization and terminal-guard regressions
+
+**Controlled recoveries of existing captures**, KMC GCC 2.7.2, big-endian MIPS,
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`:
+
+- Advancing an existing dead pointer cursor for the first dereference, then copying it into a differently
+  typed pointer local, recovered the captured pointer-chase match.
+- Swapping two independent scalar zero initializations recovered an allocation/scheduling near miss.
+  Grouped local declarations must be understood before identifying legal scalar candidates.
+- Replacing a terminal negative conditional (with a dead boolean copy) with an early return using an
+  existing initialized result local recovered the captured control-flow match.
+
+**IDO 5.3 controlled recovery**, big-endian MIPS,
+`-O2 -mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul`: repeating a prior member assignment after an
+intervening same-object flag store recovered its captured match. A second placement compiled but did
+not match. Repeating stores is a scheduling hypothesis, not a generic optimization or semantic guarantee;
+volatile accesses, calls and complex expressions are excluded from these proposals.
+
+All four generated families recovered their successful compiler controls, and separate normal linked-byte
+checks in private project/ROM copies accepted one candidate per case. These are regression recoveries,
+not new matched functions. Only the destination's normal judge may adopt them in future work.
+
+**Evidence correction:** random rewrite context can flow into cascaded cross-function matches. At audit
+time, 436 of 444 random-labelled captures had a different candidate hash; six of the eight remaining
+captures also had a different recorded baseline. They cannot establish a direct rewrite cause. The
+source-matching repeated-store capture above had the matching base; the other direct case was already
+recovered by `table_slot_lifetime`. Preserve inherited origin metadata, but do not train a new rule from
+the final rewrite name alone. Historical reviews remain unchanged.

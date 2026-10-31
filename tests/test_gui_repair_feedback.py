@@ -20,3 +20,10 @@ def test_batch_candidate_recovery_controls():
         pytest.skip('needs node')
     subprocess.run([node, str(Path(__file__).with_name('gui_candidate_recovery.js'))], check=True,
                    capture_output=True, text=True, timeout=30)
+
+
+def test_automatic_repair_replay_controls_and_cancellation():
+    node=shutil.which('node')
+    if not node:pytest.skip('needs node')
+    subprocess.run([node,str(Path(__file__).with_name('gui_repair_replay.js'))],check=True,
+                   capture_output=True,text=True,timeout=30)

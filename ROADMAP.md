@@ -1031,6 +1031,13 @@ Project overview reads query SDK signatures by the game’s indexed fingerprints
 
 ### Agent transcript efficiency
 
+- Done: shared bounded pointer-chase reuse, independent scalar initialization order, terminal early
+  returns and repeated member-store hypotheses, available to ROM/imported draft, permuter and local tools.
+- Done: repair dialog batch/single-example compiler-output replay with explicit budgets, progress,
+  cancellation and non-adopting results. Imported historical build input gaps remain as described below.
+- Done: source-hash validation distinguishes cascaded provenance from the candidate that triggered it;
+  random rewrite reports also validate the failed baseline hash before calling evidence direct.
+
 - Done: the CLI preflight also executes read-only project_info through authenticated MCP before model
   launch; advertised tools alone cannot hide a failed helper/project association. Existing bounded
   lost-connection pausing from #194 remains in place.

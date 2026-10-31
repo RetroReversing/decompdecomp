@@ -52,6 +52,14 @@ def current_trial():
     return _TRIAL.get()
 
 
+def validated_provenance(provenance, source_hash):
+    """Cascaded matches must not inherit the triggering candidate's rewrite attribution."""
+    if provenance and provenance.get('source_sha256') and provenance['source_sha256'] != source_hash:
+        return {'kind':'inherited repair context','origin':provenance,
+                'note':'The recorded rewrite source hash differs from this candidate; do not mine it as a direct rewrite.'}
+    return provenance
+
+
 def _settings(proj, fn):
     cfg = json.loads(proj['config'])
     if cfg.get('kind') == 'fork':
@@ -75,7 +83,9 @@ class RepairFeedback:
             # reviews and agent annotations; only move untouched, provenance-backed captures.
             db.execute("UPDATE repair_examples SET status='implemented',review_note=? WHERE status='new' "
                        "AND explanation='' AND automation='' AND review_note='' "
-                       "AND json_extract(evidence,'$.provenance.kind')='deterministic draft repair'",
+                       "AND json_extract(evidence,'$.provenance.kind')='deterministic draft repair' "
+                       "AND (json_extract(evidence,'$.provenance.source_sha256') IS NULL OR "
+                       "json_extract(evidence,'$.provenance.source_sha256')=json_extract(evidence,'$.after.source_sha256'))",
                        ('Already produced by an automatic repair; retained for regression review.',))
 
     def attempt(self, db, fn, attempt_id, context_version, effective_settings=None):
@@ -84,7 +94,9 @@ class RepairFeedback:
         if effective_settings and settings['mode']=='rom':
             settings.update(effective_settings)
         if _TRIAL.get() is not None:
-            db.execute('INSERT INTO repair_attempt_provenance VALUES(?,?)',(attempt_id,json.dumps(_TRIAL.get())))
+            source = db.execute('SELECT source FROM attempts WHERE id=?',(attempt_id,)).fetchone()['source'] or ''
+            provenance = validated_provenance(_TRIAL.get(),hashlib.sha256(source.encode()).hexdigest())
+            db.execute('INSERT INTO repair_attempt_provenance VALUES(?,?)',(attempt_id,json.dumps(provenance)))
         header = db.execute('SELECT unit,header FROM context_versions WHERE project_id=? AND version=? '
                             "AND unit IN (?, '') ORDER BY (unit=?) DESC LIMIT 1",
                             (fn['project_id'], context_version, fn['unit'] or '', fn['unit'] or '')).fetchone()
@@ -145,7 +157,8 @@ class RepairFeedback:
                        'agent_id': before['agent_id'], 'context_version': before['context_version'],
                        'settings': json.loads(old_settings['settings']) if old_settings else None} if before else None,
             'previous':snapshot(previous),
-            'provenance':json.loads(provenance['provenance']) if provenance else _TRIAL.get(),
+            'provenance':validated_provenance(json.loads(provenance['provenance']) if provenance else _TRIAL.get(),
+                                             hashlib.sha256(source.encode()).hexdigest()),
             'comparable_settings':bool(comparable),
             'comparison': 'closest comparable-settings failed attempt when available, otherwise closest historical failure; previous retains last own failed trial',
         }
@@ -191,7 +204,9 @@ class RepairFeedback:
         where, args = self._where(slug, category, status, comparable)
         rows = self.store.all('SELECT e.id,e.created_at,e.category,e.explanation,e.automation,e.status,'
                               "CASE WHEN e.before_attempt_id IS NULL THEN 'no failed baseline' WHEN json_extract(e.evidence,'$.before.source_sha256')=json_extract(e.evidence,'$.after.source_sha256') THEN 'same source / settings' WHEN json_extract(e.evidence,'$.comparable_settings')=1 THEN 'source repair' ELSE 'settings also changed' END AS evidence_kind,"
-                              "json_extract(e.evidence,'$.provenance.kind')='deterministic draft repair' AS automation_known,"
+                              "(json_extract(e.evidence,'$.provenance.kind')='deterministic draft repair' AND "
+                              "(json_extract(e.evidence,'$.provenance.source_sha256') IS NULL OR "
+                              "json_extract(e.evidence,'$.provenance.source_sha256')=json_extract(e.evidence,'$.after.source_sha256'))) AS automation_known,"
                               'p.slug,p.name AS project,f.name AS function,a.name AS agent FROM repair_examples e '
                               'JOIN projects p ON p.id=e.project_id JOIN functions f ON f.id=e.function_id '
                               'LEFT JOIN agents a ON a.id=e.agent_id WHERE ' + where +
@@ -209,6 +224,7 @@ class RepairFeedback:
         if row is None:
             raise NetworkError('No repair example exists in this project.')
         result = dict(row); evidence = json.loads(result.pop('evidence'))
+        evidence['provenance'] = validated_provenance(evidence.get('provenance'),evidence['after'].get('source_sha256'))
         for stage in ('before', 'after', 'previous'):
             value = evidence.get(stage)
             if not value:

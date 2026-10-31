@@ -1,0 +1,23 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('path');
+const nodes=new Map(),posts=[];
+const get=s=>{if(!nodes.has(s))nodes.set(s,{value:s.includes('trials')?'12':'30',hidden:false,textContent:''});return nodes.get(s);};
+let finished=0,following;
+const ctx={api:async(url,options)=>{posts.push([url,options]);return {job:'replay'};},
+  beginWork:()=>()=>finished++,showJobError:()=>{},followJob:()=>new Promise(resolve=>following=resolve)};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/decompnet/app/static/js/repair-replay.js'),'utf8'),ctx);
+const listeners={};
+const run=ctx.setupRepairReplay({querySelector:get,addEventListener:(name,fn)=>listeners[name]=fn},()=>({slug:'demo',all:false,status:'new',category:'types',comparable:true}));
+(async()=>{
+ const pending=run(42);await new Promise(setImmediate);
+ assert.equal(posts[0][0],'/api/repair-examples/replay');
+ assert.equal(posts[0][1].body.id,42);assert.equal(posts[0][1].body.trials,12);
+ assert.equal(get('[data-replay-stop]').hidden,false);
+ await get('[data-replay-stop]').onclick();assert.equal(posts[1][0],'/api/job/cancel');
+ listeners.close();assert.equal(posts.at(-1)[0],'/api/job/cancel');
+ following({message:'No game progress changed.',examples:[{id:42,function:'<script>plain text</script>',summary:{control_output_recovered:1},remaining:3}]});
+ await pending;assert.equal(finished,1);assert.equal(get('[data-replay-stop]').hidden,true);
+ assert.match(get('[data-replay-results]').textContent,/<script>plain text/);
+ assert.match(get('[data-replay-results]').textContent,/control output recovered: 1/);
+ assert(!posts.some(([url])=>url.includes('/investigate')));
+})().catch(error=>{console.error(error);process.exitCode=1;});

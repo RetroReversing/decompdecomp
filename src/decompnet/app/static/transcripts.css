@@ -42,6 +42,7 @@
 .repair-dialog .repair-review textarea { display: block; width: 100%; min-height: 90px; margin: 10px 0; box-sizing: border-box; }
 .repair-review select { margin: 10px 8px 0 0; }
 .repair-help { color: var(--muted); font-size: 12px; }
+.repair-dialog .repair-replay-results { white-space: pre-wrap; overflow: auto; max-height: 280px; padding: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg-alt); font: 12px/1.7 var(--mono); }
 .repair-empty { padding: 32px 20px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; }
 .repair-footer { padding: 16px 28px; border-top: 1px solid var(--line); background: var(--bg-alt); }
 .repair-export-actions { display: flex; gap: 8px; flex-wrap: wrap; }

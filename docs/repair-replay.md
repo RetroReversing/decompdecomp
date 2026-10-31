@@ -1,5 +1,16 @@
 # Replay captured repair examples
 
+## In the app
+
+Open **Agents → Repair examples** and use **Test automatic repairs**. It tests up to 20 examples
+matching the category/review/project filters. Each expanded card also has a single-example action.
+Choose 1–32 trials and 1–120 seconds per example; defaults are 12 trials / 30 seconds. Progress and
+results appear in the dialog; **Stop replay** cancels compiler work through the shared job system.
+Results are compiler-output regressions, not adopted game matches, and do not mark examples implemented.
+Imported projects or incomplete historical context are reported as skips.
+
+## Offline
+
 Use replay to find out whether the app's current deterministic families can reproduce a captured repair.
 It uses no model requests, opens no project database and does not apply candidates or change review states.
 
@@ -32,6 +43,21 @@ Standalone imported-project replay currently skips cases because full exports do
 build system and historical headers; a guessed compiler profile would give misleading results.
 
 ## Current evidence
+
+Random-rewrite labels now validate the recorded candidate hash. A label inherited while a successful
+candidate triggers more matches is retained as origin information, not treated as the destination's
+rewrite. Reports additionally distinguish whether the recorded base hash equals the failed baseline.
+The last rewrite name is not sufficient to isolate the change that caused a match.
+
+A private audit found eight of 444 random-labelled captures with matching candidate hashes; only two
+also had the recorded failed baseline. One was already recovered by `table_slot_lifetime`; the other
+motivated bounded `member_store_replay` proposals. These are snapshot counts, not an estimate of model
+or permuter effectiveness. Existing capture/review records were not deleted or reclassified.
+
+Four private captured regressions were recovered by `pointer_chase_reuse`,
+`independent_assignment_order`, `terminal_early_return`, and `member_store_replay`. Separate normal
+linked-byte checks accepted a generated candidate in each case. The first three used KMC GCC 2.7.2;
+the member-store case used IDO 5.3. These recover existing matches, not additional game progress.
 
 A private same-context floating-point case used KMC GCC 2.7.2 with
 `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. The product-intermediate family recovered the successful control;
