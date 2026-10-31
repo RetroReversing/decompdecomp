@@ -261,6 +261,43 @@ class RepairFeedback:
                        (status, category, category, str(note)[:6000] if note is not None else None, case_id))
         return {'message': 'Review state saved.'}
 
+    def classify_new(self, slug, apply=False):
+        """Triage at most 500 untouched examples; existing human reviews and annotations stay intact."""
+        from . import repair_review
+        where, args = self._where(slug, 'unclassified', 'new')
+        rows = self.store.all('SELECT e.id FROM repair_examples e WHERE ' + where +
+                              " AND e.review_note='' AND e.explanation='' AND e.automation='' ORDER BY e.id LIMIT 500", *args)
+        seen, plans, counts = {}, [], {}
+        scope, scope_args = self._where(slug)
+        prior = self.store.all("SELECT e.id,e.project_id,json_extract(evidence,'$.target_sha256') AS target,"
+                               "json_extract(evidence,'$.after') AS after FROM repair_examples e WHERE " + scope +
+                               " AND e.status IN ('reviewed','implemented') ORDER BY e.id", *scope_args)
+        for row in prior:
+            old = {'project_id':row['project_id'], 'evidence':{'target_sha256':row['target'],
+                   'after':json.loads(row['after'] or '{}')}}
+            key = repair_review.identity(old)
+            if key:
+                seen.setdefault(key, row['id'])
+        for row in rows:
+            detail = self.detail(slug, row['id'])
+            proposal = repair_review.classify(detail)
+            key = repair_review.identity(detail)
+            if key in seen:
+                proposal.update(status='dismissed', note=f'Duplicate captured evidence of example #{seen[key]}; original retained.')
+            elif key:
+                seen[key] = row['id']
+            proposal['id'] = row['id']
+            counts[proposal['category']] = counts.get(proposal['category'], 0) + 1
+            plans.append(proposal)
+        if apply:
+            with self.store.tx() as db:
+                for proposal in plans:
+                    # A review arriving during the analysis must win over this automatic triage.
+                    db.execute("UPDATE repair_examples SET status=?,category=?,review_note=? WHERE id=? AND "
+                               "status='new' AND category='unclassified' AND review_note='' AND explanation='' AND automation=''",
+                               (proposal['status'], proposal['category'], proposal['note'] + ' Evidence group: ' + proposal['group'] + '.', proposal['id']))
+        return {'examples': plans, 'counts': counts, 'applied': bool(apply), 'total': len(plans)}
+
     def export(self, slug='', category='', status='', include_source=False, comparable=False):
         where, args = self._where(slug, category, status, comparable)
         maximum = self.store.one('SELECT MAX(e.id) AS id FROM repair_examples e WHERE ' + where, *args)['id'] or 0

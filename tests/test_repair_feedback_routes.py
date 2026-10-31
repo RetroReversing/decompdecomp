@@ -120,3 +120,15 @@ def test_quality_review_is_guarded_scoped_and_rejects_a_stale_source(repair_app)
     assert not candidate_quality.pending(net,net._function('f','quality'))
     assert client.post(url,json=data,headers={'X-Decomp':'1'}).status_code==400
     assert net.store.one('SELECT best_score FROM functions WHERE id=?',fid)['best_score']==10
+
+
+def test_classify_route_is_project_scoped_and_write_guarded(repair_app):
+    client, net, _ = repair_app
+    with net.store.tx() as db:
+        db.execute("INSERT INTO projects(slug,name,root,config) VALUES('review-only','Demo','/unused','{}')")
+    url = '/api/repair-examples/classify'
+    assert client.get(url).status_code == 400
+    assert client.get(url+'?slug=review-only',headers={'User-Agent':'outside'}).status_code == 401
+    assert client.get(url+'?slug=review-only').json()['applied'] is False
+    assert client.post(url,json={'slug':'review-only'}).status_code == 403
+    assert client.post(url,json={'slug':'review-only'},headers={'X-Decomp':'1'}).json()['applied'] is True

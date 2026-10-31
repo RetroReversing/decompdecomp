@@ -1015,7 +1015,9 @@ details.more[open] > summary::before { content: "− "; }
 .ptab[data-pane="settings"] .flags,
 .ptab[data-pane="settings"] dd,
 .ptab[data-pane="settings"] .check span { overflow-wrap: anywhere; }
-#installedCompilerTest { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+#installedCompilerTest { border-top: 1px solid var(--line-soft); }
+.compiler-test-body { display: grid; gap: 14px; padding: 12px 0; }
+.compiler-queue-count { display: grid; gap: 8px; font-size: 13px; font-weight: 600; }
 #testInstalledCompilers { justify-self: start; }
 #installedCompilerTest > .small { line-height: 1.55; }
 #installedCompilerLog { min-width: 0; max-width: 100%; max-height: 280px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }

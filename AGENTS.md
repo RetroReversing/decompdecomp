@@ -197,3 +197,7 @@ linting). In short:
 - Let agents edit a project's build setup: `forks/project.py` (`EDITABLE`, `FORBIDDEN_PARTS`) limits them to
   source and header files on purpose.
 - Weaken the judge: a match means byte-identical after linking (ROM mode) or objdiff 100% (fork mode).
+
+## RetroReversing contribution workflow
+
+Always submit decompdecomp changes on a feature or fix branch through a pull request; do not commit directly to main.

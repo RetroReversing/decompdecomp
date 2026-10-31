@@ -71,3 +71,57 @@
   .repair-export-actions [data-prompt] { grid-column: 1 / -1; }
   .repair-footer p { font-size: 10px; }
 }
+
+/* Transcript-specific layout: other dialogs sharing the base class keep their own layout. */
+.session-transcript { padding: 0; width: min(1040px, 94vw); max-height: 90vh; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: 0 24px 80px #0006; }
+.session-transcript::backdrop { background: #0008; }
+.transcript-header { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding: 22px 24px 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.transcript-header h2 { margin: 3px 0; font-size: 23px; }
+.transcript-header p { margin: 0; }
+.transcript-eyebrow { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+.transcript-toolbar { display: flex; align-items: end; gap: 12px; padding: 18px 24px; }
+.transcript-toolbar label { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
+.transcript-toolbar select { display: block; width: 100%; margin-top: 6px; }
+.transcript-usage { margin: 0 24px 18px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-alt); }
+.transcript-usage p { font-size: 12px; line-height: 1.7; margin: 4px 0 0; }
+.transcript-timeline { padding: 0 24px 20px; }
+.transcript-timeline-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.transcript-timeline h3 { margin: 0 0 10px; font-size: 14px; }
+.session-transcript .transcript-event { border: 1px solid var(--line); border-radius: 8px; padding: 0; margin: 0 0 8px; background: var(--bg-alt); overflow: hidden; }
+.transcript-event summary { display: flex; align-items: center; gap: 14px; padding: 12px 14px; cursor: pointer; font-size: 12px; }
+.transcript-event summary::before { content: "▸"; color: var(--muted); }
+.transcript-event[open] summary::before { content: "▾"; }
+.transcript-event-label { flex: 1; font-weight: 600; }
+.transcript-event time, .transcript-event-size { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.session-transcript .transcript-event pre { border-top: 1px solid var(--line); margin: 0; padding: 16px; background: var(--bg); font: 12px/1.7 var(--mono); max-height: 45vh; }
+.transcript-event-error { border-left: 3px solid var(--err, #da726c) !important; }
+.transcript-copy { margin: 10px 14px; }
+.session-transcript .transcript-coverage { margin: 0; padding: 16px 24px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+@media (max-width: 640px) {
+  .transcript-header, .transcript-toolbar { padding: 16px; }
+  .transcript-toolbar { flex-wrap: wrap; }
+  .transcript-toolbar label { flex-basis: 100%; }
+  .transcript-usage { margin: 0 16px 16px; }
+  .transcript-timeline { padding: 0 16px 16px; }
+  .transcript-event-size { display: none; }
+}
+
+.session-transcript .transcript-tools { padding: 4px 16px 12px; }
+.session-transcript .transcript-tool { margin: 8px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.transcript-tool summary code { font-size: 12px; overflow-wrap: anywhere; }
+.transcript-tool > p { margin: 0; padding: 0 14px 12px; font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
+.transcript-tool-params { display: grid; grid-template-columns: minmax(120px, 1fr) 2fr; gap: 8px 16px; margin: 0; padding: 12px 14px; border-top: 1px solid var(--line); font-size: 12px; }
+.transcript-tool-params dt { font-family: var(--mono); overflow-wrap: anywhere; }
+.transcript-tool-params dd { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.session-transcript .transcript-tool-raw { margin: 0 16px 12px; padding: 0; border: 1px solid var(--line); border-radius: 6px; }
+@media (max-width: 640px) { .transcript-tool-params { grid-template-columns: 1fr; gap: 4px; } .transcript-tool-params dd { margin-bottom: 10px; } }
+
+.transcript-markdown { padding: 8px 18px 18px; font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; }
+.transcript-markdown p { margin: 8px 0; }
+.transcript-markdown h2, .transcript-markdown h3, .transcript-markdown h4 { margin: 20px 0 8px; line-height: 1.4; }
+.transcript-markdown h2 { font-size: 18px; } .transcript-markdown h3 { font-size: 16px; }
+.transcript-markdown code { font-family: var(--mono); font-size: 12px; background: var(--bg); border-radius: 4px; padding: 2px 4px; }
+.session-transcript .transcript-markdown pre { border: 1px solid var(--line); border-radius: 6px; padding: 14px; margin: 12px 0; max-height: 45vh; white-space: pre; }
+.transcript-markdown pre code { padding: 0; }
+.transcript-markdown blockquote { margin: 12px 0; padding: 4px 14px; border-left: 3px solid var(--line); color: var(--muted); }
+.transcript-md-table { overflow: auto; } .transcript-md-table th, .transcript-md-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); text-align: left; }

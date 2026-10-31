@@ -27,6 +27,7 @@ const context = { S: {slug: 'demo'}, document: {body, createElement: (tag) => ne
   fetch: async (url) => { requests.push({url}); return {ok: true, blob: async () => ({})}; },
   api: async (url, opts) => {
     requests.push({url, opts});
+    if (url.includes('/classify')) return {total: 4, applied: true};
     if (url.includes('/recovery')) return {diff:'- old\n+ <script>textOnly()</script>',source:'int candidate(){}',target:'target assembly',measurement:null};
     if (url.includes('/quality')) {
       if (opts?.method === 'POST') { qualityPending = false; return {resumed: 'suspect'}; }
@@ -102,5 +103,8 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   assert(requests.at(-1).url.includes('include_source=1')); assert.equal(downloads.at(-1), 'repair-examples-full.json');
   await dialog.querySelector('[data-prompt]').onclick();
   assert.equal(copied[0], 'Investigate these examples safely.');
+  await dialog.querySelector('[data-classify]').onclick();
+  assert(requests.some((request) => request.url === '/api/repair-examples/classify' && request.opts.body.slug === 'demo'));
+  assert(notices.some((message) => message.includes('4 examples reviewed')));
   console.log('Repair evidence rendering, review, filtering and explicit source export passed');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

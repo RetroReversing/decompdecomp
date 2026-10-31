@@ -16,6 +16,7 @@ from . import (
     compiler_shape_repairs,
     evidence_repairs,
     expression_repairs,
+    inferred_layout_repairs,
     integer_lifetime_repairs,
     lifetime_repairs,
     load_pair_repairs,
@@ -64,6 +65,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
         proposals.append(text)
         labels[text] = family
     for family, text in register_repairs.variants(source, name, arch):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in inferred_layout_repairs.variants(source, name, arch):
         proposals.append(text)
         labels[text] = family
     for family, text in compiler_shape_repairs.variants(source, name, arch, flags, header):

@@ -148,3 +148,40 @@ original string separately before the whole build matched. `tests/test_candidate
 checks non-contiguous placements and extra bodies without changing the function's exact verdict;
 `tests/test_repository_sync.py` protects both expanded-image and original-cartridge hashes.
 A successful local layout check is not proof of a full rebuild.
+## Follow-up: adaptive priorities, region selection and inferred records
+
+Profile-specific outcome learning now records fresh compiler trials by compiler/flags/ABI and mismatch
+kind. It waits for 32 observations per family, smooths sparse results and clamps multipliers to
+0.25–4. Random search retains alternating upstream-default batches; deterministic queues interleave
+learned and original orders. Cached deep misses do not train twice. Old aggregate counts are not
+silently assigned to current compiler settings: their historical profile/focus snapshots are absent.
+Imported builds are isolated by their actual build-evidence scope rather than a guessed compiler.
+This is a search policy, not evidence of a measured speedup yet.
+
+Target-aligned 16-instruction regions now help choose the reserved worse-score branch. The original
+883-instruction case was replayed with fixed compiler/context/target: the score-480 alternative
+recovered three regional mismatches relative to the score-440 candidate. That is a useful partial
+recovery, not an exact match; the previously verified final source still scores 0. Target stream
+identity is required, so inserted candidate instructions cannot shift the comparison.
+
+Candidate-local record inference now recognises multiple explicit byte-offset accesses, including
+m2c's parenthesised forms. It requires at least three accesses to at least two consistent,
+non-overlapping, aligned fields, with bounded offsets and no volatile/unknown types. The inferred
+record is private to a source candidate. It does not assert the full object size, edit a shared header,
+or propagate an unverified layout to other functions.
+
+Private same-checkpoint test results:
+
+- 30 saved near misses: 4 functions admitted 5 inferred-record candidates. All compiled; all retained
+  their baseline score; **no new matches or improvements** were found in that sample.
+- Two older snapshots of the large function: 4 further inferred-record candidates compiled but did
+  not improve scores 950 or 210. Inferring all visible fields is not equivalent to recovering the
+  original source's actual record/alias structure.
+- These neutral outcomes argue for bounded trials and measured prioritisation, not a blanket promise
+  that inferred structures will increase progress.
+
+449 unclassified captured repairs were triaged locally: 66 already arose from recorded automatic
+paths, 4 were duplicate evidence, and 379 remain reviewed for further investigation. Category labels
+summarise source differences; they do not isolate causes. The largest source-pattern groups included
+address substitutions and source-line layout changes. Mixed edits and missing failed baselines are
+retained. Source/layout/flags must be replayed independently before adding another automatic rule.

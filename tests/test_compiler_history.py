@@ -155,3 +155,24 @@ def test_flags_only_uses_each_functions_current_compiler_and_resumes(comparison,
     # A limited comparison must never make a later full compiler search look completed.
     assert net.run_compiler_comparison('demo')['tried'] == 2
     assert ('f0', 'sn-n64-281', ('-O1',)) in tested
+
+
+def test_comparison_queue_counts_exclude_completed_and_respect_run_limit(comparison):
+    net, _, _, _ = comparison
+    snapshots = []
+
+    class Log:
+        def __call__(self, line):
+            pass
+
+        def progress(self, value):
+            snapshots.append(dict(value))
+
+    first = net.survey_compilers('demo', all_installed=True, untested_only=True, limit=1, log=Log())
+    assert first['total'] == 1 and first['remaining'] == 0 and first['deferred'] == 1
+    assert snapshots[0]['completed'] == 0 and snapshots[0]['remaining'] == 1
+    assert snapshots[-1]['completed'] == 1 and snapshots[-1]['remaining'] == 0
+    snapshots.clear()
+    second = net.survey_compilers('demo', all_installed=True, untested_only=True, log=Log())
+    assert second['total'] == 1 and second['skipped'] == 1 and second['deferred'] == 0
+    assert snapshots[0]['total'] == 1

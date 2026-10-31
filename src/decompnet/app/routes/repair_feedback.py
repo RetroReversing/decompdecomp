@@ -85,6 +85,19 @@ def register(app):
         except (NetworkError, ValueError, KeyError) as error:
             return app.fail(error)
 
+    @app.mcp.custom_route('/api/repair-examples/classify', methods=['GET', 'POST'])
+    async def classify_examples(request):
+        if bad := app.guard(request, write=request.method == 'POST'):
+            return bad
+        try:
+            data = await app.body(request) if request.method == 'POST' else request.query_params
+            slug = str(data.get('slug', ''))
+            if not slug:
+                raise NetworkError('Choose a project to classify its new examples.')
+            return JSONResponse(await app.call(feedback.classify_new, slug, request.method == 'POST'))
+        except (NetworkError, ValueError, KeyError) as error:
+            return app.fail(error)
+
     @app.mcp.custom_route('/api/repair-examples/investigate', methods=['GET', 'POST'])
     async def investigate(request):
         if bad := app.guard(request, write=request.method == 'POST'):

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ..network import NetworkError
 from ..project import compiler_for
-from . import workers
+from . import region_repairs, workers
 
 WIDTH, DEPTH, PER_FUNCTION = 3, 3, 8
 DETOUR_RATIO = 1.25
@@ -37,13 +37,16 @@ def advance(state, evaluate, variants, stopped):
             output = output_key(report)
             outputs = state.setdefault('outputs', {})
             if output is None or outputs.get(output, 0) < 2:
-                state['next'].append({**node, 'score': score, 'report': report})
+                regions = region_repairs.snapshot(report.get('rows'))
+                state['next'].append({**node, 'score': score, 'report': report, 'regions': regions,
+                                      'region_gain': region_repairs.gain(node.get('region_baseline'), regions)})
                 if output is not None:
                     outputs[output] = outputs.get(output, 0) + 1
         if not state['pending']:
             ranked = sorted(state['next'], key=lambda n: n['score'])
             ordinary = [n for n in ranked if n['score'] <= n['ceiling']]
-            detours = [n for n in ranked if n['score'] > n['ceiling']]
+            detours = sorted((n for n in ranked if n['score'] > n['ceiling']),
+                             key=lambda n: (-n.get('region_gain', 0), n['score']))
             best = ordinary[:WIDTH-1] + detours[:1] if detours else ordinary[:WIDTH]
             state['next'] = []
             for parent in best:
@@ -54,7 +57,8 @@ def advance(state, evaluate, variants, stopped):
                         continue
                     state['seen'].append(source)
                     state['pending'].append(dict(source=source, depth=parent['depth'] + 1,
-                                                 ceiling=min(parent['ceiling'], parent['score'])))
+                                                 ceiling=min(parent['ceiling'], parent['score']),
+                                                 region_baseline=parent.get('regions')))
     return False
 
 
@@ -117,7 +121,7 @@ def run(twins, slug, job):
             return
         header = net._context(proj['id'], fn['unit'])['header']
         settings = compiler_for(cfg, fn['vram'])
-        context = similar_matches.trial_key('', header, settings, fn, ['beam-v3', symbols, rules])
+        context = similar_matches.trial_key('', header, settings, fn, ['beam-v4', symbols, rules])
         saved = net.store.one('SELECT context,state FROM repair_frontiers WHERE function_id=?', fn['id'])
         state = json.loads(saved['state']) if saved and saved['context'] == context else None
         if state is None or fn['best_source'] not in state['seen']:

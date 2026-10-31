@@ -8,6 +8,11 @@ function renderCompilerProgress(progress, result) {
   else if (progress.results) box._compilerRows = progress.results;
   wireCompilerResultCounts(box);
   const set = (key, text) => { box.querySelector(`[data-${key}]`).textContent = text; };
+  const tally = result || progress;
+  const total = tally?.total, completed = result ? result.tried : (progress?.completed || 0);
+  set("queue", total == null ? "Counting eligible functions…" : `${completed} of ${total} functions done · ${Math.max(0, total - completed)} left${tally.deferred ? ` · ${tally.deferred} queued for another run` : ""}`);
+  const queueBar = box.querySelector("[data-queue-bar]");
+  queueBar.max = total || 1; queueBar.value = completed || 0;
   if (!progress && !result) {
     box.dataset.improved = "false";
     set("current", "Preparing…"); set("tested", "Waiting for the first result");

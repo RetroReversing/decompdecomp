@@ -275,6 +275,31 @@ class CompilerMixin:
         available_candidates = candidates
         if flags_only:
             log("Flag variations only: each function uses its currently selected compiler; other compilers are skipped.")
+        # Plan the bounded queue before compiling so the GUI can show an honest remaining count.
+        planned_digests = {}
+        if all_installed:
+            pending = []
+            for fn in rows:
+                check_cancel()
+                source = self._comparison_source(fn)
+                if not source:
+                    continue
+                own = compiler_for(cfg, fn["vram"])
+                options = ([p for p in available_candidates if p[0] == own["toolchain"]]
+                           if flags_only else available_candidates)
+                if not options:
+                    skipped += 1
+                    continue
+                digest = self._comparison_digest(proj, fn, source, options)
+                previous = self.store.one("SELECT input_digest FROM compiler_tests WHERE function_id=?", fn["id"])
+                if untested_only and previous and previous["input_digest"] == digest:
+                    skipped += 1
+                    continue
+                planned_digests[fn["id"]] = digest
+                pending.append(fn)
+            rows = pending
+        total = min(limit, len(rows))
+        deferred = max(0, len(rows) - total)
         for fn in rows:
             check_cancel()
             if n >= limit:
@@ -288,11 +313,7 @@ class CompilerMixin:
             if not candidates:
                 skipped += 1
                 continue
-            input_digest = self._comparison_digest(proj, fn, source, candidates) if all_installed else None
-            previous = self.store.one("SELECT input_digest FROM compiler_tests WHERE function_id=?", fn["id"]) if all_installed else None
-            if untested_only and previous and previous["input_digest"] == input_digest:
-                skipped += 1
-                continue
+            input_digest = planned_digests.get(fn["id"])
             digest = hashlib.sha1(json.dumps([source, candidates]).encode()).hexdigest()[:16]
             if tried.get(str(fn["vram"])) == digest:
                 continue
@@ -309,6 +330,7 @@ class CompilerMixin:
                 report = getattr(log, 'progress', lambda value: None)
                 progress = {"function": fn["name"], "tested": 0, "combinations": len(candidates),
                             "before": baseline, "best": best, "profile": best_profile,
+                            "total": total, "remaining": total - (n - 1), "deferred": deferred,
                             "completed": n - 1, "improved": len(improvements), "exact": found,
                             "skipped": skipped, "results": list(results)}
                 report(progress)
@@ -365,6 +387,7 @@ class CompilerMixin:
                     log(f"{fn['name']}: no exact matches among the tested combinations.")
                 report({"function": fn["name"], "tested": len(candidates), "combinations": len(candidates),
                         "before": baseline, "best": best, "profile": best_profile,
+                        "total": total, "remaining": total - n, "deferred": deferred,
                         "completed": n, "improved": len(improvements), "exact": found, "skipped": skipped,
                         "results": list(results)})
                 state.update(tried=n, confirmed=found)
@@ -391,7 +414,8 @@ class CompilerMixin:
             if not n:
                 log("All eligible saved attempts already have up-to-date comparisons." if skipped else
                     "No eligible unmatched C attempts yet. Run the free matching pass or agents first.")
-            return {"tried": n, "skipped": skipped, "confirmed": found, "matches": confirmed, "comparison": comparison,
+            return {"tried": n, "skipped": skipped, "total": total, "remaining": max(0, total - n),
+                    "deferred": deferred, "confirmed": found, "matches": confirmed, "comparison": comparison,
                     "improvements": sorted(improvements, key=lambda r: -r["best"]), "results": results}
         self._update_cfg(slug, lambda c: c.__setitem__("compiler_survey", {"tried": tried, "confirmed": confirmed,
                                                                            "t": time.time()}))
