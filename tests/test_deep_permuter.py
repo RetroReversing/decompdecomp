@@ -391,3 +391,33 @@ def test_learned_connected_recipes_run_first_and_each_winner_retargets_its_own_d
     monkeypatch.setattr(search,'_score',judge)
     assert search.local_repairs(AGENT,proj,fn,40,None)[0]==0
     assert seen==['middle','end'] and ranked==[initial,middle]
+
+
+def test_source_recipe_lineage_and_old_diff_are_reset_when_a_profile_changes(monkeypatch):
+    import json
+
+    from decompnet.app import repair_sequences
+    net=setup(monkeypatch)
+    with net.store.tx() as db:db.execute("UPDATE functions SET best_source='start'")
+    search=deep_permuter.Search(net,1,20,Log(),net.function())
+    search.winner_diff=([('r','old left','old right')],'legend')
+    def variants(source,*args,**kwargs):
+        candidate='middle' if source=='start' else 'end'
+        kwargs['labels'][candidate]='first' if candidate=='middle' else 'second'
+        return [candidate]
+    monkeypatch.setattr(draft_repairs,'variants',variants)
+    def judge(agent,proj,fn,source,best,fork):
+        score=20 if source=='middle' else 0
+        with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?,best_score=?',(source,score))
+        net._last_diffs={(AGENT.id,fn['id']):([('s','old stack left','old stack right')],'legend')}
+        return score
+    monkeypatch.setattr(search,'_score',judge)
+    def profile(agent,proj,fn,best,fork):
+        if fn['best_source']=='middle':
+            cfg=net.cfg(proj);cfg['compiler']['flags']='-O1'
+            with net.store.tx() as db:db.execute('UPDATE projects SET config=?',(json.dumps(cfg),))
+        return best
+    monkeypatch.setattr(search,'_repair_preflight',profile)
+    assert search.local_repairs(AGENT,net.project_row('game'),net.function(),40,None)[0]==0
+    repair_sequences.prepare(net)
+    assert not net.store.one('SELECT 1 FROM repair_sequences')

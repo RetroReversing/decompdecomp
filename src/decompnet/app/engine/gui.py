@@ -252,9 +252,11 @@ class GuiMixin:
                 d = scoring.diff(self._target_obj(fn, proj), cand)
                 if verdict is not None:
                     d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
+                from ..source_diagnostics import hints as source_hints
                 from ..stack_layout import text as stack_text
                 out = {"rows": [list(r) for r in d.rows], "score": d.score,
                        "stack_diagnostic": stack_text(proj['arch'],d.rows),
+                       "source_diagnostics": source_hints(source, fn["name"]),
                        "percent": 100.0 if d.bytes_match else min(99.9, int(d.percent * 10) / 10),
                        "problems": problems, "source": source,
                        "checks": self._candidate_checks(fn, proj, result.obj)}

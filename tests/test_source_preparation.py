@@ -155,7 +155,9 @@ def test_changed_header_renews_cached_trial_and_existing_match_is_skipped(tmp_pa
     with net.store.tx() as db:
         db.execute('DELETE FROM claims')
     permuter = Permuter(net)
-    assert prep.run(permuter, proj, State())['tested'] == 1
+    assert prep.run(permuter, proj, State(), only={'unrelated'})['tested'] == 0
+    assert calls == []
+    assert prep.run(permuter, proj, State(), only={'f'})['tested'] == 1
     assert prep.run(permuter, proj, State())['tested'] == 0
     (tmp_path / 'types.h').write_text('#define LIMIT 2\nextern int new_type;\n')
     assert prep.run(permuter, proj, State())['tested'] == 1

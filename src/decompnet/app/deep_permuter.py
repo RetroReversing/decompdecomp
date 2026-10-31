@@ -165,6 +165,22 @@ class Search(Permuter):
             self.improvements += int(bool(result.get('applied')))
         return result
 
+    def _repair_preflight(self, agent, proj, fn, best, fork):
+        """A new saved source merits new flag probes before more source mutations."""
+        if fork or not hasattr(self.net, '_comparison_digest'):
+            return best
+        previous = self.phase
+        self._let_go(agent, fn)  # settings application requires an unclaimed function
+        try:
+            self._compiler_preflight(proj, fn, None, self.deadline)
+        finally:
+            self.phase = previous
+            fresh = self.net._function(fn['name'], proj['slug'])
+            if fresh['status'] == 'open' and not self._hold(agent, fresh, count_turn=False):
+                raise NetworkError('Another worker claimed this function during the flag check; saved progress is preserved.')
+        self.best = fresh['best_score']
+        return fresh['best_score']
+
     def _baseline(self, agent, proj, fn, state, fork):
         # Baseline evidence must come from today's compiler/header, including score-zero open rows.
         self.measuring_baseline = True
@@ -210,6 +226,11 @@ class Search(Permuter):
         source = fn['best_source']
         context = self.net._context(proj['id'],fn['unit'])
         header = self.net.forks.permuter_header(fork,fn['name']) if fork else (context['header'] if context else '')
+        best = self._repair_preflight(agent, proj, fn, best, fork)
+        proj = self.net.project_row(proj['slug'])
+        fn = self.net._function(fn['name'], proj['slug'])
+        flags = compiler_for(self.net.cfg(proj), fn['vram']).get('flags', []) if not fork else []
+        source = fn['best_source']
         initial_rows = self.winner_diff[0] if self.winner_diff else repair_ranking.evidence(self.net,fn['id'],agent.id)
         source_rows = {source:initial_rows}
         lineage = repair_sequences.Lineage(self.net,proj,fn,source,initial_rows)
@@ -256,8 +277,21 @@ class Search(Permuter):
                     source_rows[candidate] = repair_ranking.evidence(self.net,fn['id'],agent.id)
                     lineage.retain(source,candidate,labels.get(candidate,'local_repair'),exact=score==0)
                     best = score
+                    fresh = self.net._function(fn['name'], proj['slug'])
+                    if score > 0 and fresh['best_source'] == candidate:
+                        best = self._repair_preflight(agent, proj, fresh, best, fork)
+                        proj = self.net.project_row(proj['slug'])
+                        flags = compiler_for(self.net.cfg(proj), fn['vram']).get('flags', []) if not fork else []
                     fn = self.net._function(fn['name'], proj['slug'])
                     source = fn['best_source']
+                    if best > 0 and (source != candidate or repair_sequences.profile(self.net,proj,fn) != lineage.profile):
+                        # Do not credit source steps across a compiler/input change or reuse old-profile advice.
+                        self.local_seen.clear()
+                        alternatives = search_frontier.Frontier()
+                        detours_used.clear()
+                        source_rows = {source:[]}
+                        lineage = repair_sequences.Lineage(self.net,proj,fn,source,[])
+                        self.winner_diff = None
                     break
             else:
                 detour = next((node for node in alternatives.nodes
@@ -386,7 +420,21 @@ def run(net, slug, name, minutes, max_variants, log):
         log('Compiler preflight (advisory): '+warning)
     log(f'Searching {name}: {minutes} minutes, up to {max_variants:,} compiled candidates. Checking the saved baseline first.')
     log('Local repairs follow the current instruction differences; then random rewrites explore further variants.')
+    from .source_diagnostics import hints
+    for hint in hints(fn['best_source'], name):
+        log('Source check (advisory): '+hint)
     try:
+        # Explicitly configured local source carries real records/macros and original line breaks.
+        # Try it before mutating an accumulated machine draft; never fetch a reference automatically.
+        if hasattr(net, '_comparison_digest'):
+            search.check()
+            from . import source_preparation
+            preparation = source_preparation.run(search, proj, state, log, budget=min(1, max_variants),
+                                                 seconds=min(20, max(1, search.deadline-time.monotonic())), only={name})
+            search.tested += preparation['tested']
+            search.improvements += preparation['improved']
+            proj, fn = net.project_row(slug), net._function(name, slug)
+            search.best = fn['best_score']
         search._compiler_preflight(proj, fn, state, search.deadline)
         proj, fn = net.project_row(slug), net._function(name, slug)
         if fn['status'] == 'matched':

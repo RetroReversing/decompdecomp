@@ -31,6 +31,7 @@ from . import (
     mmio_repairs,
     near_match_repairs,
     near_repairs,
+    operand_order_repairs,
     pattern_repairs,
     pointer_cast_repairs,
     register_repairs,
@@ -70,6 +71,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     offset = opening + 1
     proposals = []
     labels = labels if labels is not None else {}
+    for family, text in operand_order_repairs.variants(source, name, header):
+        proposals.append(text)
+        labels[text] = family
     for family,text in global_store_repairs.variants(source,name,header):
         proposals.append(text)
         labels[text]=family

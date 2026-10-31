@@ -364,6 +364,10 @@ function renderDiff(d) {
     const diagnostic = document.createElement("p"); diagnostic.className = "small muted";
     diagnostic.textContent = d.stack_diagnostic; probs.append(diagnostic);
   }
+  for (const hint of d.source_diagnostics || []) {
+    const diagnostic = document.createElement("p"); diagnostic.className = "small muted";
+    diagnostic.textContent = hint; probs.append(diagnostic);
+  }
   const html = [];
   let t = 0, run = [];
   const rowHtml = (r) => {

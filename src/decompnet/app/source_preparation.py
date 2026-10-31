@@ -246,7 +246,7 @@ def attempt(permuter, proj, fn, source, header, agent, fork):
     return score
 
 
-def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20):
+def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, only=None):
     """A bounded, cached preparation round before ordinary deterministic/random permutations."""
     net = permuter.net
     cfg = settings(net, proj)
@@ -265,6 +265,8 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20):
         fork = net.fork_slug(proj['slug'])
         deadline = time.monotonic() + seconds
         for mapping in mapped:
+            if only is not None and mapping[0] not in only:
+                continue
             if st.stop.is_set() or report['tested'] >= budget or time.monotonic() >= deadline:
                 break
             fn = net.store.one("SELECT * FROM functions WHERE project_id=? AND name=? AND status='open'", proj['id'], mapping[0])

@@ -3,7 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 
-VERSION = 'local-repairs-v16'
+VERSION = 'local-repairs-v17'
 RELEASES = 3
 PREFIX = 'agent-stall:'
 
