@@ -228,10 +228,11 @@ def prepare(reader, cfg, mapping, aliases, fallback):
     header += '\n' + referenced(original, body, header)
     from .source_context import compatibility, helpers, prototypes
     reader.advisories.extend(compatibility(original, body, header))
-    header += helpers(reader, cfg, body, header, macros)
+    helper_context=helpers(reader, cfg, body, header, macros)
+    header += helper_context
     header += prototypes(original, body, header, symbol)
     selected = []
-    used=set(re.findall(_IDENT,source))
+    used=set(re.findall(_IDENT,source+helper_context))
     # Follow only macros reached by this candidate, rather than pulling every header global in.
     for _ in range(8):
         before=len(used)
@@ -390,7 +391,10 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                                     and not retried and not st.stop.is_set() and time.monotonic()<deadline
                                     and report['tested']<budget):
                                 retried=True
-                                variants.append((source,header))
+                                current_fn=net.store.one('SELECT * FROM functions WHERE id=?',fn['id'])
+                                fallback=net._context(proj['id'],current_fn['unit'])['header']
+                                rebuilt=prepare_variants(reader,cfg,mapping,aliases,fallback)
+                                variants.append(next((pair for pair in rebuilt if pair[0]==source),rebuilt[0]))
                                 log_line(fn['name'] + ': inputs changed; retrying once against fresh destination state.')
                                 continue
                             report['errors'].append(f'{fn["name"]}: {exc}')

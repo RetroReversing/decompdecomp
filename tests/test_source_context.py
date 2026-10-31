@@ -98,3 +98,10 @@ def test_record_revision_differences_are_advisory_not_guessed_fields():
     assert len(hints)==1 and 'declare Item differently' in hints[0] and 'no fields were changed' in hints[0]
     assert not source_context.compatibility(original,'void f(void){}',header)
     assert not source_context.compatibility(original,'void f(Item *p){}',original)
+
+
+def test_selected_helper_constants_are_kept_verbatim(tmp_path):
+    (tmp_path/'f.c').write_text('static unsigned coeff = 0x3f800001;\nstatic unsigned helper(void){return coeff;}\nunsigned original(void){return helper();}')
+    cfg={'root':str(tmp_path),'helpers':'helper @ f.c','definitions':'coeff @ f.c'}
+    source,header=prep.prepare(prep.Reader(cfg),cfg,('dest','original','f.c'),{'original':'dest'},'extern unsigned coeff;')
+    assert 'coeff = 0x3f800001;' in source and 'return coeff;' in header
