@@ -326,19 +326,19 @@ def test_typed_sdk_name_can_supply_a_candidate_when_flags_changed_its_fingerprin
 
 def test_wrapper_candidates_reach_the_judge_and_failed_trials_are_cached(pair,monkeypatch):
     from .test_wrapper_families import fn as wrapper
-    donor=wrapper(0x414f00,'old');target=wrapper(0x415d90,'new',2)
-    source='extern int D_414F00; void helper(int,int,int*); int old(int a,int b,int c){helper(c,b,&D_414F00);return 1;}'
+    donor=wrapper(0x123400,'old');target=wrapper(0x125690,'new',2)
+    source='extern int D_123400; void helper(int,int,int*); int old(int a,int b,int c){helper(c,b,&D_123400);return 7;}'
     with pair.store.tx() as db:
         db.execute('UPDATE functions SET project_id=2,target=?,relocs=?,size=44,n_insns=11,matched_source=? WHERE id=1',
                    (donor['target'],donor['relocs'],source))
         db.execute('UPDATE functions SET target=?,relocs=?,size=44,n_insns=11 WHERE id=2',
                    (target['target'],target['relocs']))
         # The real callee identity is independent of the global address substitution.
-        db.execute("INSERT INTO symbols(project_id,name,address,size,kind) VALUES(2,'helper',?,4,'func')",(0x80403d34,))
+        db.execute("INSERT INTO symbols(project_id,name,address,size,kind) VALUES(2,'helper',?,4,'func')",(0x80008000,))
     seen=[]
     def judge(agent,proj,function,source):
         seen.append(source)
-        assert 'D_00415D90' in source and 'int new(' in source
+        assert 'D_00125690' in source and 'int new(' in source
         return {'matched':False,'score':10}
     monkeypatch.setattr(pair,'try_quietly',judge)
     assert free.run(pair.twins,'destination',Job())==0
