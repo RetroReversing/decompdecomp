@@ -97,7 +97,7 @@ def test_agent_local_policy_records_measured_trials_but_not_cached_replays(tmp_p
     baseline={'source':source,'score':10,'rows':[],'verified':True,'exact':False}
     monkeypatch.setattr(agent_evidence,'preflight',lambda *a:baseline)
     monkeypatch.setattr(local_experiments,'available',lambda *a: {'signedness':['one'],'declaration_order':['two']})
-    def variants(*args):
+    def variants(*args,**kwargs):
         net._local_trial_observations={(agent.id,fn['id']):[
             {'score':20,'rows':[],'cached':False,'elapsed_ms':5},
             {'score':20,'rows':[],'cached':True,'elapsed_ms':0}]}

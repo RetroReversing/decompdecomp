@@ -319,6 +319,15 @@ def register(app: App) -> None:
         if (bad := guard(request, write=True)):
             return bad
         data = await body(request)
+        if any(key in data for key in ('agent_local_enabled','agent_local_trials','agent_local_seconds')):
+            from ..agent_local_pass import configure
+            if 'agent_local_enabled' in data and not isinstance(data['agent_local_enabled'],bool):
+                return fail(ValueError('Automatic local repairs must be true or false.'))
+            for key,maximum in (('agent_local_trials',6),('agent_local_seconds',15)):
+                if key in data and (isinstance(data[key],bool) or not isinstance(data[key],int) or not 1<=data[key]<=maximum):
+                    return fail(ValueError(f'{key}: choose an integer from 1 to {maximum}.'))
+            settings.data.update({key:data[key] for key in ('agent_local_enabled','agent_local_trials','agent_local_seconds') if key in data})
+            configure(net,settings.data)
         if isinstance(data.get("api"), dict):  # (before 0.10.1: the one endpoint there was) the first one
             first = settings.endpoints()[0]["id"] if settings.endpoints() else ""
             settings.save_endpoint(data["api"] | {"id": first})

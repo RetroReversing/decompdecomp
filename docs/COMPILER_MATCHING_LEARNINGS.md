@@ -315,6 +315,34 @@ source-matching repeated-store capture above had the matching base; the other di
 recovered by `table_slot_lifetime`. Preserve inherited origin metadata, but do not train a new rule from
 the final rewrite name alone. Historical reviews remain unchanged.
 
+## Wrapper addresses, scalar globals across calls and split mask stores
+
+**Controlled recoveries of existing private captures**, SN-style assembler GCC 2.8.1
+(`gcc-2.8.1-pm-sn-as`), big-endian MIPS, `-G0 -mips3 -mgp32 -mfp32 -O2`:
+
+- Eight tiny wrappers shared their instruction shape and callee with verified wrappers; only one
+  global-address HI16/LO16 pair differed. Instantiating donor C with the destination's global address
+  recovered all eight through normal linked-ROM-byte checks. Some addresses were below `0x80000000`;
+  rejecting every such address misses valid segment-address hypotheses. Restrict discovery to one
+  adjacent pair, a fixed callee and the same instruction/register shape, not a broad numeric replacement.
+- Keeping a signed byte global's address in a pointer across a call, loading through that pointer and
+  narrowing the call result before storing it, recovered one captured match. The old scalar temporary
+  can hold the narrowed result; an extra result local was unnecessary. Three storage-class alternatives
+  were neutral in the controlled replay. General alias analysis is not established by this example.
+- Replacing one assignment combining two AND masks with two ordered compound stores recovered one
+  captured match. Both the original integer lvalue and an unsigned-cast variant reproduced the control
+  output and passed the normal linked-byte judge. Other source changes in the recorded successful C
+  were unnecessary for this recovery; two address-temporary alternatives were neutral.
+
+These ten cases are regressions of already matched functions, not ten new matches or a measured token
+saving. Scalar and mask proposals share both judge modes; the initial wrapper index is MIPS ROM-only.
+
+**Agent scheduling:** an optional local pass can try bounded applicable source variants before returning
+an agent's compile result. Its ordinary judge, scoped cache and stall limit remain authoritative. Record
+its family plus before/after source hashes separately from model submissions; do not attribute an
+inherited cascaded match to the triggering rewrite. No claim of lower token use is made until measured
+on comparable live sessions.
+
 ## Scheduling experiments and durable verification
 
 Retrospective private KMC GCC 2.7.2 controls (`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`)

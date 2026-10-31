@@ -87,7 +87,7 @@ def exhausted(job):
 
 def run(twins, slug, job):
     """Try recognisable leaf patterns and exact SDK fingerprints before spending CPU on wider similarity."""
-    from . import repair_mappings, repair_preflight, reuse_traversal
+    from . import repair_mappings, repair_preflight, reuse_traversal, wrapper_families
     from .address_repairs import variants as address_variants
     from .sdk_library import allowed
     from .sdk_source_repairs import variant as sdk_variant
@@ -102,6 +102,7 @@ def run(twins, slug, job):
     budget(job)
     agent, _ = net.local_agent('autopilot')
     cfg = net.cfg(proj)
+    wrappers = wrapper_families.index(net,proj)
     prints = twins.prints(proj)
     matched = 0
     sdk_maps = {}
@@ -128,7 +129,8 @@ def run(twins, slug, job):
             if fingerprint is None or fingerprint.asm:
                 continue
             settings = compiler_for(cfg, fn['vram'])
-            candidates = [('template', 'MIPS leaf template', code) for code in mips_templates.candidates(fn, bool(proj['big_endian']), function_names)]
+            candidates = wrapper_families.candidates(net,proj,fn,wrappers)
+            candidates += [('template', 'MIPS leaf template', code) for code in mips_templates.candidates(fn, bool(proj['big_endian']), function_names)]
             if fn['best_source'] and fn['best_score'] is not None and 0 < fn['best_score'] <= (100 - REPAIR_PERCENT) * max(1, fn['n_insns'] or 0):
                 repair_mappings.recover(twins, proj, fn, fn['best_source'])
                 candidates.insert(0, ('address-probe', 'saved near miss', fn['best_source']))

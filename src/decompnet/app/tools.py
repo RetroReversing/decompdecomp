@@ -514,10 +514,17 @@ def _named(net: RomNetwork, agent: Agent, slug: str, args: dict) -> dict:
 def _invoke(net: RomNetwork, agent: Agent, slug: str, name: str, args: dict) -> str:
     """Every helper sees pulled changes before acting; only tools that write work need a second synchronization."""
     net.progress.sync(slug, force=True)
-    result = HANDLERS[name](net, agent, slug, **_named(net, agent, slug, args))
+    result = _dispatch(net,agent,slug,name,args)
     if name not in READ_ONLY:
         net.progress.sync(slug, force=True)
     return result
+
+
+def _dispatch(net,agent,slug,name,args):
+    from .agent_local_pass import after_tool
+    named=_named(net,agent,slug,args)
+    result=HANDLERS[name](net,agent,slug,**named)
+    return after_tool(net,agent,slug,name,named,result)
 
 
 def call(net: RomNetwork, agent: Agent, slug: str, name: str, args: dict) -> str:
@@ -549,7 +556,7 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
         if observe:
             observe(agent, slug, 'tool_request', {'name': name, 'arguments': args})
         try:
-            result = await anyio.to_thread.run_sync(lambda: HANDLERS[name](net, agent, slug, **_named(net, agent, slug, args)))
+            result = await anyio.to_thread.run_sync(lambda: _dispatch(net,agent,slug,name,args))
         except Exception as e:
             if observe:
                 observe(agent, slug, 'tool_response', {'name': name, 'error': str(e)})
