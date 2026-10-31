@@ -55,3 +55,17 @@ These experimental profiles are omitted from routine installed-profile searches.
 Use `try_compiler` explicitly with existing C and context. A configured compiler
 or range remains in comparisons. Check nontrivial functions before suggesting a
 range. Do not infer compiler identity from a trivial arithmetic match.
+
+
+## Check ABI and context before long permutations
+
+For an existing record returned by value, prefer a real C structure return over a guessed explicit
+result pointer. IDO chooses the hidden-pointer ABI and copy schedule. Preserve SDK record types,
+command macros and typed pointer locals inside inline helpers when available. These are hypotheses,
+not automatic equivalence proofs: judge each candidate with its exact compiler and flags.
+
+The app preflights up to four installed flag profiles before a long ROM search, caching actual inputs.
+Exact-winning changes respect the project's automatic compiler setting; similarity-only improvements
+remain suggestions. Missing global addresses need relocation evidence before random rewriting. A
+function match can still have a non-contiguous constant-pool export blocker; verify the whole image.
+See `docs/COMPILER_MATCHING_LEARNINGS.md` for the controlled IDO 5.3 regression and neutral reader experiments.

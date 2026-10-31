@@ -29,10 +29,12 @@ from . import (
     register_repairs,
     register_reuse_repairs,
     scheduling_repairs,
+    sdk_shape_repairs,
     stack_padding_repairs,
     stack_repairs,
     storage_scope_repairs,
     store_address_repairs,
+    structure_return_repairs,
 )
 
 LIMIT = 20
@@ -56,6 +58,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     offset = opening + 1
     proposals = []
     labels = labels if labels is not None else {}
+    for family, text in structure_return_repairs.variants(source, name, header) + sdk_shape_repairs.variants(source, name, header):
+        proposals.append(text)
+        labels[text] = family
     for family, text in (stack_repairs.variants(source, name) if arch in {"mips", "ppc", "x86", "arm", "thumb"} else []):
         proposals.append(text)
         labels[text] = family

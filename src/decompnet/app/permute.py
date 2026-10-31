@@ -401,8 +401,29 @@ class Permuter:
         """Deep search can run bounded local repairs here without changing normal random turns."""
         return best, source
 
+    def _compiler_preflight(self, proj, fn, st, deadline):
+        from .matching_preflight import run
+        return run(self.net, proj, fn, log.info,
+                   lambda: not st.stop.is_set() and time.monotonic() < deadline)
+
     def _permute(self, agent, proj, fn, st: State) -> None:
         seconds = self.seconds
+        preflight_deadline = time.monotonic() + seconds
+        preflight = self._compiler_preflight(proj, fn, st, preflight_deadline)
+        seconds = max(0, preflight_deadline-time.monotonic())
+        st.add(variants=preflight['tested'])
+        proj = self.net.project_row(proj['slug'])
+        fn = self.net._function(fn['name'], proj['slug']) if hasattr(self.net, '_function') else fn
+        if fn['status'] == 'matched':
+            st.add(tried=1, matched=int(bool(preflight.get('applied'))), improved=int(bool(preflight.get('applied'))))
+            return
+        if preflight.get('link'):
+            if self._hold(agent, fn):
+                st.add(tried=1)
+                self._let_go(agent, fn)
+            return  # Keep the C for address repairs/agents; random rewriting cannot resolve a missing address.
+        if seconds <= 0:
+            return
         if st.stop.is_set() or not self._hold(agent, fn, seconds=seconds):
             return
         st.add(tried=1)

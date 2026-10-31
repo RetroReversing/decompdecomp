@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import threading
 import time
 from pathlib import Path
@@ -42,7 +43,19 @@ class JudgeMixin:
         if not self.is_rom(proj):
             return super()._evaluate(fn, proj, obj)
         res = match.link(obj, fn["name"], self._rom_target(fn), self.symbols(proj["id"]), self.reader(proj, fn))
+        from ..candidate_diagnostics import export_layout, text, unresolved
+        checks = {'link': unresolved(res.problems),
+                  'export': export_layout(obj, fn['name'], res.exact, res.placements)}
+        checks['message'] = text(checks)
+        cache = self.__dict__.setdefault('_candidate_diagnostics', {})
+        with self.__dict__.setdefault('_candidate_diagnostics_lock', threading.Lock()):
+            cache[fn['id'], hashlib.sha256(obj).hexdigest()] = checks
+            while len(cache) > 256:
+                del cache[next(iter(cache))]
         return res.candidate, res.exact if res.candidate is not None else None, res.problems
+
+    def _candidate_checks(self, fn, proj, obj: bytes) -> dict:
+        return self.__dict__.get('_candidate_diagnostics', {}).get((fn['id'], hashlib.sha256(obj).hexdigest()), {})
 
     def rename_tokens(self, proj, text: str) -> str:
         """Show automatic names under their current names (func_80001234 -> deflate)."""
@@ -368,11 +381,11 @@ class JudgeMixin:
         result = compile_source(compiler_config(Path(proj["root"]), {"compiler": settings}), header, canonical_source(fn, source))
         if not result.ok:
             return False, None, result.log
-        cand, verdict, _ = self._evaluate(fn, proj, result.obj)
+        cand, verdict, problems = self._evaluate(fn, proj, result.obj)
         if cand is None:
             return False, None, "the function isn't in what it compiled to"
         d = scoring.diff(self._target_obj(fn, proj), cand)
-        return (verdict if verdict is not None else d.bytes_match), d, ""
+        return (verdict if verdict is not None else d.bytes_match), d, "\n".join(problems)
 
     def _source_of(self, fn) -> str | None:
         """A function's best C, else its latest attempt."""

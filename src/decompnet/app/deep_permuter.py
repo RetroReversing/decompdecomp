@@ -146,6 +146,19 @@ class Search(Permuter):
         self.recipe_wins.clear()
         self.measurement_counts.clear()
 
+    def _compiler_preflight(self, proj, fn, state, deadline):
+        from .matching_preflight import run
+        self.phase = 'compiler preflight'
+        self.report()
+        result = run(self.net, proj, fn, self.log, self.check, max_profiles=self.limit-self.tested)
+        self.tested += result['tested']
+        if result.get('link'):
+            raise NetworkError(result['link']['message'])
+        if self.net._function(fn['name'], proj['slug'])['status'] == 'matched' and self.best != 0:
+            self.best = 0
+            self.improvements += int(bool(result.get('applied')))
+        return result
+
     def _baseline(self, agent, proj, fn, state, fork):
         # Baseline evidence must come from today's compiler/header, including score-zero open rows.
         self.measuring_baseline = True
@@ -352,25 +365,30 @@ def run(net, slug, name, minutes, max_variants, log):
     log(f'Searching {name}: {minutes} minutes, up to {max_variants:,} compiled candidates. Checking the saved baseline first.')
     log('Local repairs follow the current instruction differences; then random rewrites explore further variants.')
     try:
-        if not search._hold(agent, fn, count_turn=False):
-            raise NetworkError('This function was claimed meanwhile; try again after it is released.')
-        try:
-            fork = net.fork_slug(slug)
-            # Fresh baseline evidence also diagnoses obsolete candidate-owned prototypes.
-            search.phase = 'checking baseline'
-            baseline, _ = search._baseline(agent, proj, fn, state, fork)
-            if baseline is None:
-                raise NetworkError('The saved C does not compile in the current context; fix its declarations before deep search.')
-            if baseline == 0:
-                reason = 'Matched'
-            else:
-                search.phase = 'local repairs'
-                search.log('Baseline measured; trying targeted local repairs before random rewriting.')
-                best, _ = search.local_repairs(agent, proj, net._function(name, slug), baseline, fork)
-                if best == 0:
+        search._compiler_preflight(proj, fn, state, search.deadline)
+        proj, fn = net.project_row(slug), net._function(name, slug)
+        if fn['status'] == 'matched':
+            reason = 'Matched'
+        if reason != 'Matched':
+            if not search._hold(agent, fn, count_turn=False):
+                raise NetworkError('This function was claimed meanwhile; try again after it is released.')
+            try:
+                fork = net.fork_slug(slug)
+                # Fresh baseline evidence also diagnoses obsolete candidate-owned prototypes.
+                search.phase = 'checking baseline'
+                baseline, _ = search._baseline(agent, proj, fn, state, fork)
+                if baseline is None:
+                    raise NetworkError('The saved C does not compile in the current context; fix its declarations before deep search.')
+                if baseline == 0:
                     reason = 'Matched'
-        finally:
-            search._let_go(agent, fn)
+                else:
+                    search.phase = 'local repairs'
+                    search.log('Baseline measured; trying targeted local repairs before random rewriting.')
+                    best, _ = search.local_repairs(agent, proj, net._function(name, slug), baseline, fork)
+                    if best == 0:
+                        reason = 'Matched'
+            finally:
+                search._let_go(agent, fn)
         if reason != 'Matched':
             search.check()
             search.phase = 'random rewrites'

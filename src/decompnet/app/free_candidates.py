@@ -137,9 +137,10 @@ def run(twins, slug, job):
                     candidates.insert(0, ('learned-symbols', 'verified donor mappings', learned))
             sdk = net.store.all('SELECT DISTINCT s.* FROM sdk_sources s JOIN sdk_signatures i '
                                 'ON s.corpus=i.corpus AND s.name=i.name AND s.arch=i.arch AND s.big_endian=i.big_endian '
-                                'WHERE i.arch=? AND i.big_endian=? AND i.fingerprint=? AND s.compiler=? ORDER BY s.corpus,s.name',
-                                proj['arch'], proj['big_endian'], fingerprint.key, twins._compiler_key(settings))
+                                'WHERE i.arch=? AND i.big_endian=? AND (i.fingerprint=? OR s.name=?) AND s.compiler=? ORDER BY s.corpus,s.name',
+                                proj['arch'], proj['big_endian'], fingerprint.key, fn['name'], twins._compiler_key(settings))
             sdk = [row for row in sdk if allowed(net, proj, row['corpus'])][:3]
+            sdk_candidates = []
             for row in sdk:
                 corpus = row['corpus']
                 if corpus not in sdk_maps:
@@ -147,7 +148,10 @@ def run(twins, slug, job):
                                                corpus, proj['arch'], proj['big_endian'])
                     sdk_maps[corpus] = sdk_symbol_map(signatures, by_fingerprint)
                 names = {**sdk_maps[corpus], row['name']: fn['name']}
-                candidates.append(('library', corpus + '/' + row['name'], apply(row['header'] + '\n' + row['source'], names)))
+                sdk_candidates.append(('library', corpus + '/' + row['name'], apply(row['header'] + '\n' + row['source'], names)))
+            # Typed local SDK source is a hypothesis even when compiler flags changed its fingerprint.
+            # The ordinary byte judge, not its name or library signature, decides whether it matches.
+            candidates = sdk_candidates + candidates
             misses = {r['signature']: r for r in net.store.all(
                 "SELECT signature,feedback FROM reuse_trials WHERE function_id=? AND outcome='miss' AND length(signature)=64", fn['id'])}
             for kind, origin, source in candidates:

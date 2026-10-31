@@ -568,6 +568,10 @@ class Network:
                                      'language':getattr(result,'language','unknown'), 'settings_source':'compile invocation snapshot'}
         return result
 
+    def _candidate_checks(self, fn, proj, obj: bytes) -> dict:
+        """Advisory diagnostics supplied by ROM engines; imported builds keep their whole-image gate."""
+        return {}
+
     def _evaluate(self, fn, proj, obj: bytes) -> tuple[FunctionObj | None, bool | None, list[str]]:
         """(candidate, verdict, problems) for a compiled object. verdict None means: decide by comparing
         fingerprints. Projects whose targets come from a ROM link the candidate instead (see app.engine)."""
@@ -1253,6 +1257,7 @@ class Network:
         d = scoring.diff(self._target_obj(fn, proj), cand)
         if verdict is not None:
             d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
+        checks = self._candidate_checks(fn, proj, result.obj)
         matched_now = d.bytes_match and not scratch
         last = self.store.one("SELECT score FROM attempts WHERE function_id=? AND agent_id=? AND score IS NOT NULL "
                               "ORDER BY id DESC LIMIT 1", fn["id"], agent.id)
@@ -1264,8 +1269,9 @@ class Network:
         elif d.bytes_match:
             return {"text": f"✅ MATCH! {fn['name']} is byte-identical to the target ({fn['n_insns']} instructions). "
                             f"Credited to {agent.name}; your claim is released. Call claim_function for the next one."
-                            f"{self.dependents_note(fn['id'])}",
-                    "score": 0, "matched": True}
+                            f"{self.dependents_note(fn['id'])}"
+                            + ("\n" + checks["message"] if checks.get("message") else ""),
+                    "score": 0, "matched": True, "checks": checks}
         else:
             best = self.store.one("SELECT best_score FROM functions WHERE id=?", fn["id"])["best_score"]
             head = (f"score {d.score} ({scoring.percent_text(d.percent)} match) — best so far {best}. "
@@ -1275,6 +1281,8 @@ class Network:
                 head += ("\nNOT A MATCH YET: every instruction reads the same, but the bytes differ"
                          + (" because of the linking notes at the end: fix those." if problems else
                             ": an encoding the listing doesn't show (branch form, an immediate, a relocation)."))
+        if checks.get("link"):
+            head += "\n" + checks["link"]["message"]
         warn = f"\ncompiler output:\n{result.log.strip()}" if result.log.strip() else ""
         if problems:
             warn += "\nwhen linking your code at the function's address:\n" + "\n".join(f"- {p}" for p in problems)
@@ -1282,7 +1290,7 @@ class Network:
         if not scratch:
             self.remember_compile(key, agent, fn, text, d.score)
             text += self.same_score_note(fn["id"], agent.id, d.score, source)
-        return {"text": text + self.stall_note(fn["id"], agent.id), "score": d.score, "matched": False}
+        return {"text": text + self.stall_note(fn["id"], agent.id), "score": d.score, "matched": False, "checks": checks}
 
     @staticmethod
     def _what_changed(d: scoring.DiffResult, last: int | None) -> str:

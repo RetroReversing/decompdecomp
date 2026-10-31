@@ -17,6 +17,23 @@ Goal: C that the game's own compiler turns into exactly the bytes in the ROM. No
    Then `release_function` with specific notes (what you tried, what the remaining diff is, what you
    suspect). The next agent starts from your best attempt.
 
+## Before a long search
+
+Use this app's `compile_and_diff` and `get_context` for the real project. Do not start a second engine writer
+on its database. External coding agents can use the authenticated local API described in
+`docs/LIVE_API_WORKFLOW.md`; app-managed agents should keep using their provided tools.
+
+Read the linking diagnostics before treating `i` markers as source errors. An unresolved data name needs
+an address established from the target's relocations. Use a real structure return when the source returns
+an existing record, rather than manually guessing its hidden pointer ABI. Prefer typed local SDK source,
+macros and inline-helper locals when available and authorized; do not invent a shared layout.
+
+Long ROM searches now preflight up to four installed flag profiles, with an input cache and the project's
+automatic compiler-change setting. Source/header/target/profile changes invalidate those probes. Imported
+projects retain their own build settings. A verified function can still have an export-layout blocker:
+constant pools, extra bodies or code before the entry. Preserve the match, resolve that layout separately,
+and require the complete image comparison before calling the standalone project verified.
+
 ## Reading the diff
 - `<` / `>`: an instruction is missing / extra. Control flow or expression structure differs.
 - `r`: same instruction, different registers. Statement order, temporaries, signedness, variable

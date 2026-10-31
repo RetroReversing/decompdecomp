@@ -1,5 +1,12 @@
 # Roadmap
 
+Implemented: bounded compiler preflight before long ROM searches, input-scoped retries, existing-record
+structure-return and SDK-style setter hypotheses, typed local SDK candidates by name, separate MIPS function/export
+layout diagnostics, and compressed-cartridge repository identity checks. See [the live API workflow](docs/LIVE_API_WORKFLOW.md).
+Planned: preflight integration with imported projects' own file-compiler workflows, standalone-layout adapters for
+non-MIPS object formats, and export normalization for compiler-emitted prefixes. Imported projects retain their
+existing objdiff/whole-image gates; no generic preflight changes their build settings.
+
 Deep search now chains bounded local repairs after random improvements. Register reuse hypotheses share
 all normal draft/permuter paths. Fresh exact judgments repair score-zero/open bookkeeping; plain return
 conflicts can recover a buildable ROM candidate with an honest baseline and retained history. Adaptive
@@ -82,6 +89,9 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | C++ methods drafted as `Class::method` | ✓ | ✓ | ✓ | ✓ | — | ✓ (RTTI, and classes from the vtables constructors store) | — | — |
 | Twins: free matches from identical code | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Local mapped source preparation | ✓ | ✓ | ✓ | ✓ | body only¹ | body only¹ | body only¹ | body only¹ |
+| Bounded flag preflight before long search | ✓ ROM | ✓ ROM | ✓ ROM | ✓ ROM | — own build | — own build | — own build | — own build |
+| Existing-record structure-return / typed inline-setter hypotheses | ✓ | ✓ | ✓ | ✓ | ✓ C shapes | ✓ C shapes | ✓ C shapes | by supported C architecture |
+| Separate function and export-layout checks | ✓ MIPS ROM | ✓ MIPS ROM | ✓ MIPS ROM | ✓ MIPS ROM | — own build | — own build | — own build | — own build |
 | Permuter on near misses | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Hand-written assembly set aside | ✓ | ✓ | ✓ | ✓ | ✓ | Visual C++'s exception-handling stubs | BIOS call stubs, pieces of functions | MIPS, PowerPC, ARM's BIOS stubs and pieces of functions |
 | Pieces of functions joined to their function | — | — | — | — | — | ✓ (`scratch.merge_pieces`) | ✓ (`recover.merge_pieces`) | — |

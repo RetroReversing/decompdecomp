@@ -124,7 +124,10 @@ def integrate(net, proj, root, stage, log):
     manifest_path = stage/'build.json'
     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
     cfg = net.cfg(proj)
-    if not manifest.get('sha1') or manifest['sha1'] != (cfg.get('rom') or {}).get('sha1'):
+    # A compressed cartridge's export hashes its expanded analysis image separately.
+    # Identity belongs to the original cartridge; both inputs must still verify below.
+    identity = manifest.get('cartridge', {}).get('sha1', manifest.get('sha1'))
+    if not identity or identity != (cfg.get('rom') or {}).get('sha1'):
         raise NetworkError('The repository and project must use the same game fingerprint.')
     if not isinstance(manifest.get('functions'),list) or not (stage/'build.py').is_file() or any(
             not isinstance(fn,dict) or not {'name','seg','vram'} <= fn.keys() for fn in manifest.get('functions',[])):
@@ -133,6 +136,9 @@ def integrate(net, proj, root, stage, log):
     if not image.is_file() or hashlib.sha1(image.read_bytes()).hexdigest() != manifest['sha1']:
         raise NetworkError('Prepare this checkout with its verified game file before syncing.')
     for name in [manifest['image'], *(([manifest['cartridge']['image']]) if manifest.get('cartridge') else [])]:
+        if name == manifest.get('cartridge', {}).get('image'):
+            if hashlib.sha1(inside(root,name).read_bytes()).hexdigest() != identity:
+                raise NetworkError('The original cartridge checksum differs. Restore the verified original before syncing.')
         src=inside(root,name);dst=inside(stage,name);dst.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(src,dst)
     previous = json.loads((stage/STATE).read_text(encoding='utf-8')) if (stage/STATE).exists() else {'owned':{}}
     owned = previous.get('owned',{})
@@ -170,6 +176,15 @@ def integrate(net, proj, root, stage, log):
         compiled=net._compile(proj,net._context(proj['id'],row['unit'])['header'],row['matched_source'],row)
         if not compiled.ok or not _single_definition(compiled.obj,row['name']):
             skipped.append({'function':row['name'],'reason':'The current candidate does not compile to one standalone function; keep assembly until its extra bodies or declarations are resolved.'})
+            continue
+        _, exact, problems = net._evaluate(row, proj, compiled.obj)
+        readiness = net._candidate_checks(row, proj, compiled.obj).get('export', {})
+        # A curated checkout may already normalize discarded inline prefixes. Let its own
+        # per-function/full-build gates prove that, rather than treating it as a pool conflict.
+        needs_normalization = readiness.get('state') == 'requires_normalization'
+        if not exact or (readiness.get('ready') is not True and not needs_normalization):
+            skipped.append({'function': row['name'], 'reason': readiness.get('message') or
+                            ('Current function no longer passes the byte judge: '+'; '.join(problems))})
             continue
         before=manifest_path.read_bytes();old_source=target.read_bytes() if target.exists() else None
         inside(stage,header).parent.mkdir(parents=True,exist_ok=True);inside(stage,header).write_text(context,encoding='utf-8')

@@ -303,3 +303,22 @@ def test_cached_discovery_yields_time_and_resumes_after_last_visited_function(pa
         assert job.reuse_attempts == 0
         assert clock[0] < job.reuse_deadline  # Wider discovery still gets time.
     assert visits == [2, 3]
+
+
+def test_typed_sdk_name_can_supply_a_candidate_when_flags_changed_its_fingerprint(pair, monkeypatch, tmp_path):
+    proj = pair._project('destination')
+    with pair.store.tx() as db:
+        db.execute('INSERT INTO sdk_signatures(corpus,arch,big_endian,name,fingerprint,size) VALUES(?,?,?,?,?,?)',
+                   ('typed SDK','mips',1,'new','another compiler shape',32))
+    source=tmp_path/'typed.c'
+    source.write_text('int new(int x) { return x+61; }')
+    header=tmp_path/'typed.h'
+    header.write_text('typedef struct { int value; } TypedPayload;')
+    assert free.import_sources(pair,proj,'typed SDK',source,header) == 1
+    seen=[]
+    def judge(agent, project, function, candidate):
+        seen.append(candidate)
+        return {'matched':False,'score':20,'rows':[]}
+    monkeypatch.setattr(pair,'try_quietly',judge)
+    assert free.run(pair.twins,'destination',Job()) == 0
+    assert seen and 'TypedPayload' in seen[0] and 'new(int x)' in seen[0]
