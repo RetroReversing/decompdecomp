@@ -499,7 +499,7 @@ function renderKnownCompilerProfiles(d) {
   const rows = d.compiler_test && !d.compiler_test.stale ? (d.compiler_test.comparison.ranked || []).filter(r => r.exact).map(r => ({...r})) : [];
   const same = (a, b) => a && b && a.toolchain === b.toolchain && JSON.stringify(a.flags) === JSON.stringify(b.flags);
   if (d.status === "matched" && current && !rows.some(r => same(r, current))) rows.push({...current, exact:true, percent:100, current:true});
-  if (defaultProfile && !rows.some(r => r.default)) {
+  if (defaultProfile && !rows.some(r => same(r, defaultProfile))) {
     const tested = d.compiler_test && !d.compiler_test.stale ? d.compiler_test.comparison.ranked.find(r => same(r, defaultProfile)) : null;
     rows.push({...defaultProfile, ...(tested || {}), default:true, percent:tested?.percent ?? null, untested:!tested});
   }
