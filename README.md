@@ -29,6 +29,13 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
   stand-in for a model that hands in the demo's own C; the app compiles and judges every function for real.</sub>
 </p>
 
+## Match through the live app
+
+[The live API workflow](docs/LIVE_API_WORKFLOW.md) shows how to use the existing judge, preserve attempt
+history, distinguish linking blockers from instruction differences, and synchronize a verified standalone build.
+Compiler preflight checks precede long ROM searches; typed SDK and structure-return hypotheses share the ordinary
+repair pipeline. A function match now carries a separate MIPS export-layout check, with a full rebuild still required.
+
 ## Automatic repairs before paid agents
 
 The bounded repair pass also tries equal-type chained local assignments in either order, final void calls as explicit returns, and terminal scalar bounds checks as ordered early returns. Empty polling loops can use an explicit entry guard, including in combination with the final-call rewrite. Each candidate is compiled and judged normally.

@@ -56,7 +56,9 @@ if (r/'fail-full').exists():sys.exit(1)
         def one(self,*args):return {'n':len(rows)}
     net=SimpleNamespace(project_row=lambda slug:{'id':1,'config':json.dumps(cfg)},cfg=lambda proj:cfg,
                         is_rom=lambda proj:True,store=Store(),_context=lambda *args:{'header':'typedef int s32;\n'},
-                        _update_cfg=lambda slug,fn:fn(cfg),_compile=lambda *args:SimpleNamespace(ok=True,obj=b'fake object'))
+                        _update_cfg=lambda slug,fn:fn(cfg),_compile=lambda *args:SimpleNamespace(ok=True,obj=b'fake object'),
+                        _evaluate=lambda *args:(object(),True,[]),
+                        _candidate_checks=lambda *args:{'export':{'ready':True}})
     return root,net,rows
 
 
@@ -236,3 +238,47 @@ def test_identified_full_image_failure_keeps_other_verified_additions(project):
     assert not (root/'src/game/f.c').exists() and (root/'src/game/g.c').is_file()
     assert 'full rebuilt image differed' in result['skipped'][0]['reason']
     assert (root/'src/game/curated.c').read_text()=='void curated(void) {}\n'
+
+
+def compressed(project):
+    root, net, _ = project
+    original = b'homemade compressed cartridge'
+    (root/'original.z64').write_bytes(original)
+    manifest = json.loads((root/'build.json').read_text())
+    manifest['cartridge'] = {'image':'original.z64', 'sha1':hashlib.sha1(original).hexdigest(), 'blocks':[]}
+    net.cfg(None)['rom']['sha1'] = manifest['cartridge']['sha1']
+    (root/'build.json').write_text(json.dumps(manifest))
+    build = root/'build.py'
+    build.write_text(build.read_text().replace("shutil.copyfile(b['image'],b['output'])",
+                                             "shutil.copyfile(b.get('cartridge',{}).get('image',b['image']),b['output'])"))
+    commit(root)
+
+
+def test_compressed_export_uses_original_identity_and_verifies_both_images(project):
+    compressed(project)
+    assert run(project)['accepted'] == ['f']
+
+
+@pytest.mark.parametrize('image', ['original.z64', 'baserom.z64'])
+def test_compressed_sync_rejects_tampering_with_either_input(project, image):
+    compressed(project)
+    root, _, _ = project
+    (root/image).write_bytes(b'corrupt input')
+    with pytest.raises(NetworkError, match='checksum|verified game file'):
+        run(project)
+    assert not (root/'src/game/f.c').exists()
+
+
+def test_noncontiguous_pool_is_reported_before_a_full_build(project, monkeypatch):
+    _, net, _ = project
+    net._candidate_checks = lambda *args: {'export': {'ready':False, 'message':'non-contiguous constant pools'}}
+    monkeypatch.setattr(sync, 'command', lambda *args: pytest.fail('layout blocker reached a build'))
+    result = run(project)
+    assert not result['accepted']
+    assert 'non-contiguous' in result['skipped'][0]['reason']
+
+
+def test_a_curated_builder_can_verify_its_own_prefix_normalization(project):
+    _, net, _ = project
+    net._candidate_checks = lambda *args:{'export':{'state':'requires_normalization','ready':None}}
+    assert run(project)['accepted'] == ['f']

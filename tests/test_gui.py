@@ -389,3 +389,10 @@ def test_copy_target_assembly_preserves_labels_and_operands():
         pytest.skip("needs node to run the GUI scripts")
     subprocess.run([NODE, str(Path(__file__).with_name("gui_copy_assembly.js"))],
                    cwd=Path(__file__).resolve().parents[1], check=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_candidate_link_and_export_diagnostics_preserve_exact_verdict_and_escape_text():
+    if NODE is None:
+        pytest.skip('needs node')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_candidate_checks.js'))], check=True,
+                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)

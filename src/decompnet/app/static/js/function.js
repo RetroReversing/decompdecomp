@@ -261,6 +261,7 @@ async function tryIt() {
     if (r.matched) {
       S.myClaim = null;
       msg.className = "try-msg ok"; msg.textContent = "Byte-identical. Saved as a match, credited to you.";
+      if (r.checks?.export?.message) msg.textContent += "\n" + r.checks.export.message;
       toast(`<code>${esc(name)}</code>&nbsp;matched by you`, "match");
     } else {
       S.myClaim = name;
@@ -370,7 +371,8 @@ function renderDiff(d) {
   flush(html.length ? "end" : "all");
   box.innerHTML = `<div class="dh"><span></span><span>Target (your game)</span><span></span><span>${esc(label)}</span></div>` + html.join("");
   box.querySelectorAll(".dfold").forEach((b) => { b.onclick = () => { b.nextElementSibling.hidden = false; b.remove(); }; });
-  probs.innerHTML = (d.problems || []).map((p) => `<li>${esc(p)}</li>`).join("");
+  const advisory = [d.checks?.link?.message, d.checks?.export?.state !== "unmatched" ? d.checks?.export?.message : null].filter(Boolean);
+  probs.innerHTML = [...advisory, ...(d.problems || [])].map((p) => `<li>${esc(p)}</li>`).join("");
 }
 async function loadDiff() {
   const d0 = S.fnDetail;

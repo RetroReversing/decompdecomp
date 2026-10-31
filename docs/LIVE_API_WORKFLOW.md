@@ -1,0 +1,93 @@
+# Work against the running app
+
+For matching work on an authorized project, use the running app's judge. It already has the current
+compiler profiles, declarations, symbols, original-image regions, claims and attempt history.
+An isolated copy can miss a data region and report an instruction match without checking its constants.
+Use throwaway projects for app development and tests; never open a second `RomNetwork` writer on the live database.
+
+## Read a candidate, try C, inspect the best result
+
+Run this with the Python environment that has decompdecomp installed. The example reads the running app's
+local connection file; keep its contents private. It uses the same authenticated client as the CLI.
+
+```python
+import json
+from pathlib import Path
+from urllib.parse import quote
+from decompnet.app.cli import _call
+
+connection = json.loads((Path.home() / 'Decomp/.decomp/server.json').read_text())
+slug = 'your-project-slug'
+name = 'your-function-name'
+query = 'slug=' + quote(slug, safe='') + '&name=' + quote(name, safe='')
+
+project = _call(connection, '/api/project?slug=' + quote(slug, safe=''))
+function = _call(connection, '/api/function?' + query)
+source = function['source']  # Edit this C using the target and source context.
+try:
+    result = _call(connection, '/api/try', dict(slug=slug, name=name, source=source), timeout=120)
+    print(result['text'])
+    print(result.get('checks', {}))
+finally:
+    _call(connection, '/api/release', dict(slug=slug, name=name))
+best_diff = _call(connection, '/api/diff?' + query + '&which=best')
+```
+
+Use the home selected when launching the app if it is not `~/Decomp`. Do not print the connection object.
+Respect claims: a busy function belongs to its current worker until released.
+
+`which=best` matters: the latest experiment can be worse than the saved best. A score-zero scratch attempt
+on an already-matched function is not a new recovery. Compare the function's status before and after, and
+verify that accepted sources and headers reach the saved project. Never change the target or comparison gate.
+
+## Check settings and declarations before long searches
+
+The permuter now runs at most four current-toolchain flag profiles before a long search. It caches the
+actual source (including formatting), header, target, symbols, tool paths and compiler settings. Changed inputs
+are checked again; the random phase also checks the candidate left by local repairs. Cancellation and variant
+limits include the probes. Nothing is downloaded.
+
+If automatic compiler changes are enabled, the existing profile application gate rejudges an exact-winning
+profile and applies it to that function only. Partial improvements become scoped suggestions for review;
+when automatic changes are disabled, exact winners also wait for review. Imported projects
+keep their own build settings: use their file/compiler tools; the ROM preflight does not rewrite their builds.
+
+Unresolved symbols have a separate diagnostic. Establish their addresses from the target's relocation evidence
+before random rewriting. Deep search reports the blocker; ordinary agents and source/address repairs remain
+available. Do not guess addresses to improve a score.
+
+The shared repair families also try a real structure return where C explicitly lowered an existing record
+into a final `*out = result` copy, and SDK-style inline word setters with typed pointer locals. They do not
+invent or edit shared types. Registered local SDK source matching the function's name can be tried before
+machine templates even when its old signature differs; library selection and compiler settings still apply.
+A name is only a candidate lead: only the byte judge accepts it.
+
+## A function match and a rebuildable export are different checks
+
+For MIPS ROM candidates, the judge also reports standalone layout readiness. This advisory check notices extra
+function bodies, code before the entry point, and constant pools that would need multiple bases within one
+object section. The function remains an exact match when its linked code/data pass; layout blockers do not
+silently change its score or turn it back into a near-match.
+
+For a non-contiguous pool, reference an existing original data object separately or split the pools, then
+rejudge. `layout_checked` means those local checks passed, **not** that the whole game rebuilds.
+Other object formats currently report that this check is unavailable; imported projects retain their existing
+objdiff and optional whole-image verification gates.
+
+## Synchronize the standalone checkout
+
+For a ROM project, start a verified repository sync with a clean exported Git checkout:
+
+```python
+job = _call(connection, '/api/repository-sync', dict(slug=slug, folder='/absolute/path/to/checkout'))
+# Poll /api/job?id=<job['job']> until state is done or error; inspect result and skipped entries.
+```
+
+The app checks each accepted candidate and rebuilds the complete image before publishing changes. A compressed
+cartridge export has two hashes: the expanded analysis image and the original cartridge. Sync compares project
+identity with the original cartridge and verifies both input files independently. A mismatched or corrupted
+input is rejected. A definite export-layout blocker is reported before spending time on a full build. A compiler prefix
+needs verification by the checkout's builder: a curated build may already support normalization.
+
+Review `accepted`, `skipped`, and `verified_build`, then commit the source changes when authorized. Sync does not
+commit or push. Imported projects already keep source in their checkout and do not use ROM repository sync.

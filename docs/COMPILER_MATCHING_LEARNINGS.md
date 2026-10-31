@@ -119,3 +119,32 @@ with inferred compiler facts simply because a profile is selectable.
    a global register-allocation regression.
 5. Log neutral and failed families too. Revisit them when their inputs or the repair rules change.
 6. Rejudge after formatting or polishing. Preserve prior verified work and never weaken the target/judge.
+
+
+## IDO 5.3: typed SDK context, structure returns and export layout
+
+**Verified cases (32-bit big-endian MIPS, source assisted):** a recent six-match continuation used
+`-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul`, retaining each function's selected `-O2` or `-O3`
+profile. Native structure return replaced an explicit output pointer plus final record copy, recovering
+the compiler's hidden result-pointer ABI. Typed auxiliary-bus layout, original command macros, argument
+order, and inline word setters' pointer locals recovered other functions. A separate candidate needed
+an unresolved global's ROM-derived address. The complete standalone cartridge was verified; these
+observations do not identify the original IDO release uniquely or isolate every individual source edit.
+
+**Controlled regression:** `tests/test_structure_return_repairs.py` compiles a homemade record-return
+example with already-installed IDO 5.3 at `-O3 -mips2 -G 0 -non_shared -Xcpluscomm`; the generated native
+return has the target object's exact normalized function fingerprint. This tests the repair generator,
+not an additional game recovery. Typed inline-setter proposals have bounded source tests and still need
+the destination's ordinary byte judge. No shared record layout is invented.
+
+**Failed/neutral observations:** restoring the SDK bodies and line layout of two tiny sequence byte
+readers still left temporary-register differences under `-O2`. Do not repeat that as an assumed fix.
+A four-instruction thread-list helper also retained a temporary-register difference after restoring
+its pointer return. Neither case was counted as a match.
+
+**Integration evidence:** a function-level exact match can contain a string and numeric/jump-table
+constants that need different bases within one object section. The case required referencing the
+original string separately before the whole build matched. `tests/test_candidate_diagnostics.py`
+checks non-contiguous placements and extra bodies without changing the function's exact verdict;
+`tests/test_repository_sync.py` protects both expanded-image and original-cartridge hashes.
+A successful local layout check is not proof of a full rebuild.

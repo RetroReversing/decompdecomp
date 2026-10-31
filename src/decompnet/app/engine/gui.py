@@ -254,7 +254,8 @@ class GuiMixin:
                     d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
                 out = {"rows": [list(r) for r in d.rows], "score": d.score,
                        "percent": 100.0 if d.bytes_match else min(99.9, int(d.percent * 10) / 10),
-                       "problems": problems, "source": source}
+                       "problems": problems, "source": source,
+                       "checks": self._candidate_checks(fn, proj, result.obj)}
         if len(self._diffs) > 128:
             self._diffs.pop(next(iter(self._diffs)))
         self._diffs[key] = out
