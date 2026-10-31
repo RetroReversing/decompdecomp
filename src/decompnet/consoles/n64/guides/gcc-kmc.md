@@ -88,3 +88,13 @@ Do not infer an object's size or add padding from the frame delta alone. The
 `experimental_bitfield_frame` local family is available only by explicit selection; it is
 excluded from automatic repair defaults. Its compiler-specific signed-halfword helper storage
 is an experiment, and every candidate still requires the ordinary exact judge.
+
+#### Inline boundaries and repeated bounds tests
+
+With KMC GCC 2.7.2 `-O2 -g3`, an inline scalar helper can change front-end expression
+shape, register allocation and scheduling even when it emits no call. Repeated axis tests may
+need the same helper form together: one controlled six-comparison regression recovered an exact
+linked match with the grouped form, while single-site changes did not. Use the local
+`inline_scalar_shape` family before rewriting each site manually. `combined_scheduling` offers
+bounded bridges with temporary, stack-address or loop shapes; the normal judge must verify them.
+This is compiler-specific evidence, not a promise that helpers improve every function.

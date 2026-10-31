@@ -425,3 +425,32 @@ Local source preparation now accepts an explicit list of reference object defini
 A timer function extraction failed because alternate preprocessor branches had different brace counts. Branch selection now uses configured numeric macros before locating the function, blanking inactive text/directives without removing newlines. This is deliberately not a complete C preprocessor: unsupported expressions and unknown compiler-specific conditions require numeric overrides or a prepared subset. No reference scripts or external preprocessor commands execute.
 
 Three controller routines and both matrix converters recovered with original typed records and ordinary loops instead of accumulated draft mutations. Existing typed-reference preference remains appropriate; exact judges, not source resemblance, decide progress. Controlled tests of these new preparation paths do not claim a new automatic matching rate.
+
+### Inline boundaries, temporary placement and loop shape in a large MIPS function
+
+A private 820-instruction function matched with KMC GCC 2.7.2, flags
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. The original saved draft scored 6,602.
+The successful source combined inline scalar helpers, temporary placement, stack-address
+locals, load/store ordering, a structured outer loop, invariant calculations and array storage.
+This is evidence for the combination, not proof that every edit was necessary.
+
+A controlled isolated regression retained the successful source except for six inline bounds
+comparisons. It scored 3,545 and failed linked comparison. The new grouped inline-comparison
+proposal recovered an **exact linked verdict**; individual-site proposals did not. Both the
+original successful source and recovered candidate displayed a raw disassembly score of 80 in
+this isolated harness while their linked verdict was exact. Treat linked equality as authoritative;
+do not infer acceptance from the raw score. This replays an existing match, not a new recovery.
+Game source and compiler artifacts remain outside the repository; committed tests use synthetic C.
+
+The shared MIPS draft pipeline now proposes bounded typed inline identities/comparisons/float
+products, scalar expression temporaries, independent scalar assignment order, array-address
+locals, isolated backward-edge loops and first-statement loop invariants. Up to four cross-family
+bridges feed the existing beam, which already retains bounded worse/identical-output alternatives.
+These are hypotheses compiled by the ordinary judge, never automatic semantic or match claims.
+Qualified storage, assembly, unsafe control flow and nonlocal scalar operands are excluded.
+Array extents are preserved; existing measured frame-growth repairs handle frame-size hypotheses.
+No out-of-line helper is accepted unless the ordinary linked comparison succeeds.
+
+The original draft was rechecked at 6,602, but recovery from that entire draft has **not** been
+established for the new search. Avoid spending repeated agent turns on one comparison at a time:
+try a bounded consistent helper shape across repeated axis/bounds tests before escalating.
