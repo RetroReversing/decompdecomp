@@ -290,3 +290,17 @@ def test_detour_limit_does_not_compound_and_survives_serialization():
     expanded = []
     assert not search.advance(state, evaluate, lambda s,r: expanded.append(s) or [], lambda: False)
     assert calls == ['seed', 'detour', 'too_far'] and not expanded
+
+
+def test_region_gain_wins_reserved_detour_slot_over_a_lower_total_score():
+    from .test_region_repairs import rows
+    state, expanded = seed(), []
+    reports = {'seed':dict(score=20,rows=rows({0,1,2})),
+               'weak':dict(score=21,rows=rows({0,1})),
+               'local_fix':dict(score=24,rows=rows(set(range(20,32)))),
+               'done':dict(score=0,matched=True)}
+    def variants(source, report):
+        expanded.append(source)
+        return {'seed':['weak','local_fix'], 'local_fix':['done']}.get(source, [])
+    assert search.advance(state, lambda s: reports[s], variants, lambda:False)
+    assert 'local_fix' in expanded and 'weak' not in expanded

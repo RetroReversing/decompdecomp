@@ -753,3 +753,9 @@ Native compiler and imported-project build processes are monitored while decompd
 Compiler-specific matching observations, measured cases and failed experiments are kept in
 [the compiler matching learning log](docs/COMPILER_MATCHING_LEARNINGS.md). New repairs propose source
 alternatives; only the ordinary exact judge can accept them.
+
+Automatic search also learns which repair families improve results under the same compiler profile and
+mismatch kind. It keeps an exploration lane and waits for enough observations before changing priorities.
+The repair examples dialog's **Classify this project** button groups untouched new evidence, retains
+existing reviews, and archives duplicate captures. Reviewed evidence remains available through the review
+state filter; classification does not enable a new compiler rule.

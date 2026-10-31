@@ -363,3 +363,41 @@ def test_legacy_automatic_captures_are_triaged_without_overwriting_review_notes(
         db.execute("UPDATE repair_examples SET status='new',review_note='Investigate further' WHERE id=?",(case,))
     RepairFeedback(net)
     assert net.repair_feedback.detail('demo',case)['status']=='new'
+
+
+def test_classify_new_is_previewable_idempotent_and_preserves_manual_reviews(setup):
+    net, *_ = setup
+    case = match(setup)
+    preview = net.repair_feedback.classify_new('demo')
+    assert preview['total'] == 1 and not preview['applied']
+    assert net.repair_feedback.detail('demo', case)['status'] == 'new'
+    assert preview['examples'][0]['category'] == 'constants'
+    applied = net.repair_feedback.classify_new('demo', True)
+    assert applied['applied'] and net.repair_feedback.detail('demo', case)['status'] == 'reviewed'
+    assert net.repair_feedback.classify_new('demo', True)['total'] == 0
+    net.repair_feedback.review('demo', case, 'new', note='Human investigation pending.')
+    assert net.repair_feedback.classify_new('demo', True)['total'] == 0
+    assert net.repair_feedback.detail('demo', case)['review_note'] == 'Human investigation pending.'
+
+
+def test_duplicate_triage_requires_identical_captured_build_evidence(setup):
+    net, *_ = setup
+    case = match(setup)
+    with net.store.tx() as db:
+        db.execute('''INSERT INTO repair_examples(project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence)
+            SELECT project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence FROM repair_examples WHERE id=?''', (case,))
+    result = net.repair_feedback.classify_new('demo', True)
+    assert [p['status'] for p in result['examples']] == ['reviewed', 'dismissed']
+    assert net.store.one('SELECT COUNT(*) n FROM repair_examples')['n'] == 2
+
+
+def test_prior_reviewed_evidence_is_used_when_grouping_new_duplicates(setup):
+    net, *_ = setup
+    case = match(setup)
+    net.repair_feedback.classify_new('demo', True)
+    with net.store.tx() as db:
+        db.execute('''INSERT INTO repair_examples(project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence)
+            SELECT project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence FROM repair_examples WHERE id=?''', (case,))
+    plan = net.repair_feedback.classify_new('demo')['examples']
+    assert len(plan) == 1 and plan[0]['status'] == 'dismissed'
+    assert f'#{case}' in plan[0]['note']

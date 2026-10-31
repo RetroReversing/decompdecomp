@@ -325,6 +325,10 @@ class Permuter:
                         continue
                     ranked = repair_ranking.order(dict.fromkeys(labels.get(text, 'draft_repair') for text in candidates), repair_ranking.evidence(self.net, fn['id'], agent.id))
                     ranked = repair_ranking.demote(self.net, effect_scope, ranked)
+                from . import adaptive_repairs, permuter_focus
+                policy_rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
+                ranked = adaptive_repairs.order(self.net, proj, fn, policy_rows, ranked)
+                policy_key = adaptive_repairs.profile(self.net, proj, fn)
                 candidates.sort(key=lambda text: ranked.index(labels.get(text, 'draft_repair')) if labels.get(text, 'draft_repair') in ranked else len(ranked))
                 for candidate in candidates:
                     if st.stop.is_set() or attempts >= budget or time.monotonic() >= deadline:
@@ -341,8 +345,13 @@ class Permuter:
                     baseline=getattr(self.net,'_agent_outcomes',{}).get((agent.id,fn['id']))
                     if baseline and baseline.get('source')!=fn['best_source']:
                         baseline=None
+                    policy_started = time.monotonic()
                     with repair_trial({'kind':'deterministic draft repair','family':labels.get(candidate,'draft_repair'),'base_source_sha256':hashlib.sha256(fn['best_source'].encode()).hexdigest(),'source_sha256':hashlib.sha256(candidate.encode()).hexdigest()}):
                         score = self._score(agent, proj, fn, candidate, best, fork)
+                    if not getattr(self, 'trace_variants', False):
+                        adaptive_repairs.record(self.net, policy_key, permuter_focus.classify(policy_rows),
+                                                labels.get(candidate, 'draft_repair'), best, score,
+                                                (time.monotonic()-policy_started)*1000)
                     measured=getattr(self.net,'_agent_outcomes',{}).get((agent.id,fn['id']))
                     if measured and measured.get('source')==candidate:
                         repair_ranking.remember(self.net,effect_scope,labels.get(candidate,'draft_repair'),baseline,measured)
@@ -415,7 +424,7 @@ class Permuter:
             start_src = best_src = cur_src = m2cfix.expand_macros(fn["best_source"])
             best = cur = fn["best_score"]
             deadline = time.monotonic() + seconds
-            from . import permuter_focus, repair_ranking
+            from . import adaptive_repairs, permuter_focus, repair_ranking
             if hasattr(self.net, 'keep_diff'):
                 measured, _ = self._baseline(agent, proj, fn, st, fork)
                 if measured == 0:
@@ -427,7 +436,8 @@ class Permuter:
                 if best == 0:
                     return
             rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
-            focus, boosts = permuter_focus.classify(rows), permuter_focus.boosts(rows)
+            focus = permuter_focus.classify(rows)
+            boosts = adaptive_repairs.boosts(self.net, proj, fn, rows, permuter_focus.boosts(rows))
             batches = misses = 0
             while time.monotonic() < deadline and best > 0 and not st.stop.is_set():
                 if gen is not None:
@@ -436,11 +446,13 @@ class Permuter:
                     # the demo ROM (at 45); taking turns, every one matched within 12 s
                     base = best_src if batches % 2 else start_src
                     batches += 1
+                    if batches % 2 == 0:
+                        boosts = adaptive_repairs.boosts(self.net, proj, fn, rows, permuter_focus.boosts(rows))
                     # Alternate upstream defaults with focused weights: preserve an exploratory lane when
                     # the advisory mismatch category is incomplete or points at the wrong repair.
                     batch = gen.batch({"header": header, "source": base, "function": fn["name"], "family": family,
                                        "seed": rng.randrange(MAX_SEED), "count": BATCH, "weight_boosts": boosts if batches % 2 == 0 else {},
-                                       "trace": bool(getattr(self, "trace_variants", False))})
+                                       "trace": True})
                     if batch is None:  # C it can't read: the simple rewrites can still try
                         gen.close()
                         gen = None
@@ -463,8 +475,12 @@ class Permuter:
                     provenance = {'kind': 'random rewrite', 'family': lineage[-1] if lineage else 'random_rewrite_unattributed',
                                   'lineage': lineage or [], 'base_source_sha256': hashlib.sha256(base.encode()).hexdigest(),
                                   'source_sha256': hashlib.sha256(cand.encode()).hexdigest()}
+                    started = time.monotonic()
                     with repair_trial(provenance):
                         score = self._score(agent, proj, fn, cand, best, fork)
+                    if not getattr(self, 'trace_variants', False):
+                        adaptive_repairs.record(self.net, adaptive_repairs.profile(self.net, proj, fn), focus,
+                                                provenance['family'], best, score, (time.monotonic()-started)*1000)
                     if score is None:
                         continue
                     if score < best:
@@ -473,7 +489,8 @@ class Permuter:
                         if best > 0:
                             best, best_src = self._after_improvement(agent, proj, fn, st, fork, best, best_src)
                         rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
-                        focus, boosts = permuter_focus.classify(rows), permuter_focus.boosts(rows)
+                        focus = permuter_focus.classify(rows)
+                        boosts = adaptive_repairs.boosts(self.net, proj, fn, rows, permuter_focus.boosts(rows))
                         if best == 0:
                             st.add(matched=1)
                             log.info("permuter: %s matched", fn["name"])
