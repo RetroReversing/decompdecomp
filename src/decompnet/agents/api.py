@@ -338,6 +338,16 @@ def fit(messages: list[dict], budget: int, keep: int = 2) -> int:
                 before = _tokens(m)
                 m["content"] = text[:TRIM_TO] + "\n[... trimmed to save context: call the tool again if you need this]"
                 total -= before - _tokens(m)
+    # A larger tool schema can leave several already-trimmed old results over budget.
+    # Compact those once more, while retaining the newest exchange and tool-call structure.
+    for m in messages[max(2, keep):keep_from]:
+        text = m.get("content")
+        if total <= budget:
+            break
+        if m.get("role") in ("tool", "assistant") and isinstance(text, str) and len(text) > 120:
+            before = _tokens(m)
+            m["content"] = text[:80] + "\n[Earlier output trimmed; call the tool to recover.]"
+            total -= before - _tokens(m)
     return total
 
 

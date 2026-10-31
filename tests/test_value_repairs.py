@@ -63,6 +63,8 @@ def test_new_families_use_normal_tool_judge(tmp_path,monkeypatch,mode,family,sou
         seen.append(text);net._record(net._function('f','game'),agent,9,text,1)
         return 'score 9'
     monkeypatch.setattr(net,'compile_and_diff',compile)
+    # Dispatch coverage substitutes the judge; imported build preflight is tested separately.
+    monkeypatch.setattr('decompnet.app.agent_evidence.preflight',lambda *args:None)
     _,revision=agent_tokens.candidate(net,a,'game','f')
     result=tools.call(net,a,'game','compile_family',{'function':'f','revision':revision,'family':family})
     assert seen and len(seen)<=6 and 'Current candidate revision' in result

@@ -60,3 +60,34 @@ def test_release_handover_compacted_and_small_edit_coached_once(tmp_path,monkeyp
     second=tools.call(net,a,'game','compile_and_diff',{'function':'f','source':source.replace('return 1','return 3')})
     assert 'Small edit:' in first and 'Small edit:' not in second
     assert len(second)<250 and 'Candidate revision' in second
+
+
+@pytest.mark.parametrize('mode',['rom','fork'])
+def test_scalar_address_and_mask_families_available_in_both_modes(tmp_path,monkeypatch,mode):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('solver')
+    source='extern signed char state; int call(int,int); int f(int x){signed char v; v=state; state=call(x,v);return 0;}'
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode,'compiler':{'toolchain':'example','flags':[]}}),))
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    net.claim_row(a,'game','f');fn=net._function('f','game')
+    monkeypatch.setattr(net.forks,'permuter_header',lambda *args:'')
+    _,revision=agent_tokens.candidate(net,a,'game','f')
+    pools=local_experiments.available(net,a,'game',fn,source,revision,['scalar_global_address','split_mask_stores'])
+    assert len(pools['scalar_global_address'])==1
+    source='void f(char *p){*(int *)(p+244)=(*(int *)(p+244)&0xFFEFFFFF)&0xFFFF7FFF;}'
+    pools=local_experiments.available(net,a,'game',fn,source,revision,['split_mask_stores'])
+    assert len(pools['split_mask_stores'])==2
+
+
+@pytest.mark.parametrize('explicit',[False,True])
+def test_automatic_pass_excludes_experimental_families_but_explicit_requests_work(tmp_path,monkeypatch,explicit):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('solver')
+    with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?',('int f(){return 1;}',))
+    net.claim_row(a,'game','f');_,revision=agent_tokens.candidate(net,a,'game','f')
+    monkeypatch.setattr(local_experiments.agent_evidence,'preflight',lambda *args:None)
+    requested=[]
+    def available(*args):
+        requested.extend(args[-1]);return {}
+    monkeypatch.setattr(local_experiments,'available',available)
+    local_experiments.run(net,a,'game','f',revision,['experimental_bitfield_frame'] if explicit else None)
+    assert ('experimental_bitfield_frame' in requested)==explicit

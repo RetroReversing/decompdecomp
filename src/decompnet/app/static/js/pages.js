@@ -116,6 +116,10 @@ async function showSettingsPage() {
     <label class="field"><span>Iterative repairs: additional seconds per pass</span><input id="iterativeSeconds" type="number" min="1" max="600" value="${st.settings.iterative_seconds || 120}"></label>
     <label class="field"><span>Iterative repairs: additional compile attempts per pass</span><input id="iterativeAttempts" type="number" min="1" max="1024" value="${st.settings.iterative_attempts || 128}"></label>
     <label class="field"><span>Iterative repairs: threads (no limit; empty = automatic, ${st.settings.worker_threads_default ?? 1} on this computer). Each thread repairs a different function. More threads finish a pass sooner and leave the app slower to respond.</span><input id="iterativeThreads" type="number" min="1" placeholder="${st.settings.worker_threads_default ?? 1}" value="${st.settings.iterative_threads || ""}"></label>
+    <h3>Local repairs between agent turns</h3>
+    <label class="check"><input type="checkbox" id="agentLocalEnabled" ${st.settings.agent_local_enabled ? "checked" : ""}><span>Try local repairs after an agent submits a near miss, before its next model turn (no AI calls). Extra CPU work; off by default.</span></label>
+    <label class="field"><span>Local repairs: extra trials per submission (1–6)</span><input id="agentLocalTrials" type="number" min="1" max="6" value="${st.settings.agent_local_trials ?? 2}"></label>
+    <label class="field"><span>Local repairs: seconds per submission (1–15, soft limit; an active compiler can finish)</span><input id="agentLocalSeconds" type="number" min="1" max="15" value="${st.settings.agent_local_seconds ?? 5}"></label>
     <h3>Permuter limits</h3>
     <p class="small muted">Global limits for random permutation of near misses (within 6% of an exact match). Larger functions take longer per compile. Changes apply to new turns; running turns keep their deadline. Raising the turn limit gives previously exhausted functions more turns. Targeted deterministic repairs have separate budgets.</p>
     <label class="field"><span>Maximum instructions per function (1–100,000)</span><input id="permuterMaxInsns" type="number" min="1" max="100000" value="${st.settings.permuter_max_insns ?? 400}"></label>
@@ -196,6 +200,9 @@ async function showSettingsPage() {
   $("perSession").onchange = () => save({ per_session: Number($("perSession").value) }, "Saved.");
   $("autopilotSet").onchange = () => save({ autopilot: $("autopilotSet").checked }, "Saved.");
   $("reuseAuto").onchange = () => save({ reuse_auto: $("reuseAuto").checked }, "Saved.");
+  $("agentLocalEnabled").onchange = () => save({agent_local_enabled:$("agentLocalEnabled").checked},"Saved.");
+  $("agentLocalTrials").onchange = () => save({agent_local_trials:Number($("agentLocalTrials").value)},"Saved.");
+  $("agentLocalSeconds").onchange = () => save({agent_local_seconds:Number($("agentLocalSeconds").value)},"Saved.");
   $("iterativeEnabled").onchange = () => save({ iterative_enabled: $("iterativeEnabled").checked }, "Saved.");
   $("iterativeSeconds").onchange = () => save({ iterative_seconds: Number($("iterativeSeconds").value) || 120 }, "Saved.");
   $("iterativeThreads").onchange = () => save({ iterative_threads: Number($("iterativeThreads").value) || 0 }, "Iterative repair threads saved.");

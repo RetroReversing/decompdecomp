@@ -511,7 +511,7 @@ def local_family(net, agent, slug, function, revision, family, old='', declarati
         return (f'Selected declaration {declaration}.\n' if declaration else '') + result
 
 
-def variants(net, agent, slug, function, revision, patches, family="explicit patches"):
+def variants(net, agent, slug, function, revision, patches, family="explicit patches", *, seconds=60, provenance_kind='agent batch', variant_families=None):
     """Independent alternatives against one snapshot, never a cumulative patch chain."""
     from .tools import _compile
     if not isinstance(patches, list) or not 1 <= len(patches) <= 6:
@@ -570,12 +570,14 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
         durable_scope=target_scope(net,fn,'')
         began = time.monotonic()
         for i, src in enumerate(candidates, 1):
-            if last is not None and time.monotonic() - began >= 60:
-                results.append('Stopped before the next trial: 60-second batch budget reached. Resume with the current revision.')
+            if last is not None and time.monotonic() - began >= seconds:
+                results.append(f'Stopped before the next trial: {seconds:g}-second batch budget reached. Resume with the current revision.')
                 break
             started=time.monotonic()
             try:
-                with trial({'kind':'agent batch','family':family,'variant':i,'base_revision':revision}):
+                with trial({'kind':provenance_kind,'family':variant_families[i-1] if variant_families else family,'variant':i,
+                            'base_revision':revision,'base_source_sha256':hashlib.sha256(source.encode()).hexdigest(),
+                            'source_sha256':hashlib.sha256(src.encode()).hexdigest()}):
                     result = _compile(net, agent, slug, function, src)
             except NetworkError as e:
                 results.append(f'{i}: stopped: {e}')
