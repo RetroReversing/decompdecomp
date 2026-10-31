@@ -102,6 +102,15 @@ function renderSteering(ov) {
   $("saveTitle").textContent = ov.kind === "fork" ? "Save the closest attempts" : "Save your progress";
   $("saveAbout").hidden = ov.kind === "fork";
   $("saveAboutFork").hidden = ov.kind !== "fork";
+  $("repositorySync").hidden = ov.kind === "fork";
+  if (ov.kind !== "fork" && $("repositoryFolder").dataset.slug !== S.slug) {
+    const slug = S.slug;
+    $("repositoryFolder").dataset.slug = slug;
+    $("repositoryFolder").value = "";
+    api(`/api/repository-sync?slug=${encodeURIComponent(slug)}`).then(r => {
+      if (S.slug === slug && !$("repositoryFolder").value) $("repositoryFolder").value = r.folder || "";
+    }).catch(() => {});
+  }
   renderKnowledge();
   // what agents can't change themselves: where a function ends, and suggestions; a compiler's are in Settings → Compiler
   const sg = (ov.suggestions || []).filter((s) => !s.toolchain), bd = ov.boundaries || [];
@@ -985,4 +994,25 @@ $("deepSweepReset").onclick = async () => {
     if (S.slug === slug) renderDeepSweepResults(status);
   } catch (error) { showJobError(log, error.message); }
   finally { done(); }
+};
+
+
+// Repository sync is an explicit, cancellable build. Ordinary progress autosave stays independent.
+let repositorySyncJob = null;
+$("repositorySyncStop").onclick = async () => {
+  try { if (repositorySyncJob) await api("/api/job/cancel", {method:"POST", body:{id:repositorySyncJob}}); }
+  catch (error) { showJobError($("repositorySyncLog"), error.message); }
+};
+$("repositorySyncGo").onclick = async () => {
+  const log = $("repositorySyncLog"), button = $("repositorySyncGo"), stop = $("repositorySyncStop");
+  const finish = beginWork(log, "Verifying repository progress", [button], "Repository sync finished.");
+  showJobError(log, "");
+  try {
+    const {job} = await api("/api/repository-sync", {method:"POST", body:{slug:S.slug, folder:$("repositoryFolder").value.trim()}});
+    repositorySyncJob = job; stop.hidden = false;
+    const result = await followJob(job, log);
+    log.textContent += `\n${result.verified_build ? "Full rebuilt image verified." : "No source additions; no full rebuild was needed."}\n${result.accepted.length} functions synced; ${result.skipped.length} could not be integrated.\n${result.changes || "No Git changes."}`;
+    for (const item of result.skipped) log.textContent += `\n${item.function}: ${item.reason}`;
+  } catch (error) { showJobError(log, error.message); }
+  finally { repositorySyncJob = null; stop.hidden = true; finish(); }
 };

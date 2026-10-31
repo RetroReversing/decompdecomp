@@ -6,6 +6,7 @@ module's register(), which adds that part's routes to the MCP server's web app:
 - projects: everything under a project (/api/project, /api/function, /api/compiler, /api/export, ...)
 - forks:    public decomps forked by their address, and projects started from scratch on that build
 - setup:    compilers and tools, helper agents and their sign-in, settings
+- repository_sync: verified additions to a standalone Git export checkout
 - life:     updates, the window, quitting
 - rooms:    decompiling together (collab.py)
 
