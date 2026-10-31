@@ -1428,3 +1428,34 @@ def test_project_overview_reads_database_while_progress_lock_is_busy(app, monkey
         worker.join(timeout=3)
         with net.store.tx() as db:
             db.execute("DELETE FROM projects WHERE slug='busy-view'")
+
+
+def test_resuming_helpers_does_not_hold_agent_state_lock_during_progress_sync(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    net = RomNetwork(tmp_path / 'db.sqlite', tmp_path)
+    manager = agents.Manager(net, tmp_path, 'http://127.0.0.1:6499/mcp')
+    manager._found = []
+    helper = SimpleNamespace(id='saved-helper', state='stopped', stopped_by=agents.BY_QUIT,
+                             slug='game', kind='codex', options={})
+    manager.sessions = {helper.id: helper}
+    entered, release, readable = threading.Event(), threading.Event(), threading.Event()
+    def project_row(_):
+        entered.set()
+        release.wait(5)
+    monkeypatch.setattr(net, 'project_row', project_row)
+    monkeypatch.setattr(manager, '_prepare', lambda _: None)
+    monkeypatch.setattr(manager, '_launch', lambda _: None)
+    resumed = threading.Thread(target=manager.resume, daemon=True)
+    def detect():
+        manager.detected()
+        readable.set()
+    reader = threading.Thread(target=detect, daemon=True)
+    try:
+        resumed.start()
+        assert entered.wait(2)
+        reader.start()
+        assert readable.wait(2), 'agent detection waited for project synchronization'
+    finally:
+        release.set()
+        resumed.join(timeout=3)
+        reader.join(timeout=3)
