@@ -421,7 +421,7 @@ def run(net, slug, name, minutes, max_variants, log):
     log(f'Searching {name}: {minutes} minutes, up to {max_variants:,} compiled candidates. Checking the saved baseline first.')
     log('Local repairs follow the current instruction differences; then random rewrites explore further variants.')
     from .source_diagnostics import hints
-    for hint in hints(fn['best_source'], name):
+    for hint in hints(fn['best_source'], name, fn['asm'], proj['arch']):
         log('Source check (advisory): '+hint)
     try:
         # Explicitly configured local source carries real records/macros and original line breaks.

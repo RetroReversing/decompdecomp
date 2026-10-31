@@ -74,3 +74,9 @@ After a source repair
 - Recheck relevant optimization profiles before further mutations: corrected SDK bodies can still need `-O1` or `-O3` instead of `-O2`. Deep search repeats its bounded cached flag preflight after saved local/random improvements; only exact results can apply automatically, respecting automatic-compiler settings.
 - With authorized local source, configure its function mapping and declarations. Deep search tries that typed template before permutations and preserves original line layout. Verify cleanup branches against retail; reference revisions can differ.
 - Equality operand order and unsigned integer product order can affect instruction scheduling. The local repair families try bounded simple-read variants; volatile accesses, calls and floating-point reassociation are excluded.
+
+Runtime and static-call evidence
+- Small signed 64-bit modulo and double-to-unsigned-64 targets can need `-O1 -mips3 -32`, even while surrounding files use MIPS II. Check real 64-bit argument/return widths. Instruction-based preflight hypotheses remain bounded and require the normal exact judge.
+- Recorded SDK-signature identity prioritizes `-O1` before wider optimization probes; a name alone is insufficient evidence.
+- When target HI/LO relocations prove an interior code address, reference that entry directly instead of retaining a byte-pointer base-plus-offset expression that emits extra arithmetic. Candidate-local declarations do not establish a new function boundary.
+- Caller-saved temporaries live across a call can indicate compiler-specialized static-helper clobbers. Inspect the original translation unit and argument registers; adding helper bodies to an isolated candidate is not a proven remedy.

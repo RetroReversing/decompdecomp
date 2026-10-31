@@ -388,3 +388,15 @@ Evidence: ten new source-assisted live-API matches in a retail MIPS II game, tot
 - The supplied voice-release source cleared a pointer on only one branch, whereas retail clears it after both paths. Source identity is advisory: the ordinary linked-byte judge remains mandatory.
 
 Controlled tests cover claim release/reacquisition, concurrent workers, source-improvement/profile sequencing, source mapping selection, side-effect exclusions and explicit profile-induced match reporting. They do not establish a new automatic match-rate benchmark.
+
+
+## Runtime width, SDK profile priority and interior entry addresses (31 October 2026)
+
+Observed evidence: ten further source-assisted exact matches in a retail MIPS game, totaling 2,560 bytes, selected in a full byte-identical cartridge rebuild. These observations guide bounded hypotheses; the new regression tests are synthetic and do not claim additional real-game progress.
+
+- A signed 64-bit modulo helper and double-to-unsigned-64 conversion had incorrect-width drafts. Their targets contain MIPS III operations and O32 argument-home-slot or paired-return evidence. Native 64-bit C matched with IDO 5.3 `-O1 -mips3 -32 -G 0 -non_shared -Xcpluscomm`. The profile preflight now prioritizes this profile only for recognized instruction shapes, and can probe a generic native-width arithmetic candidate in the same four-compile allowance. Source-changing results use the existing compiler/source suggestion and revalidation workflow; recognizing a shape is not proof of helper identity.
+- Six timer/thread/messaging routines matched with IDO 5.3 `-O1 -mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul` after original types/register locals/body were restored. Recorded SDK-signature naming evidence now prioritizes `-O1` after the current-profile baseline. A familiar user-entered name alone does not trigger that priority. This is a working profile, not unique toolchain identification.
+- A thread constructor scored 225 when its cleanup address was expressed as another function's entry plus an offset. The compiler emitted an additional address addition. Referring directly to the proven target entry yielded score zero. Interior-entry repair requires agreeing target LUI/ADDIU HI/LO expressions, a known numeric function-address label and byte-pointer stride. It introduces a candidate-local address declaration; it never moves code, splits functions or changes the global symbol table.
+- Sequence-reader attempts remained unmatched with isolated ordinary-ABI calls. Target temporaries surviving calls suggest whole-unit/static-helper register specialization. Adding static helper bodies did not produce acceptable isolated matches and should not be repeated as a presumed fix. The app now reports this possibility as an advisory, not an ABI override or a reason to count a match.
+
+Compiler settings are still judged and applied through existing gates, and no proprietary toolchains or reference sources are fetched. Imported projects retain their own build/compiler workflow.

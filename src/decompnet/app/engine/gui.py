@@ -256,7 +256,7 @@ class GuiMixin:
                 from ..stack_layout import text as stack_text
                 out = {"rows": [list(r) for r in d.rows], "score": d.score,
                        "stack_diagnostic": stack_text(proj['arch'],d.rows),
-                       "source_diagnostics": source_hints(source, fn["name"]),
+                       "source_diagnostics": source_hints(source, fn["name"], fn["asm"], proj["arch"]),
                        "percent": 100.0 if d.bytes_match else min(99.9, int(d.percent * 10) / 10),
                        "problems": problems, "source": source,
                        "checks": self._candidate_checks(fn, proj, result.obj)}
