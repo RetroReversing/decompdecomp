@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ..network import NetworkError
 from ..project import compiler_for
-from . import region_repairs, workers
+from . import region_repairs, search_frontier, workers
 
 WIDTH, DEPTH, PER_FUNCTION = 3, 3, 8
 DETOUR_RATIO = 1.25
@@ -43,11 +43,13 @@ def advance(state, evaluate, variants, stopped):
                 if output is not None:
                     outputs[output] = outputs.get(output, 0) + 1
         if not state['pending']:
-            ranked = sorted(state['next'], key=lambda n: n['score'])
+            ranked = sorted(state['next'], key=lambda n: (search_frontier.structure(n['report'].get('rows') or []), n['score']))
             ordinary = [n for n in ranked if n['score'] <= n['ceiling']]
             detours = sorted((n for n in ranked if n['score'] > n['ceiling']),
                              key=lambda n: (-n.get('region_gain', 0), n['score']))
-            best = ordinary[:WIDTH-1] + detours[:1] if detours else ordinary[:WIDTH]
+            numeric = min(ordinary, key=lambda n: n['score']) if ordinary else None
+            retained = ([numeric] if numeric else []) + [n for n in ordinary if n is not numeric]
+            best = retained[:WIDTH-1] + detours[:1] if detours else retained[:WIDTH]
             state['next'] = []
             for parent in best:
                 if parent['depth'] >= DEPTH:
@@ -78,12 +80,12 @@ def output_key(report):
 def targeted_variants(source, report, fn, arch, flags, header=''):
     from . import draft_repairs, repair_ranking, stack_padding_repairs
     labels = {}
-    proposals = draft_repairs.variants(source, fn['name'], arch, fn['asm'] or '', flags, labels, header=header)
+    proposals = draft_repairs.variants(source, fn['name'], arch, fn['asm'] or '', flags, labels, header=header, limit=None)
     for text in stack_padding_repairs.grow(source, fn['name'], arch, report.get('rows') or []):
         proposals.append(text)
         labels[text] = 'stack_padding'
     families = repair_ranking.order(list(dict.fromkeys(labels[p] for p in proposals)), report.get('rows') or [])
-    return sorted(proposals, key=lambda p: families.index(labels[p]))
+    return sorted(proposals, key=lambda p: families.index(labels[p]))[:20]
 
 
 def run(twins, slug, job):

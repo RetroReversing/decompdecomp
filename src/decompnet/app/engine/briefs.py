@@ -239,9 +239,10 @@ class BriefMixin:
         return super().get_context(project, function)
 
     def _brief(self, fn, agent, header):
-        if self.cfg(self.store.one("SELECT config FROM projects WHERE id=?", fn["project_id"])).get("kind") == "fork":
-            return self.forks.brief(fn, agent, header)
-        proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
+        from ..search_evidence import brief as search_brief
+        proj = self.store.one('SELECT * FROM projects WHERE id=?',fn['project_id'])
+        if self.cfg(proj).get('kind') == 'fork':
+            return self.forks.brief(fn, agent, header) + self._lifetime_hints(fn) + search_brief(self,proj,fn)
         if self.is_rom(proj) and fn["status"] == "open" and not fn["best_source"]:
             self._seed_for(fn, proj)  # made again first when what it's made from changed
             fn = self._function(fn["name"], proj["slug"])
@@ -249,11 +250,20 @@ class BriefMixin:
                 fn = dict(fn) | {"seed": self._draft_shown(fn, proj)}
         text = super()._brief(fn, agent, header)
         if fn['status'] == 'open' and fn['best_source']:
-            from .. import compiler_preflight
+            from .. import compiler_preflight, source_diagnostics
+            suggestions = source_diagnostics.hints(fn['best_source'], fn['name'])
+            if suggestions:
+                text += '\n\nSource checks (advisory):\n' + '\n'.join(suggestions)
             warning = compiler_preflight.warnings(self, proj, fn)
             if warning:
                 text += '\n\nCompiler preflight (advisory; check the draft before tuning):\n' + warning
-        return text
+        return text + self._lifetime_hints(fn) + search_brief(self,proj,fn)
+
+    def _lifetime_hints(self, fn):
+        from ..local_flow import hints
+        source = fn['best_source'] or fn['seed'] or ''
+        suggestions = hints(source, fn['name']) if fn['status'] == 'open' and source else []
+        return ('\n\nDraft lifetime hints (advisory; original names retained):\n' + '\n'.join(suggestions)) if suggestions else ''
 
     def xrefs(self, proj) -> dict:
         """calls / called_by / uses / used_by, all keyed by address."""

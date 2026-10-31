@@ -804,7 +804,8 @@ class CompilerMixin:
         use_default = toolchain == default["toolchain"] and flags == default["flags"]
         self.set_compiler_ranges(slug, [[fn["vram"], fn["vram"] + fn["size"]]], None if use_default else toolchain, flags)
         if fn["status"] == "matched":
-            return {"said": f"Compiler settings applied to {function}; its matching C is preserved."}
+            return {"said": f"Compiler settings applied to {function}; its matching C is preserved.",
+                    "matched": True, "newly_matched": False, "score": 0, "match_cause": "already_matched"}
         if allow_non_improving:
             # A deliberate compiler change can lower the percentage. The old score
             # described another profile; retain the C/attempt history, rebase its score.
@@ -814,7 +815,12 @@ class CompilerMixin:
         # The background autopilot may hold another function. A scoped try checks this function's claim
         # and releases its own on both matches and misses, without disturbing the other work.
         self.try_quietly(agent, self._project(slug), self._function(function, slug), source)
-        return {"said": f"Compiler settings applied to {function} only."}
+        fresh = self._function(function, slug)
+        matched = fresh['status'] == 'matched'
+        return {"said": (f"MATCH: {function} became byte-identical after applying compiler settings. Its verified C is saved."
+                         if matched else f"Compiler settings applied to {function} only."),
+                "matched": matched, "newly_matched": matched, "score": fresh['best_score'],
+                "match_cause": "compiler_profile" if matched else None}
 
     def set_compiler_ranges(self, slug: str, ranges: list[list[int]], toolchain: str | None,
                             flags: list[str] | None = None, reopen: bool = False) -> None:

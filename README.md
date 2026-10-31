@@ -809,3 +809,26 @@ source-less builds show a blocker. Supported existing C object rules are probed 
 the original assembly and reference objects remain intact. When automatic reuse is enabled, new matches queue
 compatible projects under the existing shared time/attempt budget. Discovery is refreshed by free passes rather
 than repeated on every UI poll; wider similarity and SDK-source/template searches remain ROM-only.
+
+### More local repairs before another model turn
+
+Autopilot can reuse a verified small MIPS wrapper from the same ROM project when its instruction
+shape and callee agree and only one paired global address differs. This includes low segment addresses.
+It tries up to three donors through the destination's normal compiler and byte judge; failures are cached.
+
+Shared draft/permuter and agent local repairs also try holding an integer global's address across a call,
+and splitting a combined pair of bitmask clears into ordered compound stores. These are source hypotheses:
+only the ordinary linked-byte or objdiff judge accepts a match.
+
+In **Settings → Local repairs between agent turns**, optionally enable an automatic local pass after a
+single-function `compile_and_diff` or `compile_patch` near miss (within 6% by the instruction score).
+It is off by default. The defaults are two generated trials and five seconds per submission; both are
+configurable. Trials share the agent's existing compile/stall limit, reuse scoped attempt caches, and
+make no model requests. Baseline verification can require an additional diagnostic compile. The time
+limit is checked between operations; an active compiler/build finishes under its own timeout.
+
+The tool response identifies the local pass, shows any selected changes and returns the current candidate
+revision. Failed alternatives do not replace a better starting candidate. Successful matches still go
+through the normal judge, and repair examples retain the automatic pass's family and source hashes.
+The pass supports ROM and writable imported projects through the shared local-repair runner; it does
+not change project compiler settings.

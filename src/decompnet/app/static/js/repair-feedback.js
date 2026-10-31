@@ -189,6 +189,7 @@ $("repairExamples").onclick = async () => {
       if (data.metrics) {
         const m = data.metrics, describe = x => `${x.attempted.toLocaleString()} trials · ${x.improved.toLocaleString()} improvements · ${x.matched.toLocaleString()} matches`;
         get('[data-metrics]').textContent = `Adaptive policy: ${describe(m.policy)}. ${m.deep ? `Deep history: ${describe(m.deep)}. ` : ""}${m.scope} ${m.sources.map(s => `${s.origin}: ${describe(s)}, ${new Date(s.first_at*1000).toLocaleString()} to ${new Date(s.last_at*1000).toLocaleString()}`).join("; ")}`;
+        get('[data-metrics]').textContent += (m.input_effects || []).map(r => ` ${r.family.replaceAll("_", " ")}: ${r.attempted} proposals, ${r.no_edit} with no edit, ${r.same_output} identical function outputs, ${r.worse} worse, ${r.improved} improved.`).join("") + " Input-specific priorities drop only after 8 fresh trials with no improvement and at least 80% no-edit/identical/worse results. Exploration remains enabled; edits reset the input scope.";
       }
       get('[data-count]').textContent = data.groups.map((group) => `${group.count} captures · ${group.category.replaceAll('_', ' ')} (${group.status})`).join(' · ') || 'No examples for these filters.';
       if (reset && !data.examples.length) { const empty = document.createElement('p'); empty.className = 'repair-empty'; empty.textContent = 'No examples match these filters. Try another review state or clear “Comparable source repairs only” to include baseline and settings-only captures.'; list.append(empty); }

@@ -248,6 +248,9 @@ class Settings:
         eps = [masked(e) for e in self.endpoints()]
         return {"endpoints": eps, "api": eps[0] if eps else {},
                 "per_session": self.data.get("per_session", PER_SESSION), "last_project": self.data.get("last_project"),
+                "agent_local_enabled":bool(self.data.get('agent_local_enabled',False)),
+                "agent_local_trials":self.data.get('agent_local_trials',2),
+                "agent_local_seconds":self.data.get('agent_local_seconds',5),
                 "reuse_auto": self.data.get("reuse_auto", True), "reuse_seconds": self.data.get("reuse_seconds", 120),
                 "reuse_attempts": self.data.get("reuse_attempts", 128),
                 "permuter_max_insns": self.data.get("permuter_max_insns", 400),

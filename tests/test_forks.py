@@ -110,6 +110,10 @@ def test_splat_accepts_other_n64_byte_orders(tmp_path, monkeypatch, fmt):
 
 
 def test_macos_docker_only_project_routes_make_through_container(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from decompnet import compiler_processes
     from decompnet.forks import project as project_module
 
     (tmp_path / "Dockerfile").write_text("FROM example\n")
@@ -121,7 +125,14 @@ def test_macos_docker_only_project_routes_make_through_container(tmp_path, monke
     monkeypatch.setattr(ForkProject, "_prepare_docker", lambda *_: None)
     seen = []
 
+    # Dispatch only: process ownership and watchdogs have dedicated real-process tests.
+    monkeypatch.setattr(compiler_processes,"track",lambda *args:None)
+    monkeypatch.setattr(compiler_processes,"finish",lambda *args:None)
+    monkeypatch.setattr(project_module,"CompilerMemoryWatchdog",
+                        lambda *args,**kw:nullcontext(SimpleNamespace(timed_out=False,exceeded=False)))
+
     class Process:
+        pid = 0
         stdout = []
 
         def wait(self, timeout):

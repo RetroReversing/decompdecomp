@@ -5,6 +5,7 @@ to guess liveness from textual order. The ordinary judge still decides every gen
 """
 import re
 
+from . import local_flow
 from .integer_repair_support import IDENT, edit, locals_for, refs, view
 from .pattern_repairs import close
 
@@ -93,4 +94,19 @@ def variants(source, name):
     for _, _, left, right, hits in sorted(pairs, key=lambda pair: pair[:2])[:6]:
         edits = [(right.start(), right.end(), '')]+[(hit.start(), hit.end(), left['name']) for hit in hits]
         result.append(('merge_integer_lifetimes', edit(source, edits)))
+    # A CFG can prove disjoint lifetimes even when loops/gotos prevent the textual shortcut.
+    flow = local_flow.analyze(source, name)
+    if flow:
+        safe = {decl['name'] for decl in flow.locals}
+        for left, left_refs in active:
+            for right, right_refs in active:
+                if (left['name'] >= right['name'] or left['name'] not in safe or right['name'] not in safe
+                        or left['type'] != right['type'] or not local_flow.disjoint(flow, left, right)):
+                    continue
+                edits = [(right.start(), right.end(), '')]+[(hit.start(), hit.end(), left['name']) for hit in right_refs]
+                candidate = edit(source, edits)
+                if all(text != candidate for _, text in result):
+                    result.append(('cfg_integer_lifetimes', candidate))
+                if sum(family == 'cfg_integer_lifetimes' for family, _ in result) >= 6:
+                    return list(dict.fromkeys(result))
     return list(dict.fromkeys(result))

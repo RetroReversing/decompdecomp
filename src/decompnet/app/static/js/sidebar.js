@@ -141,6 +141,7 @@ function noteHtml(g) {
     autopilot: () => `Autopilot: ${esc(d)}`,
     compiler: () => `Compiler: ${esc(d)}`,
     reopen: () => esc(d),
+    regression: () => `Previously exact source failed recheck: ${fn(d)}. Open its last exact verification for changed inputs.`,
     not_c: () => esc(d),
     knowledge: () => `Agents agree on something every agent should know (${esc(d)})`,
     collab: () => esc(sentence(d)),

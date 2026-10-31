@@ -71,9 +71,59 @@ regression checks, not claims of extra game progress:
 - Isolating matrix-address and pointer-scope edits in the final solution did not lose the match;
   generated candidates stayed exact. These checks establish compatibility, not a measured improvement.
 
-Single-function deep search also explores one bounded local detour per local-repair burst under its
+Single-function deep search also explores up to three bounded retained alternatives per local-repair burst under its
 existing deadline/compile allowance. It returns the saved best source when the detour fails; only the
 normal judge can save a later improvement. Persistent multi-function iterative state is separate.
+
+### Verified follow-up: a 966-instruction menu function
+
+Profile: `gcc-2.7.2-kmc`, `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`.
+Evidence: [published exact checkpoint](https://github.com/RetroReversing/v-rally-decomp/commit/4562473).
+The normal app judge, independent standalone function check and complete 12,582,912-byte cartridge
+comparison accepted the result. All previously selected C remained selected.
+
+**Controlled final repair:** materializing a `u16` mask into an existing, subsequently reset 32-bit local
+recovered the target's in-place saved-register mask. A fresh temporary or assignment back to the input
+did not produce the same allocation. Reusing a non-overlapping local is a hypothesis to compile, not
+proof of the original source's variable names or grouping. The final source also retains earlier
+reconstruction choices; matching bytes do not establish portable source semantics or original spelling.
+
+Other observations from the staged search:
+
+- Associating a table displacement with its base before adding the index recovered address ordering.
+- A small bitfield local in an inline helper changed frame reservation. Ordinary unused array padding
+  shifted other locals and failed. This does not establish a general-purpose stack-padding idiom.
+- A redundant conditional disappeared from the instructions but changed scheduling/allocation. Moving
+  loop-counter initialization into an existing comma-expression recovered a call-delay-slot placement.
+  These edits were coupled; do not attribute the entire gain to one predicate or one line break.
+- Broad flag/type/declaration experiments were mostly neutral or worse. A controlled Linux-host versus
+  macOS-host compiler comparison emitted identical text for the tested input. No host-specific fix was
+  needed. Preserve the pinned profile, including `-g3`.
+- The final private disassembly score remained 120 because 12 numeric-versus-symbolic relocation rows
+  rendered differently. The linked-byte verdict was exact; the app correctly recorded score zero.
+  Never use a heuristic score, normalized display or register similarity as the acceptance gate.
+
+**Automation:** `masked_reuse_repairs.py` materializes a cast/mask into a local proven dead by the bounded
+CFG in `local_flow.py`. Its graph includes if/else, loop back edges, switch fallthrough, break/continue
+and direct gotos. Unknown syntax, escaped/qualified locals and unsupported control flow give no advice.
+The same analysis supplies additional lifetime merge candidates and small m2c draft hints without
+rewriting the default draft. These candidates share existing budgets and the unchanged judge.
+
+Search classification resolves known MIPS relocation operands before choosing weights, without changing
+the original rows or score. Deep/random search retains a bounded numeric/structural candidate frontier;
+iterative repair retains the numeric winner alongside structural alternatives and its existing bounded
+detour. New random improvements immediately seed a new batch; newly saved improvements are remeasured
+with current headers/settings. Existing scoped compile caches remain in use.
+
+**Private checkpoint replay:** the new masked-reuse family recovered exact linked bytes on its first
+candidate from both the score-130 and score-155 checkpoints, in approximately 1.1–1.2 seconds including
+a baseline compile on the test machine. The integrated deep local-repair phase also saved exact
+matches from both checkpoints: two compiles including baseline, approximately 3.2–3.4 seconds
+including proposal generation and bookkeeping. It did not finish the earlier score-180 checkpoint within its
+24 generated candidates. These are retrospective local-family checks with an already selected compiler
+profile, not fresh-start timing, extra progress or proof that the original 4h25m investigation now takes
+one second. Game source/ROMs and private checkpoints are not included in the app repository; regression
+fixtures here are synthetic.
 
 ## IDO 5.3 / 7.1, 32-bit big-endian MIPS
 
@@ -264,3 +314,77 @@ captures also had a different recorded baseline. They cannot establish a direct 
 source-matching repeated-store capture above had the matching base; the other direct case was already
 recovered by `table_slot_lifetime`. Preserve inherited origin metadata, but do not train a new rule from
 the final rewrite name alone. Historical reviews remain unchanged.
+
+## Wrapper addresses, scalar globals across calls and split mask stores
+
+**Controlled recoveries of existing private captures**, SN-style assembler GCC 2.8.1
+(`gcc-2.8.1-pm-sn-as`), big-endian MIPS, `-G0 -mips3 -mgp32 -mfp32 -O2`:
+
+- Eight tiny wrappers shared their instruction shape and callee with verified wrappers; only one
+  global-address HI16/LO16 pair differed. Instantiating donor C with the destination's global address
+  recovered all eight through normal linked-ROM-byte checks. Some addresses were below `0x80000000`;
+  rejecting every such address misses valid segment-address hypotheses. Restrict discovery to one
+  adjacent pair, a fixed callee and the same instruction/register shape, not a broad numeric replacement.
+- Keeping a signed byte global's address in a pointer across a call, loading through that pointer and
+  narrowing the call result before storing it, recovered one captured match. The old scalar temporary
+  can hold the narrowed result; an extra result local was unnecessary. Three storage-class alternatives
+  were neutral in the controlled replay. General alias analysis is not established by this example.
+- Replacing one assignment combining two AND masks with two ordered compound stores recovered one
+  captured match. Both the original integer lvalue and an unsigned-cast variant reproduced the control
+  output and passed the normal linked-byte judge. Other source changes in the recorded successful C
+  were unnecessary for this recovery; two address-temporary alternatives were neutral.
+
+These ten cases are regressions of already matched functions, not ten new matches or a measured token
+saving. Scalar and mask proposals share both judge modes; the initial wrapper index is MIPS ROM-only.
+
+**Agent scheduling:** an optional local pass can try bounded applicable source variants before returning
+an agent's compile result. Its ordinary judge, scoped cache and stall limit remain authoritative. Record
+its family plus before/after source hashes separately from model submissions; do not attribute an
+inherited cascaded match to the triggering rewrite. No claim of lower token use is made until measured
+on comparable live sessions.
+
+## Scheduling experiments and durable verification
+
+Retrospective private KMC GCC 2.7.2 controls (`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`)
+from the long V-Rally investigation reproduced these gains:
+
+- Byte-pointer address association: score 205 → 195, one candidate.
+- Moving a constant local reset into the first call argument, along proven CFG paths:
+  controlled regression 945 → 155, three candidates. Existing masked-value reuse then
+  produced exact bytes. The local sequence took about two seconds on this host.
+- Explicit experimental signed-halfword inline bitfield storage: 214 → 190, one candidate.
+
+These are controlled recoveries, not additional game progress or a fresh end-to-end speed benchmark.
+Frame size, saved-register slots and local stack operands must be compared separately. A larger
+frame alone does not establish the correct local layout. Bitfield storage remains explicit opt-in:
+compiler layout and integer rules make it unsuitable as a default repair.
+
+Local experiments record actual edited spans, time and function-output fingerprints. No-edit
+proposals skip compilation. Eight trials with no improvement and at least 80% no edits,
+identical output or regressions lower a family's priority for that input; exploration remains.
+Source and build-input changes invalidate this evidence. Function-output equality says nothing
+about unrelated data sections and never substitutes for the normal judge.
+
+Exact judgments now retain a [portable verification bundle](match-verification-bundles.md).
+Historical evidence helps explain regressions without silently restoring matched status or flags.
+
+### Connected recipe replay
+
+The scheduling control now trains a source-free two-step recipe only after an exact judgment.
+A normal integrated local search recovered 945 → 155 → exact in nine compiles including its
+baseline (7.81 seconds). Resetting the same isolated checkpoint, retaining the learned sequence
+and clearing the miss cache recovered it in five compiles (7.63 seconds). Family prioritization
+reduced compiles; this small control does not establish a wall-clock or agent-token improvement.
+See [learned repair search](learned-repair-search.md) for scope, exploration and rotation rules.
+
+## Source repair followed by bounded profile checks (31 October 2026)
+
+Evidence: ten new source-assisted live-API matches in a retail MIPS II game, totaling 1,988 bytes; all ten were selected in a full byte-identical cartridge rebuild. Private game data is not part of these regressions. The observed compiler was IDO 5.3 with `-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul`; optimization was function-scoped. This identifies working profiles, not the unique original compiler release.
+
+- A corrected four-argument sound wrapper and a typed voice-release routine still differed at `-O2`; the repaired candidates matched at `-O3`. A saved FX-mix candidate matched when its profile was changed to `-O3`, before the next attempt. Check relevant flags again after a source improvement rather than exhausting mutations under the old profile.
+- Typed sequence/player/marker records, real audio-command macros, original local declarations and source line layout recovered SDK routines. A pool-constructor draft had mistaken an integer allocation size for a pointer. Prefer explicitly configured reference bodies and headers before mutating raw casts. No reference source is downloaded or bundled by this feature.
+- A typed integer volume expression recovered a match after restoring original multiplication order and widths. Avoid floating-point reassociation and guessed casts. Automated product-order proposals are limited to declared unsigned scalar operands.
+- Restoring the original equality-comparison operand order changed the final allocation/scheduling in a controller-pak checker from score 35 to 0 at `-O1`. Operand order is a bounded hypothesis, not an equivalence claim for volatile or side-effecting expressions.
+- The supplied voice-release source cleared a pointer on only one branch, whereas retail clears it after both paths. Source identity is advisory: the ordinary linked-byte judge remains mandatory.
+
+Controlled tests cover claim release/reacquisition, concurrent workers, source-improvement/profile sequencing, source mapping selection, side-effect exclusions and explicit profile-induced match reporting. They do not establish a new automatic match-rate benchmark.

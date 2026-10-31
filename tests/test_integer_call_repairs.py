@@ -203,6 +203,8 @@ def test_manual_new_families_share_one_budget_revision_and_normal_compile_path(t
         net._record(fn, agent, 20, text, 1)
         return 'score 20'
     monkeypatch.setattr(net, 'compile_and_diff', compile)
+    # This fixture tests revision/budget routing, not an imported project's build preflight.
+    monkeypatch.setattr('decompnet.app.agent_evidence.preflight', lambda *args: None)
     _, revision = agent_tokens.candidate(net, agent, 'game', 'f')
     result = local_experiments.run(net, agent, 'game', 'f', revision,
                                    families=['local_widening', 'callee_parameter_width'], max_trials=2)

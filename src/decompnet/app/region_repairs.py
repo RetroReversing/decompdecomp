@@ -3,12 +3,14 @@
 Region identity comes from the complete target instruction stream, not candidate row positions.
 Inserted instructions cannot slide the comparison. This never supplies a match verdict.
 """
+from .permuter_focus import normalized
+
 REGION_INSNS = 16
 
 
 def snapshot(rows):
     targets, losses = [], {}
-    for row in rows or []:
+    for row in normalized(rows):
         if len(row) != 3:
             return None
         marker, target, _ = row

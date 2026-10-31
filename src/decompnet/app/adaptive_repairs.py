@@ -74,6 +74,9 @@ def factors(net, key, focus):
 def boosts(net, proj, fn, rows, defaults):
     from .permuter_focus import classify
     measured = factors(net, profile(net, proj, fn), classify(rows))
+    from .experiment_evidence import factors as input_factors
+    for family, factor in input_factors(net,proj,fn).items():
+        measured[family] = min(measured.get(family,1),factor)
     return {family: max(MIN_FACTOR, min(MAX_FACTOR, defaults.get(family, 1) * measured.get(family, 1)))
             for family in defaults.keys() | measured.keys()}
 
@@ -81,7 +84,12 @@ def boosts(net, proj, fn, rows, defaults):
 def order(net, proj, fn, rows, families):
     from .permuter_focus import classify
     measured = factors(net, profile(net, proj, fn), classify(rows))
-    ranked = sorted(families, key=lambda family: -measured.get(family, 1))
+    from .experiment_evidence import factors as input_factors
+    for family, factor in input_factors(net,proj,fn).items():
+        measured[family] = min(measured.get(family,1),factor)
+    from .repair_sequences import starting
+    learned = starting(net,proj,fn,rows)
+    ranked = sorted(families, key=lambda family: (family not in learned,-measured.get(family, 1)))
     # Interleave the original queue so a changed policy cannot starve unexplored families.
     return list(dict.fromkeys(family for pair in zip_longest(ranked, families)
                               for family in pair if family is not None))
@@ -95,5 +103,6 @@ def coverage(net):
     deep = None
     if net.store.one("SELECT 1 FROM sqlite_master WHERE type='table' AND name='deep_permutation_recipes'"):
         deep = dict(net.store.one("SELECT COALESCE(SUM(tested),0) attempted,COALESCE(SUM(improvements),0) improved,COALESCE(SUM(matches),0) matched FROM deep_permutation_recipes"))
-    return {'policy':policy,'sources':sources,'deep':deep,
+    from .experiment_evidence import listing
+    return {'policy':policy,'sources':sources,'deep':deep,'input_effects':listing(net),
             'scope':'All projects. Policy trials are uncached, scoped by build profile and mismatch. Deep history has a different collection window; do not compare rates directly. Coverage by origin starts with this update; elapsed time is summed trial time, not wall-clock duration.'}

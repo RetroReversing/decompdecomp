@@ -81,6 +81,8 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     net.permuter.configure(settings.data)
     workers.configure(settings.data.get("worker_threads"))
     net.auto_compiler = bool(settings.data.get("auto_compiler"))
+    from .agent_local_pass import configure as configure_local_repairs
+    configure_local_repairs(net,settings.data)
     manager.budget = lambda: float(settings.data.get("budget_usd") or 0)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
 

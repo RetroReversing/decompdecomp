@@ -1,6 +1,8 @@
 # Roadmap
 
-Implemented: bounded compiler preflight before long ROM searches, input-scoped retries, existing-record
+Implemented: bounded compiler preflight before long ROM searches and after saved deep-search improvements,
+explicit profile-induced match results, opt-in mapped source before deep mutations, advisory type/retail checks,
+side-effect-free comparison and unsigned product order hypotheses, input-scoped retries, existing-record
 structure-return and SDK-style setter hypotheses, typed local SDK candidates by name, separate MIPS function/export
 layout diagnostics, and compressed-cartridge repository identity checks. See [the live API workflow](docs/LIVE_API_WORKFLOW.md).
 Planned: preflight integration with imported projects' own file-compiler workflows, standalone-layout adapters for
@@ -9,13 +11,29 @@ existing objdiff/whole-image gates; no generic preflight changes their build set
 
 Deep search now chains bounded local repairs after random improvements. Register reuse hypotheses share
 all normal draft/permuter paths. Fresh exact judgments repair score-zero/open bookkeeping; plain return
-conflicts can recover a buildable ROM candidate with an honest baseline and retained history. Adaptive
-per-function budgets and a pool of alternative search candidates remain planned follow-ups.
+conflicts can recover a buildable ROM candidate with an honest baseline and retained history. A bounded numeric/structural source frontier and immediate reseeding now preserve useful alternatives.
+Project sweeps now use progress-sensitive soft allowances within the requested hard cap; rotated
+functions remain eligible next run. Explicit single-function searches keep their requested limit.
 
 Bounded integer/call repairs now include evidence-led local widening, candidate-owned callee prototype widths,
 integer lifetime splits/merges, call distribution into branches, terminal goto leaves and switch layout variants.
 They share the ROM/imported-project judge and existing budgets; a better similarity score remains a draft.
-General CFG liveness, fallthrough switch rewriting and shared-header prototype inference remain future work.
+Bounded scalar CFG liveness now supports masked-value reuse, extra lifetime merges and m2c draft hints.
+Unknown syntax gives no advice. General C/C++ CFG analysis, fallthrough switch rewriting and shared-header
+prototype inference remain future work.
+
+Targeted address association and call initialization now share bounded local repair paths.
+Input-scoped experiment costs reduce ineffective family priority while retaining exploration.
+Last exact source/header/compiler evidence travels with saved progress; imported evidence never
+accepts code. MIPS stack diagnostics separate saved slots from local operands. Equivalent readers
+for non-MIPS architectures and imported-project GUI diagnostics remain planned. Experimental
+bitfield frame hypotheses require explicit local-family selection.
+
+Connected exact repair sequences now guide shared family ordering and deep local follow-ups.
+Each candidate retains its own mismatch advice. Compact build-scoped evidence reaches agents;
+failed rechecks of locally captured exact source raise deduplicated regression alerts.
+See [learned repair search](docs/learned-repair-search.md). Durable cross-restart alternative
+source frontiers and controlled live agent-token comparisons remain future work.
 
 What's planned for decompdecomp, roughly in order, and why. Every item keeps the rule that matters most: a match is
 byte-identical after linking (ROM mode) or objdiff 100% (fork mode). Nothing here accepts code that only does the
@@ -80,6 +98,11 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 
 | Feature | N64 | PS1 | PS2 | PSP | GameCube · Wii | Windows PC | DS | Public decomps |
 | :-- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| Targeted scalar scheduling repairs and experiment costs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Portable last-exact evidence | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ historical, own build |
+| Stack slot layout diagnostics | ✓ | ✓ | ✓ | ✓ | — reader planned | — reader planned | — reader planned | — GUI adapter planned |
+| Learned repair sequences, scoped brief evidence and sweep rotation | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ build-scoped |
+| Last-exact failed-recheck alerts | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ local judgments only |
 | Status | recommended | beta | beta | beta | beta | beta | beta | the project's own |
 | Start from your own copy | ✓ | ✓ | ✓ | ✓ unencrypted or decrypted program and modules (ISO, CSO, CHD) | ✓ | ✓ | ✓ | fork by address |
 | Judge | link · compare | link · compare | link · compare | link · compare | objdiff | objdiff | objdiff | objdiff |
@@ -1070,3 +1093,15 @@ C candidates only when their existing build successfully probes the candidate ob
 linked assembly remain unchanged. Projects without such a rule remain blocked and need a build adapter.
 ROM → imported and imported → imported C are judged by the receiving project's objdiff configuration;
 imported → ROM and ROM → ROM retain their link/byte judge. Cross-compiler exact candidates are permitted.
+
+## Verified wrapper families and between-turn local repairs
+
+Implemented: same-project small MIPS ROM wrapper reuse with one paired global-address substitution;
+integer scalar-address lifetimes and ordered bitmask-store proposals in shared draft/permuter/agent paths;
+and an opt-in bounded local pass after single-function agent near misses in both judge modes.
+All proposals retain the normal judge and cache/budget gates.
+
+Wrapper-family discovery on imported projects and non-MIPS targets: **—**. The initial index needs raw
+ROM instructions plus resolved MIPS HI16/LO16/JAL relocation pairs. Imported objdiff units do not expose
+that same target representation; an object-format adapter and equivalent relocation checks are needed.
+Cross-project wrapper-family inference and multiple changing globals remain future work.

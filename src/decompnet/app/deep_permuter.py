@@ -18,7 +18,10 @@ from . import (
     draft_repairs,
     permuter_focus,
     permuter_local,
-    region_repairs,
+    repair_ranking,
+    repair_sequences,
+    search_frontier,
+    search_turns,
     stack_padding_repairs,
 )
 from .permute import Permuter, State
@@ -75,11 +78,14 @@ class Search(Permuter):
         self.current_family = ''
         self.last_outcome = ''
         self.last_score = None
+        self.allowance = search_turns.Allowance(minutes*60,time.monotonic()) if getattr(log,"adaptive_budget",False) else None
 
     def check(self):
         self.log.check_cancel()
         if time.monotonic() >= self.deadline:
             raise SearchLimit('Time limit reached')
+        if self.allowance and (reason := self.allowance.reason(time.monotonic())):
+            raise SearchLimit(reason)
         if self.tested >= self.limit or self.visited >= self.limit*20:
             raise SearchLimit('Variant limit reached')
 
@@ -159,6 +165,22 @@ class Search(Permuter):
             self.improvements += int(bool(result.get('applied')))
         return result
 
+    def _repair_preflight(self, agent, proj, fn, best, fork):
+        """A new saved source merits new flag probes before more source mutations."""
+        if fork or not hasattr(self.net, '_comparison_digest'):
+            return best
+        previous = self.phase
+        self._let_go(agent, fn)  # settings application requires an unclaimed function
+        try:
+            self._compiler_preflight(proj, fn, None, self.deadline)
+        finally:
+            self.phase = previous
+            fresh = self.net._function(fn['name'], proj['slug'])
+            if fresh['status'] == 'open' and not self._hold(agent, fresh, count_turn=False):
+                raise NetworkError('Another worker claimed this function during the flag check; saved progress is preserved.')
+        self.best = fresh['best_score']
+        return fresh['best_score']
+
     def _baseline(self, agent, proj, fn, state, fork):
         # Baseline evidence must come from today's compiler/header, including score-zero open rows.
         self.measuring_baseline = True
@@ -199,14 +221,23 @@ class Search(Permuter):
         """Regenerate from each saved winner, sharing this search's deadline, cache and allowance."""
         flags = compiler_for(self.net.cfg(proj), fn['vram']).get('flags', []) if not fork else []
         trials = 0
-        detour_used = False
+        detours_used = set()
+        alternatives = search_frontier.Frontier()
         source = fn['best_source']
         context = self.net._context(proj['id'],fn['unit'])
         header = self.net.forks.permuter_header(fork,fn['name']) if fork else (context['header'] if context else '')
+        best = self._repair_preflight(agent, proj, fn, best, fork)
+        proj = self.net.project_row(proj['slug'])
+        fn = self.net._function(fn['name'], proj['slug'])
+        flags = compiler_for(self.net.cfg(proj), fn['vram']).get('flags', []) if not fork else []
+        source = fn['best_source']
+        initial_rows = self.winner_diff[0] if self.winner_diff else repair_ranking.evidence(self.net,fn['id'],agent.id)
+        source_rows = {source:initial_rows}
+        lineage = repair_sequences.Lineage(self.net,proj,fn,source,initial_rows)
         while best > 0:
             self.check()
             self.local_seen.add(source)
-            rows = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0]
+            rows = source_rows.get(source,[])
             labels = {}
             choices = draft_repairs.variants(source, fn['name'], proj['arch'], fn['asm'] or '', flags, labels=labels, limit=None, header=header)
             stack = stack_padding_repairs.grow(source, fn['name'], proj['arch'], rows)
@@ -217,12 +248,12 @@ class Search(Permuter):
                 labels.setdefault(candidate, family)
                 choices.append(candidate)
             families = list(dict.fromkeys(labels.get(c, 'local_repair') for c in choices))
-            ranked = adaptive_repairs.order(self.net, proj, fn, rows, families)
+            ranked = adaptive_repairs.order(self.net, proj, fn, rows, repair_ranking.order(families, rows))
             # Every other burst keeps the original order for exploration.
             if self.refinement_rounds % 2 == 0:
-                choices.sort(key=lambda c: ranked.index(labels.get(c, 'local_repair')))
-            region_baseline = region_repairs.snapshot(rows)
-            detour = None
+                preferred = lineage.preferred(source)
+                choices.sort(key=lambda c: (labels.get(c,'local_repair') not in preferred, ranked.index(labels.get(c, 'local_repair'))))
+
             for candidate in dict.fromkeys(choices):
                 if candidate in self.local_seen:
                     continue
@@ -230,28 +261,48 @@ class Search(Permuter):
                     return best, self.net._function(fn['name'], proj['slug'])['best_source']
                 self.local_seen.add(candidate)
                 trials += 1
-                with repair_trial({'kind': 'deep local repair', 'family': labels.get(candidate, 'local_repair'),
-                                   'base_source_sha256': hashlib.sha256(source.encode()).hexdigest()}):
-                    score = self._score(agent, proj, fn, candidate, best, fork)
-                if score is not None and best < score <= best * 1.25 and not detour_used:
-                    measured_rows = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0]
-                    regional_gain = 0 if getattr(self, '_trial_reused', False) else region_repairs.gain(
-                        region_baseline, region_repairs.snapshot(measured_rows))
-                    priority = (-regional_gain, score)
-                    if detour is None or priority < detour[0]:
-                        detour = (priority, candidate)
+                self._parent_rows = rows
+                try:
+                    with repair_trial({'kind': 'deep local repair', 'family': labels.get(candidate, 'local_repair'),
+                                       'base_source_sha256': hashlib.sha256(source.encode()).hexdigest()}):
+                        score = self._score(agent, proj, fn, candidate, best, fork)
+                finally:
+                    del self._parent_rows
+                if score is not None and best < score <= best * 1.25 and not getattr(self, '_trial_reused', False):
+                    measured_rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
+                    alternatives.offer(candidate, score, measured_rows)
+                    source_rows[candidate] = measured_rows
+                    lineage.retain(source,candidate,labels.get(candidate,'local_repair'))
                 if score is not None and score < best:
+                    source_rows[candidate] = repair_ranking.evidence(self.net,fn['id'],agent.id)
+                    lineage.retain(source,candidate,labels.get(candidate,'local_repair'),exact=score==0)
                     best = score
+                    fresh = self.net._function(fn['name'], proj['slug'])
+                    if score > 0 and fresh['best_source'] == candidate:
+                        best = self._repair_preflight(agent, proj, fresh, best, fork)
+                        proj = self.net.project_row(proj['slug'])
+                        flags = compiler_for(self.net.cfg(proj), fn['vram']).get('flags', []) if not fork else []
                     fn = self.net._function(fn['name'], proj['slug'])
                     source = fn['best_source']
+                    if best > 0 and (source != candidate or repair_sequences.profile(self.net,proj,fn) != lineage.profile):
+                        # Do not credit source steps across a compiler/input change or reuse old-profile advice.
+                        self.local_seen.clear()
+                        alternatives = search_frontier.Frontier()
+                        detours_used.clear()
+                        source_rows = {source:[]}
+                        lineage = repair_sequences.Lineage(self.net,proj,fn,source,[])
+                        self.winner_diff = None
                     break
             else:
-                if detour and not detour_used:
-                    # One extra source shape, under this same deadline/allowance. It is never
-                    # saved as the best C; only a later normal judge improvement can be saved.
-                    detour_used = True
-                    source = detour[1]
-                    self.log('Trying one bounded source-shape detour; saved best C is unchanged.')
+                detour = next((node for node in alternatives.nodes
+                               if node['source'] not in detours_used and node['source'] not in self.local_seen), None)
+                # Local trials are already in local_seen; allow each retained source one expansion.
+                if detour is None:
+                    detour = next((node for node in alternatives.nodes if node['source'] not in detours_used), None)
+                if detour and len(detours_used) < 3:
+                    detours_used.add(detour['source'])
+                    source = detour['source']
+                    self.log('Trying a retained instruction-shape alternative; saved best C is unchanged.')
                     continue
                 break
         return best, self.net._function(fn['name'], proj['slug'])['best_source']
@@ -307,13 +358,18 @@ class Search(Permuter):
             self.last_outcome, self.last_score = 'compiling', None
             self.report()
             self._trial_outcome = 'unscored'
-            rows = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0]
+            rows = getattr(self,'_parent_rows',repair_ranking.evidence(self.net, fn['id'], agent.id))
             policy_focus = permuter_focus.classify(rows)
             policy_profile = adaptive_repairs.profile(self.net, proj, fn)
             started = time.monotonic()
             score = super()._score(agent, proj, fn, source, best, fork)
             elapsed_ms = max(0, round((time.monotonic() - started) * 1000))
-            if not self.measuring_baseline:
+            if self.allowance and not self.measuring_baseline and getattr(self,'_trial_outcome','') == 'scored':
+                self.allowance.observe(score is not None and score < best,getattr(self,'_trial_output',None),time.monotonic())
+            if getattr(self, '_trial_outcome', '') == 'no_edit':
+                self.tested -= 1
+                self.skipped += 1
+            if not self.measuring_baseline and getattr(self, '_trial_outcome', '') != 'no_edit':
                 adaptive_repairs.record(self.net, policy_profile, policy_focus, self.current_family, best, score, elapsed_ms, origin="deep permuter")
             if score is not None and score > 0:
                 with self.net.store.tx() as db:
@@ -364,7 +420,21 @@ def run(net, slug, name, minutes, max_variants, log):
         log('Compiler preflight (advisory): '+warning)
     log(f'Searching {name}: {minutes} minutes, up to {max_variants:,} compiled candidates. Checking the saved baseline first.')
     log('Local repairs follow the current instruction differences; then random rewrites explore further variants.')
+    from .source_diagnostics import hints
+    for hint in hints(fn['best_source'], name):
+        log('Source check (advisory): '+hint)
     try:
+        # Explicitly configured local source carries real records/macros and original line breaks.
+        # Try it before mutating an accumulated machine draft; never fetch a reference automatically.
+        if hasattr(net, '_comparison_digest'):
+            search.check()
+            from . import source_preparation
+            preparation = source_preparation.run(search, proj, state, log, budget=min(1, max_variants),
+                                                 seconds=min(20, max(1, search.deadline-time.monotonic())), only={name})
+            search.tested += preparation['tested']
+            search.improvements += preparation['improved']
+            proj, fn = net.project_row(slug), net._function(name, slug)
+            search.best = fn['best_score']
         search._compiler_preflight(proj, fn, state, search.deadline)
         proj, fn = net.project_row(slug), net._function(name, slug)
         if fn['status'] == 'matched':
@@ -382,6 +452,9 @@ def run(net, slug, name, minutes, max_variants, log):
                 if baseline == 0:
                     reason = 'Matched'
                 else:
+                    from .stack_layout import text as stack_text
+                    if diagnostic := stack_text(proj['arch'], repair_ranking.evidence(net, fn['id'], agent.id)):
+                        log(diagnostic)
                     search.phase = 'local repairs'
                     search.log('Baseline measured; trying targeted local repairs before random rewriting.')
                     best, _ = search.local_repairs(agent, proj, net._function(name, slug), baseline, fork)

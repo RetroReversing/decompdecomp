@@ -9,8 +9,10 @@ import re
 from .. import m2cfix, seeds
 from ..forks.csource import _blank, find
 from . import (
+    address_association_repairs,
     branch_layout_repairs,
     branch_locals,
+    call_initialization_repairs,
     callee_prototype_repairs,
     captured_control_repairs,
     captured_repairs,
@@ -18,15 +20,18 @@ from . import (
     evidence_repairs,
     expression_repairs,
     float_intermediate_repairs,
+    global_store_repairs,
     inferred_layout_repairs,
     integer_lifetime_repairs,
     lifetime_repairs,
     load_pair_repairs,
     local_widening_repairs,
     local_width_repairs,
+    masked_reuse_repairs,
     mmio_repairs,
     near_match_repairs,
     near_repairs,
+    operand_order_repairs,
     pattern_repairs,
     pointer_cast_repairs,
     register_repairs,
@@ -43,7 +48,7 @@ from . import (
 AGENT_FAMILIES = ('arithmetic_operand_order', 'call_forwarded_arguments', 'small_copy', 'typed_record_address', 'one_shot_scope', 'one_shot_unwrap',
                   'pointer_block_scope', 'array_address_share', 'combined_integer_lifetimes', 'inferred_record_layout',
                   'float_product_intermediate','pointer_chase_reuse','independent_assignment_order',
-                  'terminal_early_return','member_store_replay')
+                  'terminal_early_return','member_store_replay','scalar_global_address','split_mask_stores')
 
 LIMIT = 20
 _IDENT = r'[A-Za-z_]\w*'
@@ -66,6 +71,12 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     offset = opening + 1
     proposals = []
     labels = labels if labels is not None else {}
+    for family, text in operand_order_repairs.variants(source, name, header):
+        proposals.append(text)
+        labels[text] = family
+    for family,text in global_store_repairs.variants(source,name,header):
+        proposals.append(text)
+        labels[text]=family
     for family, text in captured_control_repairs.variants(source,name):
         proposals.append(text)
         labels[text] = family
@@ -90,7 +101,8 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     for family, text in evidence_repairs.variants(source, name, header):
         proposals.append(text)
         labels[text] = family
-    for family, text in register_reuse_repairs.variants(source, name):
+    for family, text in (address_association_repairs.variants(source, name) + call_initialization_repairs.variants(source, name)
+                         + masked_reuse_repairs.variants(source, name) + register_reuse_repairs.variants(source, name)):
         proposals.append(text)
         labels[text] = family
     for text in mmio_repairs.variants(source, name, arch):
@@ -213,6 +225,8 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     groups = {}
     from .repair_preflight import invalid_call
     for text in dict.fromkeys(proposals):
+        if text == source:
+            continue
         if invalid_call(text, name):
             continue
         groups.setdefault(labels[text],[]).append(text)

@@ -47,3 +47,44 @@ Measured large-function findings (`-O2 -g3`, 32-bit MIPS)
   edit to finish the match. Never replace saved best C with an unverified regression.
 - These were observed on one 883-instruction function, not established for every GCC version. The
   repository's `docs/COMPILER_MATCHING_LEARNINGS.md` records evidence, failed ideas and update rules.
+
+Register-only finishes
+- A masked or narrowed value may need an existing local, rather than a new temporary or an in-place
+  assignment to its input. Try `scratch = (u16)width; centre = (limit - scratch) / 2;` only when the old
+  `scratch` value is dead on every path. Preserve resets before later uses, including loop back edges.
+- `run_local_repairs` offers `masked_value_reuse` and `cfg_integer_lifetimes`; autopilot's repair phase
+  and deep search use the same rules. Draft lifetime hints keep m2c's original names and suggest possible
+  groupings. They are advice, not proof of the original declarations or a match.
+- Check actual register/opcode differences before searching constants. A numeric load offset and
+  `%lo(symbol)` can render differently while encoding the same operand. Search guidance normalizes
+  resolvable operands; the displayed diff, score and compiler/link judge stay unchanged.
+- Keep an instruction-order alternative alongside a register-only alternative. Numeric similarity
+  alone can discard a source shape which a later small edit can finish.
+
+Expression and frame shape
+- Address association can change allocation/order: compare `(base + displacement) + index` with
+  `base + (displacement + index)` while preserving pointer bounds, types and evaluation side effects.
+- An optimized-away conditional or comma-expression placement can still change this old compiler's
+  intermediate lifetimes and final scheduling. Treat this as a measured source-shape experiment,
+  not a reason to invent arbitrary predicates or read uninitialized values.
+- An inline helper's aggregate/bitfield local affected stack-frame reservation in one verified case.
+  This is an observation, not a general padding rule. Inspect all stack offsets and verify the bytes.
+- Keep the successful source, header and compiler profile together. Do not switch compiler hosts or
+  repeat wide flag sweeps once controlled comparisons show identical output for the relevant input.
+
+See `docs/COMPILER_MATCHING_LEARNINGS.md` for controlled evidence and failed experiments.
+
+### Address association and call initialization
+
+Equivalent byte-pointer expressions can schedule differently in KMC GCC. The bounded
+`address_association` family tries constant displacement grouping, including candidate-owned
+inline helpers. Calls and incrementing expressions are excluded from these transformations.
+The `call_initialization` family can move a constant local reset into a call's first argument
+when scalar CFG analysis proves every relevant path reaches that call before a read or
+redefinition. Unknown syntax, escapes and unresolved loops are rejected.
+
+Stack diagnostics distinguish frame size, register-save offsets and other stack operands.
+Do not infer an object's size or add padding from the frame delta alone. The
+`experimental_bitfield_frame` local family is available only by explicit selection; it is
+excluded from automatic repair defaults. Its compiler-specific signed-halfword helper storage
+is an experiment, and every candidate still requires the ordinary exact judge.
