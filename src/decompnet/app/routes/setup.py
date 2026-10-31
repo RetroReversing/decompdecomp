@@ -285,6 +285,24 @@ def register(app: App) -> None:
             await call(manager.stop, str(data["id"]))
         return JSONResponse({"ok": True})
 
+    @mcp.custom_route("/api/agents/login", methods=["POST"])
+    async def api_agents_login(request: Request) -> Response:
+        if (bad := guard(request, write=True)):
+            return bad
+        try:
+            sid = str((await body(request)).get("id", ""))
+            session = manager.sessions.get(sid)
+            if session is None:
+                raise ValueError("This helper no longer exists.")
+            kind = kinds.get(session.kind)
+            exe = agents._which(kind.command)
+            if not exe:
+                raise ValueError(f"{kind.name} is not installed.")
+            await call(kind.login, exe)
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            return fail(ValueError(f"Could not open sign-in: {error}"))
+        return JSONResponse({"ok": True})
+
     @mcp.custom_route("/api/agents/restart", methods=["POST"])
     async def api_agents_restart(request: Request) -> Response:
         """Start a stopped or paused helper again."""

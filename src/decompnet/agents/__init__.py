@@ -134,6 +134,11 @@ class Agent:
         """API-equivalent USD, when this provider has known rates and a complete usage breakdown."""
         return None
 
+    supports_login = False
+
+    def login(self, exe: str) -> None:
+        raise ValueError("Open a terminal and follow this agent’s sign-in instructions.")
+
     def investigation_command(self, exe: str, prompt: str) -> list[str] | None:
         """Interactive repository work, with the CLI's normal permissions; None when unsupported."""
         return None

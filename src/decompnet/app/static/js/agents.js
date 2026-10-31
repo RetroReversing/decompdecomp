@@ -240,7 +240,7 @@ function renderSessions(sessions) {
           ${live ? '' : `<button data-remove="${id}" type="button">Remove agent</button>`}</div></details></div>
       ${agentMetrics(s, b)}
       <span class="state ${s.state === 'paused' ? 'err' : ''}">${helperState(s, claim)}</span>
-      ${todo ? `<span class="todo-line">${esc(todo)}</span>` : ''}
+      ${todo ? `<span class="todo-line">${esc(todo)}</span>${s.can_login && !live && /login|sign.?in/i.test(s.todo || "") ? `<button class="ghost" type="button" data-login="${id}">Sign in to ${esc(s.kind_name)}</button>` : ""}` : ''}
       ${agentUsage(s)}
       <details class="agent-details" data-agent-details="${id}" ${agentDetailsOpen.has(s.id) ? 'open' : ''}><summary>Details</summary><div class="agent-details-body">
       <span class="facts-line">${facts.join(' · ')}</span>
@@ -315,6 +315,12 @@ function renderSessions(sessions) {
         closeDialog(); await poll(false);
       } catch (error) { toast(esc(error.message),'err'); }
     };
+  }; });
+  box.querySelectorAll("[data-login]").forEach(button => { button.onclick = async () => {
+    button.disabled = true;
+    try { await api("/api/agents/login", {method:"POST", body:{id:button.dataset.login}}); toast("Complete sign-in in the terminal, then press Start again."); }
+    catch (error) { toast(esc(error.message), "err"); }
+    finally { button.disabled = false; }
   }; });
   act("[data-stop]", "/api/agents/stop", (b) => ({ id: b.dataset.stop }));
   act("[data-remove]", "/api/agents/stop", (b) => ({ id: b.dataset.remove, remove: true }));

@@ -65,6 +65,14 @@ class KimiCode(Agent):
     takes_effort = True
     efforts = ('low', 'high', 'max')
 
+    supports_login = True
+
+    def login(self, exe: str) -> None:
+        from ..hostenv import login_terminal
+
+        # Authenticate the original account, not a helper’s isolated copy of its credentials.
+        login_terminal([exe, "login"], {"KIMI_CODE_HOME": str(kimi_home())})
+
     def config_model(self):
         return config().get('default_model') or None
 
