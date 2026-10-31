@@ -48,6 +48,7 @@ ctx.S.slug = "demo";
 
 ctx.renderCompilerProgress(null, { tried: 4, skipped: 2, improvements: [{}, {}], confirmed: 1 });
 assert.equal(fields.get("[data-current]").textContent, "Comparison finished");
+assert.equal(box.dataset.finished, "true");
 assert.equal(fields.get("[data-completed]").textContent, 4);
 assert.ok(fields.get("[data-profile]").textContent.includes("Nothing has been applied"));
 ctx.renderCompilerProgress(null);
@@ -181,3 +182,18 @@ async function checkStopButton() {
   assert.equal(get('compilerProgress[data-current]').textContent, 'Comparison stopped');
 }
 checkStopButton().catch((error) => { console.error(error); process.exitCode = 1; });
+
+// Scope and button text must agree with the actual comparison options.
+const scopeFields = new Map(['compilerFlagsOnly','compilerRetest','compilerTestScope','testInstalledCompilers'].map(id => [id, {}]));
+const scopeContext = {$: id => scopeFields.get(id)};
+vm.createContext(scopeContext);
+const scopeSource = read('steering');
+vm.runInContext(scopeSource.slice(scopeSource.indexOf('function updateCompilerTestScope'), scopeSource.indexOf('$("testInstalledCompilers").onclick')), scopeContext);
+scopeContext.updateCompilerTestScope();
+assert.match(scopeFields.get('compilerTestScope').textContent, /All installed compilers/);
+scopeFields.get('compilerFlagsOnly').checked = true;
+scopeFields.get('compilerRetest').checked = true;
+scopeContext.updateCompilerTestScope();
+assert.match(scopeFields.get('compilerTestScope').textContent, /Current compiler only/);
+assert.match(scopeFields.get('compilerTestScope').textContent, /including completed attempts/);
+assert.equal(scopeFields.get('testInstalledCompilers').textContent, 'Retest compiler settings');
