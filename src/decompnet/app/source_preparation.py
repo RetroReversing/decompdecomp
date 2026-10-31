@@ -72,13 +72,30 @@ def symbol_aliases(text):
     return result
 
 
+def contexts(text):
+    """Explicit coherent source/header alternatives, never cross-product SDK revisions."""
+    result=[]
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith('#'):continue
+        parts=line.split('|')
+        if len(parts)!=2 or not parts[1].strip():
+            raise NetworkError('Use destination = source_symbol @ relative/file.c | relative/header.h for each context alternative.')
+        items=mappings(parts[0])
+        if len(items)!=1:raise NetworkError('Each context alternative needs one function mapping.')
+        result.append((*items[0],parts[1].strip()))
+        if len(result)>16:raise NetworkError('Select at most 16 coherent source/header alternatives.')
+    return result
+
+
 def configure(net, proj, data):
-    cfg = {key: str(data.get(key, '')).strip() for key in ('root', 'header', 'include_roots', 'mappings', 'overrides', 'aliases', 'definitions')}
+    cfg = {key: str(data.get(key, '')).strip() for key in ('root', 'header', 'include_roots', 'mappings', 'overrides', 'aliases', 'definitions', 'contexts', 'helpers')}
     cfg['enabled'] = bool(data.get('enabled'))
     if any(len(value) > 128_000 for value in cfg.values() if isinstance(value, str)):
         raise NetworkError('Source preparation settings are too large; choose a smaller mapping.')
     from . import source_definitions
     source_definitions.mappings(cfg['definitions'])
+    source_definitions.mappings(cfg['helpers'])
+    contexts(cfg['contexts'])
     mappings(cfg['mappings'])
     overrides(cfg['overrides'])
     symbol_aliases(cfg['aliases'])
@@ -88,6 +105,11 @@ def configure(net, proj, data):
             reader.file(reader.root / file)
         for _, file in source_definitions.mappings(cfg['definitions']):
             reader.file(reader.root / file)
+        for _, file in source_definitions.mappings(cfg['helpers']):
+            reader.file(reader.root / file)
+        for _, _, file, header in contexts(cfg['contexts']):
+            reader.file(reader.root / file)
+            reader.file(reader.root / header)
         if cfg['header']:
             reader.file(Path(cfg['header']).expanduser())
     with net.store.tx() as db:
@@ -203,6 +225,9 @@ def prepare(reader, cfg, mapping, aliases, fallback):
     source = f'#line {original[:span[0]].count(chr(10)) + 1} "reference.c"\n' + rename(body, aliases)
     from .source_type_context import referenced
     header += '\n' + referenced(original, body, header)
+    from .source_context import helpers, prototypes
+    header += helpers(reader, cfg, body, header, macros)
+    header += prototypes(original, body, header, symbol)
     selected = []
     used=set(re.findall(_IDENT,source))
     # Follow only macros reached by this candidate, rather than pulling every header global in.
@@ -224,12 +249,19 @@ def prepare(reader, cfg, mapping, aliases, fallback):
 
 def prepare_variants(reader, cfg, mapping, aliases, fallback):
     """Prefer authorized definitions, then try the extern-only context under the same budget."""
-    preserved = prepare(reader, cfg, mapping, aliases, fallback)
-    result = [preserved]
+    result = [prepare(reader, cfg, mapping, aliases, fallback)]
     if cfg.get('definitions'):
         plain = prepare(reader, {**cfg, 'definitions': ''}, mapping, aliases, fallback)
-        if plain != preserved:
-            result.append(plain)
+        if plain not in result:result.append(plain)
+    # Try at most two explicitly paired alternatives; never mix one SDK's body with
+    # another SDK's header. Each costs the same shared compile/time allowance.
+    count=0
+    for dest, symbol, file, header in contexts(cfg.get('contexts', '')):
+        if dest!=mapping[0]:continue
+        variant=prepare(reader, {**cfg, 'header': str(reader.root/header)}, (dest,symbol,file), aliases, fallback)
+        if variant not in result:result.append(variant)
+        count+=1
+        if count>=2:break
     return result
 
 
@@ -257,7 +289,7 @@ def promote_context(net, db, fn, expected, header, agent):
     return version
 
 
-def attempt(permuter, proj, fn, source, header, agent, fork):
+def attempt(permuter, proj, fn, source, header, agent, fork, diagnostic=None):
     net = permuter.net
     if fork:
         # The existing build must supply its own compatible types. Never edit its build setup or headers.
@@ -267,6 +299,10 @@ def attempt(permuter, proj, fn, source, header, agent, fork):
     if not result.ok:
         from .preparation_diagnostics import compile_error
         raise NetworkError('Prepared C did not compile: ' + compile_error(net, fn, result.log))
+    from .source_context import compiler_hints
+    for hint in compiler_hints(result.log):
+        log.warning('source preparation %s: %s', fn['name'], hint)
+        if diagnostic:diagnostic(fn['name'] + ': ' + hint)
     from ..rom.export import _single_definition
     if net.is_rom(proj) and not _single_definition(result.obj, fn['name']):
         raise NetworkError('Prepared declarations emitted extra function bodies. Supply a declarations-only header.')
@@ -320,7 +356,11 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                 if fn['status'] != 'open':
                     continue
                 fallback = net.forks.permuter_header(fork, fn['name']) if fork else net._context(proj['id'], fn['unit'])['header']
-                for source, header in prepare_variants(reader, cfg, mapping, aliases, fallback):
+                variants = prepare_variants(reader, cfg, mapping, aliases, fallback)
+                retried = False
+                for source, header in variants:
+                    from .source_context import context_hints
+                    for hint in context_hints(source, header):log_line(fn['name'] + ': ' + hint)
                     if st.stop.is_set() or report['tested'] >= budget or time.monotonic() >= deadline:
                         break
                     fresh = net.project_row(proj['slug'])
@@ -340,8 +380,15 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                     with repair_trial({'kind': 'local source preparation', 'source_sha256': hashlib.sha256(source.encode()).hexdigest(),
                                        'header_sha256': hashlib.sha256(header.encode()).hexdigest()}):
                         try:
-                            score = attempt(permuter, fresh, fn, source, header, agent, fork)
+                            score = attempt(permuter, fresh, fn, source, header, agent, fork, log_line)
                         except NetworkError as exc:
+                            if (str(exc).startswith('The function, header or build inputs changed') and not fork
+                                    and not retried and not st.stop.is_set() and time.monotonic()<deadline
+                                    and report['tested']<budget):
+                                retried=True
+                                variants.append((source,header))
+                                log_line(fn['name'] + ': inputs changed; retrying once against fresh destination state.')
+                                continue
                             report['errors'].append(f'{fn["name"]}: {exc}')
                             log_line(report['errors'][-1])
                             if not str(exc).startswith(('The function, header or build inputs changed', 'The function claim changed')):

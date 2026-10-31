@@ -568,3 +568,20 @@ at 275; adding dead-result reuse, field-value lifetimes and target-observed load
 the remaining steps. This is a private regression replay of an already-known match, not a
 claim that Autopilot finds every comparable routine within that budget. No global search
 budget, beam depth or compiler setting was enlarged for this change.
+
+### Reference SDK compatibility and helper context (31 October 2026)
+
+A subsequent source-assisted IDO 5.3 batch recovered ten routines / 5,688 bytes with a complete original-cartridge
+comparison. Eight matched with `-O3`, one with `-O2` and one with `-O1`; all used
+`-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul`. These are verified working profiles, not uniquely identified
+original settings. A documented callback member in an older SDK explained an allocation-size discrepancy;
+arbitrary padding was unnecessary. Missing word-operation macros could compile as unintended implicit calls.
+Private float-return helper declarations changed the ABI. A math routine retained union-based bit constants and
+original expression order and passed both the byte judge and complete-image rebuild. Static helper context
+improved other drafts without matching them. Calls in loop increments also exposed an extractor false positive.
+
+The app now offers explicitly paired source/header alternatives, selected static helper definitions and actual
+same-file prototypes; it warns about incompatible typedefs, missing macro-like calls and implicit declarations.
+Original selected object initializers are retained verbatim. A bounded stale-input retry recomputes destination
+state and never bypasses claim or promotion guards. Synthetic tests verify these mechanisms independently of
+the private manual batch; they are not a claim that the new code automatically recovered those ten functions.

@@ -1149,3 +1149,9 @@ Generic source repairs reach ROM and imported-project mode on supported 32-bit p
 MIPS call/load evidence requires target assembly; other-processor argument recovery and
 64-bit record layouts: **—**, need ABI-aware argument and pointer-width adapters. Shared
 headers, symbol maps and compiler profiles are not changed by these local hypotheses.
+
+- Done: explicit coherent reference source/header alternatives, same-file private helper prototypes,
+  selected static inlining helpers, missing-macro/mixed-typedef advisories and a single bounded stale-input retry.
+  Original bit-pattern object initializers remain verbatim; extraction rejects call expressions posing as definitions.
+  Imported builds keep their own headers/settings: automatic SDK replacement there is **—**, requires their
+  build system's existing header compatibility workflow. SDK-version identity remains advisory, not inferred fact.
