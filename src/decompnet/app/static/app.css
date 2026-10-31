@@ -1234,4 +1234,18 @@ details.more[open] > summary::before { content: "− "; }
 #crossGameWork { padding: 12px 16px; border-bottom: 1px solid var(--line); }
 #crossGameLog { max-height: 140px; }
 
+.compiler-view-controls { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+.compiler-view-controls label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); flex: 1; min-width: 150px; }
+.compiler-profile { border: 1px solid var(--line); border-radius: 6px; margin: 10px 0; overflow: hidden; }
+.compiler-profile > summary { padding: 12px; cursor: pointer; }
+.compiler-profile-count { display: block; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.compiler-arguments { display: block; white-space: normal; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; margin-top: 5px; color: var(--muted); background: transparent; }
+.compiler-range-list { list-style: none; margin: 0; padding: 0; }
+.compiler-range { padding: 10px 12px; border-top: 1px solid var(--line); }
+.compiler-range-heading { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.compiler-range-heading button { margin-left: auto; }
+.compiler-range-heading code { overflow-wrap: anywhere; }
+.compiler-range-reason { margin-top: 6px; }
+.compiler-range-reason summary { font-size: 12px; color: var(--muted); cursor: pointer; }
+.compiler-view-controls select { min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); font: inherit; }
 #progressSyncBar.determinate i { animation: none; transform: none; transition: width .2s; }
