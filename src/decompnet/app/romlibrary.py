@@ -57,8 +57,17 @@ def _candidate(path: Path, platform: str) -> int:
         size = path.stat().st_size
         if not 0 < size <= MAX_FILE_BYTES:
             return 0
-        if platform and not consoles.get(platform).library_candidate(path, size):
-            return 0
+        if platform:
+            if not consoles.get(platform).library_candidate(path, size):
+                return 0
+        else:
+            # A repository pasted by URL can have no platform metadata. Ask consoles to identify the file
+            # before applying their size and format checks, rather than guessing from its extension.
+            with path.open('rb') as stream:
+                head = stream.read(consoles.HEAD_BYTES)
+            for console in consoles.startable():
+                if console.sniff(head, path) and not console.library_candidate(path, size):
+                    return 0
         return size
     except (OSError, ValueError):
         return 0

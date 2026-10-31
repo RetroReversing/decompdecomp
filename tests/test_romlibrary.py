@@ -75,6 +75,17 @@ def test_n64_target_extension_does_not_control_console_identity(tmp_path):
     root.mkdir()
     cfg = {'path': 'baserom.n64', 'sha1': hashlib.sha1(original).hexdigest()}
     assert romlibrary.find(project(root), cfg, str(library))['path'] == str(library / 'game.v64')
+    assert romlibrary.find(project(root, ''), cfg, str(library))['path'] == str(library / 'game.v64')
+
+
+def test_unknown_platform_still_rejects_too_small_n64_file(tmp_path):
+    library = tmp_path / 'library'
+    library.mkdir()
+    (library / 'tiny.rom').write_bytes(b'\x80\x37\x12\x40' + bytes(12))
+    root = tmp_path / 'project'
+    root.mkdir()
+    found = romlibrary.find(project(root, ''), needs((library / 'tiny.rom').read_bytes()), str(library))
+    assert found['path'] is None and found['scanned'] == 0
 
 
 def test_search_skips_archives_and_caps_file_count(tmp_path, monkeypatch):
