@@ -272,9 +272,11 @@ def _fork(net: RomNetwork, slug: str, what: str) -> str:
 
 def project_info(net: RomNetwork, slug: str, detail: bool = False) -> str:
     wish = net.instructions(slug)
-    text = _project_info(net, slug)
+    text = _project_info(net, slug, detail)
     open_ = net.overview(slug).get("suggestions") or []
-    if open_:  # so agents agree with one (suggest the same) rather than repeat it in other words
+    if open_ and not detail:
+        text += f'\nOpen suggestions: {len(open_)} compiler/setup suggestions; project_info(detail=true) lists them.'
+    if open_ and detail:  # so agents agree with one (suggest the same) rather than repeat it in other words
         text += "\nOpen suggestions to the user (suggest the same compiler and flags to agree):\n" + "\n".join(
             f"- {s['toolchain'] or '(setup)'} {' '.join(s['flags'])}"
             + "".join(f" 0x{a:X}-0x{b:X}" for a, b in s.get("ranges", [])) + f": {s['text'][:200]} [{len(s['agents'])} agree"
@@ -286,15 +288,16 @@ def project_info(net: RomNetwork, slug: str, detail: bool = False) -> str:
     return text + (f"\nThe user's instructions for this project (they come first):\n{wish}" if wish else "")
 
 
-def _project_info(net: RomNetwork, slug: str) -> str:
+def _project_info(net: RomNetwork, slug: str, detail: bool = True) -> str:
     if net.fork_slug(slug):
         return net.forks.info(slug)
     ov = net.overview(slug)
     pct = 100 * ov["matched_bytes"] / (ov["bytes"] or 1)
-    ranges = "".join(f"\n  0x{r['start']:X}-0x{r['end']:X}: {r['name']} {' '.join(r['flags'])}" for r in ov["compiler_ranges"])
+    ranges = "".join(f"\n  0x{r['start']:X}-0x{r['end']:X}: {r['name']} {' '.join(r['flags'])}" for r in ov["compiler_ranges"]) if detail else ""
     return (f"{ov['title']} ({ov['rom']['game_code']}, {ov['rom']['region']})\n"
             f"compiler: {ov['compiler']['name']} {' '.join(ov['compiler']['flags'])}"
-            + (f"; these address ranges are built with another:{ranges}" if ranges else "") + "\n"
+            + (f"; these address ranges are built with another:{ranges}" if ranges else
+               f"; {len(ov['compiler_ranges'])} address-range overrides (each claim shows its applicable compiler)" if ov["compiler_ranges"] else "") + "\n"
             + (f"this platform's compilers (for try_compiler): {', '.join(ov['compilers'])}\n" if len(ov["compilers"]) > 1 else "")
             + f"progress: {ov['matched']}/{ov['functions']} functions matched ({pct:.1f}% of code), "
             f"{ov['attempts']} compiles so far, context.h v{ov['context_version']}\n"
@@ -308,9 +311,9 @@ def _claim(net: RomNetwork, agent: Agent, slug: str, function: str, strategy: st
     batch of small ones."""
     strategy = strategy or ("finish" if net.fork_slug(slug) else "easiest")
     if not function and int(count or 1) > 1:
-        return agent_tokens.brief(net, net.claim_many(agent, slug, int(count), strategy), slug, agent)
+        return agent_tokens.claim_packet(net, agent, slug, net.claim_many(agent, slug, int(count), strategy))
     try:
-        return agent_tokens.brief(net, net.claim(agent, slug, function or None, strategy), slug, agent)
+        return agent_tokens.claim_packet(net, agent, slug, net.claim(agent, slug, function or None, strategy))
     except NetworkError as e:
         if not function or not re.search(r"already matched|is set aside|is claimed by|outside this agent|Max tries reached", str(e)):
             raise

@@ -178,6 +178,34 @@ def brief(net, text, slug=None, agent=None):
     return text
 
 
+def claim_packet(net, agent, slug, text):
+    """Normal claiming/renewal already happened; suppress only a packet this agent received unchanged."""
+    rendered = brief(net, text, slug, agent)
+    if not re.search(r'^## CLAIMED', rendered, re.M):
+        return rendered
+    normalized = re.sub(r'lease expires in [^\n]*', 'lease renewed', rendered)
+    stamp = hashlib.sha256(normalized.encode()).hexdigest()
+    sent = getattr(net, '_claim_packets', {})
+    net._claim_packets = sent
+    key = (agent.id, slug)
+    previous = sent.get(key)
+    # A new lease is a new task even if the same source is selected later.
+    leases = tuple(tuple(r) for r in net.store.all(
+        'SELECT c.function_id,c.claimed_at FROM claims c JOIN functions f ON f.id=c.function_id '
+        'WHERE c.agent_id=? AND f.project_id=(SELECT id FROM projects WHERE slug=?) ORDER BY c.function_id', agent.id, slug))
+    sent[key] = (stamp, leases)
+    while len(sent) > 64:
+        del sent[next(iter(sent))]
+    if previous == (stamp, leases) and leases:
+        names = re.findall(r'^## CLAIMED: (.+?)(?:  \([^\n]*\))?$', rendered, re.M)
+        revisions = re.findall(r'candidate revision [0-9a-f]+', rendered)
+        return ('You still hold the unchanged claim: ' + ', '.join(names) + '. No new functions were claimed.\n'
+                + '; '.join(dict.fromkeys(revisions))
+                + '\nUse the candidate already supplied, compile_patch or try_local_repairs. '
+                  'get_candidate recovers C; get_function(section="brief") refreshes supporting details.')
+    return rendered
+
+
 def assembly(net, slug, function, start=0, limit=60, focus="", agent=None):
     fn = net._function(function, slug)
     if net.fork_slug(slug):
@@ -493,6 +521,14 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
             raise stale(net,agent,fn,revision,source,actual)
+        checked = None
+        if family != 'explicit patches':
+            from . import agent_evidence
+            checked = agent_evidence.preflight(net,agent,slug,fn,source)
+            if checked and checked.get('error'):
+                return agent_evidence.blocked_message(checked, actual)
+            if checked and checked.get('exact'):
+                return _compile(net,agent,slug,function,source)
         candidates = []
         for p in patches:
             if not isinstance(p,dict):
@@ -509,7 +545,7 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
         groups = {}
         scores = []
         choices = []
-        baseline = getattr(net, '_agent_outcomes', {}).get((agent.id, fn['id']))
+        baseline = checked or getattr(net, '_agent_outcomes', {}).get((agent.id, fn['id']))
         if baseline and baseline['source'] != source:
             baseline = None
         if baseline is None:
@@ -537,6 +573,7 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             if last is not None and time.monotonic() - began >= 60:
                 results.append('Stopped before the next trial: 60-second batch budget reached. Resume with the current revision.')
                 break
+            started=time.monotonic()
             try:
                 with trial({'kind':'agent batch','family':family,'variant':i,'base_revision':revision}):
                     result = _compile(net, agent, slug, function, src)
@@ -546,7 +583,8 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             last = i
             measured = getattr(net, '_agent_outcomes', {}).get((agent.id, fn['id']))
             measured = measured if measured and measured['source'] == src else None
-            observations.append({'score':measured['score'],'rows':measured['rows']} if measured else None)
+            observations.append({'score':measured['score'],'rows':measured['rows'],
+                                 'cached':'REPEAT:' in result, 'elapsed_ms':round((time.monotonic()-started)*1000)} if measured else None)
             score = measured['score'] if measured else None
             if family != 'explicit patches' and score is not None and score > 0:
                 with net.store.tx() as db:

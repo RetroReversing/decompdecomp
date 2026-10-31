@@ -157,3 +157,31 @@ paths, 4 were duplicate evidence, and 379 remain reviewed for further investigat
 summarise source differences; they do not isolate causes. The largest source-pattern groups included
 address substitutions and source-line layout changes. Mixed edits and missing failed baselines are
 retained. Source/layout/flags must be replayed independently before adding another automatic rule.
+
+## Follow-up: transcript-driven agent efficiency
+
+A local audit of 12 recent sessions with compiles recorded 155 compiles and one match. This is an observation,
+not a controlled model comparison: selected functions and histories differed. Of 16,913,071 recorded total
+tokens, 16,280,168 were cache reads; do not present that total as fresh input or billed API cost.
+
+Three machine-generated repair batches emitted 18 compile errors against unbuildable starting C. Generated
+batches now preflight the baseline once and cache its diagnostic under source/build/target/claim scope.
+New inputs, a new claim or a subsequent explicit compile allow another check. Explicit authored patches
+remain available to fix the C. Synthetic ROM and imported-mode regressions verify one baseline invocation
+and zero generated trials, rather than six repeated failures. A private replay of the actual invalid
+transcript draft also produced one real compiler invocation across two requests, with zero variants.
+Normal exact judging is unchanged.
+
+The agent runner's local-family list previously omitted the new shared copy/scope/layout families. It now
+uses those shared generators and profile/mismatch priorities, and trains only measured, non-cached outcomes.
+This closes a tool-availability gap; no matching-rate increase has yet been measured after installation.
+
+Compact project facts previously spent their bounded response on address-range overrides before useful
+progress information. They now summarise range counts and retain progress. Repeated identical claim packets
+are suppressed only after normal claim/lease handling, and a new lease or changed packet gets the full brief.
+
+Two inspected cross-region agent matches only substituted global symbol identifiers. A normally verified
+agent success can now finish a recorded donor transfer and feed the existing mapping mechanism. This requires
+unambiguous donor provenance, unchanged target/donor stamps, symbol-only token edits and resolvable symbol
+names. Comments alone, literal/operator/type/local-variable edits, and reopened donors cannot teach this
+shortcut. Existing independent-pair requirements still apply before data mappings are reused elsewhere.

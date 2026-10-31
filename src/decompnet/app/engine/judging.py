@@ -78,14 +78,18 @@ class JudgeMixin:
             text = self.claim(agent, project, None, strategy)  # the first, the usual way (with its "nothing left")
             held = self.store.all("SELECT f.* FROM claims c JOIN functions f ON f.id=c.function_id WHERE c.agent_id=? "
                                   "AND f.project_id=?", agent.id, proj["id"])
-            if not held or held[0]["n_insns"] > BATCH_INSNS:
+            if not held:
                 return text
+            if held[0]["n_insns"] > BATCH_INSNS:
+                return f"Requested {count} functions; returned 1 because it exceeds the {BATCH_INSNS}-instruction batch limit. Work on the held function before claiming again.\n\n" + text
         first = held[0]
         rows = list(held)
         if first["n_insns"] <= BATCH_INSNS and len(rows) < count:
             rows += self._batch_more(agent, proj, first, count - len(rows), strategy)
         if len(rows) == 1:
-            return self.claim(agent, project, None, strategy)
+            reason = (f"it exceeds the {BATCH_INSNS}-instruction batch limit" if first["n_insns"] > BATCH_INSNS
+                      else "no other eligible small functions in this file passed the queue filters")
+            return f"Requested {count} functions; returned 1 because {reason}. Work on the held function before claiming again.\n\n" + self.claim(agent, project, None, strategy)
         names = [r["name"] for r in rows]
         fork = self.fork_slug(project)
         head = (f"## CLAIMED {len(rows)} small functions: {', '.join(names)}\n"

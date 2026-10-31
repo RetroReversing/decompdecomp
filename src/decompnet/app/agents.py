@@ -160,7 +160,7 @@ _SIGNED_OUT = re.compile(r"not logged in|run /login|invalid api key|not authenti
 # more times, then the helper asks for a new sign-in.
 AUTH_FAILED = re.compile(r"failed to authenticate|oauth (?:session|token)[^.\n]{0,40}(?:expired|revoked|invalid)|"
                          r"authentication_(?:failed|error)|could not be refreshed|\b401\b[^\n]{0,80}unauthori[sz]ed|"
-                         r"token (?:has )?expired", re.I)
+                         r"token (?:has )?expired|authorization grant[^.\n]{0,40}(?:invalid|revoked|expired)|\binvalid_grant\b", re.I)
 AUTH_RETRIES = 3  # failed sign-ins in a row before the helper pauses and asks for a new one
 AUTH_WAIT = 60  # seconds before the first try again, doubling
 # what a model's provider says when the account has no credit left (DeepSeek: "Insufficient Balance", OpenAI:
@@ -1321,7 +1321,8 @@ class Manager:
                 if (text := k.clean_stderr(line)) and (not errors or errors[-1] != text):
                     errors.append(text)
         threading.Thread(target=feed_prompt, daemon=True).start()
-        threading.Thread(target=drain_err, daemon=True).start()
+        stderr_thread = threading.Thread(target=drain_err, daemon=True)
+        stderr_thread.start()
         saw_tool = False
         said: collections.deque = collections.deque(maxlen=20)
         state: dict = {}
@@ -1354,6 +1355,9 @@ class Manager:
                 break
         code = proc.wait()
         _close_windows_job(proc.pid)
+        # Fast failures may close stdout before the stderr reader receives the sign-in error.
+        # Bound the wait in case a descendant inherited the pipe.
+        stderr_thread.join(timeout=1)
         s.proc = None
         if s.stop.is_set():
             return True

@@ -6,11 +6,14 @@ import re
 from ..network import NetworkError
 from ..project import compiler_for
 from . import (
+    adaptive_repairs,
+    agent_evidence,
     agent_targets,
     agent_tokens,
     branch_layout_repairs,
     callee_prototype_repairs,
     captured_repairs,
+    draft_repairs,
     evidence_repairs,
     expression_repairs,
     integer_lifetime_repairs,
@@ -31,7 +34,7 @@ from . import (
 FAMILIES = ('table_slot_lifetime', 'unsigned_assignment_reuse', 'guard_forward_jump', 'constant_register_reuse', 'copy_register_reuse', 'last_shift_reuse', 'signedness','declaration_order','typed_temporary','branch_orientation','narrowing','source_lines',
             'address_temporary','constant_local','comparison_load','stack_array','loop_induction',
             'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order','mmio_address','call_arity','struct_byte_offset','switch_call','paired_load_order','array_index_width','split_scalar_lifetime','pointer_before_store','store_address_lifetime','stack_padding','local_width','pointer_cast_inline',
-            'local_widening','callee_parameter_width','callee_return_width','split_integer_lifetime','merge_integer_lifetimes','branch_call','goto_leaf','switch_layout')
+            'local_widening','callee_parameter_width','callee_return_width','split_integer_lifetime','merge_integer_lifetimes','branch_call','goto_leaf','switch_layout') + draft_repairs.AGENT_FAMILIES
 
 
 def run(net, agent, slug, function, revision, families=None, max_trials=6):
@@ -46,6 +49,12 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         source,actual = agent_tokens.candidate(net,agent,slug,function)
         if actual!=revision:
             raise agent_tokens.stale(net,agent,fn,revision,source,actual)
+        checked = agent_evidence.preflight(net,agent,slug,fn,source)
+        if checked and checked.get('error'):
+            return agent_evidence.blocked_message(checked, actual)
+        if checked and checked.get('exact'):
+            from .tools import _compile
+            return _compile(net,agent,slug,function,source)
         pools = available(net,agent,slug,fn,source,revision,requested)
         effect_scope=agent_tokens.target_scope(net,fn,'')
         selected=[];seen=set()
@@ -58,13 +67,23 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         if not selected:
             return f'No untried applicable local repairs. Revision {actual}; no compile run.'
         scope=agent_tokens.target_scope(net,fn,revision)
-        baseline=getattr(net,'_agent_outcomes',{}).get((agent.id,fn['id']))
+        baseline=checked or getattr(net,'_agent_outcomes',{}).get((agent.id,fn['id']))
         if baseline and baseline.get('source')!=source:
             baseline=None
+        if checked and checked.get('score') is not None:
+            if not hasattr(net, '_agent_outcomes'):
+                net._agent_outcomes={}
+            net._agent_outcomes[agent.id,fn['id']]=checked
+        policy_profile=adaptive_repairs.profile(net,net._project(slug),fn)
+        from .permuter_focus import classify
+        focus=classify((baseline or {}).get('rows') or [])
         result=agent_tokens.variants(net,agent,slug,function,revision,[{'old':source,'new':s} for _,s in selected], 'local repairs')
         observations=getattr(net,'_local_trial_observations',{}).get((agent.id,fn['id']),[])
         for (family,_), measured in zip(selected,observations):
             repair_ranking.remember(net,effect_scope,family,baseline,measured)
+            if measured and not measured.get('cached'):
+                adaptive_repairs.record(net,policy_profile,focus,family,(baseline or {}).get('score'),
+                                        measured.get('score'),measured.get('elapsed_ms',0))
         for (family,candidate),measured in zip(selected,observations):
             if not measured or measured.get('score') is None:
                 continue
@@ -130,6 +149,14 @@ def available(net, agent, slug, fn, source, revision, requested):
     if 'narrowing' in pools:
         masks=lambda text:len(re.findall(r'&\s*0x(?:[fF]{4}|[fF]{2})\b',text))
         pools['narrowing'] += [s for s in expression_repairs.variants(source,fn['name'],proj['arch']) if masks(s)<masks(source)]
+    if any(family in pools for family in draft_repairs.AGENT_FAMILIES):
+        ctx=net._context(proj['id'],fn['unit'])
+        header=net.forks.permuter_header(slug,fn['name']) if net.fork_slug(slug) else (ctx['header'] if ctx else '')
+        labels={}
+        for candidate in draft_repairs.variants(source,fn['name'],proj['arch'],fn['asm'] or '',flags,labels,limit=None,header=header):
+            family=labels[candidate]
+            if family in pools and family in draft_repairs.AGENT_FAMILIES:
+                pools[family].append(candidate)
     from .repair_preflight import invalid_call
     pools = {f: [s for s in pool if not invalid_call(s, fn['name'])] for f, pool in pools.items()}
     durable_scope=agent_tokens.target_scope(net,fn,'')
@@ -137,6 +164,7 @@ def available(net, agent, slug, fn, source, revision, requested):
     ranked = repair_ranking.order(pools,repair_ranking.evidence(net,fn['id'],agent.id))
     effect_scope=agent_tokens.target_scope(net,fn,'')
     ranked=repair_ranking.demote(net,effect_scope,ranked)
+    ranked=adaptive_repairs.order(net,proj,fn,repair_ranking.evidence(net,fn['id'],agent.id),ranked)
     pools = {f:pools[f] for f in ranked}
     return pools
 
@@ -146,6 +174,12 @@ def summary(net, agent, slug, fn, source, revision):
     from ..forks.project import ForkError
     try:
         scope = agent_tokens.target_scope(net,fn,'')
+        failure_key=agent_evidence.scope(net,agent,fn)+(hashlib.sha256(source.encode()).hexdigest(),)
+        failure=getattr(net,'_baseline_failures',{}).get(failure_key)
+        if failure:
+            latest=net.store.one('SELECT MAX(id) AS id FROM attempts WHERE function_id=?',fn['id'])['id'] or 0
+            if latest <= failure.get('after_attempt',0):
+                return f'Remaining local repairs [{revision}]: baseline blocked. Fix C/build inputs or redraft before variants.'
         count = net.store.one('SELECT COUNT(*) AS n FROM agent_family_targets WHERE function_id=?',fn['id'])['n']
         measured = getattr(net,'_agent_outcomes',{}).get((agent.id,fn['id']))
         evidence = hashlib.sha256(repr((measured.get('score'),measured.get('rows')) if measured and measured.get('source')==source else None).encode()).hexdigest()

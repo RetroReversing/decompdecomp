@@ -759,3 +759,10 @@ mismatch kind. It keeps an exploration lane and waits for enough observations be
 The repair examples dialog's **Classify this project** button groups untouched new evidence, retains
 existing reviews, and archives duplicate captures. Reviewed evidence remains available through the review
 state filter; classification does not enable a new compiler rule.
+
+Agent local repairs use the shared copy, typed-address, scope and inferred-layout candidates, with measured
+repair priorities. Machine-generated batches check their starting C first: a broken baseline returns one
+scoped diagnostic instead of compiling six equally broken variants. Explicit patches can still repair that C.
+Compact project facts summarise compiler ranges; each claim retains its actual compiler and user instructions.
+Repeated unchanged claims return a short status, and oversized/sparse batch requests explain why only one
+function was returned.

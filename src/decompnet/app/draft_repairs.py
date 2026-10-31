@@ -35,6 +35,9 @@ from . import (
     store_address_repairs,
 )
 
+AGENT_FAMILIES = ('small_copy', 'typed_record_address', 'one_shot_scope', 'one_shot_unwrap',
+                  'pointer_block_scope', 'array_address_share', 'combined_integer_lifetimes', 'inferred_record_layout')
+
 LIMIT = 20
 _IDENT = r'[A-Za-z_]\w*'
 _MEMBER = rf'{_IDENT}(?:\s*(?:->|\.)\s*{_IDENT})*'

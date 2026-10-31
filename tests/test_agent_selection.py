@@ -74,7 +74,8 @@ def test_custom_queue_does_not_batch_neighbours_or_use_project_priority(net, mon
     with net.store.tx() as db:
         db.execute('UPDATE projects SET config=?', (json.dumps({'kind': 'rom', 'priority': ['small']}),))
     monkeypatch.setattr(net, '_brief', lambda fn, *args, **kw: fn['name'])
-    assert net.claim_many(a, 'game', 4) == 'large'
+    result=net.claim_many(a, 'game', 4)
+    assert result.endswith('large') and 'Requested 4 functions; returned 1' in result
     assert net.store.one('SELECT COUNT(*) AS n FROM claims')['n'] == 1
 
 

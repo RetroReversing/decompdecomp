@@ -158,3 +158,55 @@ def variant(twins, proj, fn, source):
     names = {old:next(iter(values)) for old,values in votes.items() if len(values)==1}
     result = TOKENS.sub(lambda token: names.get(token.group(), token.group()), source)
     return result if result != source else None
+
+
+def symbol_only_change(before, after):
+    """Only identifiers may differ; changed literals, operators or definitions cannot teach this shortcut."""
+    from .similar_matches import TOKENS
+    def tokens(text):
+        return [m.group() for m in TOKENS.finditer(text)
+                if not m.group().startswith(('/*', '//')) and not m.group().isspace()]
+    left, right = tokens(before), tokens(after)
+    if len(left) != len(right):
+        return False
+    return all(a == b or (re.fullmatch(r'[A-Za-z_]\w*', a) and re.fullmatch(r'[A-Za-z_]\w*', b))
+               for a, b in zip(left, right))
+
+
+def harvest(twins, proj, function_id):
+    """A normally verified agent success can complete an existing, unambiguous donor transfer.
+
+    Comments alone never identify a donor. Reuse the same origin/target stamps and independent-pair
+    requirements as automatic repairs; changed or reopened donors cannot supply mappings.
+    """
+    net = twins.net
+    if not net.is_rom(proj) or net.fork_slug(proj['slug']):
+        return
+    fn = net.store.one("SELECT * FROM functions WHERE id=? AND status='matched'", function_id)
+    if not fn or not fn['matched_source']:
+        return
+    source = fn['matched_source']
+    if origins(net, fn, source):
+        accepted(net, fn, source)
+        return
+    if not net.store.one('SELECT 1 FROM cross_game_attempts WHERE function_id=? LIMIT 1', function_id):
+        return
+    seeds = net.store.all('SELECT source FROM attempts WHERE function_id=? AND score>0 AND compiled=1 '
+                         'ORDER BY id DESC LIMIT 8', function_id)
+    for row in seeds:
+        seed = row['source'] or ''
+        if not symbol_only_change(seed, source):
+            continue
+        from .similar_matches import TOKENS
+        syms = net.symbols(proj['id'])
+        words = lambda text: [m.group() for m in TOKENS.finditer(text)
+                              if not m.group().startswith(('/*', '//')) and not m.group().isspace()]
+        changes = [(a,b) for a,b in zip(words(seed),words(source)) if a != b]
+        if not changes or any(syms.resolve(a) is None or syms.resolve(b) is None for a,b in changes):
+            continue
+        if not origins(net, fn, seed):
+            recover(twins, proj, fn, seed)
+        if origins(net, fn, seed):
+            propagate(net, fn, seed, source)
+            accepted(net, fn, source)
+            return
