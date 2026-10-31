@@ -8,11 +8,12 @@ import json
 import logging
 import threading
 import time
+from contextlib import nullcontext
 from itertools import chain
 
-from ... import m2cfix, scoring, seeds
+from ... import m2cfix, scoring, seeds, toolchains
 from ...network import Agent, NetworkError
-from ...project import compiler_for
+from ...project import compiler_for, unknown_compiler_message
 from ...repair_feedback import trial as repair_trial
 from ..draft_context import candidate_context
 
@@ -27,10 +28,17 @@ class AutopilotMixin:
         state = self.autopilots.get(slug)
         if state and state["state"] == "running":
             return state
+        fork = self.fork_slug(slug)
+        # #118: a project from another tool may name a compiler decompdecomp doesn't have. Say which and where to pick
+        # one, rather than failing later as "m2c can't read this project's code" or the registry's list of ids.
+        if not fork:
+            tc = self.cfg(self._project(slug))["compiler"]["toolchain"]
+            if not toolchains.known(tc):
+                raise NetworkError(unknown_compiler_message(tc))
         # first the twins (identical code to something matched: every project), then machine drafts where m2c reads
         # the code and the project's headers are fit for them (ROM projects; games started from scratch)
         try:
-            if (fork := self.fork_slug(slug)):  # a GameCube, Wii or DS game started from scratch: its own build judges
+            if fork:  # a GameCube, Wii or DS game started from scratch: its own build judges
                 ids = self.forks.autopilot_prepare(fork)
                 try_one, workers = self.forks.autopilot_one, min(workers, 2)  # each try builds a file: fewer at once
             else:
@@ -132,6 +140,13 @@ class AutopilotMixin:
     def try_quietly(self, agent, proj, fn, source: str) -> dict:
         """Judge one candidate for a function nobody holds (autopilot's tries): held only while it compiles,
         recorded as an attempt like any other. {"matched", "score"}."""
+        with self.progress.judging(proj["slug"]) if hasattr(self, "progress") else nullcontext():
+            return AutopilotMixin._try_quietly(self, agent, proj, fn, source)
+
+    def _try_quietly(self, agent, proj, fn, source: str) -> dict:
+        fn = self.store.one("SELECT * FROM functions WHERE id=?", fn["id"])
+        if fn is None or fn["status"] != "open":
+            raise NetworkError("This function is no longer open. Read the updated project before trying another draft.")
         now = time.time()
         with self.store.tx() as db:
             self._expire_claims(db)
@@ -163,6 +178,10 @@ class AutopilotMixin:
         """match | near | far | fail | skip, for one function's draft. A draft autopilot already judged with the same
         header is skipped: autopilot tries a function again when its draft changed (the background drafter asks it
         to after the header or the compiler changed, app/drafts.py), not to judge the same C twice."""
+        with self.progress.judging(proj["slug"]) if hasattr(self, "progress") else nullcontext():
+            return AutopilotMixin._autopilot_one_work(self, agent, proj, fid)
+
+    def _autopilot_one_work(self, agent, proj, fid: int) -> str:
         now = time.time()
         with self.store.tx() as db:
             self._expire_claims(db)

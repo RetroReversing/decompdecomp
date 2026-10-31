@@ -128,6 +128,8 @@ def test_installed_comparison_compilers_reach_the_normal_link_judge(tmp_path, ti
     tc = toolchains.get(tid)
     if not tc.supported or any(not toolchains.installed(t) for t in [tid, *tc.requires]):
         pytest.skip('needs supported host and locally installed packs; never installs proprietary tools in tests')
+    if tc.via_vm and not toolchains.linuxvm.status()[0]:
+        pytest.skip('needs a prepared Linux compiler runner')
     cfg = compiler_config(tmp_path, {'compiler': {'toolchain': tid, 'sandbox': 'none'}})
     for source in ['int probe(int a,int b){return a+b;}',
                    'extern int target(int); extern int value; int probe(int x){return target(x)+value;}',
@@ -167,6 +169,8 @@ def test_installed_sgi_cxx_frontend_accepts_a_class(tmp_path):
     tid = 'ido-5.3-cxx'
     if not toolchains.get(tid).supported or not toolchains.installed(tid):
         pytest.skip('needs accepted SGI C++ pack on Linux/WSL')
+    if toolchains.get(tid).via_vm and not toolchains.linuxvm.status()[0]:
+        pytest.skip('needs a prepared Linux compiler runner')
     cfg = compiler_config(tmp_path, {'compiler': {'toolchain': tid, 'sandbox': 'none'}})
     assert cfg.cplusplus
     result = compile_source(cfg, '', 'class Value { public: int x; }; extern "C" int probe(Value *v) { return v->x; }')

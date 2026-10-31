@@ -71,7 +71,7 @@ works on which platform: every — in it is a gap to fill.
 ### Every console gets every feature
 
 decompdecomp is one pipeline for every console: whatever helps agents on one console should work on all of them,
-in ROM mode (N64, PS1, PS2) and project mode (GameCube, Wii, PC, DS, public decomps) alike. When you add a feature:
+in ROM mode (N64, PS1, PS2, PSP, GBA) and project mode (GameCube, Wii, PC, DS, public decomps) alike. When you add a feature:
 
 1. Build the shared part where every console uses it: `app/` and `network.py` for the engine, `rom/` and `forks/`
    for each mode, `arch/` for what depends on the processor.
@@ -91,6 +91,7 @@ through one file: the connector, `consoles/__init__.py`.
 | `consoles/n64/` | Nintendo 64 | ROM | `rom.py` the ROM file and its header · `code.py` code the game loads later, compressed code · `guides/` |
 | `consoles/ps1/` | PlayStation | ROM | `exe.py` the game's program (PS-X EXE) and the disc's BOOT line; its discs and overlays through the PS2's readers · `guides/` |
 | `consoles/ps2/` | PlayStation 2 | ROM | `elf.py` the game's program · `disc.py`, `chd.py` disc images · `overlays.py` code in the disc's other files · `syscalls.py` kernel calls · `symtab.py`, `mdebug.py`, `stabs.py`, `cheader.py`, `debuginfo.py` the game's own debug symbols · `guides/` |
+| `consoles/gba/` | Game Boy Advance | ROM | `header.py` the cartridge header · `split.py` luvdis and the candidate finder, its editing and joining · `candidates.py`, `luvdis_run.py` · `export.py`, `export_build.py` · `guides/` |
 | `consoles/gc_wii/` | GameCube, Wii | PROJECT | `scratch.py` a dtk-template project for the game · `guides/` |
 | `consoles/pc/` | Windows PC | PROJECT | `scratch.py` Ghidra finds the functions, decompdecomp cuts them out of the .exe · `project_template/` · `guides/` |
 | `consoles/nds/` | Nintendo DS | PROJECT | `scratch.py` a ds-decomp project for the ROM, a CodeWarrior version per source file · `project_template/` · `guides/` |
@@ -106,7 +107,7 @@ Around them:
 | `consoles/public.py` | Consoles only public decomps cover: a name, a processor, m2c's target, guides. |
 | `consoles/template/` | The package to copy for a new console. |
 | `arch/` | What depends only on the processor: `mips.py`, `ppc.py`, `x86.py`, `arm.py` (relocations, disassembly, hand-written assembly, which readers exist). |
-| `rom/` | ROM mode, shared: `split.py` (splat), `match.py` (the judge: link and compare), `export.py`. |
+| `rom/` | ROM mode, shared: `split.py` (splat), `match.py` (the MIPS judge: link and compare), `link.py` (what every judge shares), `export.py`. |
 | `forks/`, `app/forkengine.py` | PROJECT mode and public decomps, shared: the project's build, objdiff. |
 
 A console works in one of two modes:
@@ -129,8 +130,8 @@ A console works in one of two modes:
 
 1. **Copy the template.** `cp -r src/decompnet/consoles/template src/decompnet/consoles/<id>`. Rename the class and
    the object at the end of its `__init__.py`.
-2. **Pick its mode.** ROM if splat splits its programs (MIPS today). PROJECT if the community has a project layout
-   and a delinker for it, judged by objdiff (see `consoles/gc_wii/` and `consoles/pc/`).
+2. **Pick its mode.** ROM if a splitter reads its programs (splat for MIPS; luvdis for GBA). PROJECT if the
+   community has a project layout and a delinker for it, judged by objdiff (see `consoles/gc_wii/` and `consoles/pc/`).
 3. **Fill in its facts.** Each is one line in the `Console` class:
 
    | Fact | What it is |
@@ -160,6 +161,11 @@ A console works in one of two modes:
    | `default_compiler(info, splat_guess)` | Which compiler built the game. |
    | `default_flags(compiler, gp)` | A compiler's flags for a game of this console. |
    | `add_code(config, ...)` | ROM: code splat misses (segments loaded later, overlays), added before it splits. |
+   | `split_game(workdir, picked, symbols, log)` | ROM: split the program into functions and data (splat by default; GBA uses luvdis). |
+   | `target_from_row`, `target_from_split`, `target_object`, `link_function` | ROM: a function's target, its object for diffs, and the link-and-compare judge. |
+   | `function_asm`, `parse_function`, `function_insns`, `function_meta`, `function_status`, `target_arch` | ROM: how a function's assembly, instruction count, row metadata, status and Thumb/ARM mode are kept. |
+   | `instruction_size`, `function_from_row`, `split_function`, `function_at`, `join_saved_functions` | ROM: cutting, adding and joining functions at the console's instruction size (GBA: 2-byte Thumb). |
+   | `export_project(net, slug, out, log)` | ROM: write and check a tree that rebuilds the game. |
    | `find_gp(image, program, segments)` | ROM: `$gp` as the game sets it. |
    | `debug_info(program, known)`, `debug_brief(known)` | The game's own symbols and types, and their lines in a brief. |
    | `after_import(net, slug, chosen)`, `on_start(net, slug)` | Work a new project gets once; work each project gets at start. |
@@ -204,13 +210,21 @@ Example: PC has Visual C++ 6.0 to 2010, and you want Visual C++ 2012 (11.0).
 
 1. **Pin it** in `src/decompnet/toolchains.toml`. A new part of a pack (`msvc2005`, or a pack of its own, as
    2012-2013 would be) with its `url`, its `sha256` (`sha256sum` of the archive) and `into = "11.0"`. An archive
-   that's a whole install takes only its compiler and headers with `keep` (see `msvc2005`). Take it from where the
-   decomp community keeps it; never from the vendor's site with someone's account.
+   that's a whole install takes only its compiler and headers with `keep` (see `msvc2005`). A compiler of 2015 and
+   newer compiles against a Windows SDK: that's a toolchain of its own (`winsdk-<version>`) the pack names in
+   `headers`, so packs that use one SDK share it (see `msvc2015`); each version's folder then gets an `includes.txt`
+   the build reads. Take it from where the decomp community keeps it (decomp.me's compilers, decomp.dev's archive,
+   the repositories they use). Where the community keeps none (Visual C++ 2015 and newer: decomp.me's newest x86
+   Visual C++ is 2005 SP1), take a public archive of the vendor's own files, pinned by commit and sha256, and say
+   whose it is in the entry's `source` (2017's is ojdkbuild's, made for building OpenJDK); never from the vendor's
+   site with someone's account. Changing an entry later is safe: an install from the old entry counts as not installed
+   (`toolchains.changed`), and the app offers to install it again.
 2. **Proprietary means opt-in.** Its entry says `license = "proprietary"`. The app installs it only after the user
    accepts its licence in Setup. Never download it in code, a test or CI: public CI can't have it, and its tests
    skip there.
 3. **How it runs on Linux.** Windows compilers run through wibo (a pinned tool); check that the new `cl.exe` runs
-   there. wibo stops at the first Windows function it doesn't have and names it (2010's compiler needed
+   there. One wibo can't run (2015 and newer) goes in a pack marked `wine = true`, run through the user's wine
+   (`wine.py`). wibo stops at the first Windows function it doesn't have and names it (2010's compiler needed
    `msvcp100.dll` beside it; 2005's and later linkers stop at `lstrcmpiW` in wibo 1.2.0). A Linux compiler needs nothing; a 32-bit one may need `requires = ["runtime-i386"]`.
 4. **The console lists it**: `consoles/pc/__init__.py`, `MSVC_VERSIONS`. A ROM console's compilers are its
    `compilers` tuple: `Compiler(id, name, built, guess)` (see `consoles/ps2/__init__.py`).
@@ -318,6 +332,7 @@ An agent is one of two sorts:
 
 ## Pull requests
 
+- Talk it over first in `#contributors` on the [Discord](https://discord.gg/hhEm3zZagB), or in an issue.
 - Work on a branch named `<type>/<short-name>`, the type one of `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `ci`, `build`, `chore`, `revert` (`fix/ps2-long-symbol-names`). CI fails a pull request from any other branch, and labels it by the prefix.
 - A change to a console or a feature says which of the app's features you ran on it and how (AGENTS.md, "Check
   every feature on the console you touch"); reviewers check the same list.

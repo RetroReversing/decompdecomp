@@ -123,11 +123,38 @@ def _tool(name: str) -> str | None:
     return next((str(d / exe) for d in _tool_dirs() if (d / exe).exists()), None)
 
 
+# #97: a public dtk project hashes the files it was built from, and some of those (a main.dol made from an ELF,
+# a .rel module) aren't on the retail disc. dtk stops at the hash; say what it means and what the user can do.
+_HASH_MISMATCH = re.compile(r"Hash mismatch: expected ([0-9a-fA-F]+)(?:\.{3}|…)?, but was ([0-9a-fA-F]+)", re.I)
+_DTK_OBJECT = re.compile(r"While (?:loading|processing) object '([^']+)'")
+
+
+def _hash_mismatch(tail: str) -> str | None:
+    """What dtk's file hash mismatch means for the user, or None when this failure isn't one."""
+    m = _HASH_MISMATCH.search(tail)
+    if m is None:
+        return None
+    objects = _DTK_OBJECT.findall(tail[:m.start()])  # the file just before the hash: the one dtk was loading
+    if not objects:
+        return None
+    obj, (expected, got) = objects[-1], m.groups()
+    return (f"your copy's {obj} isn't the one this project was built against (the project expects hash "
+            f"{expected[:8]}..., yours is {got[:8]}...). Your dump is likely fine: some projects are set up from "
+            "files that aren't on the retail disc (check the project's README for which file and where it comes "
+            "from). Or start the game from your own copy instead: choose New project → Open a game file.")
+
+
 class ForkProject:
     def __init__(self, root: Path, *, create_state: bool = True):
         self.root = Path(root)
         if create_state:
             (self.root / STATE).mkdir(parents=True, exist_ok=True)
+
+    def _game_consoles(self):
+        """The named console, or each console's file preparation when a public project's platform is unknown."""
+        from .. import consoles
+
+        return [consoles.get(self.platform)] if self.platform else consoles.startable()
 
     # ------------------------------------------------------------------ what is it
 
@@ -542,7 +569,9 @@ class ForkProject:
         project_python = [python.parent] if python else []
         if python:
             env['VIRTUAL_ENV'] = str(python.parent.parent)
-        project_tools = consoles.get(self.detect_platform()).project_tool_paths(self)
+        console = consoles.get(self.detect_platform())
+        project_tools = console.project_tool_paths(self)
+        env.update(console.build_env())
         env["PATH"] = os.pathsep.join([*(str(d) for d in [*project_python, *_tool_dirs(), *project_tools]), env.get("PATH", "")])
         # found on that PATH (decompdecomp's own ninja): Linux looks a command up there itself, Windows only in this
         # process's PATH, where decompdecomp's environment isn't when it's installed
@@ -638,6 +667,8 @@ class ForkProject:
             # Incomplete sources may fail make once objdiff can measure individual units. Without that
             # configuration, a failed build is a setup failure, not a successful build missing its report.
             if not ok and (not make_step or not (self.root / "objdiff.json").exists()):
+                if mismatch := _hash_mismatch(tail):
+                    raise ForkError(f"{mismatch}\n{tail}")
                 raise ForkError(f"setup step failed: {' '.join(cmd)}\n{tail}")
         if (self.root / "objdiff.json").exists() and self._all_source():
             log("compiling every source file, so objdiff can measure each one (some work in progress may not compile)")

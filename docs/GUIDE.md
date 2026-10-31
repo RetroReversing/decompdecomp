@@ -79,7 +79,9 @@ these projects as they are:
    project says about AI, then clones it to your computer, on a local `decomp-wtf` branch.
 2. **Add your copy of the game.** The app knows the usual project layouts (dtk-template, configure.py and ninja,
    splat and make). It puts your copy in the correct location and runs the setup of the project. For other layouts,
-   follow the README of the project.
+   follow the README of the project. For an N64 splat project that expects a `.z64` ROM, you can supply the same
+   ROM in `.v64` or `.n64` byte order; decompdecomp saves a `.z64` copy for the project's build. When the project
+   declares a SHA-1, decompdecomp checks it against the normalized ROM before copying.
 3. **Start helper agents.** Each agent writes code in the real source file. The build of the project compiles it, and
    [objdiff](https://github.com/encounter/objdiff) compares it.
 4. **Examine the commits.** Each match is a git commit on `decomp-wtf`. decompdecomp sends nothing upstream.
@@ -160,7 +162,9 @@ These additional searches currently support MIPS ROM projects; imported reposito
 
 The app starts each helper itself, from **Start agents** in the project's header. A helper that stops starts again
 by itself. On a usage limit it waits until the limit resets. Five fast failures in a row pause it, and the app says
-why. Run several helpers, of different models: they work on different functions at the same time.
+why. Run several helpers, of different models: they work on different functions at the same time. Choose **Multiple
+models** in the launcher to pick several at once; the app remembers the choice. One start can begin at most 24
+helpers in total.
 
 Agents get only the tools of decompdecomp. They get no shell. They cannot access your files, except the source tree
 of a fork. The app installs missing agents and tells you how to sign in.
@@ -215,9 +219,10 @@ the game.
 | **PlayStation 2** | Beta | ✓ disc or ELF | EE-GCC 2.9 · 2.95.2/2.95.3 (SN) · 2.96 · 3.2 · CodeWarrior 2.3.3 / 3.0.1 | ✓ export | ✓ |
 | **PSP** | Beta | ✓ UMD image (ISO, CSO, CHD) with its other modules, or ELF/PRX, unencrypted or decrypted | CodeWarrior for PSP 3.0.1 · PSP SDK GCC 3.3.3 · SN pspsnc | ✓ export | ✓ |
 | **GameCube · Wii** | Beta | ✓ disc (ISO, RVZ, WBFS…) or DOL | CodeWarrior GC 1.0 – Wii 1.7 | ✓ dtk-template | ✓ |
-| **Windows PC** | Beta | ✓ program (32-bit x86 .exe) | Visual C++ 6.0 · 7.0 · 7.1 · 2005 · 2008 · 2010 | — | ✓ |
+| **Windows PC** | Beta | ✓ program (32-bit x86 .exe) | Visual C++ 6.0 · 7.0 · 7.1 · 2005 · 2008 · 2010 · 2017 (wine) | — | ✓ |
 | **Nintendo DS** | Beta | ✓ ROM (.nds) | CodeWarrior for DS 1.2 – DSi 1.6 (24 versions), one per source file | ✓ ds-decomp | ✓ |
-| **GBA · 3DS · Switch · Xbox · Xbox 360** | Public decomps only | | | | ✓ |
+| **Game Boy Advance** | Beta | ✓ ROM (.gba) | agbcc | ✓ luvdis export | ✓ |
+| **3DS · Switch · Xbox · Xbox 360** | Public decomps only | | | | ✓ |
 
 [ROADMAP.md](../ROADMAP.md) has a table of which feature works on which platform.
 
@@ -246,14 +251,15 @@ different build, which is planned.
   C++ 6.0 to 2010 can match, each with the very build of its compiler the program names (2005 to 2010 come in a
   pack of their own); 2012 to 2015 import but can't match until their compilers come; 64-bit programs,
   programs built with Visual C++ 2017 or newer, mostly-/GL ones and protected ones aren't started, and the import
-  says why. decompdecomp never removes or gets around DRM. A game that keeps code in DLLs of its own comes with them
-  when you give its path (the game's folder, or its .exe; a dropped file comes alone): each DLL is a program of the
-  project, with its source files in `src/auto/<its name>/`, its exports' names and its own Visual C++. The C
-  runtime, DirectX wrappers, middleware (Miles, Bink, FMOD...), copy protection, ASI plugins and DLLs built long
-  after the game (mods) are left out, and the import's log says which and why.
+  says why. Visual C++ 2017 itself (32- and 64-bit) is a pack of its own, chosen per file in Settings: on Linux and
+  macOS it runs through wine, which you install. decompdecomp never removes or gets around DRM. A game that
+  keeps code in DLLs of its own comes with them when you give its path (the game's folder, or its .exe; a dropped file
+  comes alone): each DLL is a program of the project, with its source files in `src/auto/<its name>/`, its exports' names
+  and its own Visual C++. The C runtime, DirectX wrappers, middleware (Miles, Bink, FMOD...), copy protection, ASI
+  plugins and DLLs built long after the game (mods) are left out, and the import's log says which and why.
+  [VISUAL-CPP.md](VISUAL-CPP.md) lists the Visual C++ builds decompdecomp has, how it picks one, and where their code changes.
 
-Please [report problems](https://github.com/n-delic/decompdecomp/issues). The status of a public decomp is the status
-of its own project.
+Please [report problems](https://github.com/n-delic/decompdecomp/issues). The status of a public decomp is the status of its own project.
 
 **Tools for a start from scratch:**
 
@@ -267,7 +273,7 @@ of its own project.
 classes and methods, and decompdecomp changes the C++ names back to the names of the game. N64 games use C. Public decomps use the language of their project.
 
 **Proprietary compilers** (IDO, CodeWarrior, Visual C++) install only after you accept them. Heavy tools operate
-with a memory limit.
+with a memory limit. Visual C++ 2017 needs wine on Linux and macOS (installing it says how to get wine).
 
 ## The export
 
@@ -311,9 +317,11 @@ Helper agents continue their work. To change this behavior, go to Settings.
 
 ## Your work
 
-**Saving.** decompdecomp saves the work on each N64, PlayStation and PlayStation 2 project by itself, every few minutes, as plain
+**Saving.** decompdecomp saves the work on each N64, PlayStation and PlayStation 2 project by itself as it changes, as plain
 files in the project's `progress/` folder: matched C, best attempts, headers, names, notes, compiler ranges and
 settings. It never saves the game. **Save now**, in the project's Settings, saves at once, also to another folder.
+You can edit files in `progress/` or pull another contributor's changes into it; decompdecomp reads them on the next
+project action and checks the saved functions again.
 `progress/` is the only part of a project to share or keep in git: matched C in `src/`, best attempts in `best/`, the
 shared headers in `include/`, and `decompdecomp.json` (the game's fingerprint, compiler, layout, names, notes and
 settings). The rest of the project's folder (the ROM, `asm/`, `assets/`, the build files) is made from your copy of

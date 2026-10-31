@@ -30,6 +30,7 @@ import subprocess
 import threading
 import time
 from concurrent.futures import wait
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -61,7 +62,8 @@ IDLE_LOOKS = 20  # looks in a row with nothing to do (an hour) and it's done unt
 HOLD_SPARE_SECONDS = 120  # a turn's hold on a function lasts this much longer than the turn, in case it runs over
 _EOF = object()
 # decomp-permuter's weights per compiler (its default_weights.toml), by the start of a toolchain's id
-FAMILIES = (("ido", "ido"), ("gcc", "gcc"), ("ee-gcc", "gcc"), ("psp-gcc", "gcc"), ("mwc", "mwcc"))
+FAMILIES = (("ido", "ido"), ("gcc", "gcc"), ("ee-gcc", "gcc"), ("psp-gcc", "gcc"), ("agbcc", "gcc"),
+            ("mwc", "mwcc"))
 
 
 def weight_family(cfg: dict, vram: int | None, fork: bool) -> str:
@@ -591,6 +593,10 @@ class Permuter:
 
     def _score(self, agent, proj, fn, source: str, best: int, fork: str | None) -> int | None:
         """A variant's score; recorded (as the function's best attempt, or its match) only when it beats `best`."""
+        with self.net.progress.judging(proj["slug"]) if hasattr(self.net, "progress") else nullcontext():
+            return self._score_work(agent, proj, fn, source, best, fork)
+
+    def _score_work(self, agent, proj, fn, source: str, best: int, fork: str | None) -> int | None:
         self._trial_outcome = 'unscored'
         if fork:
             res = self.net.forks.attempt(agent, fork, fn["name"], source, keep=False, quiet=best)

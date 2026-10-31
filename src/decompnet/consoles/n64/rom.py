@@ -55,14 +55,7 @@ def to_z64(data: bytes) -> tuple[bytes, str]:
         raise RomError("this doesn't look like an N64 ROM image (.z64, .n64 or .v64)")
     if len(data) % 4:
         raise RomError("ROM size is not a multiple of 4 bytes; the file may be truncated")
-    if fmt == "v64":
-        b = bytearray(data)
-        b[0::2], b[1::2] = data[1::2], data[0::2]
-        return bytes(b), fmt
-    if fmt == "n64":
-        words = struct.unpack(f"<{len(data) // 4}I", data)
-        return struct.pack(f">{len(words)}I", *words), fmt
-    return data, fmt
+    return _z64_chunk(data, fmt), fmt
 
 
 def z64_file_sha1(path: Path) -> tuple[str, str] | None:
@@ -78,6 +71,40 @@ def z64_file_sha1(path: Path) -> tuple[str, str] | None:
         for chunk in iter(lambda: stream.read(1 << 20), b""):
             digest.update(_z64_chunk(chunk, fmt))
     return digest.hexdigest(), fmt
+
+
+def _z64_chunk(chunk: bytes, fmt: str) -> bytes:
+    if fmt == "v64":
+        data = bytearray(chunk)
+        data[0::2], data[1::2] = chunk[1::2], chunk[0::2]
+        return bytes(data)
+    if fmt == "n64":
+        data = bytearray(chunk)
+        data[0::4], data[1::4], data[2::4], data[3::4] = (
+            chunk[3::4], chunk[2::4], chunk[1::4], chunk[0::4])
+        return bytes(data)
+    return chunk
+
+
+def copy_z64_file(src: Path, dest: Path) -> None:
+    """Write a normalized cartridge image atomically, leaving the supplied file unchanged."""
+    tmp = None
+    try:
+        with src.open("rb") as source:
+            fmt = MAGIC.get(source.read(4))
+            if fmt is None or src.stat().st_size % 4:
+                raise RomError("this doesn't look like a complete N64 ROM image")
+            source.seek(0)
+            with tempfile.NamedTemporaryFile(dir=dest.parent, prefix=".rom-", delete=False) as out:
+                tmp = Path(out.name)
+                for chunk in iter(lambda: source.read(1 << 20), b""):
+                    out.write(_z64_chunk(chunk, fmt))
+                out.flush()
+                os.fsync(out.fileno())
+        os.replace(tmp, dest)
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
 
 
 @dataclass(frozen=True)
@@ -117,43 +144,6 @@ def file_hashes(path: Path, source_sha1: str | None = None) -> RomFileHashes:
     conversion = ("not needed; the supplied image is already big endian" if fmt == "z64"
                   else f"attempted from .{fmt} to big endian (.z64)")
     return RomFileHashes(source_sha1, fmt, normalized[0] if normalized else None, conversion)
-
-
-def _z64_chunk(chunk: bytes, fmt: str) -> bytes:
-    if fmt == "v64":
-        data = bytearray(chunk)
-        data[0::2], data[1::2] = chunk[1::2], chunk[0::2]
-        return bytes(data)
-    if fmt == "n64":
-        data = bytearray(chunk)
-        data[0::4], data[1::4], data[2::4], data[3::4] = (
-            chunk[3::4], chunk[2::4], chunk[1::4], chunk[0::4])
-        return bytes(data)
-    return chunk
-
-
-def copy_z64_file(src: Path, dest: Path) -> None:
-    """Write a normalized cartridge image atomically, leaving the supplied file unchanged."""
-    with src.open("rb") as source:
-        fmt = MAGIC.get(source.read(4))
-        if fmt is None or src.stat().st_size % 4:
-            raise RomError("this doesn't look like a complete N64 ROM image")
-        source.seek(0)
-        with tempfile.NamedTemporaryFile(dir=dest.parent, prefix=".rom-", delete=False) as out:
-            tmp = Path(out.name)
-            try:
-                for chunk in iter(lambda: source.read(1 << 20), b""):
-                    out.write(_z64_chunk(chunk, fmt))
-                out.flush()
-                os.fsync(out.fileno())
-            except BaseException:
-                tmp.unlink(missing_ok=True)
-                raise
-    try:
-        os.replace(tmp, dest)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
 
 
 def _text(raw: bytes) -> str:

@@ -13,7 +13,7 @@ import pytest
 from elftools.elf.elffile import ELFFile
 
 from decompnet import toolchains
-from decompnet.app import tools
+from decompnet.app import saves, tools
 from decompnet.app.engine import RomNetwork
 from decompnet.app.twins import Print, apply, renames
 from decompnet.forks import csource
@@ -285,10 +285,18 @@ def test_the_permuter_finishes_a_near_miss(game, monkeypatch):
     source = csource.get((GAME / "game.c").read_text(), "entity_update_physics")
     assert net.attempt(agent, "entity_update_physics", source, slug)["matched"]
     fn = net._function("entity_update_physics", slug)
+    (saves.default_folder(net, slug) / "src" / f"{fn['name']}.c").unlink()
+    net.progress.sync(slug, force=True)
+    fn = net._function("entity_update_physics", slug)
     near = None
     for seed in range(200):  # a variant that compiles and is close, but not the same code
         variant = mutate(source, random.Random(seed))
         res = net.try_quietly(agent, net.project_row(slug), {**fn, "status": "open"}, variant) if variant else None
+        if res and res["matched"]:
+            (saves.default_folder(net, slug) / "src" / f"{fn['name']}.c").unlink()
+            net.progress.sync(slug, force=True)
+            fn = net._function("entity_update_physics", slug)
+            continue
         if res and res["score"] and res["score"] <= fn["n_insns"] * 100 * 0.06:
             near = (variant, res["score"])
             break
@@ -321,6 +329,8 @@ def test_permuter_repairs_local_ordering_before_random_search(game, name, writte
     source = csource.get((GAME / "game.c").read_text(), name)
     if net._function(name, slug)["status"] != "matched":
         assert net.attempt(agent, name, source, slug)["matched"]
+    (saves.default_folder(net, slug) / "src" / f"{name}.c").unlink()
+    net.progress.sync(slug, force=True)
     fn = net._function(name, slug)
     variant = source.replace(written, near)
     score = net.try_quietly(agent, net.project_row(slug), {**fn, "status": "open"}, variant)["score"]
@@ -370,6 +380,8 @@ def test_local_source_preparation_uses_real_rom_judge_and_private_context(game, 
     matched = net._function('clamp_s32', slug)
     assert matched['status'] == 'matched' and matched['unit'] == f'local_source_{fn["id"]}'
     assert net._context(proj['id'], fn['unit'])['header'] == old_header
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET status='open' WHERE id=?", (matched['id'],))
     assert net.try_quietly(net.local_agent('you')[0], net.project_row(slug), matched, matched['matched_source'])['matched']
 
     from decompnet.rom.export import export_rom

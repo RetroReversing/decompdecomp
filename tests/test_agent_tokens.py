@@ -243,8 +243,8 @@ def test_variant_time_budget_stops_before_next_compile(tmp_path, monkeypatch):
     net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
     with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?',('int f(){return 1;}',))
     net.claim_row(a,'game','f');_,rev=agent_tokens.candidate(net,a,'game','f')
-    clock=iter([0,61]);monkeypatch.setattr(agent_tokens.time,'monotonic',lambda:next(clock))
-    seen=[];monkeypatch.setattr(tools,'_compile',lambda *args:seen.append(args) or 'score 10')
+    seen=[];monkeypatch.setattr(agent_tokens.time,'monotonic',lambda:61 if seen else 0)
+    monkeypatch.setattr(tools,'_compile',lambda *args:seen.append(args) or 'score 10')
     result=agent_tokens.variants(net,a,'game','f',rev,[{'old':'1','new':'2'},{'old':'1','new':'3'}])
     assert len(seen)==1 and '60-second batch budget reached' in result
 

@@ -1657,4 +1657,6 @@ class Network:
             db.execute("DELETE FROM cross_game_attempts WHERE project_id=? OR source_project_id=?",
                        (proj["id"], proj["id"]))
             db.execute("DELETE FROM projects WHERE id=?", (proj["id"],))
+        if progress := getattr(self, "progress", None):
+            progress.forget(slug, proj["id"])
         return len(ids)

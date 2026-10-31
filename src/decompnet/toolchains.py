@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 import tomllib
 import urllib.request
@@ -30,6 +31,12 @@ from decompnet.hostenv import NO_WINDOW, find_uv
 from . import limits, linuxvm, wsl
 
 MANIFEST = ".decompnet-toolchain.json"
+# in each version's folder of a pack with `headers`: the other Include folders its compiler searches, one per line,
+# relative to the folder (the build reads it: consoles/pc/project_template/tools/configure.py)
+INCLUDES = "includes.txt"
+# what of a toolchain's entry decides what its install holds on disk (its fingerprint, installed()); a part's
+# `platforms` only says which computers take it
+INSTALLED_FROM = ("requires", "git", "commit", "pip_extra")
 LINUX = "linux-x86_64"
 # Parts for WSL: Linux programs packed in a format Windows can unpack (a .deb, not a .zst)
 WSL_PLATFORM = "wsl-x86_64"
@@ -65,6 +72,11 @@ class Toolchain:
     driver: str = ""  # packaged, console-owned compiler adapter, staged read-only with the tools
     build: str = ""  # native source-built tools, after checksum-verified parts are extracted
     family: str = ""  # backend family when the registry id doesn't carry its compiler's name
+    wine: bool = False  # Windows programs wibo cannot run: use wine on Linux and macOS
+    headers: list[str] = field(default_factory=list)  # shared compiler header packs
+
+    def __post_init__(self):
+        self.requires = [*self.requires, *(h for h in self.headers if h not in self.requires)]
     linux_vm: bool = False  # this Linux pack may use the optional macOS VM runner
     case_sensitive: bool = False  # proxy hosts must preserve archives until extraction on Linux
 
@@ -124,6 +136,12 @@ def registry() -> dict[str, Toolchain]:
     return {tid: Toolchain(id=tid, **spec) for tid, spec in _registry_data().items()}
 
 
+def known(tid: str) -> bool:
+    """Whether the registry has this toolchain id. A project's config can name one it doesn't: the project was made
+    with another tool (#118: a Windows project named a 64-bit Visual C++ one), and it must still open."""
+    return tid in _registry_data()
+
+
 def get(tid: str) -> Toolchain:
     reg = registry()
     if tid not in reg:
@@ -169,8 +187,70 @@ def path(tid: str, linux: bool | None = None, *, vm: bool | None = None) -> Path
 
 
 def installed(tid: str, linux: bool | None = None, *, vm: bool | None = None) -> dict | None:
+    manifest = _manifest(tid, linux, vm=vm)
+    if manifest is None:
+        return None
+    if changed(tid, manifest, path(tid, linux, vm=vm)):
+        return None
+    tc = registry().get(tid)
+    if tc is not None and any(installed(h, linux, vm=vm) is None for h in tc.headers):
+        return None
+    return manifest
+
+
+def _manifest(tid: str, linux: bool | None = None, *, vm: bool | None = None) -> dict | None:
     m = path(tid, linux, vm=vm) / MANIFEST
     return json.loads(m.read_text(encoding="utf-8")) if m.exists() else None
+
+
+def fingerprint(tc: Toolchain, linux: bool = False) -> str:
+    """What an install of this entry holds, as a short hash: its parts (archives, hashes, where each goes) and what
+    else INSTALLED_FROM names. Its name and description don't change an install."""
+    parts = tc.linux_parts() if linux else tc.parts_for()
+    entry = {"parts": [{k: v for k, v in p.items() if k != "platforms"} for p in parts],
+             **{k: getattr(tc, k) for k in INSTALLED_FROM}}
+    return hashlib.sha256(json.dumps(entry, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def changed(tid: str, manifest: dict, where: Path | None = None) -> bool:
+    """Whether toolchains.toml's entry changed since this install: a pack moved its Windows SDK into a toolchain of its
+    own, and an install that kept the SDK inside would have built without the SDK's new folder. An install
+    made before installs recorded their entry's fingerprint is judged by the archives it records; one that still
+    matches is given the fingerprint (in `where`, its folder, when it can be written), so a later change to the entry
+    is seen too."""
+    tc = registry().get(tid)
+    if tc is None:  # (a project names a toolchain decompdecomp doesn't have: known())
+        return False
+    linux = bool(manifest.get("wsl") or manifest.get("linux_vm"))
+    now = fingerprint(tc, linux)
+    if "fingerprint" in manifest:
+        return manifest["fingerprint"] != now
+    if "parts" not in manifest:  # (not one install() wrote)
+        return False
+    parts = tc.linux_parts() if linux else tc.parts_for()
+    urls = {p["url"] for p in parts} | {v for p in parts for k, v in p.items() if k.endswith("_url")}
+    had = {(p.get("url"), p.get("sha256")) for p in manifest["parts"]}
+    if {url for url, _ in had} != urls or (manifest.get("commit") or "") != tc.commit or \
+            any(p.get("sha256") and (p["url"], p["sha256"]) not in had for p in parts):
+        return True
+    try:
+        if where is not None:
+            _write_manifest(where, {**manifest, "fingerprint": now})
+    except OSError:
+        pass  # (a folder it can't write, read-only: judged by its archives again next time)
+    return False
+
+
+def _write_manifest(folder: Path, manifest: dict) -> None:
+    """An install's manifest, written whole or not at all: installed() reads it while /api/state, builds and other
+    installs run, and changed() adds the fingerprint to an older one during such a read. Written to a file beside
+    it, then moved over it in one step (os.replace), so a reader sees the old manifest or the new, never half."""
+    tmp = folder / f"{MANIFEST}.{os.getpid()}.{threading.get_ident()}.tmp"
+    try:
+        tmp.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        os.replace(tmp, folder / MANIFEST)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 @functools.cache
@@ -182,7 +262,11 @@ def _intel_mac_runtime_ready() -> bool:
 
 
 def runtime_error(tid: str) -> str | None:
-    """Why an installed compiler cannot start: native translation or the optional Linux runner."""
+    """Why an installed compiler cannot start: native translation, wine, or the optional Linux runner."""
+    if get(tid).wine:
+        from . import wine
+        if why := wine.problem(get(tid).name):
+            return why
     if get(tid).via_vm:
         ok, why = linuxvm.status()
         return None if ok else why
@@ -227,10 +311,17 @@ def _sha256(p: Path) -> str:
 
 
 def _download(url: str, dest: Path, log) -> None:
+    """The file at `url`, written beside `dest` and then moved there whole: another download of it (another
+    program's) never reads half of one, nor writes into it."""
     log(f"  downloading {url}")
     req = urllib.request.Request(url, headers={"User-Agent": "decompnet-toolchain-installer"})
-    with urllib.request.urlopen(req, timeout=120) as r, open(dest, "wb") as f:
-        shutil.copyfileobj(r, f)
+    part = dest.with_name(f"{dest.name}.{os.getpid()}-{threading.get_ident()}.part")
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r, open(part, "wb") as f:
+            shutil.copyfileobj(r, f)
+        os.replace(part, dest)
+    finally:
+        part.unlink(missing_ok=True)
 
 
 def _deb_data(deb: Path, out: Path) -> Path:
@@ -414,25 +505,40 @@ def install(tid: str, *, accept_license: bool = False, force: bool = False, log=
                 into = dest / part.get("into", "")  # a pack of several versions: each in its own folder
                 into.mkdir(parents=True, exist_ok=True)
                 _extract(archive, into, part.get("subdir"), part.get("keep"))
+                for folder in part.get("mkdir", ()):  # the POSIX root of an MSYS2 program needs them (#130)
+                    (into / folder).mkdir(parents=True, exist_ok=True)
                 if part.get("executable"):  # archives that don't record the executable bit
                     for f in dest.rglob("*"):
                         if f.is_file():
                             os.chmod(f, 0o755)
             pinned.append({"url": part["url"], "sha256": digest})
+        for into in dict.fromkeys(part.get("into", "") for part in parts) if tc.headers else ():
+            folder = dest / into
+            lines = [Path(os.path.relpath(path(h, linux, **location) / "Include", folder)).as_posix()
+                     for h in tc.headers]
+            (folder / INCLUDES).write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
         if tc.build == "psyq-obj-parser":
             _build_psyq_parser(dest, linux, log)
         if linux and not archive_only and "runtime-i386" in tc.requires:  # WSL systems rarely have a 32-bit loader: bring ours
             n = wsl.wrap_i386(dest, wsl.path(path("runtime-i386", linux=True)))
             log(f"  {n} 32-bit programs start through the pinned 32-bit runtime")
+        if tc.wine and not linux:
+            from . import wine
+
+            if wine.needed():  # its prefix now, not in the middle of the first build (wineboot takes up to a minute)
+                try:
+                    wine.prepare(log=log)
+                except RuntimeError as error:  # (not "install wine" later: wine is here, its prefix failed)
+                    raise ToolchainError(f"{tc.name} downloaded, but {error}") from None
     except BaseException:
         shutil.rmtree(dest, ignore_errors=True)
         raise
-    (dest / MANIFEST).write_text(json.dumps({
+    _write_manifest(dest, {
         "id": tid, "name": tc.name, "license": tc.license, "source": tc.source,
         "parts": pinned, "commit": tc.commit or None, "installed_at": time.time(),
         "license_accepted": bool(tc.proprietary and accept_license), "wsl": linux and not vm, "linux_vm": vm,
-        "archive_parts": archive_parts,
-    }, indent=2), encoding="utf-8")
+        "archive_parts": archive_parts, "fingerprint": fingerprint(tc, linux),
+    })
     log(f"{tid}: installed at {dest}")
     return dest
 
@@ -759,14 +865,20 @@ def binary(tid: str) -> Path:
     raise ToolchainError(f"{tid} is installed but {name} wasn't found in {base}")
 
 
+_ensure_locks: dict[str, threading.RLock] = {}
+_ensure_locks_guard = threading.Lock()
+
 def ensure(tid: str, log=print) -> Path:
-    """Install a free tool on first use and return its folder. Proprietary ones must be installed explicitly."""
-    if installed(tid) is None:
-        tc = get(tid)
-        if tc.proprietary:
-            raise ToolchainError(f"{tc.name} is proprietary: install it from Setup if you accept its license")
-        install(tid, log=log)
-    return path(tid)
+    """Install a free tool once across concurrent workers; proprietary packs require explicit acceptance."""
+    with _ensure_locks_guard:
+        lock = _ensure_locks.setdefault(tid, threading.RLock())
+    with lock:
+        if installed(tid) is None:
+            tc = get(tid)
+            if tc.proprietary:
+                raise ToolchainError(f"{tc.name} is proprietary: install it from Setup if you accept its license")
+            install(tid, log=log)
+        return path(tid)
 
 
 JDK_HINT = ("a Java development kit (JDK), not the Java runtime alone: your system's JDK package (Fedora: "
@@ -806,7 +918,9 @@ def status() -> list[dict]:
     for tc in registry().values():
         m = installed(tc.id)
         rows.append({"id": tc.id, "name": tc.name, "kind": tc.kind, "platform": tc.platform, "license": tc.license,
+                     "source": tc.source,  # (where it comes from: the install's confirmation says)
                      "installed": m is not None, "supported": tc.supported, "description": tc.description,
+                     "changed": m is None and _manifest(tc.id) is not None,
                      "wsl": tc.via_wsl, "linux_vm": tc.via_vm,
                      "pinned": all(p.get("sha256") for p in tc.parts) or bool(tc.commit)})
     return rows

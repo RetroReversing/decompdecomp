@@ -774,13 +774,14 @@ class Twins:
     def _index_function(self, proj, fid: int) -> None:
         row = self.net.store.one("SELECT id,vram,matched_at,status,matched_source FROM functions WHERE id=?", fid)
         p = self.prints(proj).get(fid)
+        cfg = self.net.cfg(proj)
         with self.net.store.tx() as db:
-            if row is None or row["status"] != "matched" or not row["matched_source"] or p is None or p.asm:
+            if row is None or row["status"] != "matched" or not row["matched_source"] or p is None or p.asm or not cfg.get("compiler"):
                 db.execute("DELETE FROM cross_game_index WHERE function_id=?", (fid,))
             else:
                 db.execute("INSERT OR REPLACE INTO cross_game_index VALUES(?,?,?,?,?,?)",
                            (fid, proj["id"], p.key,
-                            self._compiler_key(compiler_for(self.net.cfg(proj), row["vram"])), p.size,
+                            self._compiler_key(compiler_for(cfg, row["vram"])), p.size,
                             row["matched_at"] or 0))
 
     def cross_game_results(self, slug: str) -> dict:

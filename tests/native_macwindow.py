@@ -128,7 +128,8 @@ def tick(_timer):
             assert "native-mac-test-secret" not in external[0]
             state["phase"] = 21
             state["requests_before"] = len(headers)
-            evaluate('var a=document.createElement("a");a.href="/";a.target="_blank";a.click();true',
+            evaluate('window.nativeBeforeReload=true;'
+                     'var a=document.createElement("a");a.href="/";a.target="_blank";a.click();true',
                      lambda _: None)
         elif phase == 21:
             # Seeing the HTTP request only proves navigation started, not that WebKit has loaded

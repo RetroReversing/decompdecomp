@@ -36,15 +36,22 @@ function fetch(url) {
 }
 
 const toasts = [], errors = [];
+const savedLocal = new Map();  // localStorage: the GUI keeps its own choices there (base.js, pages.js, agents.js)
 process.on("unhandledRejection", (e) => errors.push(String(e && e.stack || e)));
 const ctx = {
   console, fetch, Promise, Map, Set, JSON, Math, Date, Object, Array, String, Number, Symbol, Error, RegExp, Uint8Array, URLSearchParams,
   setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
-  requestAnimationFrame: () => 0, performance: { now: () => 0 }, localStorage: stub(), navigator: stub(), URLSearchParams,
+  requestAnimationFrame: () => 0, performance: { now: () => 0 }, navigator: stub(), URLSearchParams,
+  localStorage: {
+    getItem: (key) => (savedLocal.has(String(key)) ? savedLocal.get(String(key)) : null),
+    setItem: (key, value) => savedLocal.set(String(key), String(value)),
+    removeItem: (key) => savedLocal.delete(String(key)),
+  },
   matchMedia: () => stub(), getComputedStyle: () => stub(), location: { hash: "", href: "" }, confirm: () => false,
   addEventListener: () => {}, scrollTo: () => {}, devicePixelRatio: 1, document: stub(),
 };
 ctx.window = ctx;
+ctx.costs = [];  // /api/modelcosts rows: the model advice check below sets them
 const now = Date.now() / 1000;
 const overview = (slug) => ({
   slug, title: slug, kind: "rom", platform: "ps2", platform_name: "PlayStation 2", ready: true, rom: { game_code: "X" },
@@ -62,6 +69,7 @@ answers["/api/agents/detected"] = () => [];
 answers["/api/mapcolumns"] = () => ({ keys: ["vram", "cc", "ccx"], rows: [] });
 answers["/api/knowledge"] = () => ({ auto: false, items: [] });
 answers["/api/stats"] = () => ({ agents: [], matches_per_hour: new Array(24).fill(0), compiles_last_hour: 0 });
+answers["/api/modelcosts?slug="] = () => ctx.costs;
 answers["/api/project?slug="] = (url) => overview(url.split("=")[1]);
 answers["/api/map?slug="] = () => ({ sig: "s", keys: ["name", "vram"], rows: [] });
 answers["/api/live?slug=a"] = () => live("a", []);
@@ -211,6 +219,21 @@ const settle = async () => { for (let i = 0; i < SETTLE_TICKS; i++) await tick()
       S.st = before;
       return out;
     })(),
+    // a GBA cartridge: the ARM branch at 0, the fixed 0x96 at 0xB2 and the complement checksum at 0xBD
+    gba: (() => {
+      const h = new Uint8Array(0x200), dv = new DataView(h.buffer);
+      dv.setUint32(0, 0xea00002e, true);  // b 0x080000C0
+      [..."DEMOQUEST\0\0\0"].forEach((c, i) => { h[0xa0 + i] = c.charCodeAt(0); });
+      [..."ADQE"].forEach((c, i) => { h[0xac + i] = c.charCodeAt(0); });
+      h[0xb2] = 0x96;
+      let sum = 0x19;
+      for (let i = 0xa0; i < 0xbd; i++) sum += h[i];
+      h[0xbd] = (-sum) & 0xff;
+      const file = { name: "game.gba", size: 0x200 };
+      const good = identifyHead(h, file);
+      h[0xbd] ^= 1;
+      return { good: good && [good.platform, good.code, good.title], broken: identifyHead(h, file), said: notSupported(h, file) };
+    })(),
     // tests/test_ds.py's header, whose checksum (0xB4DE) the server's crc16 computed: the page agrees on what's a DS ROM
     nds: (() => {
       const h = new Uint8Array(0x200), dv = new DataView(h.buffer);
@@ -289,6 +312,20 @@ const settle = async () => { for (let i = 0; i < SETTLE_TICKS; i++) await tick()
     // Polish is offered once half the game's own code matches: set-aside functions count on neither side
     polish: [{ functions: 274, set_aside: 241, matched: 33 }, { functions: 274, set_aside: 0, matched: 33 },
              { functions: 5, set_aside: 5, matched: 0 }, null].map(polishOffered),
+    // #118: a project from another tool names a compiler decompdecomp doesn't have: the banner says so, instead of
+    // taking it for a compiler with no build for this computer
+    unknownCompiler: (() => {
+      const before = S.ov, original = document.getElementById;
+      const notice = { hidden: null, className: null, innerHTML: "", _html: null, _working: false };
+      document.getElementById = (id) => (id === "compilerNotice" ? notice : original(id));
+      S.ov = { slug: "a", kind: "rom", matched: 0, compiler: { toolchain: "msvcxx-x86_64", name: "msvcxx-x86_64",
+        flags: ["/O2"], installed: false, supported: false, known: false, missing: [] } };
+      renderCompilerNotice(S.ov);
+      const said = { hidden: notice.hidden, className: notice.className, text: String(notice.innerHTML).replace(/<[^>]+>/g, "") };
+      document.getElementById = original;
+      S.ov = before;
+      return said;
+    })(),
     autopilot: burstLines([
       { id: 1, slug: "a", project: "Demo", kind: "match", agent: "autopilot", detail: "func_1", created_at: 100 },
       { id: 2, slug: "a", project: "Demo", kind: "match", agent: "autopilot", detail: "func_2", created_at: 101 },
@@ -296,6 +333,64 @@ const settle = async () => { for (let i = 0; i < SETTLE_TICKS; i++) await tick()
       { id: 4, slug: "a", project: "Demo", kind: "match", agent: "claude-1", detail: "func_3", created_at: 103 },
       { id: 5, slug: "a", project: "Demo", kind: "autopilot", agent: "", detail: "0 of 1 functions matched from machine drafts", created_at: 104 },
     ]).map((g) => noteHtml(g).replace(/<[^>]+>/g, "")),
+    // #99: the app's own workers' claims outlive a stopped helper (the permuter's by half an hour) and one helper
+    // going between waiting and working mustn't swap the rows
+    agents: (() => {
+      const was = { sessions: S.sessions, claims: S.claims };
+      const claim = (agent) => ({ name: "func_1", agent });
+      S.sessions = [];
+      S.claims = ["permuter", "@permuter", "decompdecomp", "@autopilot"].map(claim);
+      const ownOnly = workingAgents().n;
+      S.claims = [claim("alex.claude-1")];
+      const outside = workingAgents().n;
+      S.claims = [claim(null), claim(undefined)];
+      const nameless = workingAgents().n;
+      const at = (label, state, task = "decompile") => ({ id: label, label, state, task });
+      const flip = (first, second) => sortAgentCards([at("alpha", first), at("beta", second)], new Map(), "state").map((s) => s.label);
+      const flipped = flip("waiting", "working"), again = flip("working", "waiting");
+      const rows = sortAgentCards([at("stopped-one", "stopped"), at("working-one", "working"), at("polishing", "waiting", "readable"),
+                    at("paused-one", "paused", "readable")], new Map(), "state").map((s) => s.label);
+      S.sessions = was.sessions; S.claims = was.claims;
+      return { ownOnly, outside, nameless, flipped, again, rows };
+    })(),
   })`, ctx);
+  // #131: model advice shows, can be dismissed by model, stays hidden when its counts move, returns for another
+  // model or after a day, and is remembered per project
+  const advice = await vm.runInContext(`(async () => {
+    const was = { slug: S.slug, costsAt: S.costsAt, costsSlug: S.costsSlug, modelAdvice: S.modelAdvice };
+    const box = { hidden: null };
+    const text = { innerHTML: "", _html: null };
+    const close = { onclick: null };
+    const original = document.getElementById;
+    const realNow = Date.now;
+    let now = 1_700_000_000_000;
+    Date.now = () => now;
+    document.getElementById = (id) => id === "modelAdvice" ? box : id === "modelAdviceText" ? text : id === "modelAdviceClose" ? close : original(id);
+    close.onclick = dismissModelAdvice;
+    try {
+      const render = async (slug, model, sentence) => {
+        S.slug = slug;
+        costs = [{ kind: "api", model, matches: 1, usd: 1, tokens: 10, compiles: 100, advice: sentence, advice_model: model }];
+        S.costsAt = 0; S.costsSlug = "";
+        await renderCosts(true);
+        return { hidden: box.hidden, text: text.innerHTML };
+      };
+      const shown = await render("advice-a", "model-a", "model-a: 100 compiles, give it fewer helpers");
+      close.onclick();
+      const dismissed = { hidden: box.hidden, stored: dismissedModelAdvice("advice-a") };
+      const sameModel = await render("advice-a", "model-a", "model-a: 900 compiles, give it fewer helpers");
+      const otherProject = await render("advice-b", "model-a", "model-a: 900 compiles, give it fewer helpers");
+      const otherModel = await render("advice-a", "model-b", "model-b: a stronger model could get further");
+      now += MODEL_ADVICE_MS + 1;
+      const expired = await render("advice-a", "model-a", "model-a: 900 compiles, give it fewer helpers");
+      return { shown, dismissed, sameModel, otherProject, otherModel, expired };
+    } finally {
+      Date.now = realNow;
+      document.getElementById = original;
+      costs = [];
+      Object.assign(S, was);
+    }
+  })()`, ctx);
+  checks.advice = advice;
   process.stdout.write(JSON.stringify({ toasts, notes, unread, errors, checks }));
 })().catch((e) => { console.error(e); process.exit(1); });

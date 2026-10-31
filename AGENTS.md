@@ -46,9 +46,13 @@ Testing a change must not touch it:
 - Don't restart, update or quit the user's app, and don't change its projects, without asking.
 
 Compilers and tools (objdiff, dtk, wibo, Ghidra, m2c, decomp-permuter, period compilers) are pinned with checksums
-in `src/decompnet/toolchains.toml` and installed by `src/decompnet/toolchains.py`, never taken from PATH. splat is a
-Python dependency in `pyproject.toml`. Proprietary
-compilers are only installed after the user accepts that in Setup; don't add code that fetches them silently.
+in `src/decompnet/toolchains.toml` and installed by `src/decompnet/toolchains.py`, never taken from PATH. The one
+exception is wine (`src/decompnet/wine.py`), which runs the compilers wibo can't (Visual C++ 2017) on Linux and macOS:
+it's a whole Windows runtime that the user's system installs and keeps updated, with no build the app could pin for
+every distribution and Mac, so it comes from `$DECOMPNET_WINE`, the PATH or the places wine.py lists, and only the
+packs marked `wine = true` use it. The compilers it runs are pinned like the rest. splat is a Python dependency in
+`pyproject.toml`. Proprietary compilers are only installed after the user accepts that in Setup; don't add code that
+fetches them silently.
 
 ## Consoles, and the two ways a game is decompiled
 
@@ -105,8 +109,8 @@ only, never copied into the repo. A break gets fixed in the shared code with a t
 and a ROADMAP.md item. Say in the pull request which features you ran and how.
 
 Reviewing a change (a pull request, an agent's branch): check the same list. Does the change reach every console and
-mode it can, does a new or changed console have each feature or a "—" with its ROADMAP item, and does the table
-still say what's true? A gap nobody wrote down is a finding.
+mode it can, does a new or changed console have each feature or a "—" with its ROADMAP item, and do the table and
+the site's cards still say what's true? A gap nobody wrote down is a finding.
 
 Improving a console, adding a console (copy `consoles/template/`, fill in the connector's parts, add a demo game,
 pass `tests/test_consoles.py`, add a ROADMAP.md column) and adding a compiler to a console: CONTRIBUTING.md,
@@ -175,6 +179,9 @@ linting). In short:
   update themselves; the Windows copy updates its bundled packages in place.
 - What's planned is in ROADMAP.md, with a table of which feature works on which platform: when a feature ships or
   reaches another platform, update the table and move its item to done.
+- A change that adds or changes a console's support, or how decompdecomp is installed or downloaded, also updates
+  `site/public/index.html` (the console's card and picker entry, the install section) in the same pull request;
+  reviewing a change checks it, like the ROADMAP table.
 
 ## Never
 
