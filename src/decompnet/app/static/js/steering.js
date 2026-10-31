@@ -859,7 +859,7 @@ $("testInstalledCompilers").onclick = async () => {
   renderCompilerProgress(null);
   showJobError(work, "");
   try {
-    const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, untested_only: !$("compilerRetest").checked } });
+    const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, flags_only: $("compilerFlagsOnly").checked, untested_only: !$("compilerRetest").checked } });
     jobId = job; stop.disabled = false;
     const result = await followJob(job, log, (_lines, snapshot) => {
       if (S.slug === slug && snapshot.progress) renderCompilerProgress(snapshot.progress);

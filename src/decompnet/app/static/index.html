@@ -435,6 +435,7 @@
           <div id="installedCompilerTest">
             <div class="row"><button class="ghost" type="button" id="testInstalledCompilers">Test untested functions</button><button class="ghost" type="button" id="stopInstalledCompilers" hidden>Stop comparison</button></div>
             <p class="small" id="compilerStopError" role="alert" hidden></p>
+            <label class="check"><input type="checkbox" id="compilerFlagsOnly"><span>Flag variations only — use each function’s current compiler</span></label>
             <label class="check"><input type="checkbox" id="compilerRetest"><span>Include previously tested functions</span></label>
             <p class="small muted">Compare saved C against installed compilers. Results are saved; settings change only when you apply them.</p>
             <details class="more"><summary>What gets tested?</summary><div class="more-body small muted">Up to 400 unmatched functions per run. Unchanged completed comparisons are skipped, so another run continues with the remaining functions. Tests optimization, small-data and debug variants, using no AI tokens or downloads. This is a bounded search, not every possible flag combination.</div></details>
@@ -611,6 +612,7 @@
       <p class="set-aside" id="fnAside" hidden><span id="fnAsideWhy"></span> <button class="link-btn" id="fnReopen" type="button">Give it back to the agents</button></p>
       <div id="fnCompilerTest" hidden>
         <h3>Compiler settings</h3><div id="fnCurrentCompiler" class="small"></div><div id="fnCompilerMatches"></div>
+        <label class="check"><input type="checkbox" id="fnCompilerFlagsOnly"><span>Flag variations only — use this function’s current compiler</span></label>
         <button class="ghost small-btn" id="fnTestCompilers" type="button">Test installed compilers &amp; flags</button>
         <p class="small muted">Tests this function’s saved C attempt locally with every installed compiler and supported flag-search variant. No AI tokens; settings stay unchanged. This is not every possible compiler option.</p>
         <p class="small muted" id="fnCompilerHistory">Not tested yet.</p>

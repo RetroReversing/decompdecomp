@@ -137,7 +137,7 @@ def register(app: App) -> None:
             if net.fork_slug(slug):
                 raise NetworkError("This comparison currently needs a ROM-mode project.")
             return {"job": jobs.start("installed compilers", lambda log: net.run_compiler_comparison(
-                slug, log=log, function=data.get("function", ""), untested_only=data.get("untested_only", True)),
+                slug, log=log, function=data.get("function", ""), untested_only=data.get("untested_only", True), flags_only=bool(data.get("flags_only", False))),
                 cancel_message="Compiler comparison stopped. Completed results are saved.")}
         return net.compiler_answer(slug, check_now=request.method == "POST")
 

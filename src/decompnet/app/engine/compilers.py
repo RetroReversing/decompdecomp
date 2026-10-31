@@ -210,14 +210,17 @@ class CompilerMixin:
         if row is None:
             return None
         candidates = self._comparison_candidates(proj)
-        digest = self._comparison_digest(proj, fn, self._comparison_source(fn), candidates)
         comparison = json.loads(row["result"])
+        if comparison.get("flags_only"):
+            own = compiler_for(self.cfg(proj), fn["vram"])
+            candidates = [p for p in candidates if p[0] == own["toolchain"]]
+        digest = self._comparison_digest(proj, fn, self._comparison_source(fn), candidates)
         default = self.cfg(proj)["compiler"]
         for result in comparison.get("ranked", []):
             result["default"] = result["toolchain"] == default["toolchain"] and result["flags"] == default["flags"]
         return {"completed_at": row["completed_at"], "stale": digest != row["input_digest"], "comparison": comparison}
 
-    def run_compiler_comparison(self, slug, log=print, function="", untested_only=True):
+    def run_compiler_comparison(self, slug, log=print, function="", untested_only=True, flags_only=False):
         lock = self._compiler_comparison_locks.setdefault(slug, threading.Lock())
         if not lock.acquire(blocking=False):
             raise NetworkError("A compiler comparison is already running for this project. Wait for it to finish.")
@@ -227,12 +230,12 @@ class CompilerMixin:
                 if check:
                     check()
                 return self.survey_compilers(slug, log=log, all_installed=True, function=function,
-                                             untested_only=untested_only and not function)
+                                             untested_only=untested_only and not function, flags_only=flags_only)
         finally:
             lock.release()
 
     def survey_compilers(self, slug: str, log=lambda line: None, limit: int = 400, state: dict | None = None,
-                         all_installed: bool = False, function: str = "", untested_only: bool = False) -> dict:
+                         all_installed: bool = False, function: str = "", untested_only: bool = False, flags_only: bool = False) -> dict:
         """The judge's part of the compiler map. Agents' C for functions that don't match yet, built with each other
         compiler the project uses: C that matches the game with another compiler (and not with today's) confirms that
         compiler for its function. Contradicted functions first, then the closest attempts; C already tried is
@@ -269,12 +272,21 @@ class CompilerMixin:
         improvements = []
         results = []
         n = found = skipped = 0
+        available_candidates = candidates
+        if flags_only:
+            log("Flag variations only: each function uses its currently selected compiler; other compilers are skipped.")
         for fn in rows:
             check_cancel()
             if n >= limit:
                 break
             source = self._comparison_source(fn)
             if not source:
+                continue
+            own = compiler_for(cfg, fn["vram"])
+            candidates = ([p for p in available_candidates if p[0] == own["toolchain"]]
+                          if flags_only else available_candidates)
+            if not candidates:
+                skipped += 1
                 continue
             input_digest = self._comparison_digest(proj, fn, source, candidates) if all_installed else None
             previous = self.store.one("SELECT input_digest FROM compiler_tests WHERE function_id=?", fn["id"]) if all_installed else None
@@ -337,7 +349,7 @@ class CompilerMixin:
                 ranked.sort(key=lambda r: (not (r["exact"] and r["default"]), r["percent"] is None, -(r["percent"] or 0), r["toolchain"], r["flags"]))
                 completed = {"before": baseline, "best": best, "profile": best_profile,
                              "tested": len(candidates), "exact_matches": len(matches),
-                             "improved": improved, "ranked": ranked}
+                             "improved": improved, "ranked": ranked, "flags_only": flags_only}
                 check_cancel()
                 with self.store.tx() as db:
                     db.execute("INSERT OR REPLACE INTO compiler_tests VALUES(?,?,?,?)",
