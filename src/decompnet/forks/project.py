@@ -408,7 +408,7 @@ class ForkProject:
 
             if hints := explain(self.root, executable, "\n".join(out)):
                 log(hints)
-                tail = hints + "\n\nBuild output:\n" + tail
+                tail = tail + "\n\n" + hints
         return code == 0, tail
 
     def unpack_disc(self, version: str | None, log=print) -> int:

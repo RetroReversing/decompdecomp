@@ -164,16 +164,16 @@ function showJobError(logEl, message) {
   box.hidden = !message;
   box.textContent = summary;
   if (message) {
-    // The exception repeats the build tail already streamed into the log. Add only genuinely missing lines.
+    // The exception may repeat the streamed tail. Keep any new detail after the existing lines.
     const current = logEl.textContent.trim();
-    const extra = message.split("\n").filter((line) => line.trim() && line !== "Build output:" && !current.includes(line));
-    logEl.textContent = [extra.join("\n"), current].filter(Boolean).join("\n\n");
-    logEl.hidden = false;
-    if (!logEl._copyToolbar) {
+    const extra = message.split("\n").slice(1).filter((line) => line.trim() && !current.includes(line));
+    logEl.textContent = [current, extra.join("\n")].filter(Boolean).join("\n\n");
+    logEl.hidden = !logEl.textContent;
+    if (logEl.textContent && !logEl._copyToolbar) {
       const toolbar = document.createElement("div");
       toolbar.className = "row joblog-toolbar";
       const label = document.createElement("b");
-      label.textContent = "Build log";
+      label.textContent = "Job log";
       const button = document.createElement("button");
       button.type = "button";
       button.className = "ghost small-btn";
@@ -186,7 +186,7 @@ function showJobError(logEl, message) {
       logEl.before(toolbar);
       logEl._copyToolbar = toolbar;
     }
-    logEl._copyToolbar.hidden = false;
+    if (logEl._copyToolbar) logEl._copyToolbar.hidden = !logEl.textContent;
   } else {
     logEl.textContent = "";
     logEl.hidden = false;

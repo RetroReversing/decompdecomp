@@ -100,7 +100,7 @@ async function main() {
       assert.equal(log.bar.removed, true, marker);
       if (buttonId) assert.equal(button.disabled, false, marker);
       if (outcome !== "done") assert.equal(log.error, outcome === "start-error" ? "Cannot start" : outcome === "cancelled" ? "Cancelled." : "Build failed", marker);
-      if (outcome === "job-error" || outcome === "cancelled") assert.equal(log.textContent, (outcome === "cancelled" ? "Cancelled." : "Build failed") + "\n\nBuilding", marker);
+      if (outcome === "job-error" || outcome === "cancelled") assert.equal(log.textContent, "Building", marker);
       if (outcome === "done") {
         assert.equal(log.error || "", "", marker);
         assert.equal(log._workStatus.dataset.state, "done");
@@ -178,6 +178,7 @@ async function main() {
   copyTest.ctx.showJobError(copyTest.log, "setup step failed: make\nMissing preprocessor.\n\nBuild output:\n" + raw);
   assert.equal(copyTest.log._errorBox.textContent, "setup step failed: make");
   assert.equal(copyTest.log.textContent.split("mips-linux-gnu-cpp: missing").length - 1, 1);
+  assert.equal(copyTest.log._copyToolbar.children[0].textContent, "Job log");
   const toolbar = copyTest.log._copyToolbar;
   await toolbar.children[1].onclick();
   assert.equal(copied, copyTest.log.textContent);
