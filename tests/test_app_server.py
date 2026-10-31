@@ -1459,3 +1459,13 @@ def test_resuming_helpers_does_not_hold_agent_state_lock_during_progress_sync(tm
         release.set()
         resumed.join(timeout=3)
         reader.join(timeout=3)
+
+
+def test_setup_agent_choices_endpoint_returns_installed_clis(app, monkeypatch):
+    from decompnet.app import setup_fix
+    client, _, _ = app
+    expected = [{'id': 'codex', 'name': 'Codex', 'installed': True}]
+    monkeypatch.setattr(setup_fix, 'choices', lambda: expected)
+    response = client.get('/api/fork/fix-setup')
+    assert response.status_code == 200
+    assert response.json() == {'agents': expected}
