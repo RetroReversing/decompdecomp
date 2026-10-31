@@ -13,6 +13,7 @@ from . import (
     branch_locals,
     callee_prototype_repairs,
     captured_repairs,
+    compiler_shape_repairs,
     evidence_repairs,
     expression_repairs,
     integer_lifetime_repairs,
@@ -60,6 +61,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     for family, text in register_repairs.variants(source, name, arch):
         proposals.append(text)
         labels[text] = family
+    for family, text in compiler_shape_repairs.variants(source, name, arch, flags, header):
+        proposals.append(text)
+        labels[text] = family
     for family, text in evidence_repairs.variants(source, name, header):
         proposals.append(text)
         labels[text] = family
@@ -94,6 +98,16 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
         for family, text in module.variants(source, name):
             proposals.append(text)
             labels[text] = family
+    # Two disjoint lifetime merges can be useful together even when either allocation is worse.
+    # Keep the bundle tiny; each merge retains the existing conservative liveness boundaries.
+    merges = [text for family, text in integer_lifetime_repairs.variants(source, name)
+              if family == 'merge_integer_lifetimes']
+    for first in merges[:2]:
+        second = next((text for family, text in integer_lifetime_repairs.variants(first, name)
+                       if family == 'merge_integer_lifetimes' and text != source), None)
+        if second:
+            proposals.append(second)
+            labels[second] = 'combined_integer_lifetimes'
     for text in pointer_cast_repairs.variants(source, name, arch):
         proposals.append(text)
         labels[text] = 'pointer_cast_inline'

@@ -178,6 +178,7 @@ class Search(Permuter):
         """Regenerate from each saved winner, sharing this search's deadline, cache and allowance."""
         flags = compiler_for(self.net.cfg(proj), fn['vram']).get('flags', []) if not fork else []
         trials = 0
+        detour_used = False
         source = fn['best_source']
         context = self.net._context(proj['id'],fn['unit'])
         header = self.net.forks.permuter_header(fork,fn['name']) if fork else (context['header'] if context else '')
@@ -194,24 +195,35 @@ class Search(Permuter):
             for family, candidate in permuter_local.variants(source, fn['name']):
                 labels.setdefault(candidate, family)
                 choices.append(candidate)
+            detour = None
             for candidate in dict.fromkeys(choices):
                 if candidate in self.local_seen:
                     continue
                 if max_trials is not None and trials >= max_trials:
-                    return best, source
+                    return best, self.net._function(fn['name'], proj['slug'])['best_source']
                 self.local_seen.add(candidate)
                 trials += 1
                 with repair_trial({'kind': 'deep local repair', 'family': labels.get(candidate, 'local_repair'),
                                    'base_source_sha256': hashlib.sha256(source.encode()).hexdigest()}):
                     score = self._score(agent, proj, fn, candidate, best, fork)
+                if score is not None and best < score <= best * 1.25 and not detour_used:
+                    if detour is None or score < detour[0]:
+                        detour = (score, candidate)
                 if score is not None and score < best:
                     best = score
                     fn = self.net._function(fn['name'], proj['slug'])
                     source = fn['best_source']
                     break
             else:
+                if detour and not detour_used:
+                    # One extra source shape, under this same deadline/allowance. It is never
+                    # saved as the best C; only a later normal judge improvement can be saved.
+                    detour_used = True
+                    source = detour[1]
+                    self.log('Trying one bounded source-shape detour; saved best C is unchanged.')
+                    continue
                 break
-        return best, source
+        return best, self.net._function(fn['name'], proj['slug'])['best_source']
 
     def _after_improvement(self, agent, proj, fn, state, fork, best, source):
         previous = self.phase

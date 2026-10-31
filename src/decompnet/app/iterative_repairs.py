@@ -13,10 +13,15 @@ from ..project import compiler_for
 from . import workers
 
 WIDTH, DEPTH, PER_FUNCTION = 3, 3, 8
+DETOUR_RATIO = 1.25
 
 
 def advance(state, evaluate, variants, stopped):
-    """Resume a breadth-first beam, retaining improvements and bounded equal-score alternatives."""
+    """Resume a bounded beam with one reserved slot for a temporarily worse source shape.
+
+    Detours spend the same phase budget and never replace saved best C. A later repair may need
+    an address or scope shape that initially makes register allocation worse.
+    """
     while state['pending'] and not stopped():
         node = state['pending'][0]
         report = evaluate(node['source'])
@@ -26,7 +31,7 @@ def advance(state, evaluate, variants, stopped):
         if report.get('matched'):
             return True
         score = report.get('score')
-        if isinstance(score, (int, float)) and 0 < score <= node['ceiling']:
+        if isinstance(score, (int, float)) and 0 < score <= node['ceiling'] * DETOUR_RATIO:
             # Keep two source shapes per identical output: a later source edit can distinguish them.
             # This only prunes search branches, never supplies a match verdict.
             output = output_key(report)
@@ -36,7 +41,10 @@ def advance(state, evaluate, variants, stopped):
                 if output is not None:
                     outputs[output] = outputs.get(output, 0) + 1
         if not state['pending']:
-            best = sorted(state['next'], key=lambda n: n['score'])[:WIDTH]
+            ranked = sorted(state['next'], key=lambda n: n['score'])
+            ordinary = [n for n in ranked if n['score'] <= n['ceiling']]
+            detours = [n for n in ranked if n['score'] > n['ceiling']]
+            best = ordinary[:WIDTH-1] + detours[:1] if detours else ordinary[:WIDTH]
             state['next'] = []
             for parent in best:
                 if parent['depth'] >= DEPTH:
@@ -46,7 +54,7 @@ def advance(state, evaluate, variants, stopped):
                         continue
                     state['seen'].append(source)
                     state['pending'].append(dict(source=source, depth=parent['depth'] + 1,
-                                                 ceiling=parent['score']))
+                                                 ceiling=min(parent['ceiling'], parent['score'])))
     return False
 
 
@@ -109,7 +117,7 @@ def run(twins, slug, job):
             return
         header = net._context(proj['id'], fn['unit'])['header']
         settings = compiler_for(cfg, fn['vram'])
-        context = similar_matches.trial_key('', header, settings, fn, ['beam-v2', symbols, rules])
+        context = similar_matches.trial_key('', header, settings, fn, ['beam-v3', symbols, rules])
         saved = net.store.one('SELECT context,state FROM repair_frontiers WHERE function_id=?', fn['id'])
         state = json.loads(saved['state']) if saved and saved['context'] == context else None
         if state is None or fn['best_source'] not in state['seen']:

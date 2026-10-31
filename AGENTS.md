@@ -146,6 +146,13 @@ project restored from them), `app/readable.py` (polishing matched code), `app/kn
 shared once two models agree), `app/drafts.py` + `app/permute.py` (background drafts and the permuter),
 `structs.py` (struct layouts from loads and stores), `app/guide/*.md` and `consoles/<id>/guides/*.md` (know-how agents read through `guide(topic)`), `app/static/` (GUI: `index.html`, `app.css`, and `js/*.js`, plain scripts loaded in order; `js/base.js` says which is which).
 
+## Compiler matching evidence
+
+When a match reveals a reusable compiler behaviour, update `docs/COMPILER_MATCHING_LEARNINGS.md`.
+Record the exact compiler/flags, source change, measured result and evidence level. Include failed
+experiments that would otherwise be repeated. Keep game data private and distinguish controlled
+regression tests from new matches. Add a short version to the appropriate compiler guide when useful.
+
 ## Conventions
 
 [docs/CONVENTIONS.md](docs/CONVENTIONS.md) has them in full (where code goes, names, comments, errors, tests,
