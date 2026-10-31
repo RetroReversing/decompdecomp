@@ -676,18 +676,47 @@ async function loadCompilerAnswer() {
   renderCompilerAnswer(a);
   if (a.checking) S.answerTimer = setTimeout(loadCompilerAnswer, COMPILER_ANSWER_EVERY_MS);
 }
+let compilerPartsAnswer = null;
+let compilerPartsSlug = null;
+const compilerGroupsOpen = new Set();
+const compilerReasonsOpen = new Set();
+function renderCompilerParts(a) {
+  if (compilerPartsSlug !== S.slug) { compilerPartsSlug = S.slug; compilerGroupsOpen.clear(); compilerReasonsOpen.clear(); }
+  compilerPartsAnswer = a;
+  const parts = a.parts || [], mode = $("compilerGroup").value, sort = $("compilerSort").value;
+  $("compilerViewControls").hidden = !parts.length;
+  const row = (p, showProfile) => {
+    const [word, why] = PART_STATE[p.check] || PART_STATE[""];
+    return `<li class="compiler-range"><div class="compiler-range-heading"><code>${hexShort(p.start)}–${hexShort(p.end)}</code>
+      <span class="part-state ${esc(p.check || "none")}">${esc(word)}</span>
+      ${p.functions != null ? `<span class="muted small">${plural(p.functions, "function")}</span>` : ""}
+      <button class="ghost small-btn" type="button" data-unrange="${hexShort(p.start)}-${hex8(p.end)}" title="Return this range to the default compiler">Remove</button></div>
+      ${showProfile ? `<div class="small"><b>${esc(p.compiler)}</b><code class="compiler-arguments">${esc(p.flags)}</code></div>` : ""}
+      ${p.file ? `<div class="muted small mono">${esc(p.file)}</div>` : ""}
+      ${p.said || why ? `<details class="compiler-range-reason" data-range-reason="${p.start}-${p.end}"${compilerReasonsOpen.has(`${p.start}-${p.end}`) ? " open" : ""}><summary>Verification details</summary><p class="small muted">${esc(p.said || why)}</p></details>` : ""}</li>`;
+  };
+  const groups = compilerPartGroups(parts, mode, sort);
+  setHtml($("compilerParts"), mode === "range" ? `<ol class="compiler-range-list">${groups.flatMap(g => g.parts).map(p => row(p, true)).join("")}</ol>`
+    : groups.map(g => `<details class="compiler-profile" data-compiler-group="${esc(g.id)}"${compilerGroupsOpen.has(g.id) ? " open" : ""}>
+      <summary><span><b>${esc(mode === "family" ? g.family.toUpperCase() : g.compiler)}</b>${mode === "settings" ? `<code class="compiler-arguments">${esc(g.flags || "No arguments")}</code>` : ""}<span class="compiler-profile-count">${plural(g.parts.length, "range")}${g.functions != null ? ` · ${plural(g.functions, "function")}` : ""}${mode === "family" ? ` · ${plural(g.profiles, "argument profile")}` : ""}</span></span></summary>
+      <ol class="compiler-range-list">${g.parts.map(p => row(p, mode === "family")).join("")}</ol></details>`).join(""));
+  $("compilerParts").querySelectorAll("details[data-range-reason]").forEach(d => d.ontoggle = () => {
+    if (!d.isConnected) return;
+    if (d.open) compilerReasonsOpen.add(d.dataset.rangeReason); else compilerReasonsOpen.delete(d.dataset.rangeReason);
+  });
+  $("compilerParts").querySelectorAll("details[data-compiler-group]").forEach(d => d.ontoggle = () => {
+    if (!d.isConnected) return;
+    if (d.open) compilerGroupsOpen.add(d.dataset.compilerGroup); else compilerGroupsOpen.delete(d.dataset.compilerGroup);
+  });
+}
+for (const id of ["compilerGroup", "compilerSort"]) $(id).onchange = () => { if (compilerPartsAnswer) renderCompilerParts(compilerPartsAnswer); };
 function renderCompilerAnswer(a) {
   $("installedCompilerTest").hidden = S.ov.kind === "fork" || !a.mips;
   const parts = a.parts || [];
-  setHtml($("compilerAnswer"), `This game was built with <b>${esc(a.compiler)}</b>${a.flags ? ` <span class="flags mono" title="the flags it was given">${esc(a.flags)}</span>` : ""}.${parts.length ? ` ${parts.length === 1 ? "One part" : `${parts.length} parts`} of it with another compiler: below.` : ""}`
-    + (a.elsewhere_count ? ` <span class="muted">${a.elsewhere_count === 1 ? "One more stretch of code looks" : `${a.elsewhere_count.toLocaleString()} more stretches of code look`} like another compiler's work; the app suggests a change once agents' C proves it.</span>` : ""));
+  setHtml($("compilerAnswer"), `<div class="compiler-default"><span class="small muted">Default settings</span><div><b>${esc(a.compiler)}</b></div><code class="compiler-arguments">${esc(a.flags || "No arguments")}</code></div>
+    <p class="small muted">${a.default_functions != null ? `${plural(a.default_functions, "function")} use the default. ` : ""}${plural(parts.length, "explicit range")}${a.elsewhere_count ? ` · ${plural(a.elsewhere_count, "other range")} look like a different compiler; not applied.` : "."}</p>`);
   $("compilerState").textContent = a.checking ? "checking…" : "";
-  setHtml($("compilerParts"), parts.length ? `<ol class="parts">${parts.map((p) => {
-    const [word, why] = PART_STATE[p.check] || PART_STATE[""];
-    return `<li><code>${hexShort(p.start)}–${hexShort(p.end)}</code><span class="grow">${esc(p.compiler)} <span class="flags mono">${esc(p.flags)}</span></span>
-      ${p.file ? `<span class="muted small mono">${esc(p.file)}</span>` : ""}<span class="part-state ${esc(p.check || "none")}" title="${esc(p.said || why)}">${word}</span>${p.check === "waiting" && p.said ? `<span class="small muted">${esc(p.said)}</span>` : ""}
-      <button class="ghost small-btn" type="button" data-unrange="${hexShort(p.start)}-${hex8(p.end)}" aria-label="Build ${hexShort(p.start)} to ${hexShort(p.end)} with ${esc(a.compiler)} again" title="Build this part with ${esc(a.compiler)} again">Remove</button></li>`;
-  }).join("")}</ol>` : "");
+  renderCompilerParts(a);
   const sv = a.survey || {};
   const checks = (a.checks || []).slice(-20).reverse();
   setHtml($("compilerEvidence"), `<p class="small">The app works out which compiler built each part by itself: it tries agents' C for functions that don't match yet with the other compilers the game uses (${
