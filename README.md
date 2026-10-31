@@ -741,3 +741,7 @@ suffixes, and includes failed candidate submissions. It does not infer model ali
 or count claims without submissions. Choose an explicit model; missing historical
 model attribution cannot be reconstructed. The filter also applies to named claims
 and never falls back to previously checked functions. Existing claims stay held.
+
+### Compiler memory on macOS
+
+Native compiler and imported-project build processes are monitored while decompdecomp runs. If a process in a build tree exceeds 2 GiB of resident memory, the build is stopped and reports the limit. This is a sampled watchdog, so short spikes can exceed the limit. To change it for apps launched from Finder, run `launchctl setenv DECOMP_COMPILER_MEMORY_MB 1024` in Terminal and restart decompdecomp; the value is a limit in MiB (at least 16). Use `launchctl unsetenv DECOMP_COMPILER_MEMORY_MB` and restart to restore the default. The limit applies to each process; reduce deep permuter threads and agent concurrency to limit combined memory use. Compilers inside Linux VMs or containers have their own limits.

@@ -610,6 +610,8 @@ class Permuter:
         result = self.net._compile(proj, ctx["header"], source, fn)
         if not result.ok:
             self._trial_outcome = 'compile_failed'
+            if 'Compiler or build process exceeded' in getattr(result, 'log', ''):
+                log.warning('%s: %s', fn['name'], result.log.strip())
             return None
         cand, verdict, _ = self.net._evaluate(fn, proj, result.obj)
         if cand is None:
