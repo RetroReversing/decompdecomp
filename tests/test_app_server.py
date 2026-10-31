@@ -25,6 +25,17 @@ needs_demo = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-kmc") is None or
 PORT, SECRET = 6499, "s3cret-for-tests"
 
 
+def test_agent_local_pass_settings_are_opt_in_and_validate_budgets(app):
+    client,net,*_=app
+    assert not net.agent_local_repairs['enabled']
+    headers={'X-Decomp':'1'}
+    for bad in ({'agent_local_trials':True},{'agent_local_trials':7},{'agent_local_seconds':16},{'agent_local_enabled':'yes'}):
+        assert client.post('/api/settings',json=bad,headers=headers).status_code==400
+    response=client.post('/api/settings',json={'agent_local_enabled':True,'agent_local_trials':3,'agent_local_seconds':4},headers=headers)
+    assert response.status_code==200 and net.agent_local_repairs=={'enabled':True,'trials':3,'seconds':4}
+    client.post('/api/settings',json={'agent_local_enabled':False},headers=headers)
+
+
 @pytest.fixture(scope="module")
 def app(tmp_path_factory):
     home = tmp_path_factory.mktemp("home")

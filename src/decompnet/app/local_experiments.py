@@ -2,6 +2,7 @@
 import hashlib
 import json
 import re
+import time
 
 from ..network import NetworkError
 from ..project import compiler_for
@@ -38,13 +39,14 @@ FAMILIES = ('masked_value_reuse', 'cfg_integer_lifetimes', 'table_slot_lifetime'
             'local_widening','callee_parameter_width','callee_return_width','split_integer_lifetime','merge_integer_lifetimes','branch_call','goto_leaf','switch_layout') + draft_repairs.AGENT_FAMILIES
 
 
-def run(net, agent, slug, function, revision, families=None, max_trials=6):
+def run(net, agent, slug, function, revision, families=None, max_trials=6, *, seconds=60, provenance_kind='agent batch'):
     if isinstance(max_trials,bool) or not isinstance(max_trials,int) or not 1<=max_trials<=6:
         raise NetworkError('Use max_trials from 1 to 6.')
     if families is not None and (not isinstance(families,list) or not families or len(families)>len(FAMILIES)
                                  or any(f not in FAMILIES for f in families)):
         raise NetworkError('Choose supported local families: '+', '.join(FAMILIES))
     requested = list(dict.fromkeys(families or FAMILIES))
+    deadline=time.monotonic()+seconds
     fn = net._function(function,slug)
     with net.attempt_turn(agent,fn):
         source,actual = agent_tokens.candidate(net,agent,slug,function)
@@ -56,6 +58,8 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         if checked and checked.get('exact'):
             from .tools import _compile
             return _compile(net,agent,slug,function,source)
+        if time.monotonic()>=deadline:
+            return 'Local repair time budget reached during baseline checking; no variants submitted.'
         pools = available(net,agent,slug,fn,source,revision,requested)
         effect_scope=agent_tokens.target_scope(net,fn,'')
         selected=[];seen=set()
@@ -78,7 +82,10 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6):
         policy_profile=adaptive_repairs.profile(net,net._project(slug),fn)
         from .permuter_focus import classify
         focus=classify((baseline or {}).get('rows') or [])
-        result=agent_tokens.variants(net,agent,slug,function,revision,[{'old':source,'new':s} for _,s in selected], 'local repairs')
+        remaining=deadline-time.monotonic()
+        if remaining<=0:return 'Local repair time budget reached during proposal generation; no variants submitted.'
+        result=agent_tokens.variants(net,agent,slug,function,revision,[{'old':source,'new':s} for _,s in selected], 'local repairs',
+                                     seconds=remaining,provenance_kind=provenance_kind,variant_families=[family for family,_ in selected])
         observations=getattr(net,'_local_trial_observations',{}).get((agent.id,fn['id']),[])
         for (family,_), measured in zip(selected,observations):
             repair_ranking.remember(net,effect_scope,family,baseline,measured)

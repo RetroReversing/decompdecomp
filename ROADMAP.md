@@ -1062,3 +1062,15 @@ Project overview reads query SDK signatures by the game’s indexed fingerprints
   `repair_mappings.harvest` explicitly restricts this path to ROM projects.
 
 - Windows compiler orphan cleanup after an app crash: add process birth verification and job-object ownership equivalent to the POSIX startup registry. Runtime timeout/tree termination is already supported.
+
+## Verified wrapper families and between-turn local repairs
+
+Implemented: same-project small MIPS ROM wrapper reuse with one paired global-address substitution;
+integer scalar-address lifetimes and ordered bitmask-store proposals in shared draft/permuter/agent paths;
+and an opt-in bounded local pass after single-function agent near misses in both judge modes.
+All proposals retain the normal judge and cache/budget gates.
+
+Wrapper-family discovery on imported projects and non-MIPS targets: **—**. The initial index needs raw
+ROM instructions plus resolved MIPS HI16/LO16/JAL relocation pairs. Imported objdiff units do not expose
+that same target representation; an object-format adapter and equivalent relocation checks are needed.
+Cross-project wrapper-family inference and multiple changing globals remain future work.
