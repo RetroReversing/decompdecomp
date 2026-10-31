@@ -105,3 +105,13 @@
   .transcript-timeline { padding: 0 16px 16px; }
   .transcript-event-size { display: none; }
 }
+
+.session-transcript .transcript-tools { padding: 4px 16px 12px; }
+.session-transcript .transcript-tool { margin: 8px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.transcript-tool summary code { font-size: 12px; overflow-wrap: anywhere; }
+.transcript-tool > p { margin: 0; padding: 0 14px 12px; font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
+.transcript-tool-params { display: grid; grid-template-columns: minmax(120px, 1fr) 2fr; gap: 8px 16px; margin: 0; padding: 12px 14px; border-top: 1px solid var(--line); font-size: 12px; }
+.transcript-tool-params dt { font-family: var(--mono); overflow-wrap: anywhere; }
+.transcript-tool-params dd { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.session-transcript .transcript-tool-raw { margin: 0 16px 12px; padding: 0; border: 1px solid var(--line); border-radius: 6px; }
+@media (max-width: 640px) { .transcript-tool-params { grid-template-columns: 1fr; gap: 4px; } .transcript-tool-params dd { margin-bottom: 10px; } }

@@ -26,6 +26,20 @@ const context = { S: {logFor: '7', slug: 'demo'}, document: {body, createElement
     return {sessions, session: row(id), events: [{id: q.get('after') === '1' ? 2 : 1, created_at: 1, kind: id === 4 ? 'error' : 'prompt', text: long}], more: q.get('after') !== '1'};
   }, URL, Date };
 vm.createContext(context);
+vm.runInContext(source.slice(0, source.indexOf('$("helperTranscript").onclick =')), context);
+const definition = {name:'project_info', description:'<script>never execute</script>', input_schema:{type:'object', required:['detail'], properties:{detail:{type:'boolean', description:'Show details', default:false}}}};
+const catalog = context.transcriptToolCatalog(JSON.stringify([definition]));
+assert.equal(catalog.children[0].textContent, '1 tools available to this agent');
+const card = catalog.children[1];
+assert.equal(card.children[0].children[0].textContent, 'project_info');
+assert.equal(card.children[1].textContent, '<script>never execute</script>');
+assert.equal(card.children[2].children[0].textContent, 'detail · required');
+assert.match(card.children[2].children[1].textContent, /Default: false/);
+assert(context.transcriptToolCatalog(JSON.stringify([{type:'function', function:{name:'other', parameters:{}}}])));
+assert.equal(context.transcriptToolCatalog('broken JSON'), null);
+assert.equal(context.transcriptToolCatalog(JSON.stringify([null])), null);
+assert.equal(context.transcriptToolCatalog('{}'), null);
+
 vm.runInContext(source.slice(source.indexOf('$("helperTranscript").onclick =')), context);
 (async () => {
   await button.onclick();
