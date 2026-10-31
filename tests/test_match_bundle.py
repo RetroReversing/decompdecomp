@@ -75,3 +75,19 @@ def test_only_failed_rechecks_of_the_exact_source_raise_deduplicated_regression_
     assert net.store.one("SELECT COUNT(*) n FROM events WHERE kind='regression'")['n']==1
     net._record(net._function('f','game'),agent,0,source,1,matched=True)
     assert match_bundle.status(net,net._function('f','game'))['regression'] is None
+
+
+def test_failed_old_profile_build_does_not_raise_a_current_input_alarm(tmp_path):
+    net,source=setup_bundle(tmp_path);agent,_=net.local_agent('test');fn=net._function('f','game')
+    net._record(fn,agent,None,source,1,effective_settings={'compiler':{'toolchain':'example','flags':['-O1']}})
+    assert match_bundle.status(net,fn)['regression'] is None
+
+
+def test_imported_history_cannot_claim_a_new_regression(tmp_path):
+    net,source=setup_bundle(tmp_path);fn=net._function('f','game')
+    with net.store.tx() as db:
+        row=db.execute('SELECT details FROM verified_matches WHERE function_id=?',(fn['id'],)).fetchone()
+        detail=json.loads(row['details']);detail['imported']=True
+        db.execute('UPDATE verified_matches SET details=?',(json.dumps(detail),))
+    agent,_=net.local_agent('test');net._record(fn,agent,20,source,1)
+    assert match_bundle.status(net,fn)['regression'] is None
