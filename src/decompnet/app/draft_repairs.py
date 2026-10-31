@@ -17,6 +17,7 @@ from . import (
     captured_control_repairs,
     captured_repairs,
     compiler_shape_repairs,
+    entry_point_repairs,
     evidence_repairs,
     expression_repairs,
     float_intermediate_repairs,
@@ -71,6 +72,10 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     offset = opening + 1
     proposals = []
     labels = labels if labels is not None else {}
+    if arch == 'mips':
+        for text in entry_point_repairs.variants(source, name, asm):
+            proposals.append(text)
+            labels[text] = 'interior_entry_symbol'
     for family, text in operand_order_repairs.variants(source, name, header):
         proposals.append(text)
         labels[text] = family

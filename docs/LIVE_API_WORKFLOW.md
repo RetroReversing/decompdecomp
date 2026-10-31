@@ -100,3 +100,10 @@ Deep search first tries an explicitly configured local source mapping for the se
 `POST /api/compiler` now reports `matched`, `newly_matched`, `score` and `match_cause` in addition to `said`. A new match caused by settings has `match_cause: "compiler_profile"`; changing settings on an already matched function has `newly_matched: false` and `match_cause: "already_matched"`. Read this result before submitting another candidate: the settings operation already judges and saves matching C.
 
 Diff responses include advisory `source_diagnostics`, also shown in the diff panel and agent briefs. Raw offset casts warrant checking records and argument types; products warrant checking order and widths; reference cleanup paths still need comparison against retail. These diagnostics never supply match verdicts. Comparison operand-order and unsigned scalar product-order candidates use the ordinary judge, just like other local repairs. No reference source or SDK is fetched automatically.
+
+
+### Target-guided runtime and address repairs
+
+The current-toolchain preflight keeps its four-compile allowance. For small MIPS runtime instruction shapes with O32 evidence it prioritizes an IDO MIPS III/O32 `-O1` hypothesis and a generic native-width C candidate. A source-changing result goes through the existing source/compiler suggestion workflow; it is not directly promoted by a shape detector. SDK identities recorded by signature naming prioritize `-O1`; manually typed familiar names do not.
+
+Shared MIPS draft repairs can replace byte-pointer base-plus-offset expressions with a directly declared target address only when matching target HI/LO relocation evidence proves the address. This is a candidate-local hypothesis, not a global rename or function split. Diff/brief/deep-search diagnostics also flag possible static-helper register specialization. All scores and matches still come from the ordinary judge. Other architectures retain their existing repair/profile behavior; imported projects keep their own compiler settings.

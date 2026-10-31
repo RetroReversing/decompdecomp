@@ -1,4 +1,5 @@
 """Bounded current-toolchain flag checks before a long ROM search, cached by actual judge inputs."""
+import hashlib
 import json
 import threading
 
@@ -37,14 +38,23 @@ def _run(net, proj, fn, log, check, max_profiles):
     own = compiler_for(cfg, fn['vram'])
     if own.get('cmd') or not own.get('toolchain') or toolchains.installed(own['toolchain']) is None:
         return {'tested': 0}
+    from .profile_hypotheses import prioritized
     choices = [list(own['flags'])]
+    choices += [flags for flags in prioritized(proj, fn, own) if flags not in choices]
     # Optimization hypotheses precede debug variants; do not spend the whole budget on -g forms.
     for flags in net.flag_variants(own['toolchain'], list(own['flags'])):
         if list(flags) not in choices:
             choices.append(list(flags))
-    candidates = [(own['toolchain'], tuple(flags)) for flags in choices[:max(1, min(MAX_PROFILES, max_profiles))]]
+    probes = [(flags, fn['best_source']) for flags in choices]
+    if dict(proj).get('arch') == 'mips' and own['toolchain'].startswith('ido-'):
+        from ..arch.mips_runtime import candidate
+        if source := candidate(dict(fn).get('asm', ''), fn['name']):
+            ranked = prioritized(proj, fn, own)
+            probes.insert(1, (ranked[0] if ranked else list(own['flags']), source))
+    probes = probes[:max(1, min(MAX_PROFILES, max_profiles))]
+    candidates = [(own['toolchain'], tuple(flags)) for flags, _ in probes]
     digest = net._comparison_digest(proj, fn, fn['best_source'], candidates)
-    key = 'matching-preflight-v1:'+digest
+    key = 'matching-preflight-v2:'+digest+':'+hashlib.sha256(repr(probes).encode()).hexdigest()
     old = net.store.one('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], key)
     if old:
         result = json.loads(old['feedback'])
@@ -56,9 +66,9 @@ def _run(net, proj, fn, log, check, max_profiles):
                 raise PreflightStopped()
         try:
             with compiler.cancellable(ensure):
-                for toolchain, flags in candidates:
+                for (toolchain, flags), (_, source) in zip(candidates, probes):
                     ensure()
-                    exact, diff, problems = net._judge_with(proj, fn, toolchain, list(flags), fn['best_source'])
+                    exact, diff, problems = net._judge_with(proj, fn, toolchain, list(flags), source)
                     result['tested'] += 1
                     blocked = unresolved([problems])
                     if blocked:
@@ -67,9 +77,9 @@ def _run(net, proj, fn, log, check, max_profiles):
                     if diff is not None:
                         score = 0 if exact else max(1, diff.score)
                         if result['best'] is None or score < result['best']['score']:
-                            result['best'] = {'toolchain': toolchain, 'flags': list(flags), 'score': score, 'exact': bool(exact)}
-                    if exact and list(flags) == own['flags']:
-                        break  # Keep an already-matching profile; this is not compiler identification.
+                            result['best'] = {'toolchain': toolchain, 'flags': list(flags), 'score': score, 'exact': bool(exact), 'source': source}
+                    if exact:
+                        break  # Do not spend more budget once the exact judge succeeds.
         except PreflightStopped:
             return result
         if check() is False:
@@ -80,12 +90,12 @@ def _run(net, proj, fn, log, check, max_profiles):
     if result.get('link'):
         log(result['link']['message'])
     best = result.get('best')
-    if best and best['flags'] != own['flags'] and best['score'] < (fn['best_score'] if fn['best_score'] is not None else float('inf')):
+    if best and (best['flags'] != own['flags'] or best.get('source', fn['best_source']) != fn['best_source']) and best['score'] < (fn['best_score'] if fn['best_score'] is not None else float('inf')):
         fresh = net.project_row(proj['slug'])
         current = net._function(fn['name'], proj['slug'])
         # Another worker may have improved the C during probing. Never apply an old-source hypothesis.
         if current['status'] == 'open' and current['best_source'] == fn['best_source']:
-            if best['exact'] and net.auto_adjusts(fresh):
+            if best['exact'] and net.auto_adjusts(fresh) and best.get('source', fn['best_source']) == fn['best_source']:
                 try:
                     net.apply_function_compiler(proj['slug'], fn['name'], best['toolchain'], best['flags'])
                     result['applied'] = True
@@ -97,7 +107,7 @@ def _run(net, proj, fn, log, check, max_profiles):
                     agent, _ = net.local_agent('autopilot')
                     net.suggest(agent, proj['slug'], 'Compiler preflight found a rejudged improvement.',
                                 compiler=best['toolchain'], flags=' '.join(best['flags']), function=fn['name'],
-                                ranges=f"0x{fn['vram']:X}-0x{fn['vram']+fn['size']:X}", source=fn['best_source'])
-                log('Compiler preflight found better flags: '+' '.join(best['flags'])+
+                                ranges=f"0x{fn['vram']:X}-0x{fn['vram']+fn['size']:X}", source=best.get('source', fn['best_source']))
+                log('Compiler preflight found a better source/profile hypothesis: '+' '.join(best['flags'])+
                     '. Partial results need review; exact results also respect automatic compiler settings.')
     return result

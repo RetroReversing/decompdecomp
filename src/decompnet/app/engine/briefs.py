@@ -251,7 +251,7 @@ class BriefMixin:
         text = super()._brief(fn, agent, header)
         if fn['status'] == 'open' and fn['best_source']:
             from .. import compiler_preflight, source_diagnostics
-            suggestions = source_diagnostics.hints(fn['best_source'], fn['name'])
+            suggestions = source_diagnostics.hints(fn['best_source'], fn['name'], fn['asm'], proj['arch'])
             if suggestions:
                 text += '\n\nSource checks (advisory):\n' + '\n'.join(suggestions)
             warning = compiler_preflight.warnings(self, proj, fn)
