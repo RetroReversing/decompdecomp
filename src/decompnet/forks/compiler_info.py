@@ -85,7 +85,9 @@ def describe(project, version: str | None = None) -> dict:
     splat = project._splat_yaml()
     if splat:
         try:
-            config = yaml.safe_load(splat.read_text(encoding="utf-8"))
+            # The segment map can contain thousands of entries. LibYAML's safe loader
+            # avoids a long Python-only parse on the foreground project-switch request.
+            config = yaml.load(splat.read_text(encoding="utf-8"), Loader=getattr(yaml, 'CSafeLoader', yaml.SafeLoader))
             options = config.get("options") if isinstance(config, dict) else None
             compiler = options.get("compiler") if isinstance(options, dict) else None
             if isinstance(compiler, str):

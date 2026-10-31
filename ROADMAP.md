@@ -989,3 +989,5 @@ ROM projects can consolidate rare profiles after exact byte comparisons and a fi
 projects still need cleanup through their per-file build settings and objdiff unit checks, including stale-input
 validation and rollback before any settings change is published. The app hides cleanup for these projects until
 that path is implemented; their declared build commands must not be rewritten as ROM compiler ranges.
+
+Project overview reads query SDK signatures by the game’s indexed fingerprints, reuse imported library reports, and prefer LibYAML’s safe loader for large compiler declaration maps. No judge or detection evidence changes.
