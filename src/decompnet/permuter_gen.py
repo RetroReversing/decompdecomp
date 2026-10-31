@@ -65,7 +65,7 @@ def main() -> int:
         try:
             weights = dict(get_default_randomization_weights(job.get("family") or "base"))
             for key, factor in job.get("weight_boosts", {}).items():
-                if key in weights and isinstance(factor, (int, float)) and 1 <= factor <= 4:
+                if key in weights and isinstance(factor, (int, float)) and 0.25 <= factor <= 4:
                     weights[key] *= factor
             first = Candidate.from_source(unit, EvalState(), name, weights, rng.randrange(1, MAX_SEED))
         except Exception as e:  # the C or the header isn't C pycparser reads (a macro call, a compiler extension)

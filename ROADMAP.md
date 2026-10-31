@@ -1006,3 +1006,15 @@ Project overview reads query SDK signatures by the game’s indexed fingerprints
   file-context adaptation already noted in `app/iterative_repairs.py`.
 - Planned: infer new record layouts from verified multi-access evidence and adapt persistent iterative
   search to imported file contexts. Current repairs use existing simple record definitions only.
+
+### Evidence-driven automatic repair search
+
+- Done: persisted build-profile/mismatch outcome priorities in deterministic and random repair search,
+  with minimum sample sizes, bounded nonzero weights and exploration retained.
+- Done: target-aligned regional gains select the existing bounded regression branch in persistent
+  ROM/MIPS iterative search and single-function deep search (both judge modes when rows are available).
+- Done: bounded candidate-local inference of consistent scalar record fields in the shared draft path,
+  including ROM and supported 32-bit imported-project callers. Shared layouts remain unchanged.
+- Done: local, guarded triage of untouched repair examples, duplicate grouping and preserved manual reviews.
+- Planned: broader real-game replay to establish whether inferred records or adaptive priorities yield
+  more exact matches; the initial near-miss sample found no new matches from inferred records.

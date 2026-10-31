@@ -353,3 +353,13 @@ def test_unproductive_deep_detour_returns_saved_source_and_respects_burst_limit(
     search = deep_permuter.Search(net, 1, 10, Log())
     assert search.local_repairs(AGENT, net.project_row('game'), net.function(), 40, None, max_trials=1) == (40, original)
     assert seen == ['detour'] and net.function()['best_source'] == original
+
+
+def test_cached_deep_misses_do_not_train_adaptive_policy_twice(monkeypatch):
+    net = setup(monkeypatch)
+    monkeypatch.setattr(Permuter, '_score', lambda *a: 40)
+    search = deep_permuter.Search(net, 1, 10, Log())
+    proj, fn = net.project_row('game'), net.function()
+    search._score(AGENT, proj, fn, 'same candidate', 40, None)
+    search._score(AGENT, proj, fn, 'same candidate', 40, None)
+    assert net.store.one('SELECT SUM(attempted) n FROM repair_policy')['n'] == 1

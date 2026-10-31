@@ -49,3 +49,21 @@ def test_random_generator_receives_advisory_boosts_without_changing_verdict(monk
     assert jobs[0]['weight_boosts'] == {}
     assert jobs[1]['weight_boosts']['perm_reorder_decls'] == 3
     assert state.matched == 1 and p.judged == ['miss', 'candidate']
+
+
+def test_learned_weights_reduce_an_unproductive_family_but_default_batches_remain(monkeypatch):
+    from decompnet.app import adaptive_repairs
+    from decompnet.app.permute import State
+    from tests.test_permute import AGENT, FakeNet, ScriptedPermuter, batches
+    net = FakeNet()
+    net._last_diffs = {(AGENT.id,1):([('s','sw a0,32(sp)','sw a0,40(sp)')],'')}
+    proj, fn = net.project_row('game'), net.function()
+    key = adaptive_repairs.profile(net, proj, fn)
+    for _ in range(200):
+        adaptive_repairs.record(net, key, 'stack', 'perm_reorder_decls', 20, None)
+    p = ScriptedPermuter(net, {'candidate':0})
+    jobs = batches(monkeypatch, ['miss'], ['candidate'])
+    p._permute(AGENT, proj, fn, State())
+    assert jobs[0]['weight_boosts'] == {}
+    assert 0.25 <= jobs[1]['weight_boosts']['perm_reorder_decls'] < 3
+    assert jobs[0]['trace'] and jobs[1]['trace']

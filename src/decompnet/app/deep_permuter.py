@@ -12,7 +12,15 @@ from ..network import NetworkError
 from ..project import compiler_for
 from ..repair_feedback import current_trial
 from ..repair_feedback import trial as repair_trial
-from . import agent_tokens, draft_repairs, permuter_local, stack_padding_repairs
+from . import (
+    adaptive_repairs,
+    agent_tokens,
+    draft_repairs,
+    permuter_focus,
+    permuter_local,
+    region_repairs,
+    stack_padding_repairs,
+)
 from .permute import Permuter, State
 
 AFTER_RANDOM_TRIALS = 32
@@ -195,6 +203,12 @@ class Search(Permuter):
             for family, candidate in permuter_local.variants(source, fn['name']):
                 labels.setdefault(candidate, family)
                 choices.append(candidate)
+            families = list(dict.fromkeys(labels.get(c, 'local_repair') for c in choices))
+            ranked = adaptive_repairs.order(self.net, proj, fn, rows, families)
+            # Every other burst keeps the original order for exploration.
+            if self.refinement_rounds % 2 == 0:
+                choices.sort(key=lambda c: ranked.index(labels.get(c, 'local_repair')))
+            region_baseline = region_repairs.snapshot(rows)
             detour = None
             for candidate in dict.fromkeys(choices):
                 if candidate in self.local_seen:
@@ -207,8 +221,12 @@ class Search(Permuter):
                                    'base_source_sha256': hashlib.sha256(source.encode()).hexdigest()}):
                     score = self._score(agent, proj, fn, candidate, best, fork)
                 if score is not None and best < score <= best * 1.25 and not detour_used:
-                    if detour is None or score < detour[0]:
-                        detour = (score, candidate)
+                    measured_rows = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0]
+                    regional_gain = 0 if getattr(self, '_trial_reused', False) else region_repairs.gain(
+                        region_baseline, region_repairs.snapshot(measured_rows))
+                    priority = (-regional_gain, score)
+                    if detour is None or priority < detour[0]:
+                        detour = (priority, candidate)
                 if score is not None and score < best:
                     best = score
                     fn = self.net._function(fn['name'], proj['slug'])
@@ -266,6 +284,7 @@ class Search(Permuter):
         cached = self.net.store.one('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], key)
         score = json.loads(cached['feedback']) if cached and cached['feedback'] else None
         reused = not self.measuring_baseline and isinstance(score, int) and score >= best
+        self._trial_reused = reused
         elapsed_ms = 0
         if reused:
             self.skipped += 1
@@ -275,9 +294,14 @@ class Search(Permuter):
             self.last_outcome, self.last_score = 'compiling', None
             self.report()
             self._trial_outcome = 'unscored'
+            rows = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0]
+            policy_focus = permuter_focus.classify(rows)
+            policy_profile = adaptive_repairs.profile(self.net, proj, fn)
             started = time.monotonic()
             score = super()._score(agent, proj, fn, source, best, fork)
             elapsed_ms = max(0, round((time.monotonic() - started) * 1000))
+            if not self.measuring_baseline:
+                adaptive_repairs.record(self.net, policy_profile, policy_focus, self.current_family, best, score, elapsed_ms)
             if score is not None and score > 0:
                 with self.net.store.tx() as db:
                     db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',

@@ -9,9 +9,10 @@ $("repairExamples").onclick = async () => {
     <div class="repair-scroll"><div class="repair-filters">
     <div class="repair-filter-selects"><label>Category<select data-category aria-label="Repair category"><option value="">All categories</option></select></label>
     <label>Review state<select data-status aria-label="Review state"><option value="new" selected>New (not yet reviewed)</option><option value="">All review states</option></select></label>
-    <button data-refresh type="button">Refresh</button></div>
+    <button data-refresh type="button">Refresh</button><button data-classify type="button">Classify this project</button></div>
     <div class="repair-filter-checks"><label><input type="checkbox" data-all> Across all projects</label>
     <label><input type="checkbox" data-comparable checked> Only with changed failed C</label></div></div>
+    <div data-triage-work></div>
     <section class="repair-help" aria-label="Batch candidate recovery"><h3>Recheck reported candidates · this project · no AI tokens</h3>
     <p>Rejudge saved alternatives, smallest functions first. Measurements are saved across runs; unchanged results are skipped. This does not replace C, clear warnings or mark matches.</p>
     <label>Functions per batch <input data-recovery-limit type="number" min="1" max="200" value="20"></label>
@@ -202,5 +203,15 @@ $("repairExamples").onclick = async () => {
   get('[data-export]').onclick = (event) => download(false, event.currentTarget);
   get('[data-export-full]').onclick = (event) => download(true, event.currentTarget);
   get('[data-close]').onclick = () => dialog.close(); dialog.addEventListener('close', () => dialog.remove(), {once: true});
+  get('[data-classify]').onclick = async () => {
+    const button = get('[data-classify]');
+    const done = beginWork(get('[data-triage-work]'), 'Classifying new examples', [button]);
+    try {
+      const result = await api('/api/repair-examples/classify', {method: 'POST', body: {slug}});
+      toast(`${result.total} examples reviewed. Categories describe evidence; no new rules were enabled.`);
+      await load();
+    } catch (error) { toast(esc(error.message), 'err'); }
+    finally { done(); }
+  };
   dialog.showModal(); await load();
 };
