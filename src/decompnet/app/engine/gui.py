@@ -252,7 +252,9 @@ class GuiMixin:
                 d = scoring.diff(self._target_obj(fn, proj), cand)
                 if verdict is not None:
                     d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
+                from ..stack_layout import text as stack_text
                 out = {"rows": [list(r) for r in d.rows], "score": d.score,
+                       "stack_diagnostic": stack_text(proj['arch'],d.rows),
                        "percent": 100.0 if d.bytes_match else min(99.9, int(d.percent * 10) / 10),
                        "problems": problems, "source": source,
                        "checks": self._candidate_checks(fn, proj, result.obj)}
@@ -262,11 +264,12 @@ class GuiMixin:
         return out | {"kind": kind}
 
     def function_detail(self, slug: str, name: str) -> dict:
+        from ...match_bundle import status as bundle_status
         from ..function_names import state as name_state
         sweep = getattr(self, 'deep_sweeps', None)
         deep_pass = sweep.history(slug, self._function(name, slug)) if sweep else {'state': 'not tried', 'completed': False}
         if (fork := self.fork_slug(slug)):
-            return self.forks.function_detail(fork, name) | name_state(self._function(name, slug)) | {'deep_pass': deep_pass}
+            return self.forks.function_detail(fork, name) | name_state(self._function(name, slug)) | {'deep_pass': deep_pass, 'verification': bundle_status(self,self._function(name,slug))}
         fn = self._function(name, slug)
         proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
         attempts = self.store.all(
@@ -284,7 +287,7 @@ class GuiMixin:
         return {
             **name_state(fn), "name": fn["name"], "vram": fn["vram"], "rom_offset": fn["rom_offset"], "size": fn["size"],
             "insns": fn["n_insns"], "status": fn["status"], "best": fn["best_score"], **set_aside(fn),
-            "deep_pass": deep_pass,
+            "deep_pass": deep_pass, "verification": bundle_status(self,fn),
             "compiler_test": self.compiler_test_result(proj, fn),
             "compiler_profile": compiler_for(self.cfg(proj), fn["vram"]),
             "default_compiler": self.cfg(proj)["compiler"],

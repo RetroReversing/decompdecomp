@@ -348,7 +348,7 @@ class Permuter:
                     policy_started = time.monotonic()
                     with repair_trial({'kind':'deterministic draft repair','family':labels.get(candidate,'draft_repair'),'base_source_sha256':hashlib.sha256(fn['best_source'].encode()).hexdigest(),'source_sha256':hashlib.sha256(candidate.encode()).hexdigest()}):
                         score = self._score(agent, proj, fn, candidate, best, fork)
-                    if not getattr(self, 'trace_variants', False):
+                    if not getattr(self, 'trace_variants', False) and getattr(self, '_trial_outcome', '') != 'no_edit':
                         adaptive_repairs.record(self.net, policy_key, permuter_focus.classify(policy_rows),
                                                 labels.get(candidate, 'draft_repair'), best, score,
                                                 (time.monotonic()-policy_started)*1000, origin="background deterministic")
@@ -528,7 +528,7 @@ class Permuter:
                     started = time.monotonic()
                     with repair_trial(provenance):
                         score = self._score(agent, proj, fn, cand, best, fork)
-                    if not getattr(self, 'trace_variants', False):
+                    if not getattr(self, 'trace_variants', False) and getattr(self, '_trial_outcome', '') != 'no_edit':
                         adaptive_repairs.record(self.net, adaptive_repairs.profile(self.net, proj, fn), focus,
                                                 provenance['family'], best, score, (time.monotonic()-started)*1000, origin="background random")
                     if score is None:
@@ -663,7 +663,8 @@ class Permuter:
     def _score(self, agent, proj, fn, source: str, best: int, fork: str | None) -> int | None:
         """A variant's score; recorded (as the function's best attempt, or its match) only when it beats `best`."""
         with self.net.progress.judging(proj["slug"]) if hasattr(self.net, "progress") else nullcontext():
-            return self._score_work(agent, proj, fn, source, best, fork)
+            from .experiment_evidence import measured
+            return measured(self, agent, proj, fn, source, best, fork)
 
     def _score_work(self, agent, proj, fn, source: str, best: int, fork: str | None) -> int | None:
         self._trial_outcome = 'unscored'
@@ -686,6 +687,8 @@ class Permuter:
         if cand is None:
             return None
         self._trial_outcome = 'scored'
+        from .experiment_evidence import output
+        self._trial_output = output(cand)
         d = scoring.diff(self.net._target_obj(fn, proj), cand)
         if verdict is not None:
             d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)

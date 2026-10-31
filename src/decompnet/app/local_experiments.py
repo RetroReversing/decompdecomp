@@ -8,10 +8,12 @@ from ..network import NetworkError
 from ..project import compiler_for
 from . import (
     adaptive_repairs,
+    address_association_repairs,
     agent_evidence,
     agent_targets,
     agent_tokens,
     branch_layout_repairs,
+    call_initialization_repairs,
     callee_prototype_repairs,
     captured_repairs,
     draft_repairs,
@@ -29,11 +31,13 @@ from . import (
     register_repairs,
     register_reuse_repairs,
     repair_ranking,
+    stack_layout,
     stack_padding_repairs,
     store_address_repairs,
 )
 
-FAMILIES = ('masked_value_reuse', 'cfg_integer_lifetimes', 'table_slot_lifetime', 'unsigned_assignment_reuse', 'guard_forward_jump', 'constant_register_reuse', 'copy_register_reuse', 'last_shift_reuse', 'signedness','declaration_order','typed_temporary','branch_orientation','narrowing','source_lines',
+EXPERIMENTAL = ('experimental_bitfield_frame',)
+FAMILIES = ('address_association', 'call_initialization', *EXPERIMENTAL, 'masked_value_reuse', 'cfg_integer_lifetimes', 'table_slot_lifetime', 'unsigned_assignment_reuse', 'guard_forward_jump', 'constant_register_reuse', 'copy_register_reuse', 'last_shift_reuse', 'signedness','declaration_order','typed_temporary','branch_orientation','narrowing','source_lines',
             'address_temporary','constant_local','comparison_load','stack_array','loop_induction',
             'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order','mmio_address','call_arity','struct_byte_offset','switch_call','paired_load_order','array_index_width','split_scalar_lifetime','pointer_before_store','store_address_lifetime','stack_padding','local_width','pointer_cast_inline',
             'local_widening','callee_parameter_width','callee_return_width','split_integer_lifetime','merge_integer_lifetimes','branch_call','goto_leaf','switch_layout') + draft_repairs.AGENT_FAMILIES
@@ -45,7 +49,7 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6, *, se
     if families is not None and (not isinstance(families,list) or not families or len(families)>len(FAMILIES)
                                  or any(f not in FAMILIES for f in families)):
         raise NetworkError('Choose supported local families: '+', '.join(FAMILIES))
-    requested = list(dict.fromkeys(families or FAMILIES))
+    requested = list(dict.fromkeys(families or [f for f in FAMILIES if f not in EXPERIMENTAL]))
     deadline=time.monotonic()+seconds
     fn = net._function(function,slug)
     with net.attempt_turn(agent,fn):
@@ -133,10 +137,12 @@ def available(net, agent, slug, fn, source, revision, requested):
     for family,candidate in lifetime_repairs.variants(source,fn['name']):
         if family in pools:
             pools[family].append(candidate)
-    for module in (masked_reuse_repairs, callee_prototype_repairs, integer_lifetime_repairs, branch_layout_repairs, register_reuse_repairs):
+    for module in (address_association_repairs, call_initialization_repairs, masked_reuse_repairs, callee_prototype_repairs, integer_lifetime_repairs, branch_layout_repairs, register_reuse_repairs):
         for family, candidate in module.variants(source, fn['name']):
             if family in pools:
                 pools[family].append(candidate)
+    if 'experimental_bitfield_frame' in pools:
+        pools['experimental_bitfield_frame'] = [s for _, s in stack_layout.experimental_variants(source,fn['name'])]
     if 'local_widening' in pools:
         pools['local_widening'] = local_widening_repairs.variants(source, fn['name'])
     if 'pointer_cast_inline' in pools:
