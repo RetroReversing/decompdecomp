@@ -1,5 +1,7 @@
 """m2c's usual mistakes undone (m2cfix.py): the drafts here are made up, small and about nothing in particular."""
 
+import pytest
+
 from decompnet import m2cfix
 
 CALL_ASM = """glabel func_80001000
@@ -20,6 +22,47 @@ def test_the_macros_are_written_out_innermost_first():
     out = m2cfix.expand_macros(src)
     assert "M2C_" not in out
     assert "(*(s32 *)((char *)((*(void **)((char *)(p) + 4))) + 8)) = 1;" in out
+
+
+@pytest.mark.parametrize('in_header', [False,True])
+def test_declared_typed_field_macros_expand_nested_loads_and_stores(in_header):
+    define = '#define F(p,t,o) (*(t*)((u8*)(p)+(o)))\n'
+    source = 'void f(void *p) { F(F(p,void *,4),u16,8) |= 1; }'
+    out = m2cfix.expand_macros(source if in_header else define+source, define if in_header else '')
+    assert 'F(F' not in out and '(*(u16 *)' in out and '|= 1;' in out
+    assert out[out.index('{'):].count('(p)')==1  # each original argument remains evaluated once
+
+
+def test_unrelated_field_names_comments_strings_and_directives_are_opaque():
+    source = '#define F(p,t,o) (*(t*)((u8*)(p)+(o)))\nvoid f(void *p) { F(p,f32,4)=1; puts("F(p,u8,0)"); /* F(p,u8,0) */ }'
+    out = m2cfix.expand_macros(source)
+    assert out.startswith(source.splitlines()[0]) and '"F(p,u8,0)"' in out and '/* F(p,u8,0) */' in out
+    assert 'F(p,f32,4)' not in out
+    unrelated = source.replace('(*(t*)((u8*)(p)+(o)))', 'lookup(p,t,o)')
+    assert m2cfix.expand_macros(unrelated)==unrelated
+    assert m2cfix.expand_macros('int f(){return F(a,b,c);}')=='int f(){return F(a,b,c);}'
+
+
+def test_typed_field_expansion_compiles_identically_and_reaches_real_permuter(tmp_path):
+    from decompnet import toolchains
+    from decompnet.app.permute import Generator
+    from decompnet.compiler import compile_source
+    from decompnet.elfobj import extract_function
+    from decompnet.project import compiler_config
+    if not toolchains.installed('gcc-2.7.2-kmc') or not toolchains.installed('decomp-permuter'):
+        pytest.skip('needs already-installed compiler and permuter')
+    header = 'typedef unsigned char u8; typedef unsigned short u16; typedef float f32;\n'
+    source = '#define F(p,t,o) (*(t*)((u8*)(p)+(o)))\nf32 f(void *p) { F(p,u16,2) |= 1; return F(p,f32,8)*0.5f; }'
+    expanded = m2cfix.expand_macros(source)
+    cfg = compiler_config(tmp_path,{'compiler':{'toolchain':'gcc-2.7.2-kmc','flags':['-O2','-G0','-mips3','-mgp32','-mfp32']}})
+    objects = [compile_source(cfg,header,text) for text in (source,expanded)]
+    assert all(obj.ok for obj in objects), [obj.log for obj in objects]
+    assert extract_function(objects[0].obj,'f').fingerprint()==extract_function(objects[1].obj,'f').fingerprint()
+    gen = Generator()
+    try:
+        assert gen.batch({'header':header,'source':expanded,'function':'f','family':'gcc','seed':7,'count':4})
+    finally:
+        gen.close()
 
 
 def test_a_call_passes_on_the_argument_registers_the_code_leaves_alone():

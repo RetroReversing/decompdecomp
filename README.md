@@ -770,6 +770,13 @@ state filter; classification does not enable a new compiler rule.
 Agent local repairs use the shared copy, typed-address, scope and inferred-layout candidates, with measured
 repair priorities. Machine-generated batches check their starting C first: a broken baseline returns one
 scoped diagnostic instead of compiling six equally broken variants. Explicit patches can still repair that C.
+
+For offline regression work, export **full repair examples** and run
+`uv run python -m decompnet.app.repair_replay repair-examples.json --output replay-results.json`.
+This uses already-installed pinned ROM compilers, checks the captured baseline/control, and fairly rotates
+repair families under per-case trial/time limits. It reports recovered compiler output, improvements,
+neutral/regressed trials and errors without updating game progress. Imported builds and missing historical
+inputs are explicitly skipped. See [the replay guide](docs/repair-replay.md) for scope and options.
 Compact project facts summarise compiler ranges; each claim retains its actual compiler and user instructions.
 Repeated unchanged claims return a short status, and oversized/sparse batch requests explain why only one
 function was returned.

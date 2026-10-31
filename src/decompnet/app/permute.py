@@ -431,6 +431,7 @@ class Permuter:
         fork = self.net.fork_slug(proj["slug"])
         rng = random.Random(f"{fn['id']}-{fn['permuted']}")
         gen = None
+        header = ''
         try:
             if available():
                 # (as m2c reads it: what's only for C++ made pycparser refuse GTA San Andreas's whole header)
@@ -442,7 +443,7 @@ class Permuter:
                 except OSError as e:  # its environment is broken: the simple rewrites still work
                     log.info("permuter: decomp-permuter didn't start: %s", e)
             # (a draft still in m2c's macros isn't C decomp-permuter's parser reads: written out, it is the same code)
-            start_src = best_src = cur_src = m2cfix.expand_macros(fn["best_source"])
+            start_src = best_src = cur_src = m2cfix.expand_macros(fn["best_source"], header)
             best = cur = fn["best_score"]
             deadline = time.monotonic() + seconds
             from . import adaptive_repairs, permuter_focus, repair_ranking

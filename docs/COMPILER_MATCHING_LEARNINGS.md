@@ -213,3 +213,25 @@ agent success can now finish a recorded donor transfer and feed the existing map
 unambiguous donor provenance, unchanged target/donor stamps, symbol-only token edits and resolvable symbol
 names. Comments alone, literal/operator/type/local-variable edits, and reopened donors cannot teach this
 shortcut. Existing independent-pair requirements still apply before data mappings are reused elsewhere.
+
+## KMC GCC 2.7.2: floating product intermediate placement
+
+**Controlled regression of an existing captured match:** 32-bit big-endian MIPS,
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. Instead of storing the integer-to-float conversion in a temporary,
+store the first multiplication there and consume it in the second multiplication. Keep the casts and
+parenthesized product order explicit; floating reassociation is not assumed safe.
+
+The bounded `float_product_intermediate` family generated three candidates. One recovered the successful
+compiler control output; two improved the regression score from 180 to 35 and 55. The normal linked-byte
+judge also accepted one exactly in a private ROM/project-state copy. This recovers an already-captured
+match and adds **no new game progress**. Allocation depends on which same-type local holds the product;
+the successful case reused a local whose earlier branch lifetime had ended.
+
+The family excludes loops/gotos, calls, volatile access, address-escaped temporaries, extra uses in the
+expression and later live uses. It is shared by draft repairs and agent local repairs in both judge modes.
+An intermediate store can change rounding; every proposed match still requires the normal exact judge.
+
+**Parser regression:** a homemade typed field macro using `(*(t*)((u8*)(p)+(o)))` compiled to identical
+normalized KMC function bytes before/after expansion and yielded variants from the installed permuter.
+This fixes parser coverage, not evidence of extra matched functions. Three other captured repair replays
+found no control recovery under 12 trials each; offline replay reports them without applying candidates.

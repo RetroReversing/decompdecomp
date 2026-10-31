@@ -1031,6 +1031,18 @@ Project overview reads query SDK signatures by the game’s indexed fingerprints
 
 ### Agent transcript efficiency
 
+- Done: the CLI preflight also executes read-only project_info through authenticated MCP before model
+  launch; advertised tools alone cannot hide a failed helper/project association. Existing bounded
+  lost-connection pausing from #194 remains in place.
+- Done: declared byte-field F macros expand for the shared ROM/imported permuter input, including nested
+  loads/stores. Unrecognised macro definitions and ordinary functions named F remain untouched.
+- Done: bounded floating-product intermediate lifetime proposals in shared draft, permuter and agent
+  local families. Existing casts/order remain explicit; loops, escaped locals and later live uses are excluded.
+- Done: offline, bounded full-export replay for recorded ROM compiler profiles, with baseline/control
+  validation and per-family rotation. Reports never adopt matches or alter example review state.
+- Planned: standalone imported-project replay needs archived build inputs and historical headers; exports
+  currently lack those inputs and are explicitly skipped rather than tested with guessed settings.
+
 - Done: scoped diagnostic baseline preflight for generated agent batches, shared copy/scope/layout repair
   availability and adaptive priorities in ROM and supported imported-project callers. Explicit patches
   remain an escape path for correcting broken C; they still use the ordinary judge.
