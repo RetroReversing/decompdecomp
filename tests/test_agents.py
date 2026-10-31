@@ -256,8 +256,9 @@ def test_zcode_bare_model_stays_zcodes_own_default(tmp_path, monkeypatch):
 
 
 def test_zcode_models_come_from_the_provider_registry(tmp_path, monkeypatch):
-    """The launcher's dropdown reads the built-in provider registry the way zcode's own standalone login does: the
-    coding-plan providers in it and their models, as picker ids, of the service this sign-in is on."""
+    """The dropdown offers the coding-plan providers the CLI's own sign-in covers: `zcode login` records one provider
+    per service in the shared credentials ("account-provider:<id>:identity"), and a session on any other plan in the
+    registry (the desktop app's own instances) dies with 不存在 Model."""
     from decompnet.agents import zcode as zcode_agent
 
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -266,17 +267,25 @@ def test_zcode_models_come_from_the_provider_registry(tmp_path, monkeypatch):
     runtime.mkdir(parents=True)
     (runtime / "zcode-builtin.json").write_text(json.dumps({"schemaVersion": 1, "revision": 4, "config": {
         "providerConfigRules": {"providerRules": [
+            {"providerId": "account:zai-individual-coding-plan", "config": {"access": {"type": "zhipu-account",
+             "accountType": "zai", "mode": "individual-coding-plan"}, "builtinModelIds": ["GLM-5.3", "GLM-5.3-Flash"]}},
             {"providerId": "account:zai-start-plan", "config": {"access": {"type": "zhipu-account", "accountType":
-             "zai", "mode": "start-plan"}, "builtinModelIds": ["GLM-5.3-Flash", "GLM-5.2"]}},
-            {"providerId": "account:bigmodel-start-plan", "config": {"access": {"type": "zhipu-account", "accountType":
-             "bigmodel", "mode": "start-plan"}, "builtinModelIds": ["GLM-5.3"]}},
+             "zai", "mode": "start-plan"}, "builtinModelIds": ["GLM-5.3-Flash"]}},
             {"providerId": "api-zai", "config": {"access": {"type": "api-key"}, "builtinModelIds": ["GLM-5.3"]}}]}}}))
     monkeypatch.setattr(zcode_agent, "_models", {})
     (tmp_path / ".zcode" / "v2").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".zcode" / "v2" / "credentials.json").write_text('{"oauth:zai:access_token": "x"}')
+    assert zcode_agent.ZCODE.models("zcode") == []  # the CLI isn't signed in: nothing it says would work
+    (tmp_path / ".zcode" / "v2" / "credentials.json").write_text(json.dumps({
+        "oauth:zai:access_token": "x",
+        "account-provider:account:zai-individual-coding-plan:identity": "user-1",
+        "account-provider:account:zai-individual-coding-plan:auth-source": "oauth"}))
+    monkeypatch.setattr(zcode_agent, "_models", {})
     rows = zcode_agent.ZCODE.models("zcode")
-    assert rows == [{"id": "account:zai-start-plan/GLM-5.3-Flash", "name": "GLM-5.3-Flash", "note": "zai-start-plan"},
-                    {"id": "account:zai-start-plan/GLM-5.2", "name": "GLM-5.2", "note": "zai-start-plan"}]
+    assert rows == [{"id": "account:zai-individual-coding-plan/GLM-5.3", "name": "GLM-5.3",
+                     "note": "zai-individual-coding-plan"},
+                    {"id": "account:zai-individual-coding-plan/GLM-5.3-Flash", "name": "GLM-5.3-Flash",
+                     "note": "zai-individual-coding-plan"}]
     (runtime / "zcode-builtin.json").write_text("{}")  # asked again soon, it says what it said before
     assert zcode_agent.ZCODE.models("zcode") == rows
     assert zcode_agent.ZCODE.models("zcode", run=False) == rows
