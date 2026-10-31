@@ -143,7 +143,9 @@ def test_edit_during_build_preserves_both_checkpoints(project,monkeypatch):
 
 def test_no_following_repository_links(project,tmp_path):
     root,net,_=project;outside=tmp_path/'outside';outside.write_text('do not touch')
-    (root/'src/game/link.c').symlink_to(outside);commit(root)
+    try:(root/'src/game/link.c').symlink_to(outside)
+    except OSError:pytest.skip('symbolic links unavailable on this host')
+    commit(root)
     with pytest.raises(NetworkError,match='symbolic links'):run(project)
     assert outside.read_text()=='do not touch'
 
