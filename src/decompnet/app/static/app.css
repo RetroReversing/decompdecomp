@@ -1266,3 +1266,16 @@ details.more[open] > summary::before { content: "− "; }
 .compiler-selected { background: var(--hl); color: var(--hl-ink); border-color: var(--hl); font-weight: 600; }
 
 .compiler-profile-action { padding: 10px 12px; border-top: 1px solid var(--line); }
+
+/* Keep comparison choices together and finished results free of empty per-function scores. */
+.compiler-test-options { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.compiler-test-options .check { margin: 0; border: 0; border-radius: 0; padding: 12px; }
+.compiler-test-options .check + .check { border-top: 1px solid var(--line-soft); }
+.compiler-test-options small { display: block; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+#installedCompilerTest h3 { margin: 0 0 6px; }
+#installedCompilerTest .compiler-test-options + p { margin: 0; }
+.compiler-progress[data-finished="true"] .compiler-percent,
+.compiler-progress[data-finished="true"] .compiler-current-label { display: none; }
+.compiler-progress[data-finished="true"] .compiler-progress-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.compiler-progress[data-finished="true"] .compiler-progress-stats > div { grid-column: auto; }
+.compiler-table td button.small-btn { white-space: nowrap; }

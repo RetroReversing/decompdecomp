@@ -817,6 +817,12 @@ $("deleteBtn").onclick = () => {
   };
 };
 
+function updateCompilerTestScope() {
+  const flagsOnly = $("compilerFlagsOnly").checked, retest = $("compilerRetest").checked;
+  $("compilerTestScope").textContent = `${flagsOnly ? "Current compiler only, with supported flag variations" : "All installed compilers and supported flag variations"} · ${retest ? "including completed attempts" : "new or changed attempts only"}.`;
+  $("testInstalledCompilers").textContent = retest ? "Retest compiler settings" : "Find better settings";
+}
+for (const id of ["compilerFlagsOnly", "compilerRetest"]) $(id).onchange = updateCompilerTestScope;
 $("testInstalledCompilers").onclick = async () => {
   const slug = S.slug;
   const button = $("testInstalledCompilers"), log = $("installedCompilerLog");
@@ -837,7 +843,7 @@ $("testInstalledCompilers").onclick = async () => {
       stopError.textContent = `Could not stop: ${e.message}. Try again.`; stopError.hidden = false;
     }
   };
-  const finish = beginWork(work, "Testing installed compilers", [button], "Compiler comparison finished.");
+  const finish = beginWork(work, "Testing installed compilers", [button, $("compilerFlagsOnly"), $("compilerRetest")], "");
   $("compilerLogDetails").hidden = false;
   $("compilerLogDetails").open = false;
   $("compilerFollowLog").checked = false;
