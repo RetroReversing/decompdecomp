@@ -9,7 +9,8 @@ validated before its files or database state are changed.
 Change detection guarantee: a non-forced check compares the manifest's and the three folders' stats and may skip an
 in-place file edit until the one-second autosave; a forced check (judging, tools, routes, saves, the autosave) compares
 every file's name, size and mtime, so an editor's in-place write (which leaves its directory's mtime alone) is seen
-before code is judged or a write is acknowledged. A file hash in the baseline is always compared for every file a
+before code is judged or a write is acknowledged. Read-only UI views use the current database and show when
+verification is running. A file hash in the baseline is always compared for every file a
 sync is about to write or remove.
 """
 
