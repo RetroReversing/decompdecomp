@@ -73,7 +73,7 @@ def register(app: App) -> None:
         if not 1 <= limit <= 25:
             raise NetworkError("Choose a rare-profile limit between 1 and 25 functions.")
         net._rom_only(slug, "compiler profile cleanup")
-        return {"job": jobs.start("compiler-cleanup", lambda log: compiler_cleanup.cleanup(net, slug, limit, log))}
+        return {"job": jobs.start("compiler-cleanup", lambda log: compiler_cleanup.cleanup(net, slug, limit, log, source_profile=data.get("profile")))}
 
     def p_compiler(slug, request, data):
         if data.get("function"):

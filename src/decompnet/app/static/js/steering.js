@@ -574,6 +574,8 @@ $("autoAdjust").onchange = async () => {
 $("compilerParts").onclick = async (e) => {
   const fn = e.target.closest("[data-compiler-function]");
   if (fn) { openFn(fn.dataset.compilerFunction); return; }
+  const profileButton = e.target.closest("button[data-profile-default]");
+  if (profileButton) { await compareProfileWithDefault(profileButton); return; }
   const b = e.target.closest("button[data-unrange]");
   if (!b) return;
   const remove = (reopen) => api("/api/compiler", { method: "POST", body: { slug: S.slug, ranges: b.dataset.unrange, remove: true, reopen } });
@@ -714,6 +716,30 @@ function compilerFunctionLinks(functions) {
 }
 let compilerPartsAnswer = null;
 let compilerPartsSlug = null;
+let compilerDisplayedGroups = [];
+const compilerProfileJobs = new Map();
+async function compareProfileWithDefault(button) {
+  const group = compilerDisplayedGroups[Number(button.dataset.profileDefault)], part = group?.parts[0];
+  if (!part || group.default) return;
+  const slug = S.slug, key = `${slug}:${group.id}`;
+  if (compilerProfileJobs.get(key)?.running) return;
+  const profile = {toolchain:part.toolchain, flags:part.flag_list || part.flags.split(/\s+/).filter(Boolean)};
+  const item = {running:true, message:"Comparing matched functions against the default…"};
+  compilerProfileJobs.set(key, item); renderCompilerParts(compilerPartsAnswer);
+  try {
+    const {job} = await api("/api/compiler/cleanup", {method:"POST", body:{slug,profile}});
+    const out = await followJob(job, null, lines => {
+      item.message = lines[lines.length - 1] || "Comparing against default…";
+      if (S.slug === slug) renderCompilerParts(compilerPartsAnswer);
+    });
+    item.message = `${out.changed.length} moved to default · ${out.unchanged} kept their settings · ${out.skipped} busy/shared-address skips · ${out.tested} comparisons`;
+    if (S.slug === slug) toast(esc(item.message), out.changed.length ? "match" : undefined);
+  } catch (error) { item.message = error.message; }
+  finally {
+    item.running = false;
+    if (S.slug === slug) { renderCompilerParts(compilerPartsAnswer); await loadCompilerAnswer(); }
+  }
+}
 const compilerGroupsOpen = new Set();
 const compilerReasonsOpen = new Set();
 function renderCompilerParts(a) {
@@ -733,9 +759,11 @@ function renderCompilerParts(a) {
       ${p.said || why ? `<details class="compiler-range-reason" data-range-reason="${p.start}-${p.end}"${compilerReasonsOpen.has(`${p.start}-${p.end}`) ? " open" : ""}><summary>Verification details</summary><p class="small muted">${esc(p.said || why)}</p></details>` : ""}</li>`;
   };
   const groups = compilerPartGroups(parts, mode, sort);
+  compilerDisplayedGroups = groups;
   setHtml($("compilerParts"), mode === "range" ? `<ol class="compiler-range-list">${groups.flatMap(g => g.parts).map(p => row(p, true)).join("")}</ol>`
-    : groups.map(g => `<details class="compiler-profile" data-compiler-group="${esc(g.id)}"${compilerGroupsOpen.has(g.id) ? " open" : ""}>
+    : groups.map((g, index) => `<details class="compiler-profile" data-compiler-group="${esc(g.id)}"${compilerGroupsOpen.has(g.id) ? " open" : ""}>
       <summary><span><b>${esc(mode === "family" ? g.family.toUpperCase() : g.compiler)}</b>${g.default ? ` <span class="chip-s">${mode === "family" && g.profiles > 1 ? "Includes default" : "Default"}</span>` : ""}${mode === "settings" ? `<code class="compiler-arguments">${esc(g.flags || "No arguments")}</code>` : ""}<span class="compiler-profile-count">${plural(g.parts.length, "range")}${g.functions != null ? ` · ${plural(g.functions, "function")}` : ""}${mode === "family" ? ` · ${plural(g.profiles, "argument profile")}` : ""}</span></span></summary>
+      ${mode === "settings" && !g.default && S.ov.kind === "rom" ? `<div class="compiler-profile-action"><button class="ghost small-btn" type="button" data-profile-default="${index}"${compilerProfileJobs.get(`${S.slug}:${g.id}`)?.running ? " disabled" : ""}>Compare all matches with default</button><p class="small muted">Only exact byte matches move to the project default. Drafts and non-matches keep their settings.</p><p class="small" role="status">${esc(compilerProfileJobs.get(`${S.slug}:${g.id}`)?.message || "")}</p></div>` : ""}
       <ol class="compiler-range-list">${g.parts.map(p => row(p, mode === "family")).join("")}</ol></details>`).join(""));
   $("compilerParts").querySelectorAll("details[data-range-reason]").forEach(d => d.ontoggle = () => {
     if (!d.isConnected) return;
