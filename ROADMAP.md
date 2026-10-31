@@ -1149,3 +1149,8 @@ Generic source repairs reach ROM and imported-project mode on supported 32-bit p
 MIPS call/load evidence requires target assembly; other-processor argument recovery and
 64-bit record layouts: **—**, need ABI-aware argument and pointer-width adapters. Shared
 headers, symbol maps and compiler profiles are not changed by these local hypotheses.
+
+Agent work selection now explains every strategy in the dropdown and selected-option help. The shared
+`no_compiling_c` strategy restricts automatic and named new claims to open functions with neither a scored
+candidate nor a recorded successful compilation, in both project modes; existing claims continue normally.
+This is historical compile evidence, not a fresh build preflight or a claim that the function cannot compile.
