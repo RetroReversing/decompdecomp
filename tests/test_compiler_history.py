@@ -110,3 +110,20 @@ def test_bulk_progress_includes_best_percentage(comparison, monkeypatch):
     logs = []
     net.survey_compilers('demo', all_installed=True, log=logs.append)
     assert any('10/10 combinations tested; best 80.00% (saved 50.00%); 0 exact matches.' in line for line in logs)
+
+
+def test_matched_comparison_uses_matching_source_and_prefers_default(comparison, monkeypatch):
+    net, profiles, _, _ = comparison
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET matched_source='matching source',best_source='different draft' WHERE name='f2'")
+    def judge(proj, fn, tc, flags, source):
+        assert source == 'matching source'
+        return True, SimpleNamespace(percent=100.0, score=0), ''
+    monkeypatch.setattr(net, '_judge_with', judge)
+    result = net.run_compiler_comparison('demo', function='f2')
+    rows = result['comparison']['ranked']
+    assert rows[0]['default'] and rows[0]['exact']
+    assert result['comparison']['exact_matches'] == len(profiles)
+    fn = net._function('f2', 'demo')
+    assert fn['status'] == 'matched' and fn['matched_source'] == 'matching source'
+    assert not net.compiler_test_result(net.project_row('demo'), fn)['stale']

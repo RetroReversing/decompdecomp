@@ -188,7 +188,8 @@ class CompilerMixin:
             candidates = sorted({(tc, tuple(debug)) for tc, flags in candidates
                                  for variant in self.flag_variants(tc, list(flags))
                                  for debug in self.debug_flag_variants(tc, variant)})
-        return candidates
+        default = (cfg["compiler"]["toolchain"], tuple(cfg["compiler"]["flags"]))
+        return sorted(candidates, key=lambda item: item != default)
 
     def _comparison_digest(self, proj, fn, source, candidates):
         contexts = [list(r) for r in self.store.all(
@@ -198,17 +199,23 @@ class CompilerMixin:
         cfg = self.cfg(proj)
         tools = [[tid, toolchains.installed(tid)] for tid in sorted({tc for tc, _ in candidates})]
         data = [source, candidates, contexts, symbols, tools, (fn["target"] or b"").hex(), fn["relocs"],
-                fn["vram"], cfg.get("gp"), cfg.get("big_endian"), compiler_for(cfg, fn["vram"])]
+                fn["vram"], cfg.get("gp"), cfg.get("big_endian"), compiler_for(cfg, fn["vram"]), cfg["compiler"]]
         return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+
+    def _comparison_source(self, fn):
+        return fn["matched_source"] if fn["status"] == "matched" and fn["matched_source"] else self._source_of(fn)
 
     def compiler_test_result(self, proj, fn):
         row = self.store.one("SELECT * FROM compiler_tests WHERE function_id=?", fn["id"])
         if row is None:
             return None
         candidates = self._comparison_candidates(proj)
-        digest = self._comparison_digest(proj, fn, self._source_of(fn), candidates)
-        return {"completed_at": row["completed_at"], "stale": digest != row["input_digest"],
-                "comparison": json.loads(row["result"])}
+        digest = self._comparison_digest(proj, fn, self._comparison_source(fn), candidates)
+        comparison = json.loads(row["result"])
+        default = self.cfg(proj)["compiler"]
+        for result in comparison.get("ranked", []):
+            result["default"] = result["toolchain"] == default["toolchain"] and result["flags"] == default["flags"]
+        return {"completed_at": row["completed_at"], "stale": digest != row["input_digest"], "comparison": comparison}
 
     def run_compiler_comparison(self, slug, log=print, function="", untested_only=True):
         lock = self._compiler_comparison_locks.setdefault(slug, threading.Lock())
@@ -251,9 +258,7 @@ class CompilerMixin:
                               proj["id"], 0 if all_installed else self.SURVEY_MIN_INSNS)
         if function:
             fn = self._function(function, slug)
-            if fn["status"] in ("matched", "asm"):
-                raise NetworkError("Choose an unmatched function to compare compilers.")
-            if not self._source_of(fn):
+            if not self._comparison_source(fn):
                 raise NetworkError("This function has no C attempt yet. Create a draft or attempt first.")
             rows = [fn]  # Explicit checks include short functions; matches alone do not identify their compiler.
             log(f"{function}: testing all {len(candidates)} supported compiler/flag combinations (not an exhaustive search of every possible flag).")
@@ -268,7 +273,7 @@ class CompilerMixin:
             check_cancel()
             if n >= limit:
                 break
-            source = self._source_of(fn)
+            source = self._comparison_source(fn)
             if not source:
                 continue
             input_digest = self._comparison_digest(proj, fn, source, candidates) if all_installed else None
@@ -284,7 +289,7 @@ class CompilerMixin:
             today = (own["toolchain"], tuple(own["flags"]))
             if all_installed:
                 matches = []
-                baseline = (max(0.0, 100 * (1 - fn["best_score"] / max(1, fn["n_insns"] * 100)))
+                baseline = 100.0 if fn["status"] == "matched" else (max(0.0, 100 * (1 - fn["best_score"] / max(1, fn["n_insns"] * 100)))
                             if fn["best_score"] is not None else None)
                 best = None
                 best_profile = None
@@ -301,7 +306,8 @@ class CompilerMixin:
                     percent = 100.0 if ok else diff.percent if diff is not None else None
                     if all_installed:
                         ranked.append({"toolchain": tc, "flags": list(flags), "percent": percent,
-                                       "exact": ok, "current": (tc, flags) == today})
+                                       "exact": ok, "current": (tc, flags) == today,
+                                       "default": tc == cfg["compiler"]["toolchain"] and list(flags) == cfg["compiler"]["flags"]})
                     if percent is not None and (best is None or percent > best):
                         best, best_profile = percent, [tc, list(flags)]
                         if not function and (baseline is None or best > baseline + 0.001):
@@ -328,7 +334,7 @@ class CompilerMixin:
                 if improved:
                     improvements.append({"function": fn["name"], "before": baseline, "best": best,
                                          "profile": best_profile})
-                ranked.sort(key=lambda r: (r["percent"] is None, -(r["percent"] or 0), r["toolchain"], r["flags"]))
+                ranked.sort(key=lambda r: (not (r["exact"] and r["default"]), r["percent"] is None, -(r["percent"] or 0), r["toolchain"], r["flags"]))
                 completed = {"before": baseline, "best": best, "profile": best_profile,
                              "tested": len(candidates), "exact_matches": len(matches),
                              "improved": improved, "ranked": ranked}
@@ -399,7 +405,7 @@ class CompilerMixin:
             if proof is None:
                 continue
             fn = self.store.one("SELECT * FROM functions WHERE project_id=? AND vram=?", proj["id"], proof)
-            source = self._source_of(fn) if fn else None
+            source = self._comparison_source(fn) if fn else None
             if not source:
                 continue
             tc, flags = confirmed[str(proof)][0], tuple(confirmed[str(proof)][1])
@@ -552,6 +558,7 @@ class CompilerMixin:
             c = audits.get(((r["start"], r["end"]),)) or {}
             parts.append({"start": r["start"], "end": r["end"], "compiler": consoles.compiler_name(r["toolchain"]),
                           "flags": " ".join(r["flags"]), "toolchain": r["toolchain"],
+                          "default": (r["toolchain"], tuple(r["flags"])) == main,
                           "family": toolchains.compiler_family(r["toolchain"]) or r["toolchain"],
                           "functions": sum(r["start"] <= f["vram"] < r["end"] for f in function_rows),
                           "function_list": [dict(f) for f in function_rows if r["start"] <= f["vram"] < r["end"]],
@@ -741,21 +748,27 @@ class CompilerMixin:
         self._rom_only(slug, "applying function compiler settings")
         proj = self._project(slug)
         fn = self._function(function, slug)
-        if fn["status"] in ("matched", "asm"):
+        if fn["status"] == "asm":
             raise NetworkError("This function is no longer unmatched. Run a fresh comparison.")
         with self.store.tx() as db:
             self._expire_claims(db)
             if db.execute("SELECT 1 FROM claims WHERE function_id=?", (fn["id"],)).fetchone():
                 raise NetworkError("This function is being worked on. Wait until it is released, then compare again.")
-        source = self._source_of(fn)
+        source = self._comparison_source(fn)
         if not source:
             raise NetworkError("This function has no C attempt to apply. Run a fresh comparison.")
         ok, diff, _ = self._judge_with(proj, fn, toolchain, flags, source)
+        if fn["status"] == "matched" and not ok:
+            raise NetworkError("Matched functions can only use settings that still match byte for byte.")
         if diff is None:
             raise NetworkError("These settings could not compile or compare this function. Run a fresh comparison.")
         if not allow_non_improving and not ok and fn["best_score"] is not None and diff.score >= fn["best_score"]:
             raise NetworkError("These settings no longer improve this function. Run a fresh comparison.")
-        self.set_compiler_ranges(slug, [[fn["vram"], fn["vram"] + fn["size"]]], toolchain, flags)
+        default = self.cfg(proj)["compiler"]
+        use_default = toolchain == default["toolchain"] and flags == default["flags"]
+        self.set_compiler_ranges(slug, [[fn["vram"], fn["vram"] + fn["size"]]], None if use_default else toolchain, flags)
+        if fn["status"] == "matched":
+            return {"said": f"Compiler settings applied to {function}; its matching C is preserved."}
         if allow_non_improving:
             # A deliberate compiler change can lower the percentage. The old score
             # described another profile; retain the C/attempt history, rebase its score.

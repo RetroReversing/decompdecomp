@@ -479,6 +479,7 @@ async function renderProjectSettings() {
   if (!$("compilerPanel").hidden) {
     if (!S.st) await loadState();
     fillCompilers($("setTc"), ov.compiler.toolchain, ov.platform);
+    for (const option of $("setTc").options) if (option.value === ov.compiler.toolchain) option.textContent += " · Default";
     $("setFlags").value = ov.compiler.flags.join(" ");
     $("autoAdjust").checked = !!ov.auto_compiler;
     $("setRanges").value = "";
@@ -725,7 +726,7 @@ function renderCompilerParts(a) {
   const groups = compilerPartGroups(parts, mode, sort);
   setHtml($("compilerParts"), mode === "range" ? `<ol class="compiler-range-list">${groups.flatMap(g => g.parts).map(p => row(p, true)).join("")}</ol>`
     : groups.map(g => `<details class="compiler-profile" data-compiler-group="${esc(g.id)}"${compilerGroupsOpen.has(g.id) ? " open" : ""}>
-      <summary><span><b>${esc(mode === "family" ? g.family.toUpperCase() : g.compiler)}</b>${mode === "settings" ? `<code class="compiler-arguments">${esc(g.flags || "No arguments")}</code>` : ""}<span class="compiler-profile-count">${plural(g.parts.length, "range")}${g.functions != null ? ` · ${plural(g.functions, "function")}` : ""}${mode === "family" ? ` · ${plural(g.profiles, "argument profile")}` : ""}</span></span></summary>
+      <summary><span><b>${esc(mode === "family" ? g.family.toUpperCase() : g.compiler)}</b>${g.default ? ` <span class="chip-s">${mode === "family" && g.profiles > 1 ? "Includes default" : "Default"}</span>` : ""}${mode === "settings" ? `<code class="compiler-arguments">${esc(g.flags || "No arguments")}</code>` : ""}<span class="compiler-profile-count">${plural(g.parts.length, "range")}${g.functions != null ? ` · ${plural(g.functions, "function")}` : ""}${mode === "family" ? ` · ${plural(g.profiles, "argument profile")}` : ""}</span></span></summary>
       <ol class="compiler-range-list">${g.parts.map(p => row(p, mode === "family")).join("")}</ol></details>`).join(""));
   $("compilerParts").querySelectorAll("details[data-range-reason]").forEach(d => d.ontoggle = () => {
     if (!d.isConnected) return;
