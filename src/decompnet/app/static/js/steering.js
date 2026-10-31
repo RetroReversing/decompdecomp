@@ -259,8 +259,12 @@ function renderAutopilot(ov) {
   };
   const cross = ov.cross_game || { counts: {}, recent: [] };
   const count = cross.counts.match || 0, tried = Object.values(cross.counts).reduce((a, b) => a + b, 0);
-  $("crossGamePanel").hidden = count === 0 && !cross.counts.improved;
+  $("crossGamePanel").hidden = false;
   $("crossGameSummary").innerHTML = `<div class="transfer-totals"><span><strong>${count.toLocaleString()}</strong> verified matches</span><span><strong>${(cross.counts.improved || 0).toLocaleString()}</strong> partial improvements</span><span><strong>${tried.toLocaleString()}</strong> attempts</span></div>${ov.free_search?.seconds > 0 ? `<p>Last free pass <b>${ov.free_search.matched} matches</b> from ${ov.free_search.attempts} checks</p>` : ''}`;
+  const discovery = cross.discovery;
+  $("crossGameSummary").innerHTML += discovery
+    ? `<p><b>${discovery.detected.toLocaleString()}</b> functions with shared code detected · <b>${discovery.ready.toLocaleString()}</b> ready to test · <b>${discovery.blocked.toLocaleString()}</b> need writable C scaffolding.</p><p class="muted small">Signatures are leads, not recovered C. Run now prepares supported assembly-only units and tests candidates with this project's judge. Unsupported builds keep their original setup.</p>${discovery.block_reason ? `<p class="muted small">Setup blocker: ${esc(discovery.block_reason)}</p>` : ''}`
+    : `<p class="muted small">Run now to detect shared code, including assembly-only functions, across local projects and SDKs.</p>`;
   const renderTransfers = () => {
     const filter = $("crossGameFilter").value;
     const rows = filter === 'matches' ? (cross.matches || cross.recent.filter(r => r.outcome === 'match')) : filter === 'improved' ? cross.recent.filter(r => r.outcome === 'improved') : cross.recent;

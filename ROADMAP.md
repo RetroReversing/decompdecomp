@@ -188,7 +188,7 @@ Where to start on a gap:
   and the sign of a field the code only or's and tests.
 - **Twins across games** and **restoring a save** work on ROM projects (`app/twins.py`, `app/saves.py`). In project
   mode a project's matched C is its git repository; twins across games pair two projects' target objects
-  (`Twins._across_projects`, PC so far: GameCube, Wii and DS projects of two games would work the same way but
+  (`shared_reuse.transfer`, PC so far: GameCube, Wii and DS projects of two games would work the same way but
   weren't tried); what's missing is opening a save's best attempts in a new copy of the project.
 
 ROM projects now keep an indexed library of verified functions from the user's other local games, report every
@@ -1006,9 +1006,10 @@ and a keyboard-accessible actions menu. The agent list scrolls with the page.
 Exact-fingerprint partial C reuse now rejudges better saved candidates across local ROM and imported
 projects, retaining only destination improvements and recording provenance separately from verified matches.
 Trials are cached by candidate/target/context/settings, capped at 64 per pass and share existing search budgets.
-Configured automatic MIPS ROM cascades also react to partial improvements. Imported automatic cascades and
-tracking dependencies outside an imported checkout remain planned; imported reuse runs through manual free
-passes and snapshots local source/header/build inputs (at most 10,000 files / 32 MiB).
+Configured automatic cascades now queue compatible ROM and imported projects after new matches or improvements.
+Exact transfers use the destination judge, independently of donor compiler settings. Wider similarity/template
+search remains ROM-only; tracking dependencies outside an imported checkout remains planned. Imported reuse
+snapshots local source/header/build inputs (at most 10,000 files / 32 MiB).
 
 Cross-game transfer results use compact, responsive rows with separate provenance, result labels and score changes; recent partial improvements can be filtered independently.
 
@@ -1083,6 +1084,15 @@ Project overview reads query SDK signatures by the game’s indexed fingerprints
   `repair_mappings.harvest` explicitly restricts this path to ROM projects.
 
 - Windows compiler orphan cleanup after an app crash: add process birth verification and job-object ownership equivalent to the POSIX startup registry. Runtime timeout/tree termination is already supported.
+
+Shared target discovery now covers ROM and imported objects, including assembly-only units, and local SDK
+signatures. Explicit bounded cross-game passes populate the catalog; overview polling never crawls checkouts.
+The results panel separates detected shared code, writable candidates, scaffolding blockers and verified
+transfers. Imported function details expose the same grouped name hints. Native assembly units can receive
+C candidates only when their existing build successfully probes the candidate object rule; references and
+linked assembly remain unchanged. Projects without such a rule remain blocked and need a build adapter.
+ROM → imported and imported → imported C are judged by the receiving project's objdiff configuration;
+imported → ROM and ROM → ROM retain their link/byte judge. Cross-compiler exact candidates are permitted.
 
 ## Verified wrapper families and between-turn local repairs
 

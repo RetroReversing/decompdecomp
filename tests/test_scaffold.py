@@ -175,3 +175,33 @@ def test_numeric_return_register_produces_a_real_machine_draft():
     text = '.text\nglabel demo\n addiu $2, $4, 1\n jr $31\n nop\n'
     draft = seeds.run_m2c(text, 'demo', 'mips-gcc-c', valid=True, strict=True)
     assert draft and 'demo(' in draft and 'return' in draft
+
+
+def test_native_assembly_unit_probes_c_without_replacing_linked_baseline(tmp_path, monkeypatch):
+    (tmp_path / 'asm').mkdir()
+    assembly = tmp_path / 'asm/demo.s'
+    assembly.write_text('glabel demo\njr $ra\nnop\n')
+    (tmp_path / 'expected').mkdir()
+    (tmp_path / 'expected/demo.o').write_bytes(b'original target')
+    (tmp_path / 'objdiff.json').write_text(json.dumps({'units': [{
+        'name': 'asm/demo', 'target_path': 'expected/demo.o', 'base_path': 'build/asm/demo.o',
+        'metadata': {'source_path': 'asm/demo.s'}}]}))
+    fp = ForkProject(tmp_path)
+    def build(unit):
+        unit.base.parent.mkdir(parents=True, exist_ok=True)
+        unit.base.write_bytes(b'candidate')
+        return True, ''
+    monkeypatch.setattr(fp, 'build_unit', build)
+    made = prepare(fp)
+    assert len(made) == 1
+    entry = fp.objdiff_config()['units'][0]
+    assert entry['metadata']['draft_assembly'] == 'asm/demo.s'
+    assert entry['target_path'] == 'expected/demo.o'
+    assert assembly.read_text() == 'glabel demo\njr $ra\nnop\n'
+    assert (tmp_path / 'expected/demo.o').read_bytes() == b'original target'
+
+
+def test_scaffold_only_probes_requested_units(tmp_path, monkeypatch):
+    fp = project(tmp_path)
+    monkeypatch.setattr(fp, 'build_unit', lambda unit: pytest.fail('unrelated unit was probed'))
+    assert prepare(fp, units={'other'}) == []
