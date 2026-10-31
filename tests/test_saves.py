@@ -15,7 +15,8 @@ from .test_app_engine import CLAMP
 from .test_rom import ROM, built  # noqa: F401  (fixture that builds the demo ROM)
 
 
-def test_restoring_room_members_credits_does_not_reject_their_names(tmp_path, monkeypatch):
+@pytest.mark.parametrize("author", ["@alex.claude-opus-1", "claude-sonnet-5-5-1"])
+def test_restoring_room_members_credits_does_not_reject_their_names(tmp_path, monkeypatch, author):
     """A room credit starts with @; opening its save used runner-name validation and aborted restoration."""
     net = RomNetwork(tmp_path / "app.db", tmp_path)
     with net.store.tx() as db:
@@ -33,11 +34,14 @@ def test_restoring_room_members_credits_does_not_reject_their_names(tmp_path, mo
         return {"matched": False}
 
     monkeypatch.setattr(net, "attempt", attempt)
-    author = "@alex.claude-opus-1"
+    original_agent, token = net.local_agent(author)
+    original_hash = net.store.one("SELECT token_hash FROM agents WHERE id=?", original_agent.id)["token_hash"]
     manifest = {"notes": [{"by": author, "text": "Try an unsigned comparison.", "function": "f"}],
                 "functions": {"f": {"vram": 4096, "best_by": author}}}
     result = saves._apply(net, "game", tmp_path, manifest, lambda *_: None)
-    agent, _ = net.local_agent(author)
+    agent = net.attribution_agent(author)
+    assert net.authenticate(token).id == original_agent.id
+    assert net.store.one("SELECT token_hash FROM agents WHERE id=?", agent.id)["token_hash"] == original_hash
     assert result == {"matched": 0, "best": 1, "lost": []}
     assert judged == [(net.local_agent("progress-judge")[0].id, "f", "void f(void) {}", "game")]
     assert net.store.one("SELECT agent_id FROM notes WHERE text=?", "Try an unsigned comparison.")["agent_id"] == agent.id
@@ -337,3 +341,15 @@ def test_plain_save_directs_standalone_build_checkouts_to_repository_sync(tmp_pa
     with pytest.raises(NetworkError,match='Sync to Git repository'):
         saves._check_save_paths(tmp_path,chosen=True)
     assert (tmp_path/'build.py').read_text()=='# keep build setup'
+
+
+def test_new_attribution_has_no_token_and_later_runner_keeps_its_identity(tmp_path):
+    net = RomNetwork(tmp_path / "app.db", tmp_path)
+    credit = net.attribution_agent("new-author")
+    row = net.store.one("SELECT token_hash FROM agents WHERE id=?", credit.id)
+    assert row["token_hash"].startswith("attribution:")
+    assert net.attribution_agent("new-author").id == credit.id
+    runner, token = net.local_agent("new-author")
+    assert runner.id == credit.id and net.authenticate(token).id == credit.id
+    assert net.attribution_agent("new-author").id == credit.id
+    assert net.authenticate(token).id == credit.id

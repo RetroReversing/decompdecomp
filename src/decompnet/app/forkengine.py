@@ -3329,7 +3329,7 @@ class ForkEngine:
             return f"{len(said)} agents agreed, but joining {first['name']} and {last['name']} was refused: {why}."
         self.net.joined(first["name"], slug)  # (what set it aside was about a piece of it)
         try:
-            self.net.add_note(self.net.local_agent("decompdecomp")[0], slug,
+            self.net.add_note(self.net.attribution_agent("decompdecomp"), slug,
                               f"Agents ({', '.join(sorted(said))}) found this was cut by the analysis, and decompdecomp "
                               f"joined it: {done}. It's the whole function now, whatever older notes say.",
                               first["name"])
@@ -3406,7 +3406,7 @@ class ForkEngine:
             return f"{len(said)} agents agreed, but ending {fn['name']} at {key} was refused: {why}."
         self.net.joined(fn["name"], slug)  # (its code changed: what set it aside was about the whole)
         try:
-            self.net.add_note(self.net.local_agent("decompdecomp")[0], slug,
+            self.net.add_note(self.net.attribution_agent("decompdecomp"), slug,
                               f"Agents ({', '.join(sorted(said))}) found it ran on past its end, and decompdecomp cut "
                               f"it: {done}. It's the whole function now, whatever older notes say.", fn["name"])
         except NetworkError:
