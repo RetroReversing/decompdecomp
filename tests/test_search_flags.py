@@ -245,3 +245,24 @@ def test_apply_comparison_uses_scoped_claim_while_autopilot_holds_other_work(tmp
     with pytest.raises(Exception, match="being worked on"):
         net.apply_function_compiler("demo", "f", "gcc-2.8.0-psx", ["-O3"])
     assert net.cfg(net._project("demo")) == before
+
+
+def test_profile_application_reports_a_new_match_without_another_try(tmp_path, monkeypatch):
+    net = RomNetwork(tmp_path / 'decomp.db', tmp_path)
+    cfg = {'kind':'rom', 'platform':'ps', 'compiler':{'toolchain':'gcc-2.7.2-psx','flags':['-O2']}}
+    with net.store.tx() as db:
+        pid=db.execute('INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)',
+                       ('demo','Demo',str(tmp_path),json.dumps(cfg))).lastrowid
+        fid=db.execute('INSERT INTO functions(project_id,name,vram,size,n_insns,status,best_score,best_source) '
+                       'VALUES(?,?,?,?,?,?,?,?)',(pid,'f',4096,32,8,'open',50,'int f(void){return 1;}')).lastrowid
+    monkeypatch.setattr(net,'_judge_with',lambda *a:(True,SimpleNamespace(score=0),''))
+    def promote(*args,**kwargs):
+        with net.store.tx() as db:
+            db.execute("UPDATE functions SET status='matched',best_score=0,matched_source=best_source WHERE id=?",(fid,))
+    monkeypatch.setattr(net,'try_quietly',promote)
+    result=net.apply_function_compiler('demo','f','gcc-2.7.2-psx',['-O3'])
+    assert result['matched'] and result['newly_matched'] and result['score']==0
+    assert result['match_cause']=='compiler_profile' and 'MATCH:' in result['said']
+    result=net.apply_function_compiler('demo','f','gcc-2.7.2-psx',['-O3'])
+    assert result['matched'] and not result['newly_matched']
+    assert result['match_cause']=='already_matched'

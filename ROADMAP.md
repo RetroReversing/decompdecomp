@@ -1,6 +1,8 @@
 # Roadmap
 
-Implemented: bounded compiler preflight before long ROM searches, input-scoped retries, existing-record
+Implemented: bounded compiler preflight before long ROM searches and after saved deep-search improvements,
+explicit profile-induced match results, opt-in mapped source before deep mutations, advisory type/retail checks,
+side-effect-free comparison and unsigned product order hypotheses, input-scoped retries, existing-record
 structure-return and SDK-style setter hypotheses, typed local SDK candidates by name, separate MIPS function/export
 layout diagnostics, and compressed-cartridge repository identity checks. See [the live API workflow](docs/LIVE_API_WORKFLOW.md).
 Planned: preflight integration with imported projects' own file-compiler workflows, standalone-layout adapters for

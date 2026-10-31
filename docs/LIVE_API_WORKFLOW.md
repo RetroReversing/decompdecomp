@@ -91,3 +91,12 @@ needs verification by the checkout's builder: a curated build may already suppor
 
 Review `accepted`, `skipped`, and `verified_build`, then commit the source changes when authorized. Sync does not
 commit or push. Imported projects already keep source in their checkout and do not use ROM repository sync.
+
+
+### Source repairs and compiler-profile matches
+
+Deep search first tries an explicitly configured local source mapping for the selected function, keeping its real declarations and original line layout. It then runs bounded current-toolchain checks, and repeats those checks after saving improved local or random candidates before generating more mutations. Cached checks are scoped to the source and judge inputs. The existing time/variant allowance and automatic-compiler preference still apply; nonexact profile improvements remain suggestions. Imported projects keep their own build/profile workflow (see ROADMAP).
+
+`POST /api/compiler` now reports `matched`, `newly_matched`, `score` and `match_cause` in addition to `said`. A new match caused by settings has `match_cause: "compiler_profile"`; changing settings on an already matched function has `newly_matched: false` and `match_cause: "already_matched"`. Read this result before submitting another candidate: the settings operation already judges and saves matching C.
+
+Diff responses include advisory `source_diagnostics`, also shown in the diff panel and agent briefs. Raw offset casts warrant checking records and argument types; products warrant checking order and widths; reference cleanup paths still need comparison against retail. These diagnostics never supply match verdicts. Comparison operand-order and unsigned scalar product-order candidates use the ordinary judge, just like other local repairs. No reference source or SDK is fetched automatically.
