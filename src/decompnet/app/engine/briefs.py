@@ -240,7 +240,7 @@ class BriefMixin:
 
     def _brief(self, fn, agent, header):
         if self.cfg(self.store.one("SELECT config FROM projects WHERE id=?", fn["project_id"])).get("kind") == "fork":
-            return self.forks.brief(fn, agent, header)
+            return self.forks.brief(fn, agent, header) + self._lifetime_hints(fn)
         proj = self.store.one("SELECT * FROM projects WHERE id=?", fn["project_id"])
         if self.is_rom(proj) and fn["status"] == "open" and not fn["best_source"]:
             self._seed_for(fn, proj)  # made again first when what it's made from changed
@@ -253,7 +253,13 @@ class BriefMixin:
             warning = compiler_preflight.warnings(self, proj, fn)
             if warning:
                 text += '\n\nCompiler preflight (advisory; check the draft before tuning):\n' + warning
-        return text
+        return text + self._lifetime_hints(fn)
+
+    def _lifetime_hints(self, fn):
+        from ..local_flow import hints
+        source = fn['best_source'] or fn['seed'] or ''
+        suggestions = hints(source, fn['name']) if fn['status'] == 'open' and source else []
+        return ('\n\nDraft lifetime hints (advisory; original names retained):\n' + '\n'.join(suggestions)) if suggestions else ''
 
     def xrefs(self, proj) -> dict:
         """calls / called_by / uses / used_by, all keyed by address."""

@@ -24,6 +24,7 @@ from . import (
     load_pair_repairs,
     local_widening_repairs,
     local_width_repairs,
+    masked_reuse_repairs,
     mmio_repairs,
     near_repairs,
     pattern_repairs,
@@ -89,7 +90,7 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     for family, text in evidence_repairs.variants(source, name, header):
         proposals.append(text)
         labels[text] = family
-    for family, text in register_reuse_repairs.variants(source, name):
+    for family, text in masked_reuse_repairs.variants(source, name) + register_reuse_repairs.variants(source, name):
         proposals.append(text)
         labels[text] = family
     for text in mmio_repairs.variants(source, name, arch):

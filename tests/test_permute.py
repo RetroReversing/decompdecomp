@@ -107,7 +107,7 @@ def test_variants_come_in_batches_from_the_first_and_the_best_c_in_turn(monkeypa
     jobs = batches(monkeypatch, ["broken", "far", "closer"], ["far too"], ["same", "never judged"])
     st = State()
     p._permute(AGENT, net.project_row("game"), net.function(), st)
-    assert [j["source"] for j in jobs] == [SOURCE, "closer", SOURCE]
+    assert [j["source"] for j in jobs] == [SOURCE, "closer", "closer"]
     assert jobs[0]["header"] == HEADER and jobs[0]["function"] == "f" and jobs[0]["family"] == "gcc"
     assert p.judged == ["broken", "far", "closer", "far too", "same"]
     assert (st.variants, st.improved, st.matched, st.tried, st.current) == (5, 2, 1, 1, "")
@@ -413,3 +413,34 @@ def test_the_permuters_status_says_how_many_threads_it_has(monkeypatch):
     p = Permuter(FakeNet())
     p.jobs["game"] = State()
     assert p.status("game")["threads"] == 7 and p.status("other") is None
+
+
+def test_improvement_discards_siblings_and_regenerates_from_winner(monkeypatch):
+    net = FakeNet()
+    permuter = ScriptedPermuter(net, {'better':10, 'exact':0})
+    jobs = batches(monkeypatch, ['better','obsolete sibling'], ['exact'])
+    state = State()
+    permuter._permute(AGENT,net.project_row('game'),net.function(),state)
+    assert permuter.judged == ['better','exact']
+    assert jobs[1]['source'] == 'better'
+    assert state.matched == 1
+
+
+def test_new_saved_improvement_reseeds_next_batch(monkeypatch):
+    net = FakeNet()
+    net._function = lambda *args: net.function()
+    calls=[]
+    class UpdatingPermuter(ScriptedPermuter):
+        def _baseline(self, agent, proj, fn, state, fork):
+            calls.append(fn['best_source'])
+            return fn['best_score'],0
+        def _score(self, agent, proj, fn, source, best, fork):
+            if source == 'old miss':
+                with net.store.tx() as db:
+                    db.execute("UPDATE functions SET best_source='external winner',best_score=5 WHERE id=1")
+            return super()._score(agent,proj,fn,source,best,fork)
+    jobs=batches(monkeypatch,['old miss'],['exact'])
+    permuter=UpdatingPermuter(net,{'exact':0})
+    permuter._permute(AGENT,net.project_row('game'),net.function(),State())
+    assert calls == ['external winner']
+    assert jobs[1]['source'] == 'external winner'

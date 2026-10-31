@@ -1,6 +1,8 @@
 """Advisory search weights from the ordinary judge's mismatches; all mutations remain available."""
 import re
 
+from ..rom.symbols import SymbolTable
+
 BOOSTS = {
     'stack': ('perm_reorder_decls', 'perm_temp_for_expr', 'perm_split_assignment', 'perm_randomize_internal_type'),
     'register': ('perm_reorder_decls', 'perm_reorder_stmts', 'perm_expand_expr', 'perm_temp_for_expr', 'perm_commutative'),
@@ -10,8 +12,60 @@ BOOSTS = {
 }
 
 
+# Only these MIPS operands have a known 16-bit relocation interpretation here. Unknown forms,
+# aliases without a resolver, addends and other architectures keep their original mismatch.
+SIGNED_LOW = {'lb', 'lbu', 'lh', 'lhu', 'lw', 'lwu', 'ld', 'sb', 'sh', 'sw', 'sd', 'lwc1', 'swc1', 'ldc1', 'sdc1', 'addiu'}
+RELOCATION = re.compile(r'%(hi|lo)\(([A-Za-z_]\w*)\)')
+NUMBER = re.compile(r'(?<![\w$])-?0x[0-9a-fA-F]+|(?<![\w$])-?\b[0-9]+\b')
+
+
+def normalized(rows, resolve=None):
+    """Remove proven operand-rendering differences for search advice, never for scores/verdicts.
+
+    Automatic address names use the same resolver as the ROM linker. A project resolver can also
+    prove renamed symbols. Register/opcode/address-bit differences remain visible.
+    """
+    resolve = resolve or SymbolTable().resolve
+
+    def operands(text):
+        opcode = text.split(' ', 1)[0]
+        if opcode not in SIGNED_LOW | {'ori', 'lui'}:
+            return None
+        unknown = False
+
+        def replace(match):
+            nonlocal unknown
+            kind, symbol = match.groups()
+            address = resolve(symbol)
+            if address is None or (kind == 'hi') != (opcode == 'lui'):
+                unknown = True
+                return match[0]
+            value = ((address+0x8000) >> 16) & 0xffff if kind == 'hi' else address & 0xffff
+            if kind == 'lo' and opcode in SIGNED_LOW and value >= 0x8000:
+                value -= 0x10000
+            return str(value)
+
+        text = RELOCATION.sub(replace, text)
+        if unknown or '%' in text:
+            return None
+        return NUMBER.sub(lambda match: str(int(match[0], 16 if '0x' in match[0] else 10)), text)
+
+    result = []
+    for row in rows or []:
+        if not isinstance(row, (tuple, list)) or len(row) != 3:
+            result.append(row)
+            continue
+        marker, left, right = row
+        if marker == 'i' and ('%' in left or '%' in right):
+            a, b = operands(left), operands(right)
+            if a is not None and a == b:
+                marker = ' '
+        result.append((marker, left, right))
+    return result
+
+
 def classify(rows):
-    changed = [row for row in rows if row and row[0] != ' ']
+    changed = [row for row in normalized(rows) if row and row[0] != ' ']
     markers = {row[0] for row in changed}
     text = ' '.join(str(cell) for row in changed for cell in row[1:])
     if re.search(r'\b(?:jalr?|callq?|bl|bctrl)\b', text):
