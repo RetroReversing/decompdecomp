@@ -103,6 +103,7 @@ class JudgeMixin:
             reason = (f"it exceeds the {BATCH_INSNS}-instruction batch limit" if first["n_insns"] > BATCH_INSNS
                       else "no other eligible small functions in this file passed the queue filters")
             return f"Requested {count} functions; returned 1 because {reason}. Work on the held function before claiming again.\n\n" + self.claim(agent, project, None, strategy)
+        rows = list({r["id"]: r for r in rows}.values())
         names = [r["name"] for r in rows]
         fork = self.fork_slug(project)
         head = (f"## CLAIMED {len(rows)} small functions: {', '.join(names)}\n"
@@ -116,12 +117,16 @@ class JudgeMixin:
         """Up to n more small open functions in the same file, using the normal queue and filters, claimed for the agent."""
         sdk=self.sdk_functions(proj)
         deferred=list(sdk) if first['id'] not in sdk else []
+        deferred += [r["function_id"] for r in self.store.all("SELECT function_id FROM claims WHERE agent_id=?", agent.id)]
         rows = []
         for _ in range(n):
             row = Network.claim_row(self, agent, proj['slug'], strategy=strategy,
                                     batch_from={'unit':first['unit'] or '', 'limit':BATCH_INSNS, 'deferred':deferred})
             if row is None:
                 break
+            if row["id"] in deferred:
+                break
+            deferred.append(row["id"])
             rows.append(row)
         return rows
 

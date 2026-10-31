@@ -354,6 +354,7 @@ def test_zcode_session_ends_when_the_turn_is_done(tmp_path, monkeypatch):
     m = agents.Manager.__new__(agents.Manager)
     m.mcp_url, m.home = "http://127.0.0.1:6464/mcp", tmp_path
     m.prompt = lambda s: "work the function"
+    monkeypatch.setattr(m, "_preflight_tools", lambda token: None)
 
     import contextlib
 
@@ -665,6 +666,7 @@ def test_an_expired_sign_in_is_recognised_retried_then_asks_for_a_new_sign_in(tm
     not be refreshed", and the app took it for an ordinary failure (retries after 10, 19, 39, 76 s, outcome
     "failed", nothing saying why) until the user happened to sign in again. Now it's recognised, tried again a few
     times, and the helper then pauses asking for a new sign-in, without counting as fast failures."""
+    monkeypatch.setattr(agents.Manager, "_preflight_tools", lambda *a: None)
     _no_agent_settings(monkeypatch)
     net = _game(tmp_path)
     m = agents.Manager(net, tmp_path, URL)
@@ -1278,6 +1280,7 @@ def test_paused_unchanged_queue_waits_without_starting_paid_session(tmp_path,mon
 
 
 def test_invalid_kimi_authorization_grant_uses_bounded_signin_retries(tmp_path,monkeypatch):
+    monkeypatch.setattr(agents.Manager, "_preflight_tools", lambda *a: None)
     _no_agent_settings(monkeypatch)
     net=_game(tmp_path);manager=agents.Manager(net,tmp_path,URL)
     session=manager._record('game','kimi','kimi-1','kimi-1',{})
