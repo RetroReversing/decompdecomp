@@ -164,7 +164,7 @@ class RepairFeedback:
         }
         # Retain deterministic successes for regression analysis without proposing the installed
         # rule as new work. Agent explanations still cannot mark their own hypotheses implemented.
-        automated = (evidence.get('provenance') or {}).get('kind') == 'deterministic draft repair'
+        automated = (evidence.get('provenance') or {}).get('kind') in ('deterministic draft repair','automatic agent local pass')
         db.execute('INSERT INTO repair_examples(project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence,status,review_note) '
                    'VALUES(?,?,?,?,?,?,?,?,?)', (fn['project_id'], fn['id'], attempt_id, before['id'] if before else None,
                                              agent_id, time.time(), json.dumps(evidence), 'implemented' if automated else 'new',
@@ -208,7 +208,7 @@ class RepairFeedback:
                   ') AS repetitions FROM repair_examples e WHERE ' + where + ') ')
         rows = self.store.all(prefix + 'SELECT e.id,e.created_at,e.category,e.explanation,e.automation,e.status,e.repetitions,'
                               "CASE WHEN e.before_attempt_id IS NULL THEN 'no failed baseline' WHEN json_extract(e.evidence,'$.before.source_sha256')=json_extract(e.evidence,'$.after.source_sha256') THEN 'same source / settings' WHEN json_extract(e.evidence,'$.comparable_settings')=1 THEN 'source repair' ELSE 'settings also changed' END AS evidence_kind,"
-                              "(json_extract(e.evidence,'$.provenance.kind')='deterministic draft repair' AND "
+                              "(json_extract(e.evidence,'$.provenance.kind') IN ('deterministic draft repair','automatic agent local pass') AND "
                               "(json_extract(e.evidence,'$.provenance.source_sha256') IS NULL OR "
                               "json_extract(e.evidence,'$.provenance.source_sha256')=json_extract(e.evidence,'$.after.source_sha256'))) AS automation_known,"
                               'p.slug,p.name AS project,f.name AS function,a.name AS agent FROM grouped e '

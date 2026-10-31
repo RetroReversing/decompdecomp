@@ -82,3 +82,6 @@ def test_real_compile_submission_can_match_in_the_local_pass(tmp_path,monkeypatc
     assert fn['status']=='matched' and fn['matched_source']==DAMAGE
     provenance=net.store.one('SELECT provenance FROM repair_attempt_provenance ORDER BY attempt_id DESC LIMIT 1')
     assert 'automatic agent local pass' in provenance['provenance'] and 'literal' in provenance['provenance']
+
+    capture=net.store.one('SELECT status FROM repair_examples ORDER BY id DESC LIMIT 1')
+    assert capture['status']=='implemented'
