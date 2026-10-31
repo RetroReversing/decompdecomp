@@ -374,8 +374,8 @@
 
   <!-- settings -->
   <section class="ptab" data-pane="settings">
-    <section class="panel">
-      <header class="panel-head"><h2>Local source preparation</h2><span class="muted small">optional · no AI tokens</span></header>
+    <details class="panel settings-disclosure" id="sourcePrepPanel">
+      <summary class="panel-head"><h2>Local source preparation</h2><span class="muted small">optional · no AI tokens</span></summary>
       <div class="pad">
         <p class="small muted">Have reference source you want to use? Map its functions explicitly. The app reads it without changing it, preserves line breaks and tries the ordinary compiler/link judge. A mapping alone never counts as a match.</p>
         <label class="check"><input id="sourcePrepEnabled" type="checkbox"><span>Use this local source before permuting unmatched functions</span></label>
@@ -389,10 +389,10 @@
         <div class="row"><button id="sourcePrepSave" class="ghost" type="button">Save source settings</button><button id="sourcePrepRun" class="primary" type="button">Try preparation pass</button></div>
         <div id="sourcePrepLog"></div>
       </div>
-    </section>
+    </details>
 
-    <section class="panel" id="deepSweepPanel">
-      <header class="panel-head"><h2>Deep permutation pass</h2><span class="muted small">all unmatched functions · no AI tokens</span></header>
+    <details class="panel settings-disclosure" id="deepSweepPanel">
+      <summary class="panel-head"><h2>Deep permutation pass</h2><span class="muted small">all unmatched functions · no AI tokens</span></summary>
       <div class="pad">
         <p class="small muted">Give each function a longer turn through local repairs and random permutations. Completed passes are saved. After restarting the app, start the deep pass again to continue. Changed source, headers or compiler inputs make a function eligible again.</p>
         <div class="row"><label>Minutes per function<input id="deepSweepMinutes" type="number" min="1" max="120" value="5"></label><label>Variants per function<input id="deepSweepVariants" type="number" min="1" max="1000000" value="10000"></label><label title="Functions searched at once. Empty: as many as this computer can spare. More threads finish sooner and leave the app slower to respond.">Threads<input id="deepSweepThreads" type="number" min="1" placeholder="auto"></label></div>
@@ -411,7 +411,7 @@
         <div id="deepSweepResults" aria-live="polite"></div>
         <div id="deepSweepLog"></div>
       </div>
-    </section>
+    </details>
 
     <div class="cols">
       <section class="panel" id="compilerPanel" aria-labelledby="compilerH">
