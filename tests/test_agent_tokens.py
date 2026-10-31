@@ -180,6 +180,7 @@ def test_independent_variants_use_normal_judge_and_select_best_candidate(tmp_pat
         seen.append(source);net._record(net._function('f','game'),agent,10,source,1)
         return 'score 10'
     monkeypatch.setattr(net,'compile_and_diff',compile)
+    monkeypatch.setattr('decompnet.app.agent_evidence.preflight',lambda *args:None)
     _,rev=agent_tokens.candidate(net,a,'game','f')
     result=tools.call(net,a,'game','compile_variants',{'function':'f','revision':rev,'patches':[
         {'old':'return 1','new':'return 2'}, {'old':'return 1','new':'return 3'}]})
@@ -266,6 +267,7 @@ def test_grouped_batch_compares_start_and_keeps_failures_separate(tmp_path, monk
         net._record(fn,agent,10,src,1);net.keep_diff(a.id,fn['id'],after)
         return 'score 10'
     monkeypatch.setattr(net,'compile_and_diff',compile)
+    monkeypatch.setattr('decompnet.app.agent_evidence.preflight',lambda *args:None)
     _,rev=agent_tokens.candidate(net,a,'game','f')
     result=agent_tokens.variants(net,a,'game','f',rev,[{'old':'return 1','new':f'return {i}'} for i in (2,3,4)])
     assert len(seen)==3 and 'Variants 1,2: score 10; improved vs starting score 20' in result
@@ -283,6 +285,7 @@ def test_equal_score_different_diffs_do_not_group(tmp_path, monkeypatch):
     def compile(agent,function,src,slug):
         net._record(fn,agent,10,src,1);net.keep_diff(a.id,fn['id'],[('i',src,'target')]);return 'score 10'
     monkeypatch.setattr(net,'compile_and_diff',compile)
+    monkeypatch.setattr('decompnet.app.agent_evidence.preflight',lambda *args:None)
     _,rev=agent_tokens.candidate(net,a,'game','f')
     result=agent_tokens.variants(net,a,'game','f',rev,[{'old':'1','new':'2'},{'old':'1','new':'3'}])
     assert 'Variants 1:' in result and 'Variants 2:' in result and 'Variants 1,2:' not in result
@@ -309,6 +312,7 @@ def test_local_family_uses_same_batch_judge_and_records_history(tmp_path, monkey
     def compile(agent,function,source,slug):
         seen.append(source);net._record(fn,agent,10,source,1);return 'score 10'
     monkeypatch.setattr(net,'compile_and_diff',compile)
+    monkeypatch.setattr('decompnet.app.agent_evidence.preflight',lambda *args:None)
     _,rev=agent_tokens.candidate(net,a,'game','f')
     result=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'signedness','old':'int x;'})
     assert seen==['int f(){unsigned int x;return x;}'] and 'Generated changes' in result
@@ -336,6 +340,7 @@ def test_named_and_occurrence_family_targets_use_normal_judge(tmp_path, monkeypa
     def compile(agent,function,source,slug):
         seen.append(source);net._record(fn,agent,10,source,1);return 'score 10'
     monkeypatch.setattr(net,'compile_and_diff',compile)
+    monkeypatch.setattr('decompnet.app.agent_evidence.preflight',lambda *args:None)
     _,rev=agent_tokens.candidate(net,a,'game','f')
     out=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':'declaration_order','declaration':'a'})
     assert 'score 10' in out and '  short b;\n  int a;' in seen[0]
@@ -415,6 +420,7 @@ def test_current_target_listing_and_auto_selection_are_revision_scoped(tmp_path,
         agent_tokens.outcome(net,a,net._function('f','game'),args[4],'score 10')
         return 'score 10'
     monkeypatch.setattr(tools,'_compile',compile)
+    monkeypatch.setattr('decompnet.app.agent_evidence.preflight',lambda *args:None)
     listed=tools.call(net,a,'game','family_targets',{'function':'f','expression':' a'})
     assert rev in listed and 'a -> b' in listed and 'b -> c' in listed and '2 literal occurrences' in listed
     assert seen==[]
@@ -462,6 +468,7 @@ def test_pattern_family_uses_normal_judge_and_captures_provenance(tmp_path, monk
     def compile(agent,function,source,slug):
         seen.append(source);net._record(fn,agent,0,source,1,matched=True);return 'MATCH!'
     monkeypatch.setattr(net,'compile_and_diff',compile)
+    monkeypatch.setattr('decompnet.app.agent_evidence.preflight',lambda *args:None)
     _,rev=agent_tokens.candidate(net,a,'game','f')
     out=tools.call(net,a,'game','compile_family',{'function':'f','revision':rev,'family':family})
     assert len(seen)==1 and expected in seen[0] and 'MATCH!' in out
@@ -482,6 +489,7 @@ def test_batch_continuation_keeps_baseline_or_best_without_extra_attempt(tmp_pat
         net.keep_diff(agent.id,fn['id'],[('i',str(score),'target')])
         return 'COMPILE ERROR' if score is None else 'score '+str(score)
     monkeypatch.setattr(net,'compile_and_diff',compile)
+    monkeypatch.setattr('decompnet.app.agent_evidence.preflight',lambda *args:None)
     _,rev=agent_tokens.candidate(net,a,'game','f')
     out=agent_tokens.variants(net,a,'game','f',rev,[{'old':'return 1','new':'return 2'},{'old':'return 1','new':'return 3'}])
     selected,newrev=agent_tokens.candidate(net,a,'game','f')
