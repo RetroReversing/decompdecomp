@@ -596,6 +596,7 @@ def test_builtin_api_agent_matches_a_function(app, monkeypatch):
 def test_an_agent_nobody_signed_in_to_stops_and_says_so(tmp_path, monkeypatch):
     """Claude Code without a sign-in exits at once: say that (not "exited with code 1") and don't keep retrying."""
     manager = agents.Manager(RomNetwork(tmp_path / "app.db", tmp_path), tmp_path, "http://127.0.0.1:9/mcp")
+    monkeypatch.setattr(manager, "_preflight_tools", lambda token: None)
     code = "print('Not logged in \\u00b7 Please run /login'); raise SystemExit(1)"
     monkeypatch.setattr(manager, "_command", lambda s, token, workdir: ([sys.executable, "-c", code], dict(os.environ), ""))
     s = agents.Session("claude-1", "claude", "Claude Code #1", "game", "claude-1", {})
@@ -607,6 +608,7 @@ def test_an_agent_out_of_credit_stops_and_says_so(tmp_path, monkeypatch):
     """DeepSeek's "Insufficient Balance" (here through opencode): stop at once and say what to do. "Too many
     requests" is the provider's limit of requests at once: not a failure, the session waits and tries again."""
     manager = agents.Manager(RomNetwork(tmp_path / "app.db", tmp_path), tmp_path, "http://127.0.0.1:9/mcp")
+    monkeypatch.setattr(manager, "_preflight_tools", lambda token: None)
     s = agents.Session("opencode-1", "opencode", "opencode #1", "game", "opencode-1", {})
 
     def says(text: str) -> None:

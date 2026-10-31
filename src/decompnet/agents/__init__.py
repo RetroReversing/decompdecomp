@@ -136,6 +136,9 @@ class Agent:
 
     supports_login = False
 
+    def validate_model(self, model: str) -> str | None:
+        return None
+
     def login(self, exe: str) -> None:
         raise ValueError("Open a terminal and follow this agent’s sign-in instructions.")
 

@@ -24,6 +24,7 @@ The prompt goes in on stdin, never on the command line: no length limit, and not
 
 from __future__ import annotations
 
+import asyncio
 import collections
 import json
 import logging
@@ -508,6 +509,10 @@ class Manager:
                            "json_extract(h.options, '$.task') END FROM helpers h "
                            "WHERE h.id=helper_sessions.helper_id AND h.project=helper_sessions.project "
                            "AND h.name=helper_sessions.agent), '')")
+        # A process cannot resume a CLI conversation after the app has exited.
+        with net.store.tx() as db:
+            db.execute("UPDATE helper_sessions SET ended_at=?, outcome='interrupted' WHERE ended_at IS NULL",
+                       (time.time(),))
         self._restore()
         self.refresh_detected()
 
@@ -1269,8 +1274,33 @@ class Manager:
         env = dict(os.environ, PWD=str(workdir), **{HELPER_ENV: str(self.home)}, **more)
         return cmd, env, k.stdin(self.prompt(s))
 
+    def _preflight_tools(self, token: str) -> None:
+        """Prove the authenticated MCP exposes the working tools before spending a model turn."""
+        async def check():
+            from mcp import ClientSession
+            from mcp.client.streamable_http import streamable_http_client
+            from mcp.shared._httpx_utils import create_mcp_http_client
+
+            async with create_mcp_http_client(headers={"Authorization": f"Bearer {token}"}) as http:
+                async with streamable_http_client(self.mcp_url, http_client=http) as streams:
+                    async with ClientSession(*streams[:2]) as client:
+                        await client.initialize()
+                        tools = await client.list_tools()
+                        names = {tool.name for tool in tools.tools}
+                        if not {"claim_function", "compile_and_diff", "release_function"} <= names:
+                            raise ValueError("The decomp MCP server did not expose the required tools.")
+        try:
+            self.net.authenticate(token)
+            asyncio.run(asyncio.wait_for(check(), timeout=15))
+        except Exception as error:
+            raise Fatal("The app's tool connection is unavailable. Restart the helper after checking the app connection. "
+                        "No model request was started.") from error
+
     def _run_cli(self, s: Session, token: str, workdir: Path) -> bool:
         k = agents.get(s.kind)
+        if why := k.validate_model(s.model):
+            raise Fatal(why)
+        self._preflight_tools(token)
         cmd, env, prompt = self._command(s, token, workdir)
         if s.record:
             previous = s.record
@@ -1369,6 +1399,8 @@ class Manager:
             s.limit_until = limit_reset(everything)
         elif code != 0 and (why := no_credit(everything)):
             raise Fatal(why)  # every agent on this account fails the same way until it's topped up
+        if re.search(r"invalid API token|(?:decomp tools|decomp MCP server)[^\n]{0,100}(?:not available|aren't available|not connected|unavailable)|none of the decomp tools|no decomp tools", everything, re.I):
+            raise Fatal("The helper lost access to the app's tools. Restart this helper to reconnect; repeated paid retries are paused.")
         if finished:
             if saw_tool:  # it said its work is done and used the tools: done, whatever the exit code
                 s.error = ""
