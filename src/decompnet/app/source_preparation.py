@@ -129,6 +129,7 @@ class Reader:
             raise NetworkError('The reference folder and each include root must be existing folders.')
         self.overrides = overrides(cfg.get('overrides', ''))
         self.cache, self.bytes = {}, 0
+        self.advisories = []
 
     def file(self, path):
         path = path.resolve()
@@ -225,7 +226,8 @@ def prepare(reader, cfg, mapping, aliases, fallback):
     source = f'#line {original[:span[0]].count(chr(10)) + 1} "reference.c"\n' + rename(body, aliases)
     from .source_type_context import referenced
     header += '\n' + referenced(original, body, header)
-    from .source_context import helpers, prototypes
+    from .source_context import compatibility, helpers, prototypes
+    reader.advisories.extend(compatibility(original, body, header))
     header += helpers(reader, cfg, body, header, macros)
     header += prototypes(original, body, header, symbol)
     selected = []
@@ -356,7 +358,9 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                 if fn['status'] != 'open':
                     continue
                 fallback = net.forks.permuter_header(fork, fn['name']) if fork else net._context(proj['id'], fn['unit'])['header']
+                reader.advisories.clear()
                 variants = prepare_variants(reader, cfg, mapping, aliases, fallback)
+                for hint in dict.fromkeys(reader.advisories):log_line(fn['name'] + ': ' + hint)
                 retried = False
                 for source, header in variants:
                     from .source_context import context_hints

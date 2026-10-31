@@ -74,3 +74,28 @@ def compiler_hints(output):
            if re.search(r'implicit.*(?:declar|function)|(?:function|routine).*implicitly|undeclared',line,re.I)]
     if not lines:return []
     return ['Check missing original macros and private helper prototypes before permutation: '+line[:400] for line in lines[:4]]
+
+
+def typedefs(text):
+    """Conservative single-alias typedef declarations, including nested records."""
+    clean=csource._blank(text);result={}
+    for m in re.finditer(r'\btypedef\b',clean):
+        depth=0
+        for i in range(m.end(),len(clean)):
+            char=clean[i]
+            depth+=(char in '{([')-(char in '})]')
+            if char==';' and depth==0:
+                declaration=clean[m.start():i+1]
+                alias=re.search(r'\b('+IDENT+r')\s*;$',declaration)
+                if alias:result[alias[1]]=' '.join(declaration.split())
+                break
+    return result
+
+
+def compatibility(original, source, header):
+    """Report actual differing declarations, without asserting SDK identity or changing fields."""
+    reference=typedefs(original);destination=typedefs(header)
+    used=set(re.findall(IDENT,csource._blank(source)))
+    return [f'Reference and prepared header declare {name} differently. Check SDK revision compatibility or select a coherent context alternative; no fields were changed.'
+            for name in sorted(used & reference.keys() & destination.keys())
+            if reference[name]!=destination[name]][:8]

@@ -89,3 +89,12 @@ def test_helpers_do_not_conflict_with_automatic_externs(tmp_path):
     source,header=prep.prepare(prep.Reader(cfg),cfg,('dest','original','f.c'),{'original':'dest'},'')
     assert 'static float helper' in header and 'extern float helper' not in header
     assert 'float dest(void)' in source
+
+
+def test_record_revision_differences_are_advisory_not_guessed_fields():
+    original='typedef struct { int x; int (*callback)(int); } Item;'
+    header='typedef struct { int x; } Item;'
+    hints=source_context.compatibility(original,'void f(Item *p){p->x=0;}',header)
+    assert len(hints)==1 and 'declare Item differently' in hints[0] and 'no fields were changed' in hints[0]
+    assert not source_context.compatibility(original,'void f(void){}',header)
+    assert not source_context.compatibility(original,'void f(Item *p){}',original)
