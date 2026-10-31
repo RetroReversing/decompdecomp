@@ -20,15 +20,15 @@ const rows = [
   { toolchain: "failed", flags: [], percent: null },
 ];
 ctx.renderFunctionCompilerComparison({ ranked: rows, best: 90, before: 80, tested: 3, exact_matches: 0 }, "demo", "function_one");
-assert.match(get("fnCompilerRanked").innerHTML, /data-compiler-choice="2" disabled/);
+assert.match(get("fnCompilerMatches").innerHTML, /data-compiler-choice="2" disabled/);
 (async () => {
-  await get("fnCompilerRanked").onclick({ target: { closest: () => ({ dataset: { compilerChoice: "1" } }) } });
+  await get("fnCompilerMatches").onclick({ target: { closest: () => ({ dataset: { compilerChoice: "1" } }) } });
   assert.equal(requests.length, 1);
   assert.equal(requests[0].toolchain, "chosen");
   assert.deepEqual(Array.from(requests[0].flags), ["-O1", "-g3"]);
   assert.equal(requests[0].allow_non_improving, true);
   ctx.S.fn = "another_function";
-  await get("fnCompilerRanked").onclick({ target: { closest: () => ({ dataset: { compilerChoice: "0" } }) } });
+  await get("fnCompilerMatches").onclick({ target: { closest: () => ({ dataset: { compilerChoice: "0" } }) } });
   assert.equal(requests.length, 1);
 })().catch(e => { console.error(e); process.exitCode = 1; });
 const defaults = ctx.compilerRankedTable([
