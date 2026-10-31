@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -21,7 +22,7 @@ from pathlib import Path
 
 from decompnet.hostenv import NO_WINDOW, stop_process_tree
 
-from . import linuxvm, wsl
+from . import limits, linuxvm, wsl
 
 MAX_SOURCE_BYTES = 64 * 1024
 # Per-compile resource caps (address space, CPU seconds, output file size) and a global
@@ -149,24 +150,33 @@ def _exec(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float, cwd:
     # in the work folder, never in the app's own: KMC GCC's assembler (binutils 2.6) can't read its input when the
     # current directory is / ("Bad file descriptor"), as it can be for a program its launcher starts
     check = _CANCEL_CHECK.get()
-    if check is None:
+    if check is None and sys.platform != "darwin":
         return subprocess.run(_wrap(cfg, work, argv), cwd=cwd or work, capture_output=True, text=True,
                               encoding="utf-8", errors="replace", timeout=timeout, creationflags=NO_WINDOW)
     proc = subprocess.Popen(_wrap(cfg, work, argv), cwd=cwd or work, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            text=True, encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
+                            text=True, encoding="utf-8", errors="replace", creationflags=NO_WINDOW,
+                            start_new_session=sys.platform == "darwin")
     started = time.monotonic()
     try:
-        while True:
-            check()
-            try:
-                stdout, stderr = proc.communicate(timeout=0.1)
-                return subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
-            except subprocess.TimeoutExpired:
-                if time.monotonic() - started > timeout:
-                    proc.kill()
-                    stdout, stderr = proc.communicate()
-                    raise subprocess.TimeoutExpired(proc.args, timeout, output=stdout, stderr=stderr)
+        with limits.CompilerMemoryWatchdog(proc) as watchdog:
+            while True:
+                if check:
+                    check()
+                try:
+                    stdout, stderr = proc.communicate(timeout=0.1)
+                    if watchdog.exceeded:
+                        return subprocess.CompletedProcess(proc.args, 1, stdout, stderr + "\n" + watchdog.message())
+                    return subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
+                except subprocess.TimeoutExpired:
+                    if time.monotonic() - started > timeout:
+                        raise subprocess.TimeoutExpired(proc.args, timeout)
     except BaseException:
+        if sys.platform == "darwin":
+            import signal
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         stop_process_tree(proc)
         raise
 
@@ -207,7 +217,7 @@ def compile_source(cfg: CompilerConfig, context_header: str, source: str, truste
         result = _compile_as(cfg, work, root, source, "c")
         # C++ for what doesn't compile as C (a class's method, new, templates): C stays C, so what matched as C
         # still compiles exactly as it did (GTA San Andreas is C++; 1,222 of its functions matched as C)
-        if not result.ok and cfg.cplusplus and not result.log.startswith("compiler timed out"):
+        if not result.ok and cfg.cplusplus and not result.log.startswith("compiler timed out") and "Compiler or build process exceeded" not in result.log:
             cpp = _compile_as(cfg, work, root, source, "cpp")
             if cpp.ok or _CPP.search(source):
                 return cpp

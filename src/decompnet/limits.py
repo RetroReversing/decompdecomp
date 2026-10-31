@@ -69,3 +69,79 @@ def no_core_dumps() -> None:
 
 def killed_for_memory(returncode: int) -> bool:
     return returncode in (137, -9)
+
+
+def compiler_memory_limit() -> int:
+    """Per-process resident memory limit on macOS, configurable in MiB before starting the app."""
+    try:
+        mb = int(os.environ.get('DECOMP_COMPILER_MEMORY_MB', '2048'))
+        if mb < 16:
+            raise ValueError
+    except ValueError:
+        mb = 2048
+    return mb << 20
+
+
+def _process_memory_tree(root_pid: int) -> list[tuple[int, int]]:
+    """Snapshot resident sizes (bytes) of a process and its descendants on macOS."""
+    try:
+        result = subprocess.run(['/bin/ps', '-axo', 'pid=,ppid=,rss='], capture_output=True,
+                                text=True, timeout=2, check=True)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    children = {}
+    sizes = {}
+    for line in result.stdout.splitlines():
+        try:
+            pid, parent, rss = map(int, line.split())
+        except ValueError:
+            continue
+        children.setdefault(parent, []).append(pid)
+        sizes[pid] = rss * 1024
+    pending, seen = [root_pid], set()
+    while pending:
+        pid = pending.pop()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        pending.extend(children.get(pid, ()))
+    return [(pid, sizes[pid]) for pid in seen if pid in sizes]
+
+
+class CompilerMemoryWatchdog:
+    """Watch native macOS compiler/build trees and stop the whole isolated group on excess RSS."""
+    def __init__(self, proc, limit=None):
+        import threading
+        self.proc = proc
+        self.limit = limit if limit is not None else compiler_memory_limit()
+        self.exceeded = False
+        self._stop = threading.Event()
+        self._thread = None
+
+    def __enter__(self):
+        import sys
+        import threading
+        if sys.platform == 'darwin':
+            self._thread = threading.Thread(target=self._watch, name='compiler-memory-watchdog', daemon=True)
+            self._thread.start()
+        return self
+
+    def _watch(self):
+        import signal
+        while not self._stop.wait(0.25) and self.proc.poll() is None:
+            if any(rss > self.limit for _, rss in _process_memory_tree(self.proc.pid)):
+                self.exceeded = True
+                try:
+                    os.killpg(self.proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                return
+
+    def __exit__(self, *_):
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=3)
+
+    def message(self):
+        return (f'Compiler or build process exceeded the {self.limit // (1 << 20)} MiB memory limit and was stopped. '
+                'Reduce concurrency or increase DECOMP_COMPILER_MEMORY_MB before starting decompdecomp.')
