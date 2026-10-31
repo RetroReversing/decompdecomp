@@ -1,3 +1,4 @@
+import os
 import threading
 import time
 from types import SimpleNamespace
@@ -30,7 +31,8 @@ def test_first_compiler_error_and_complete_private_log(tmp_path):
     hint=preparation_diagnostics.compile_error(SimpleNamespace(workspace=tmp_path),{'id':42},output)
     assert hint.startswith('cfe: Error: missing STATE') and len(hint)<1400
     path=tmp_path/'.decomp/logs/source-preparation/42.log'
-    assert path.read_text()==output and path.stat().st_mode & 0o777 == 0o600
+    assert path.read_text()==output
+    if os.name!='nt':assert path.stat().st_mode & 0o777 == 0o600
 
 
 def test_followup_uses_saved_context_shared_budget_and_stops_when_exhausted(monkeypatch):
