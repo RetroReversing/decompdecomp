@@ -194,6 +194,7 @@ function markPlatforms() {
 }
 
 function renderHeader(ov) {
+  $("progressSyncNotice").hidden = !ov.progress_syncing;
   const fork = ov.kind === "fork";
   const chips = [`<span class="plat">${esc(ov.platform_name || "?")}</span>`];
   if (platformStatus(ov.platform) === "beta") chips.push(`<span class="chip-s beta" title="This platform works and needs more games tried on it: tell us how it goes">beta</span>`);

@@ -982,3 +982,16 @@ def test_polishing_started_before_a_pull_cannot_replace_the_contribution(project
             assert not worker.is_alive()
             net.readability._readable(net._project("game"), net._function("f", "game"), agent, "stale polish")
     assert net._function("f", "game")["matched_source"] == "good PR"
+
+
+def test_read_only_view_does_not_bypass_judging_synchronization(project, monkeypatch):
+    net, _, _ = project
+    calls = []
+    monkeypatch.setattr(net.progress, 'sync', lambda slug, **kwargs: calls.append((slug, kwargs.get('force'))))
+    with net.progress.view():
+        net.project_row('game')
+        assert calls == []
+        with net.progress.judging('game'):
+            pass
+    assert calls == [('game', True), ('game', True)]
+    assert not net.progress.viewing

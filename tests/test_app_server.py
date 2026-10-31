@@ -1386,3 +1386,76 @@ def test_slow_resume_does_not_block_building_the_app(tmp_path, monkeypatch):
     finally:
         release.set()
     assert resumed.wait(3)
+
+
+def test_project_list_reads_saved_summary_without_waiting_for_progress_sync(tmp_path, monkeypatch):
+    home = tmp_path / '.decomp'
+    home.mkdir()
+    net = RomNetwork(home / 'decomp.db', tmp_path)
+    with net.store.tx() as db:
+        db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                   ('game', 'Game', 'mips', str(tmp_path), json.dumps({'kind': 'fork', 'platform': 'n64'})))
+    def no_sync(*args, **kwargs):
+        raise AssertionError('project list must not wait for synchronization')
+    monkeypatch.setattr(net.progress, 'sync', no_sync)
+    summary = net.summary('game')
+    assert summary['title'] == 'Game'
+    assert summary['functions'] == 0
+
+
+def test_project_overview_reads_database_while_progress_lock_is_busy(app, monkeypatch):
+    client, net, _ = app
+    with net.store.tx() as db:
+        db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                   ('busy-view', 'Busy project', 'mips', '/unused', '{}'))
+    monkeypatch.setattr(net, 'overview', lambda slug: {'title': net.project_row(slug)['name'],
+                                                     'progress_syncing': net.progress.syncing(slug)})
+    monkeypatch.setattr(net, 'warm_briefs_soon', lambda _: None)
+    done, result = threading.Event(), []
+    def request():
+        try:
+            result.append(client.get('/api/project?slug=busy-view'))
+        finally:
+            done.set()
+    worker = threading.Thread(target=request, daemon=True)
+    try:
+        with net.progress._project_lock('busy-view'):
+            worker.start()
+            assert done.wait(2), 'overview waited for saved-code verification'
+        assert result[0].status_code == 200
+        assert result[0].json() == {'title': 'Busy project', 'progress_syncing': True}
+    finally:
+        worker.join(timeout=3)
+        with net.store.tx() as db:
+            db.execute("DELETE FROM projects WHERE slug='busy-view'")
+
+
+def test_resuming_helpers_does_not_hold_agent_state_lock_during_progress_sync(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    net = RomNetwork(tmp_path / 'db.sqlite', tmp_path)
+    manager = agents.Manager(net, tmp_path, 'http://127.0.0.1:6499/mcp')
+    manager._found = []
+    helper = SimpleNamespace(id='saved-helper', state='stopped', stopped_by=agents.BY_QUIT,
+                             slug='game', kind='codex', options={})
+    manager.sessions = {helper.id: helper}
+    entered, release, readable = threading.Event(), threading.Event(), threading.Event()
+    def project_row(_):
+        entered.set()
+        release.wait(5)
+    monkeypatch.setattr(net, 'project_row', project_row)
+    monkeypatch.setattr(manager, '_prepare', lambda _: None)
+    monkeypatch.setattr(manager, '_launch', lambda _: None)
+    resumed = threading.Thread(target=manager.resume, daemon=True)
+    def detect():
+        manager.detected()
+        readable.set()
+    reader = threading.Thread(target=detect, daemon=True)
+    try:
+        resumed.start()
+        assert entered.wait(2)
+        reader.start()
+        assert readable.wait(2), 'agent detection waited for project synchronization'
+    finally:
+        release.set()
+        resumed.join(timeout=3)
+        reader.join(timeout=3)

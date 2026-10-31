@@ -32,6 +32,11 @@ def register(app: App) -> None:
             slug = data.get("slug") or request.query_params.get("slug", "")
             try:
                 def perform():
+                    if request.method == "GET":
+                        # A restored project's byte checks can take minutes. Show the saved database
+                        # while they run; mutations and the judge retain their synchronization gate.
+                        with net.progress.view():
+                            return fn(slug, request, data)
                     result = fn(slug, request, data)
                     if request.method == "POST" and net.store.one("SELECT 1 FROM projects WHERE slug=?", slug):
                         net.progress.sync(slug, force=True)

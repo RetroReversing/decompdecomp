@@ -136,7 +136,7 @@ def test_changed_build_during_search_does_not_finish_the_new_build(sweep, monkey
     assert not obj.history('game',net._function('f0','game'))['completed']
 
 
-def test_start_stop_and_restart_keep_enabled_intent_and_prevent_parallel_sweeps(sweep, monkeypatch):
+def test_start_stop_and_restart_require_manual_resume_and_prevent_parallel_sweeps(sweep, monkeypatch):
     import threading
     import time
 
@@ -153,7 +153,7 @@ def test_start_stop_and_restart_keep_enabled_intent_and_prevent_parallel_sweeps(
     assert entered.wait(2)
     with pytest.raises(NetworkError,match='already running'):obj.start('game',1,10)
     obj.shutdown()
-    assert obj.config('game')['enabled']  # normal app exit resumes next launch
+    assert obj.config('game')['enabled']  # startup clears this without re-running work
     finish.set()
     for _ in range(100):
         if obj.jobs.jobs[first['job']]['state']!='running':break
@@ -164,7 +164,8 @@ def test_start_stop_and_restart_keep_enabled_intent_and_prevent_parallel_sweeps(
     restarted=Sweeps(net,Jobs())
     monkeypatch.setattr(restarted,'start',lambda *args:starts.append(args))
     restarted.resume()
-    assert starts==[('game',1,10,False,0)]
+    assert starts == []
+    assert not restarted.config('game')['enabled']
     obj.stop('game')
     assert not obj.config('game')['enabled']
 

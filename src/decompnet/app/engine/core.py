@@ -75,7 +75,7 @@ class Core(Network):
 
     def _project(self, slug: str | None):
         row = super()._project(slug)
-        if hasattr(self, "progress"):
+        if hasattr(self, "progress") and not self.progress.viewing:
             self.progress.sync(row["slug"])
             row = super()._project(row["slug"])
         return row
