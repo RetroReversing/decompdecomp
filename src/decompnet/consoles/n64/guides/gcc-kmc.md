@@ -35,3 +35,15 @@ Calls and prototypes
 switch
 - Dense cases become a jump table (`jtbl_` in .rodata, `jr $reg`); sparse ones become compare chains.
   Your jump table must equal the ROM's, so case values and order matter.
+
+Measured large-function findings (`-O2 -g3`, 32-bit MIPS)
+- Try a bounded small `__builtin_memcpy` when explicit loads/stores copy a short string. Preserve the
+  source array's actual size/alignment and use a real destination buffer; never infer contiguous locals.
+- Recover real records and packet/command fields before broad declaration shuffling. Typed memory
+  accesses can change alias analysis, scheduling and registers.
+- Try removing synthetic one-shot wrappers, splitting a command pointer into a small block, and sharing
+  an array field address with a negative offset back to its base. Lifetime changes can need paired edits.
+- Keep a bounded alternative even when total score gets worse: it may fix one region and allow the next
+  edit to finish the match. Never replace saved best C with an unverified regression.
+- These were observed on one 883-instruction function, not established for every GCC version. The
+  repository's `docs/COMPILER_MATCHING_LEARNINGS.md` records evidence, failed ideas and update rules.

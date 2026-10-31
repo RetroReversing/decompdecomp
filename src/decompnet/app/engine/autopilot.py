@@ -233,8 +233,9 @@ class AutopilotMixin:
                     if refined and refined != local:
                         yield 'local_context_refined', f"{note}{seeds.M2C_MACROS}\n{refined}\n"
 
+            from ..compiler_shape_repairs import machine_draft_copies
             outcomes, seen = [], set()
-            for family, source in chain(candidates, local_candidates()):
+            for family, source in machine_draft_copies(chain(candidates, local_candidates()), fn['name'], ctx['header']):
                 if source in seen:
                     continue
                 seen.add(source)

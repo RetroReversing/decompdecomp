@@ -266,3 +266,27 @@ def test_the_default_is_what_the_computer_can_spare(pair, monkeypatch):
     pair.cascades.iterative_threads = 3
     search.run(pair.twins, 'destination', Job())
     assert sizes == [workers.default_workers(), 3]
+
+
+def test_reserved_detour_survives_better_siblings_and_can_lead_to_exact_match():
+    state, expanded = seed(), []
+    reports = {'seed':20, 'one':10, 'two':11, 'three':12, 'detour':24, 'done':0}
+    def variants(source, report):
+        expanded.append(source)
+        return {'seed':['one', 'two', 'three', 'detour'], 'detour':['done']}.get(source, [])
+    assert search.advance(state, lambda s: dict(score=reports[s], matched=s == 'done'), variants, lambda: False)
+    assert 'detour' in expanded and 'three' not in expanded
+
+
+def test_detour_limit_does_not_compound_and_survives_serialization():
+    state, calls = seed(), []
+    def evaluate(source):
+        calls.append(source)
+        return dict(score={'seed':20, 'detour':24, 'too_far':28}[source], matched=False)
+    def variants(source, report):
+        return {'seed':['detour'], 'detour':['too_far']}.get(source, [])
+    assert not search.advance(state, evaluate, variants, lambda: len(calls) >= 2)
+    state = json.loads(json.dumps(state))
+    expanded = []
+    assert not search.advance(state, evaluate, lambda s,r: expanded.append(s) or [], lambda: False)
+    assert calls == ['seed', 'detour', 'too_far'] and not expanded

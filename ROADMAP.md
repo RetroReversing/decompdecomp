@@ -994,3 +994,15 @@ validation and rollback before any settings change is published. The app hides c
 that path is implemented; their declared build commands must not be rewritten as ROM compiler ranges.
 
 Project overview reads query SDK signatures by the game’s indexed fingerprints, reuse imported library reports, and prefer LibYAML’s safe loader for large compiler declaration maps. No judge or detection evidence changes.
+
+### Compiler source-shape repairs
+
+- Done: bounded short-array copy recognition, existing typed record accesses, lexical pointer scopes,
+  synthetic one-shot wrapper alternatives, array-address sharing and paired conservative lifetime merges
+  in the shared draft repair path. These are local compiler hypotheses, available to supported 32-bit
+  ROM/project repair callers; incompatible compiler builtins fail through the normal judge.
+- Done: one bounded regression branch in the persistent ROM/MIPS iterative repair phase, within its
+  existing independent budget and rotation. Imported-project iterative search remains limited by the
+  file-context adaptation already noted in `app/iterative_repairs.py`.
+- Planned: infer new record layouts from verified multi-access evidence and adapt persistent iterative
+  search to imported file contexts. Current repairs use existing simple record definitions only.

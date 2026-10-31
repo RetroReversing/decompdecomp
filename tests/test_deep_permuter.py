@@ -320,3 +320,36 @@ def test_rom_trial_distinguishes_compile_failure_from_unscored_object(monkeypatc
     monkeypatch.setattr(net, '_evaluate', lambda *args: (None, None, []), raising=False)
     assert permuter._score(AGENT, proj, fn, fn['best_source'], 40, None) is None
     assert permuter._trial_outcome == 'unscored'
+
+
+@pytest.mark.parametrize('imported', [False, True])
+def test_local_detour_can_lead_to_match_without_saving_a_regression(monkeypatch, imported):
+    net = setup(monkeypatch, imported)
+    original = net.function()['best_source']
+    monkeypatch.setattr(draft_repairs, 'variants', lambda source,*a,**kw: {original:['detour'], 'detour':['exact']}.get(source, []))
+    monkeypatch.setattr(deep_permuter.stack_padding_repairs, 'grow', lambda *a: [])
+    seen = []
+    def judge(self, agent, proj, fn, source, best, fork):
+        seen.append(source)
+        assert net.function()['best_source'] == original
+        score = {'detour':48, 'exact':0}[source]
+        if score < best:
+            with net.store.tx() as db:
+                db.execute("UPDATE functions SET best_score=?,best_source=?,status='matched' WHERE id=?", (score, source, fn['id']))
+        return score
+    monkeypatch.setattr(Permuter, '_score', judge)
+    search = deep_permuter.Search(net, 1, 10, Log())
+    assert search.local_repairs(AGENT, net.project_row('game'), net.function(), 40, 'fork' if imported else None) == (0, 'exact')
+    assert seen == ['detour', 'exact']
+
+
+def test_unproductive_deep_detour_returns_saved_source_and_respects_burst_limit(monkeypatch):
+    net = setup(monkeypatch)
+    original = net.function()['best_source']
+    monkeypatch.setattr(draft_repairs, 'variants', lambda source,*a,**kw: {original:['detour'], 'detour':['worse']}.get(source, []))
+    monkeypatch.setattr(deep_permuter.stack_padding_repairs, 'grow', lambda *a: [])
+    seen = []
+    monkeypatch.setattr(Permuter, '_score', lambda self,a,p,f,s,b,k: seen.append(s) or 48)
+    search = deep_permuter.Search(net, 1, 10, Log())
+    assert search.local_repairs(AGENT, net.project_row('game'), net.function(), 40, None, max_trials=1) == (40, original)
+    assert seen == ['detour'] and net.function()['best_source'] == original
