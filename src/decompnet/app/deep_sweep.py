@@ -198,8 +198,7 @@ class Sweeps:
                 WHERE f.project_id=? AND d.state='completed' AND f.status IN ('open','matched')""", proj['id'])
             for row in rows:
                 if (row['best_source'] and row['best_score'] is not None
-                        and row['pass_minutes'] == cfg['minutes'] and row['pass_variants'] == cfg['max_variants']
-                        and row['pass_scope'] == signature(self.net, proj, row, cfg['minutes'], cfg['max_variants'])):
+                        and row['pass_scope'] == signature(self.net, proj, row, row['pass_minutes'], row['pass_variants'])):
                     if row['status'] == 'open':
                         done_open += 1
                     else:
@@ -303,10 +302,14 @@ class Sweeps:
                 if not fn['best_source'] or fn['best_score'] is None:
                     waiting += 1
                     continue
-                scope = signature(self.net, proj, fn, minutes, variants)
                 previous = self.net.store.one('SELECT * FROM deep_permutation_passes WHERE function_id=?', fn['id'])
-                if previous and previous['scope'] == scope and previous['state'] in ('completed', 'error'):
+                # A changed time or variant limit applies to remaining functions. Previously saved
+                # turns remain valid unless their inputs changed or the user explicitly repeats them.
+                if (previous and previous['state'] in ('completed', 'error')
+                        and previous['scope'] == signature(self.net, proj, fn,
+                                                           previous['minutes'], previous['max_variants'])):
                     continue
+                scope = signature(self.net, proj, fn, minutes, variants)
                 pending += 1
                 if self.net.store.one('SELECT 1 FROM claims WHERE function_id=? AND expires_at>?', fn['id'], time.time()):
                     waiting += 1

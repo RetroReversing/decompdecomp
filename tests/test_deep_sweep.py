@@ -61,10 +61,21 @@ def test_persists_bounded_completion_and_resumes_after_restart(sweep, monkeypatc
     assert calls == ['f0','f1','f0']
 
 
-def test_budget_or_context_changes_retry_completed_passes(sweep, monkeypatch):
+def test_budget_changes_keep_completed_passes_across_restart(sweep):
+    obj, net, calls, path = sweep
+    obj.run('game', 1, 10, Log())
+    obj.save('game', {'enabled': False, 'minutes': 2, 'max_variants': 20})
+    reopened = RomNetwork(path / 'db.sqlite', path)
+    again = Sweeps(reopened, Jobs())
+    assert again.status('game')['queue_done'] == 2
+    assert again.status('game')['queue_left'] == 0
+    assert again.run('game', 2, 20, Log())['functions_tested'] == 0
+    assert calls == ['f0', 'f1']
+
+
+def test_context_changes_retry_completed_passes(sweep, monkeypatch):
     obj, net, calls, _ = sweep
     obj.run('game',1,10,Log())
-    assert obj.run('game',2,10,Log())['functions_tested'] == 2
     old = net._context
     monkeypatch.setattr(net,'_context',lambda *args:dict(old(*args) or {}) | {'header':'typedef int changed;'})
     assert obj.history('game',net._function('f0','game'))['stale']
@@ -301,7 +312,11 @@ def test_one_thread_searches_serially_and_zero_means_what_the_computer_can_spare
     sizes = []
     real = deep_sweep.ThreadPoolExecutor
     monkeypatch.setattr(deep_sweep, 'ThreadPoolExecutor', lambda n, **kw: sizes.append(n) or real(n, **kw))
+    with net.store.tx() as db:
+        db.execute('DELETE FROM deep_permutation_passes')
     obj.run('game', 2, 10, Log(), 0)
+    with net.store.tx() as db:
+        db.execute('DELETE FROM deep_permutation_passes')
     obj.run('game', 3, 10, Log(), 5000)  # (no limit)
     assert sizes == [workers.default_workers(), 5000]
 
