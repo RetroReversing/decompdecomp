@@ -73,16 +73,20 @@ def symbol_aliases(text):
 
 
 def configure(net, proj, data):
-    cfg = {key: str(data.get(key, '')).strip() for key in ('root', 'header', 'include_roots', 'mappings', 'overrides', 'aliases')}
+    cfg = {key: str(data.get(key, '')).strip() for key in ('root', 'header', 'include_roots', 'mappings', 'overrides', 'aliases', 'definitions')}
     cfg['enabled'] = bool(data.get('enabled'))
     if any(len(value) > 128_000 for value in cfg.values() if isinstance(value, str)):
         raise NetworkError('Source preparation settings are too large; choose a smaller mapping.')
+    from . import source_definitions
+    source_definitions.mappings(cfg['definitions'])
     mappings(cfg['mappings'])
     overrides(cfg['overrides'])
     symbol_aliases(cfg['aliases'])
     if cfg['enabled']:
         reader = Reader(cfg)
         for _, _, file in mappings(cfg['mappings']):
+            reader.file(reader.root / file)
+        for _, file in source_definitions.mappings(cfg['definitions']):
             reader.file(reader.root / file)
         if cfg['header']:
             reader.file(Path(cfg['header']).expanduser())
@@ -171,6 +175,17 @@ def prepare(reader, cfg, mapping, aliases, fallback):
     destination, symbol, file = mapping
     path = reader.root / file
     original = reader.file(path)
+    from . import source_conditions, source_definitions
+    initial = reader.overrides
+    if cfg.get('header'):
+        header, macros = source_conditions.select(reader.flatten(Path(cfg['header']).expanduser()), initial, reader.overrides)
+    elif '#include' in original:
+        flattened, macros = source_conditions.select(reader.flatten(path.resolve()), initial, reader.overrides)
+        header = declarations(flattened)
+    else:
+        header = fallback
+        _, macros = source_conditions.select(fallback, initial, reader.overrides)
+    original, _ = source_conditions.select(original, macros, reader.overrides)
     span = csource.find(original, symbol)
     if not span or csource.is_stub(original[span[0]:span[1]]):
         raise NetworkError(f'No C definition of {symbol!r} in its mapped file. Check the mapping.')
@@ -186,13 +201,34 @@ def prepare(reader, cfg, mapping, aliases, fallback):
         for match in reversed(list(re.finditer(r'\bstatic\b', clean[:name_at]))):
             body = body[:match.start()] + ' ' * len(match[0]) + body[match.end():]
     source = f'#line {original[:span[0]].count(chr(10)) + 1} "reference.c"\n' + rename(body, aliases)
-    if cfg.get('header'):
-        header = reader.flatten(Path(cfg['header']).expanduser())
-    elif '#include' in original[:span[0]]:
-        header = declarations(reader.flatten(path.resolve()))
-    else:
-        header = fallback
+    selected = []
+    used=set(re.findall(_IDENT,source))
+    # Follow only macros reached by this candidate, rather than pulling every header global in.
+    for _ in range(8):
+        before=len(used)
+        for macro in re.finditer(r'^\s*#\s*define\s+('+_IDENT+r')\b([^\n]*)',header,re.M):
+            if macro[1] in used:used.update(re.findall(_IDENT,macro[2]))
+        if len(used)==before:break
+    for name, file in source_definitions.mappings(cfg.get('definitions', '')):
+        if name not in used and aliases.get(name,name) not in used:
+            continue
+        text, _ = source_conditions.select(reader.flatten(reader.root / file), macros, reader.overrides)
+        definition = source_definitions.extract(declarations(text), name)
+        selected.append(rename(definition, aliases))
+    if selected:
+        source = '\n'.join(selected) + '\n' + source
     return source, rename(header, aliases)
+
+
+def prepare_variants(reader, cfg, mapping, aliases, fallback):
+    """Prefer authorized definitions, then try the extern-only context under the same budget."""
+    preserved = prepare(reader, cfg, mapping, aliases, fallback)
+    result = [preserved]
+    if cfg.get('definitions'):
+        plain = prepare(reader, {**cfg, 'definitions': ''}, mapping, aliases, fallback)
+        if plain != preserved:
+            result.append(plain)
+    return result
 
 
 def inputs(net, proj, fn):
@@ -280,29 +316,44 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                 if fn['status'] != 'open':
                     continue
                 fallback = net.forks.permuter_header(fork, fn['name']) if fork else net._context(proj['id'], fn['unit'])['header']
-                source, header = prepare(reader, cfg, mapping, aliases, fallback)
-                # Imported build files can change independently: retry on a new explicit pass/session.
-                from .permuter_inputs import build_state
-                state = (st.started_at, fresh['config'], build_state(fresh)) if fork else inputs(net, fresh, fn)
-                digest = hashlib.sha256(repr((state, source, header, cfg)).encode()).hexdigest()
-                cache_key = 'local-source-v1:' + digest
-                if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], cache_key):
-                    continue
-                report['tested'] += 1
-                st.add(variants=1, repairs=1)
-                log_line(f'Preparing {fn["name"]} ({report["tested"]}/{budget})')
-                with repair_trial({'kind': 'local source preparation', 'source_sha256': hashlib.sha256(source.encode()).hexdigest(),
-                                   'header_sha256': hashlib.sha256(header.encode()).hexdigest()}):
-                    score = attempt(permuter, fresh, fn, source, header, agent, fork)
-                if score is not None and (fn['best_score'] is None or score < fn['best_score']):
-                    report['improved'] += 1
-                    st.add(improved=1)
-                    if score == 0:
-                        report['matched'] += 1
-                        st.add(matched=1)
-                with net.store.tx() as db:
-                    db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
-                               (fn['id'], cache_key, str(score), 'local source preparation'))
+                for source, header in prepare_variants(reader, cfg, mapping, aliases, fallback):
+                    if st.stop.is_set() or report['tested'] >= budget or time.monotonic() >= deadline:
+                        break
+                    fresh = net.project_row(proj['slug'])
+                    fn = net.store.one('SELECT * FROM functions WHERE id=?', fn['id'])
+                    if fn['status'] != 'open':
+                        break
+                    # Imported build files can change independently: retry on a new explicit pass/session.
+                    from .permuter_inputs import build_state
+                    state = (st.started_at, fresh['config'], build_state(fresh)) if fork else inputs(net, fresh, fn)
+                    digest = hashlib.sha256(repr((state, source, header, cfg)).encode()).hexdigest()
+                    cache_key = 'local-source-v1:' + digest
+                    if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], cache_key):
+                        continue
+                    report['tested'] += 1
+                    st.add(variants=1, repairs=1)
+                    log_line(f'Preparing {fn["name"]} ({report["tested"]}/{budget})')
+                    with repair_trial({'kind': 'local source preparation', 'source_sha256': hashlib.sha256(source.encode()).hexdigest(),
+                                       'header_sha256': hashlib.sha256(header.encode()).hexdigest()}):
+                        try:
+                            score = attempt(permuter, fresh, fn, source, header, agent, fork)
+                        except NetworkError as exc:
+                            report['errors'].append(f'{fn["name"]}: {exc}')
+                            log_line(report['errors'][-1])
+                            if not str(exc).startswith(('The function, header or build inputs changed', 'The function claim changed')):
+                                with net.store.tx() as db:
+                                    db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
+                                               (fn['id'], cache_key, 'error', str(exc)[:1200]))
+                            continue
+                    if score is not None and (fn['best_score'] is None or score < fn['best_score']):
+                        report['improved'] += 1
+                        st.add(improved=1)
+                        if score == 0:
+                            report['matched'] += 1
+                            st.add(matched=1)
+                    with net.store.tx() as db:
+                        db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
+                                   (fn['id'], cache_key, str(score), 'local source preparation'))
             except (NetworkError, OSError, ValueError) as exc:
                 message = f'{fn["name"]}: {exc}'
                 report['errors'].append(message)

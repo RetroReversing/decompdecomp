@@ -1,6 +1,7 @@
 # Roadmap
 
-Implemented: instruction-guided MIPS runtime width/ISA/ABI hypotheses, SDK-signature profile priority,
+Implemented: explicitly selected definition-preserving source candidates, bounded numeric conditional-branch
+selection with original line layout, advisory repeated-address-load diagnostics; instruction-guided MIPS runtime width/ISA/ABI hypotheses, SDK-signature profile priority,
 proven interior-address source repairs and advisory specialized-call diagnostics; bounded compiler preflight
 before long ROM searches and after saved deep-search improvements,
 explicit profile-induced match results, opt-in mapped source before deep mutations, advisory type/retail checks,

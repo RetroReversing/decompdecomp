@@ -250,8 +250,9 @@ class BriefMixin:
                 fn = dict(fn) | {"seed": self._draft_shown(fn, proj)}
         text = super()._brief(fn, agent, header)
         if fn['status'] == 'open' and fn['best_source']:
-            from .. import compiler_preflight, source_diagnostics
-            suggestions = source_diagnostics.hints(fn['best_source'], fn['name'], fn['asm'], proj['arch'])
+            from .. import compiler_preflight, repair_ranking, source_diagnostics
+            suggestions = source_diagnostics.hints(fn['best_source'], fn['name'], fn['asm'], proj['arch'],
+                                                   repair_ranking.evidence(self, fn['id'], agent.id))
             if suggestions:
                 text += '\n\nSource checks (advisory):\n' + '\n'.join(suggestions)
             warning = compiler_preflight.warnings(self, proj, fn)

@@ -107,3 +107,15 @@ Diff responses include advisory `source_diagnostics`, also shown in the diff pan
 The current-toolchain preflight keeps its four-compile allowance. For small MIPS runtime instruction shapes with O32 evidence it prioritizes an IDO MIPS III/O32 `-O1` hypothesis and a generic native-width C candidate. A source-changing result goes through the existing source/compiler suggestion workflow; it is not directly promoted by a shape detector. SDK identities recorded by signature naming prioritize `-O1`; manually typed familiar names do not.
 
 Shared MIPS draft repairs can replace byte-pointer base-plus-offset expressions with a directly declared target address only when matching target HI/LO relocation evidence proves the address. This is a candidate-local hypothesis, not a global rename or function split. Diff/brief/deep-search diagnostics also flag possible static-helper register specialization. All scores and matches still come from the ordinary judge. Other architectures retain their existing repair/profile behavior; imported projects keep their own compiler settings.
+
+### Preserving explicitly selected object definitions
+
+Settings → Local source preparation now accepts **Original object definitions**, one per line:
+
+```
+gManager @ manager.c
+```
+
+Paths stay inside the selected source/include roots. Existing symbol aliases map reference names to proven destination symbols. Only selected objects referenced by the prepared candidate or its macros are included; unrelated objects are skipped. Use single-object file-scope declarations, or supply a prepared subset when the original groups multiple declarations. The ordinary source candidate is still tried without those additional definitions if budget remains. Both alternatives use the existing judge, cache, claim and context-promotion rules; an exact function result still requires export/data-layout and complete-image verification.
+
+Configured numeric macro values select conditional source branches before extraction, preserving original line numbers. Unsupported expressions or compiler-specific conditions without configured values produce an actionable error instead of guessing. A prepared subset remains the fallback for complex preprocessing. Diff/brief/deep-search advisories now flag repeated extra address loads as a reason to inspect original definitions versus extern declarations.

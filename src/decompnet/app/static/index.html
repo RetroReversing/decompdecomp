@@ -384,6 +384,8 @@
         <label>Additional include folders (one per line)<textarea id="sourcePrepIncludes" rows="2"></textarea></label>
         <label>Function mappings (destination = source symbol @ relative file)<textarea id="sourcePrepMappings" rows="4" placeholder="func_80001000 = update_objects @ objects.c"></textarea></label>
         <label>Other symbol aliases (reference name = destination name)<textarea id="sourcePrepAliases" rows="2" placeholder="gObjects = D_80010000"></textarea></label>
+        <label>Original object definitions (optional: reference_symbol @ relative/file.c)<textarea id="sourcePrepDefinitions" rows="2" placeholder="gManager @ manager.c"></textarea></label>
+        <p class="small muted">Only selected objects referenced by the candidate are included. The app tries preserved definitions before the version without them; exact judging and export data checks still apply. Split multiple object declarations into a prepared subset.</p>
         <label>Retail macro values (numeric, one per line)<textarea id="sourcePrepOverrides" rows="2" placeholder="OBJECT_LIMIT=128"></textarea></label>
         <p class="small muted">Reference paths and mappings stay on this machine; accepted C and declarations are included in saved/exported work. Use a declarations header with the retail layouts, not debug settings. Imported projects keep their existing build headers; the reference body must compile against those. Each preparation pass is limited to 8 compiles / 20 seconds; unchanged trials are skipped.</p>
         <div class="row"><button id="sourcePrepSave" class="ghost" type="button">Save source settings</button><button id="sourcePrepRun" class="primary" type="button">Try preparation pass</button></div>
