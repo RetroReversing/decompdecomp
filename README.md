@@ -865,3 +865,11 @@ jump-table case order. Small combinations cover interacting declaration and init
 Only a verified destination match counts as progress. In a ROM function's inspector, **Historical
 score · recheck in Diff** indicates changed or missing compiler/header/scoring evidence; Diff shows
 the saved C compiled with the current inputs.
+
+### Target-guided local repairs
+
+Autopilot, agent local experiments and the deep permuter can try candidate-local call-argument,
+address-alias, single-field layout, boolean-mask and temporary-lifetime repairs. MIPS targets
+also guide field-load order. These bounded compiler trials use no model tokens. Run the deep
+permuter on one near-matching function when several repairs may need to interact; its existing
+time and variant limits still apply. The ordinary byte/object judge is the only acceptance path.

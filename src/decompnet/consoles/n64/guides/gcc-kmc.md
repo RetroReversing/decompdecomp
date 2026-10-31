@@ -98,3 +98,13 @@ linked match with the grouped form, while single-site changes did not. Use the l
 `inline_scalar_shape` family before rewriting each site manually. `combined_scheduling` offers
 bounded bridges with temporary, stack-address or loop shapes; the normal judge must verify them.
 This is compiler-specific evidence, not a promise that helpers improve every function.
+
+### Near matches with calls and pointer fields
+
+Use `target_call_argument` when a candidate-owned no-argument prototype conflicts with an
+explicit target delay-slot argument load. `known_address_alias` tries auto-address aliases
+through one byte-pointer base. Single-field records, their raw-access alternatives and direct
+boolean masks can change scheduling. Try both splitting a call-result temporary and reusing
+a compatible dead result slot; neither is consistently best. The bounded local families also
+combine these changes and can stage field loads in target-observed offset order. Every trial
+uses the ordinary judge; do not change shared prototypes or accept a lower score as a match.
