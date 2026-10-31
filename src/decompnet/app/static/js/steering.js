@@ -884,12 +884,41 @@ function renderCompilerImprovements(slug, rows, filter = "improved") {
   list.dataset.slug = slug;
   list.dataset.filter = filter;
   for (const button of $("compilerProgress").querySelectorAll("[data-results-filter]")) button.setAttribute("aria-expanded", String(button.dataset.resultsFilter === filter));
-  const applied = $("compilerProgress")._compilerApplied || new Set();
+  const applied = $("compilerProgress")._compilerApplied ||= new Set();
+  const pending = rows.filter(r => !applied.has(r.function) && r.profile && (r.improved !== false || r.exact));
   const title = { completed: "Finished functions", improved: "Better settings", exact: "Exact matches" }[filter];
-  setHtml(list, `<div class="row"><h3>${esc(title)} · ${rows.length}</h3><button type="button" class="ghost small-btn" data-refresh-results>Refresh results</button></div><p class="small muted">Completed comparisons from this run, highest percentage first. Apply settings individually; each function is rechecked before any change. Refresh to include newly finished functions.</p>`
+  setHtml(list, `<div class="row"><h3>${esc(title)} · ${rows.length}</h3><button type="button" class="ghost small-btn" data-refresh-results>Refresh results</button>${pending.length ? `<button type="button" class="ghost small-btn" data-apply-all>Apply all · ${pending.length}</button>` : ""}</div><div data-apply-all-status role="status"></div><p class="small muted">Completed comparisons from this run, highest percentage first. Apply individually or apply all results in this group; each function is rechecked before any change. Refresh to include newly finished functions.</p>`
     + (rows.length ? `<div class="compiler-table"><table><thead><tr><th>Function</th><th>Before → tested</th><th>Compiler and flags</th><th>Action</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td><button type="button" class="ghost small-btn mono" data-result-function="${i}">${esc(r.function)}</button></td><td>${r.before == null ? "—" : `${r.before.toFixed(2)}%`} → <b>${r.best == null ? "—" : `${r.best.toFixed(2)}%`}</b></td><td>${r.profile ? `${esc(r.profile[0])}<br><span class="mono">${esc(r.profile[1].join(" "))}</span>` : "No compiled result"}</td><td>${applied.has(r.function) ? '<span class="small">Applied and rechecked</span>' : r.profile && (r.improved !== false || r.exact) ? `<button type="button" class="ghost small-btn" data-apply-improvement="${i}">Apply to function</button><span class="small" role="status"></span>` : '<span class="small muted">No improvement</span>'}</td></tr>`).join("")}</tbody></table></div>` : '<p class="small muted">No completed results in this group yet.</p>'));
   list.onclick = async (e) => {
-    if (S.slug !== slug) return;
+    if (S.slug !== slug || list._applying) return;
+    const allButton = e.target.closest("[data-apply-all]");
+    if (allButton) {
+      const status = list.querySelector("[data-apply-all-status]");
+      const controls = [...list.querySelectorAll("button")];
+      const finish = beginWork(status, `Applying ${pending.length} results`, controls, "Rechecks finished.");
+      list._applying = true;
+      let done = 0;
+      const failures = [];
+      try {
+        for (const r of pending) {
+          if (S.slug !== slug) break;
+          if (applied.has(r.function)) continue;
+          status.textContent = `Rechecking ${done + failures.length + 1}/${pending.length}: ${r.function}`;
+          try {
+            await api("/api/compiler", {method:"POST", body:{slug, function:r.function, toolchain:r.profile[0], flags:r.profile[1]}});
+            applied.add(r.function); done++;
+          } catch (error) { failures.push(`${r.function}: ${error.message}`); }
+        }
+      } finally {
+        list._applying = false; finish();
+        if (S.slug === slug) {
+          renderCompilerImprovements(slug, rows, filter);
+          list.querySelector("[data-apply-all-status]").textContent = `${done} applied and rechecked; ${failures.length} could not be applied.${failures.length ? " " + failures.join("; ") : ""}`;
+          await refreshMap(true);
+        }
+      }
+      return;
+    }
     if (e.target.closest("[data-refresh-results]")) {
       renderCompilerImprovements(slug, compilerResultRows($("compilerProgress")._compilerRows || [], filter), filter);
       return;

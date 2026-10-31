@@ -109,6 +109,29 @@ async function checkResultActions() {
   ctx.renderCompilerImprovements('demo', rows, 'exact');
   assert.ok(list.html.includes('Applied and rechecked'));
   assert.ok(!list.html.includes('data-apply-improvement="0"'));
+  const batchStatus = {};
+  list.querySelector = () => batchStatus;
+  list.querySelectorAll = () => [];
+  const batchCalls = [];
+  let active = 0;
+  ctx.api = async (url, options) => {
+    assert.equal(active++, 0); // Apply sequentially, never compile the whole batch concurrently.
+    batchCalls.push(options.body.function);
+    await Promise.resolve(); active--;
+    if (options.body.function === 'rejected') throw new Error('Source changed; no improvement');
+  };
+  const batchRows = [...rows,
+    {function:'rejected', improved:true, profile:['Example GCC',['-O3']]},
+    {function:'better', improved:true, profile:['Example GCC',['-O1']]}];
+  ctx.renderCompilerImprovements('demo', batchRows, 'improved');
+  assert.ok(list.html.includes('Apply all · 2'));
+  await list.onclick({target:{closest:selector => selector === '[data-apply-all]' ? {} : null}});
+  assert.deepEqual(batchCalls, ['rejected','better']); // Already applied and non-improving rows skipped.
+  assert.match(batchStatus.textContent, /1 applied and rechecked; 1 could not be applied/);
+  assert.match(batchStatus.textContent, /Source changed/);
+  assert.ok(box._compilerApplied.has('better'));
+  assert.ok(!box._compilerApplied.has('rejected'));
+
 }
 checkResultActions().catch((error) => { console.error(error); process.exitCode = 1; });
 
