@@ -129,8 +129,19 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
             now["model"] = str(options["picked_model"])
         return now
     manager.options_now = options_now
-    net.deep_sweeps.resume()
-    manager.resume()  # helpers that were working when the app last stopped carry on (their records say which)
+    def resume_work():
+        # Project synchronization can rejudge thousands of saved functions. It must not block the HTTP server
+        # and window from starting, while the existing project locks still protect the restored work.
+        try:
+            net.deep_sweeps.resume()
+        except Exception:
+            jobs.logger.exception("Could not resume deep passes")
+        try:
+            manager.resume()
+        except Exception:
+            jobs.logger.exception("Could not resume helpers")
+
+    threading.Thread(target=resume_work, daemon=True, name="resume-work").start()
 
     mcp = tools.build_mcp(net, agent_of, observe=manager.record_agent)
 

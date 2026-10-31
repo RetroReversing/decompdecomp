@@ -1361,3 +1361,28 @@ def test_candidate_recovery_batches_are_bounded_and_do_not_duplicate_jobs(app, m
         assert duplicate.status_code == 400 and 'running' in duplicate.json()['error']
     finally:
         gate.set()
+
+
+def test_slow_resume_does_not_block_building_the_app(tmp_path, monkeypatch):
+    from decompnet.app.deep_sweep import Sweeps
+
+    entered, release, resumed = threading.Event(), threading.Event(), threading.Event()
+    def slow_resume(_self):
+        entered.set()
+        release.wait(10)
+    def helpers_resume(_self):
+        resumed.set()
+    monkeypatch.setattr(Sweeps, 'resume', slow_resume)
+    monkeypatch.setattr(agents.Manager, 'resume', helpers_resume)
+    home = tmp_path / '.decomp'
+    home.mkdir()
+    net = RomNetwork(home / 'decomp.db', tmp_path)
+    try:
+        mcp, _, security, _ = build(net, home, PORT, SECRET)
+        assert entered.wait(3)
+        client = TestClient(mcp.streamable_http_app(transport_security=security, host='127.0.0.1'),
+                            base_url=f'http://127.0.0.1:{PORT}')
+        assert client.get('/health').status_code == 200
+    finally:
+        release.set()
+    assert resumed.wait(3)
