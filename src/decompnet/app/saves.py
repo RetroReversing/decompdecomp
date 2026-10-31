@@ -217,6 +217,9 @@ def _check_progress_folder(folder: Path, *, chosen: bool = False) -> None:
 
 def _check_save_paths(folder: Path, *, chosen: bool = False) -> None:
     """Reject links before README, the map or a save's files can follow one outside the selected save folder."""
+    if (folder / 'build.json').is_file() and (folder / 'build.py').is_file():
+        raise NetworkError('This is a standalone build checkout. Use Sync to Git repository instead of Save now, '
+                           'and keep the progress folder separate from the build tree.')
     _check_progress_folder(folder, chosen=chosen)
     for name in ("src", "best", "include"):
         path = folder / name
