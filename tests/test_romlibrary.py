@@ -77,6 +77,22 @@ def test_missing_hash_or_folder_and_symlink_loop(tmp_path):
     assert romlibrary.find(p, needs(b'x'), str(tmp_path))['path'] is None
 
 
+def test_library_skips_symlinked_game_files(tmp_path):
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    game = outside / 'game.bin'
+    game.write_bytes(b'game')
+    library = tmp_path / 'library'
+    library.mkdir()
+    try:
+        (library / 'game.bin').symlink_to(game)
+    except OSError:
+        pytest.skip('symlinks unavailable')
+    project_root = tmp_path / 'project'
+    project_root.mkdir()
+    assert romlibrary.find(project(project_root), needs(b'game'), str(library))['path'] is None
+
+
 def test_windows_rehashes_after_same_size_overwrite_with_unchanged_timestamps(tmp_path, monkeypatch):
     file = tmp_path / 'game.bin'
     file.write_bytes(b'first')
