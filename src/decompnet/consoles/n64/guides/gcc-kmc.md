@@ -73,3 +73,18 @@ Expression and frame shape
   repeat wide flag sweeps once controlled comparisons show identical output for the relevant input.
 
 See `docs/COMPILER_MATCHING_LEARNINGS.md` for controlled evidence and failed experiments.
+
+### Address association and call initialization
+
+Equivalent byte-pointer expressions can schedule differently in KMC GCC. The bounded
+`address_association` family tries constant displacement grouping, including candidate-owned
+inline helpers. Calls and incrementing expressions are excluded from these transformations.
+The `call_initialization` family can move a constant local reset into a call's first argument
+when scalar CFG analysis proves every relevant path reaches that call before a read or
+redefinition. Unknown syntax, escapes and unresolved loops are rejected.
+
+Stack diagnostics distinguish frame size, register-save offsets and other stack operands.
+Do not infer an object's size or add padding from the frame delta alone. The
+`experimental_bitfield_frame` local family is available only by explicit selection; it is
+excluded from automatic repair defaults. Its compiler-specific signed-halfword helper storage
+is an experiment, and every candidate still requires the ordinary exact judge.

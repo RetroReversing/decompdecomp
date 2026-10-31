@@ -314,3 +314,28 @@ captures also had a different recorded baseline. They cannot establish a direct 
 source-matching repeated-store capture above had the matching base; the other direct case was already
 recovered by `table_slot_lifetime`. Preserve inherited origin metadata, but do not train a new rule from
 the final rewrite name alone. Historical reviews remain unchanged.
+
+## Scheduling experiments and durable verification
+
+Retrospective private KMC GCC 2.7.2 controls (`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`)
+from the long V-Rally investigation reproduced these gains:
+
+- Byte-pointer address association: score 205 → 195, one candidate.
+- Moving a constant local reset into the first call argument, along proven CFG paths:
+  controlled regression 945 → 155, three candidates. Existing masked-value reuse then
+  produced exact bytes. The local sequence took about two seconds on this host.
+- Explicit experimental signed-halfword inline bitfield storage: 214 → 190, one candidate.
+
+These are controlled recoveries, not additional game progress or a fresh end-to-end speed benchmark.
+Frame size, saved-register slots and local stack operands must be compared separately. A larger
+frame alone does not establish the correct local layout. Bitfield storage remains explicit opt-in:
+compiler layout and integer rules make it unsuitable as a default repair.
+
+Local experiments record actual edited spans, time and function-output fingerprints. No-edit
+proposals skip compilation. Eight trials with no improvement and at least 80% no edits,
+identical output or regressions lower a family's priority for that input; exploration remains.
+Source and build-input changes invalidate this evidence. Function-output equality says nothing
+about unrelated data sections and never substitutes for the normal judge.
+
+Exact judgments now retain a [portable verification bundle](match-verification-bundles.md).
+Historical evidence helps explain regressions without silently restoring matched status or flags.

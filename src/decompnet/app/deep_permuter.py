@@ -313,7 +313,10 @@ class Search(Permuter):
             started = time.monotonic()
             score = super()._score(agent, proj, fn, source, best, fork)
             elapsed_ms = max(0, round((time.monotonic() - started) * 1000))
-            if not self.measuring_baseline:
+            if getattr(self, '_trial_outcome', '') == 'no_edit':
+                self.tested -= 1
+                self.skipped += 1
+            if not self.measuring_baseline and getattr(self, '_trial_outcome', '') != 'no_edit':
                 adaptive_repairs.record(self.net, policy_profile, policy_focus, self.current_family, best, score, elapsed_ms, origin="deep permuter")
             if score is not None and score > 0:
                 with self.net.store.tx() as db:
@@ -382,6 +385,9 @@ def run(net, slug, name, minutes, max_variants, log):
                 if baseline == 0:
                     reason = 'Matched'
                 else:
+                    from .stack_layout import text as stack_text
+                    if diagnostic := stack_text(proj['arch'], repair_ranking.evidence(net, fn['id'], agent.id)):
+                        log(diagnostic)
                     search.phase = 'local repairs'
                     search.log('Baseline measured; trying targeted local repairs before random rewriting.')
                     best, _ = search.local_repairs(agent, proj, net._function(name, slug), baseline, fork)

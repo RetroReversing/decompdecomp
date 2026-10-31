@@ -304,6 +304,9 @@ def _manifest_from_rows(net, proj, cfg: dict, rows, folder: Path) -> tuple[dict,
                        **{k: v for k, v in json.loads(r["meta"] or "{}").items() if k in SET_ASIDE_META}}
                       for r in rows if r["status"] == "asm"],
     }
+    from ..match_bundle import portable
+    if bundle := portable(net, pid):
+        manifest['verification'] = bundle
     return manifest, functions, units
 
 
@@ -759,6 +762,8 @@ def _judge_saved(net, slug: str, folder: Path, manifest: dict, by_name: dict, sa
         if name is None or text is None:
             lost.append(old_name) if kind == "src" else None
             continue
+        from ..match_bundle import restore_evidence
+        restore_evidence(net,pid,name,old_name,manifest)
         current = net.store.one("SELECT status,best_source FROM functions WHERE project_id=? AND name=?", pid, name)
         if current["status"] == "matched":
             matched += kind == "src"

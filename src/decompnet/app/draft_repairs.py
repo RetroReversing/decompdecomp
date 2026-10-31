@@ -9,8 +9,10 @@ import re
 from .. import m2cfix, seeds
 from ..forks.csource import _blank, find
 from . import (
+    address_association_repairs,
     branch_layout_repairs,
     branch_locals,
+    call_initialization_repairs,
     callee_prototype_repairs,
     captured_control_repairs,
     captured_repairs,
@@ -91,7 +93,8 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     for family, text in evidence_repairs.variants(source, name, header):
         proposals.append(text)
         labels[text] = family
-    for family, text in masked_reuse_repairs.variants(source, name) + register_reuse_repairs.variants(source, name):
+    for family, text in (address_association_repairs.variants(source, name) + call_initialization_repairs.variants(source, name)
+                         + masked_reuse_repairs.variants(source, name) + register_reuse_repairs.variants(source, name)):
         proposals.append(text)
         labels[text] = family
     for text in mmio_repairs.variants(source, name, arch):
@@ -214,6 +217,8 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     groups = {}
     from .repair_preflight import invalid_call
     for text in dict.fromkeys(proposals):
+        if text == source:
+            continue
         if invalid_call(text, name):
             continue
         groups.setdefault(labels[text],[]).append(text)

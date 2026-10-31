@@ -1442,6 +1442,8 @@ class Network:
                        "VALUES(?,?,?,?,?,?,?,?)", (fn["id"], agent.id, score, compiled, ctx_version, source, now, via)).lastrowid
             self.repair_feedback.attempt(db, current, attempt, ctx_version, effective_settings)
             if matched and not stale:
+                from .match_bundle import capture as capture_bundle
+                capture_bundle(db,fn,attempt,source,ctx_version,effective_settings)
                 self.repair_feedback.capture(db, current, source, agent.id, via, ctx_version, attempt)
             db.execute("UPDATE functions SET attempts=attempts+1 WHERE id=?", (fn["id"],))
             from . import candidate_quality

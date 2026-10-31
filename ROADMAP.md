@@ -19,6 +19,13 @@ Bounded scalar CFG liveness now supports masked-value reuse, extra lifetime merg
 Unknown syntax gives no advice. General C/C++ CFG analysis, fallthrough switch rewriting and shared-header
 prototype inference remain future work.
 
+Targeted address association and call initialization now share bounded local repair paths.
+Input-scoped experiment costs reduce ineffective family priority while retaining exploration.
+Last exact source/header/compiler evidence travels with saved progress; imported evidence never
+accepts code. MIPS stack diagnostics separate saved slots from local operands. Equivalent readers
+for non-MIPS architectures and imported-project GUI diagnostics remain planned. Experimental
+bitfield frame hypotheses require explicit local-family selection.
+
 What's planned for decompdecomp, roughly in order, and why. Every item keeps the rule that matters most: a match is
 byte-identical after linking (ROM mode) or objdiff 100% (fork mode). Nothing here accepts code that only does the
 same thing.
@@ -82,6 +89,9 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 
 | Feature | N64 | PS1 | PS2 | PSP | GameCube · Wii | Windows PC | DS | Public decomps |
 | :-- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| Targeted scalar scheduling repairs and experiment costs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Portable last-exact evidence | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ historical, own build |
+| Stack slot layout diagnostics | ✓ | ✓ | ✓ | ✓ | — reader planned | — reader planned | — reader planned | — GUI adapter planned |
 | Status | recommended | beta | beta | beta | beta | beta | beta | the project's own |
 | Start from your own copy | ✓ | ✓ | ✓ | ✓ unencrypted or decrypted program and modules (ISO, CSO, CHD) | ✓ | ✓ | ✓ | fork by address |
 | Judge | link · compare | link · compare | link · compare | link · compare | objdiff | objdiff | objdiff | objdiff |
