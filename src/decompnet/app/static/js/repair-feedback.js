@@ -13,6 +13,12 @@ $("repairExamples").onclick = async () => {
     <div class="repair-filter-checks"><label><input type="checkbox" data-all> Across all projects</label>
     <label><input type="checkbox" data-comparable checked> Only with changed failed C</label></div></div>
     <div data-triage-work></div>
+    <section class="repair-help" aria-label="Automatic repair replay"><h3>Test automatic repairs · no AI tokens</h3>
+    <p>Replay up to 20 examples matching these filters against captured successful compiler output. This is a regression test: it does not apply source, change game progress or mark examples implemented. Missing historical build inputs are reported as skips.</p>
+    <label>Trials per example <input data-replay-trials type="number" min="1" max="32" value="12"></label>
+    <label>Seconds per example <input data-replay-seconds type="number" min="1" max="120" value="30"></label>
+    <button data-replay-start type="button">Test automatic repairs</button><button data-replay-stop type="button" hidden>Stop replay</button>
+    <p data-replay-summary class="muted small" role="status"></p><div data-replay-work></div><pre data-replay-results class="repair-replay-results" hidden tabindex="0" aria-label="Repair replay results"></pre></section>
     <section class="repair-help" aria-label="Batch candidate recovery"><h3>Recheck reported candidates · this project · no AI tokens</h3>
     <p>Rejudge saved alternatives, smallest functions first. Measurements are saved across runs; unchanged results are skipped. This does not replace C, clear warnings or mark matches.</p>
     <label>Functions per batch <input data-recovery-limit type="number" min="1" max="200" value="20"></label>
@@ -38,6 +44,7 @@ $("repairExamples").onclick = async () => {
   const scope = () => `slug=${encodeURIComponent(slug)}&all=${all.checked ? 1 : 0}`;
   const filters = () => `${scope()}&comparable=${comparable.checked ? 1 : 0}&category=${encodeURIComponent(category.value)}&status=${encodeURIComponent(status.value)}`;
   setupCandidateRecovery(dialog, slug, () => load());
+  const replay = setupRepairReplay(dialog, () => ({slug, all:all.checked, category:category.value, status:status.value, comparable:comparable.checked}));
   const controls = [category, status, all, comparable, get('[data-refresh]'), get('[data-more]')];
   function options(select, values) {
     for (const value of values) { if (Array.from(select.options).some((option) => option.value === value)) continue; const option = document.createElement('option'); option.value = value; option.textContent = value.replaceAll('_', ' '); select.append(option); }
@@ -121,7 +128,9 @@ $("repairExamples").onclick = async () => {
         advancedTitle.textContent = 'Classify and save review'; advanced.append(advancedTitle, review, kind, note, save);
         const evidence = document.createElement('details'), evidenceTitle = document.createElement('summary');
         evidenceTitle.textContent = 'Before/after evidence and compiler settings'; evidence.append(evidenceTitle, change, pre, raw); evidence.open = true;
-        body.append(explanation, providers, send, hint, log, evidence, advanced); details.loaded = true;
+        const test = document.createElement('button'); test.type = 'button'; test.textContent = 'Test automatic repairs for this example';
+        test.onclick = () => replay(row.id);
+        body.append(explanation, test, providers, send, hint, log, evidence, advanced); details.loaded = true;
       } catch (error) { toast(esc(error.message), 'err'); }
       finally { finish(); }
     });

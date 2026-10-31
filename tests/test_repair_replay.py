@@ -67,3 +67,21 @@ def test_equal_instructions_with_different_constant_data_do_not_recover_control(
                 'data':'different' if source=='candidate' else 'control'}
     result = replay.replay(case(),measure=measure)
     assert result['summary']=={'improved':1} and result['trials'][0]['score']==0
+
+
+def test_inherited_or_different_base_random_labels_are_not_direct_evidence():
+    example=case();e=example['evidence']
+    e['provenance']={'kind':'random rewrite','family':'perm_duplicate_assignment',
+                     'source_sha256':e['after']['source_sha256'],'base_source_sha256':e['before']['source_sha256']}
+    assert replay.rewrite_evidence(e)['direct']
+    e['provenance']['base_source_sha256']='other'
+    assert not replay.rewrite_evidence(e)['direct']
+    e['provenance']['source_sha256']='other'
+    assert replay.rewrite_evidence(e)['kind']=='inherited'
+
+
+def test_cancellation_stops_before_a_compiler_call():
+    import pytest
+    def cancelled():raise RuntimeError('stopped')
+    with pytest.raises(RuntimeError,match='stopped'):
+        replay.replay(case(),check_cancel=cancelled,measure=lambda s: (_ for _ in ()).throw(AssertionError()))

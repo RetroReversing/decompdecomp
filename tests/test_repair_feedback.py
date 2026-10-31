@@ -9,6 +9,21 @@ from decompnet.app.forkengine import ForkEngine
 from decompnet.network import Network, NetworkError
 
 
+def test_cascade_cannot_claim_another_candidates_random_rewrite(setup):
+    import hashlib
+
+    from decompnet.repair_feedback import trial
+    net,winner,_,_,fid=setup
+    source='int target(void){return 7;}'
+    with trial({'kind':'random rewrite','family':'perm_temp_for_expr','source_sha256':hashlib.sha256(b'other function').hexdigest()}):
+        net._record(fn(net,fid),winner,0,source,1,matched=True)
+    case=net.repair_feedback.listing('demo')['examples'][0]['id']
+    evidence=net.repair_feedback.detail('demo',case)['evidence']
+    assert evidence['provenance']['kind']=='inherited repair context'
+    assert evidence['provenance']['origin']['family']=='perm_temp_for_expr'
+    assert net.store.one('SELECT status FROM repair_examples WHERE id=?',case)['status']=='new'
+
+
 @pytest.fixture
 def setup(tmp_path):
     net = Network(tmp_path / 'app.db')

@@ -12,6 +12,7 @@ from . import (
     branch_layout_repairs,
     branch_locals,
     callee_prototype_repairs,
+    captured_control_repairs,
     captured_repairs,
     compiler_shape_repairs,
     evidence_repairs,
@@ -40,7 +41,8 @@ from . import (
 
 AGENT_FAMILIES = ('small_copy', 'typed_record_address', 'one_shot_scope', 'one_shot_unwrap',
                   'pointer_block_scope', 'array_address_share', 'combined_integer_lifetimes', 'inferred_record_layout',
-                  'float_product_intermediate')
+                  'float_product_intermediate','pointer_chase_reuse','independent_assignment_order',
+                  'terminal_early_return','member_store_replay')
 
 LIMIT = 20
 _IDENT = r'[A-Za-z_]\w*'
@@ -63,6 +65,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     offset = opening + 1
     proposals = []
     labels = labels if labels is not None else {}
+    for family, text in captured_control_repairs.variants(source,name):
+        proposals.append(text)
+        labels[text] = family
     for family, text in float_intermediate_repairs.variants(source, name):
         proposals.append(text)
         labels[text] = family

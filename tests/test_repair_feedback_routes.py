@@ -132,3 +132,35 @@ def test_classify_route_is_project_scoped_and_write_guarded(repair_app):
     assert client.get(url+'?slug=review-only').json()['applied'] is False
     assert client.post(url,json={'slug':'review-only'}).status_code == 403
     assert client.post(url,json={'slug':'review-only'},headers={'X-Decomp':'1'}).json()['applied'] is True
+
+
+def test_replay_is_guarded_scoped_and_cancellable(repair_app,monkeypatch):
+    import threading
+    import time
+
+    from decompnet.app import repair_replay_jobs
+    client,net,_=repair_app
+    seen=[];entered=threading.Event()
+    monkeypatch.setattr(net.repair_feedback,'listing',lambda slug,*args,**kwargs: {'examples':[{'id':42}]})
+    def run(feedback,slug,ids,trials,seconds,log):
+        seen.append((slug,ids,trials,seconds));entered.set()
+        for _ in range(100):
+            log.check_cancel();time.sleep(.01)
+        return {'examples':[]}
+    monkeypatch.setattr(repair_replay_jobs,'run',run)
+    url='/api/repair-examples/replay';data={'slug':'demo'};headers={'X-Decomp':'1'}
+    assert client.post(url,json=data).status_code==403
+    assert client.post(url,json={},headers=headers).status_code==400
+    assert client.post(url,json=data|{'trials':True},headers=headers).status_code==400
+    assert client.post(url,json=data|{'seconds':121},headers=headers).status_code==400
+    response=client.post(url,json=data,headers=headers)
+    assert response.status_code==200 and entered.wait(2)
+    assert seen==[('demo',[42],12,30)]
+    assert client.post(url,json=data,headers=headers).status_code==400
+    job=response.json()['job']
+    assert client.post('/api/job/cancel',json={'id':job},headers=headers).status_code==200
+    for _ in range(100):
+        state=client.get('/api/job?id='+job).json()
+        if state['state']!='running':break
+        time.sleep(.01)
+    assert state['state']=='cancelled'

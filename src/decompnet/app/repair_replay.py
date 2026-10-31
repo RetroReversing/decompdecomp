@@ -18,6 +18,7 @@ from .. import consoles, scoring, toolchains
 from ..compiler import compile_source
 from ..elfobj import extract_function
 from ..project import compiler_config
+from ..repair_feedback import validated_provenance
 from . import draft_repairs
 
 
@@ -25,12 +26,27 @@ def digest(text):
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def replay(example, *, trials=24, seconds=120, measure=None, root=None):
+def rewrite_evidence(evidence):
+    """A final rewrite name is causal evidence only with the corresponding base and candidate hashes."""
+    provenance=validated_provenance(evidence.get('provenance'),(evidence.get('after') or {}).get('source_sha256')) or {}
+    if provenance.get('kind')=='inherited repair context':
+        return {'kind':'inherited','direct':False}
+    if provenance.get('kind')!='random rewrite':
+        return {'kind':provenance.get('kind','unknown'),'direct':False}
+    direct=bool(provenance.get('source_sha256') and provenance.get('base_source_sha256') and
+                provenance['base_source_sha256']==(evidence.get('before') or {}).get('source_sha256') and
+                evidence.get('comparable_settings'))
+    return {'kind':'random rewrite','family':provenance.get('family'),'lineage':provenance.get('lineage',[]),
+            'direct':direct,'note':'Replay still required; the final rewrite name alone does not isolate a cause.'}
+
+
+def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_cancel=lambda:None, progress=lambda value:None):
     """Replay one frozen case; injectable measurement permits the same runner with a copied project judge."""
     if not 1 <= trials <= 128 or not 1 <= seconds <= 600:
         raise ValueError('Use 1–128 trials and 1–600 seconds per example.')
     evidence = example['evidence']
-    report = {'id':example.get('id'), 'function':evidence['function'], 'trials':[], 'summary':{}}
+    report = {'id':example.get('id'), 'function':evidence['function'], 'trials':[], 'summary':{},
+              'rewrite_evidence':rewrite_evidence(evidence)}
     before, after = evidence.get('before') or {}, evidence.get('after') or {}
     settings = after.get('settings') or {}
     for stage in (before, after):
@@ -63,7 +79,11 @@ def replay(example, *, trials=24, seconds=120, measure=None, root=None):
                     if section['sh_flags'] & 2 and not section['sh_flags'] & 4 and section['sh_type']!='SHT_NOBITS']
             return {'object':obj,'data':digest(repr(data))} if obj else {'error':'Compiled object does not define the captured function.'}
     deadline = time.monotonic()+seconds
-    baseline, control = measure(before['source']), measure(after['source'])
+    check_cancel()
+    baseline = measure(before['source'])
+    check_cancel()
+    control = measure(after['source'])
+    check_cancel()
     if baseline.get('error') or control.get('error'):
         return report | {'skipped':'Baseline/control compile failed.', 'baseline':baseline.get('error'), 'control':control.get('error')}
     target = control['object']
@@ -84,7 +104,9 @@ def replay(example, *, trials=24, seconds=120, measure=None, root=None):
             if not pool or len(report['trials']) >= trials or time.monotonic() >= deadline:
                 continue
             source = pool.pop(0)
+            check_cancel()
             measured = measure(source)
+            check_cancel()
             row = {'family':family,'source_sha256':digest(source)}
             if measured.get('error'):
                 row.update(outcome='compile_error',diagnostic=measured['error'])
@@ -96,6 +118,7 @@ def replay(example, *, trials=24, seconds=120, measure=None, root=None):
                 row.update(outcome=outcome,score=score)
             counts[row['outcome']] += 1
             report['trials'].append(row)
+            progress({'tested':len(report['trials']),'budget':trials,'family':family,'outcome':row['outcome']})
     report.update(summary=dict(counts), remaining=sum(map(len,pools.values())))
     return report
 

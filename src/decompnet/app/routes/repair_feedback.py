@@ -8,6 +8,38 @@ from .. import repair_investigations
 def register(app):
     feedback = app.net.repair_feedback
 
+    @app.mcp.custom_route('/api/repair-examples/replay', methods=['POST'])
+    async def replay_examples(request):
+        if bad := app.guard(request, write=True):
+            return bad
+        from .. import repair_replay_jobs
+        try:
+            data=await app.body(request)
+            slug='' if data.get('all') else str(data.get('slug') or '')
+            if not slug and not data.get('all'):
+                raise NetworkError('Choose a project or explicitly select all projects.')
+            trials,seconds=data.get('trials',12),data.get('seconds',30)
+            if any(isinstance(v,bool) or not isinstance(v,int) or not 1<=v<=maximum for v,maximum in ((trials,32),(seconds,120))):
+                raise NetworkError('Choose 1–32 trials and 1–120 seconds per example.')
+            category,status=str(data.get('category') or ''),str(data.get('status') or '')
+            comparable=bool(data.get('comparable',True))
+            if data.get('id') is not None:
+                case_id=data['id']
+                if isinstance(case_id,bool) or not isinstance(case_id,int):raise NetworkError('Choose an example number.')
+                feedback.detail(slug,case_id,include_source=False)
+                ids=[case_id]
+            else:
+                ids=[r['id'] for r in feedback.listing(slug,category,status,comparable=comparable)['examples'][:20]]
+            if not ids:raise NetworkError('No examples match these filters.')
+            with app.jobs._lock:
+                if any(j['kind']=='repair-replay' and j['state']=='running' for j in app.jobs.jobs.values()):
+                    raise NetworkError('A repair replay is already running. Stop it or wait before starting another.')
+                job=app.jobs.start('repair-replay',lambda log:repair_replay_jobs.run(feedback,slug,ids,trials,seconds,log),
+                                   cancel_message='Repair replay stopped. No game progress or review states changed.')
+            return JSONResponse({'job':job})
+        except (NetworkError,ValueError,KeyError,TypeError) as error:
+            return app.fail(error)
+
     @app.mcp.custom_route('/api/repair-examples/quality', methods=['GET', 'POST'])
     async def quality(request):
         if bad := app.guard(request, write=request.method == 'POST'):
