@@ -148,6 +148,7 @@ WAITING = ("SELECT w.function_id FROM waits w JOIN functions n ON n.id=w.needs_i
 READY = "SELECT w.function_id FROM waits w JOIN functions n ON n.id=w.needs_id WHERE n.status = 'matched'"
 WANTED = "SELECT w.needs_id FROM waits w JOIN functions b ON b.id=w.function_id WHERE b.status = 'open'"
 STRATEGIES = {
+    "no_compiling_c": "f.attempts ASC, f.n_insns ASC",
     "oldest_checked": "COALESCE((SELECT MAX(t.created_at) FROM attempts t WHERE t.function_id=f.id),0) ASC, f.id ASC",
     "least_tried": "f.attempts ASC, f.n_insns ASC",
     # (a failing part waits even for its twins: they'd fail the same way)
@@ -853,6 +854,10 @@ class Network:
                     percent = max(0.0, 100.0 * (1.0 - fn["best_score"] / max(1, fn["n_insns"] * 100)))
                     if percent >= below:
                         raise NetworkError(f"{fn['name']} is outside this agent's match percentage filter; claim another")
+                if (self.selection((proj or db.execute("SELECT slug FROM projects WHERE id=?", (fn["project_id"],)).fetchone())["slug"], agent.name).get("strategy") or strategy) == "no_compiling_c" and (
+                        fn["best_score"] is not None or db.execute(
+                            "SELECT 1 FROM attempts WHERE function_id=? AND compiled=1 LIMIT 1", (fn["id"],)).fetchone()):
+                    raise NetworkError(f"{fn['name']} already has a recorded compiling C candidate; choose another function")
                 other = db.execute("SELECT agent_id, expires_at FROM claims WHERE function_id=?", (fn["id"],)).fetchone()
                 if other is not None:
                     raise NetworkError(f"{fn['name']} is claimed by {self._agent_name(other['agent_id'])} "
@@ -886,6 +891,8 @@ class Network:
                              MAX(0.0, 100.0 * (1.0 - CAST(f.best_score AS REAL) / MAX(1, f.n_insns * 100))) < :below)
                         AND (:tries IS NULL OR (SELECT COUNT(*) FROM attempts a
                              WHERE a.function_id=f.id AND a.agent_id=:agent) < :tries)
+                        AND ({int(strategy != 'no_compiling_c')} OR (f.best_score IS NULL AND NOT EXISTS (
+                             SELECT 1 FROM attempts compiled_attempt WHERE compiled_attempt.function_id=f.id AND compiled_attempt.compiled=1)))
                         AND f.id NOT IN (SELECT function_id FROM claims)
                         AND f.id NOT IN (SELECT value FROM json_each(:stalled))
                         AND f.id NOT IN (SELECT value FROM json_each(:model_tried))

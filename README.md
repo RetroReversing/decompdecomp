@@ -873,3 +873,9 @@ address-alias, single-field layout, boolean-mask and temporary-lifetime repairs.
 also guide field-load order. These bounded compiler trials use no model tokens. Run the deep
 permuter on one near-matching function when several repairs may need to interact; its existing
 time and variant limits still apply. The ordinary byte/object judge is the only acceptance path.
+
+Agent **Next function** options include descriptions in the dropdown and a live explanation below it.
+**No compiling C yet** selects only eligible open functions without a recorded successful C compile or
+scored candidate. It includes never-tried functions and compile failures, and stops when none remain;
+it does not fall back to already-compiling functions. Existing filters and claim ownership still apply.
+Historical evidence is used; it does not rebuild every function to check whether its C compiles today.

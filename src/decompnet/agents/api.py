@@ -408,7 +408,7 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
                          s(function=st("function", True), start=it("zero-based line"), limit=it("up to 200 lines"), focus=st("mismatch:N, body, symbol or short assembly anchor"))),
         "claim_function": ("Claim the next function (or one by name/address). Returns assembly, data, best attempt, "
                            "notes and a draft. count > 1: a batch of small functions to judge together.",
-                           s(function=st("optional name or address"), strategy=st("finish | easiest | least_tried | oldest_checked | untried | closest | hardest | random"),
+                           s(function=st("optional name or address"), strategy=st("no_compiling_c | finish | easiest | least_tried | oldest_checked | untried | closest | hardest | random"),
                              count=it("up to 6 small functions at once"))),
         "get_function": ("Show any function by name or address.", s(function=st("name or address", True), section=st("all | history | candidate | quality | notes | declarations | compiler | layouts"))),
         "compile_and_diff": ("Whole-function rewrite: small edits should use compile_patch. Compile, link and diff against the ROM. "
