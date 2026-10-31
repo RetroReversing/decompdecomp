@@ -2,6 +2,7 @@
 function renderCompilerProgress(progress, result) {
   const box = $("compilerProgress");
   box.hidden = false;
+  box.dataset.finished = String(!!result);
   if (!progress && !result) { box._compilerRows = []; box._compilerApplied = new Set(); }
   else if (result) box._compilerRows = result.results || result.improvements || [];
   else if (progress.results) box._compilerRows = progress.results;
@@ -23,7 +24,7 @@ function renderCompilerProgress(progress, result) {
     set("completed", result.tried); set("improved", (result.improvements || []).length);
     set("exact", result.confirmed || 0);
     set("before", "—"); set("best", "—");
-    set("profile", "Review the better settings below and choose Apply to function. Nothing has been applied automatically.");
+    set("profile", "Review better settings or exact matches below. Apply individually or use Apply all. Nothing has been applied automatically.");
     const bar = box.querySelector("[data-bar]"); bar.max = 1; bar.value = 1;
     return;
   }
