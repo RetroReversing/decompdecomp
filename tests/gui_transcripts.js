@@ -23,7 +23,7 @@ const context = { S: {logFor: '7', slug: 'demo'}, document: {body, createElement
     requests.push(url); const q = new URL(url, 'http://test').searchParams;
     const id = Number(q.get('session')) || 60, before = Number(q.get('before'));
     const sessions = Array.from({length: 30}, (_, i) => row((before ? 30 : 60) - i));
-    return {sessions, session: row(id), events: [{id: q.get('after') === '1' ? 2 : 1, created_at: 1, kind: id === 4 ? 'error' : 'prompt', text: long}], more: q.get('after') !== '1'};
+    return {sessions, session: row(id), events: [{id: q.get('after') === '1' ? 2 : 1, created_at: 1, kind: id === 4 ? 'error' : id === 5 ? 'tool_request' : 'prompt', text: id === 5 ? JSON.stringify({name:'claim_function',arguments:{count:4}}) : long}], more: q.get('after') !== '1'};
   }, URL, Date };
 vm.createContext(context);
 vm.runInContext(source.slice(0, source.indexOf('$("helperTranscript").onclick =')), context);
@@ -73,5 +73,9 @@ vm.runInContext(source.slice(source.indexOf('$("helperTranscript").onclick =')),
   assert.equal(events.children[0].open, true);
   assert.match(events.children[0].className, /transcript-event-error/);
   assert(requests.at(-1).includes('session=4'));
+  select.value = '5'; await select.onchange();
+  assert.equal(events.children[0].children[0].children[0].textContent, 'Tool request · claim_function');
+  assert.equal(JSON.parse(events.children[0].children[1].textContent).arguments.count, 4);
+
   console.log('Transcript full-text rendering, usage, paging and old-session selection passed');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
