@@ -31,6 +31,8 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
 
 ## Automatic repairs before paid agents
 
+The bounded repair pass also tries equal-type chained local assignments in either order, final void calls as explicit returns, and terminal scalar bounds checks as ordered early returns. Empty polling loops can use an explicit entry guard, including in combination with the final-call rewrite. Each candidate is compiled and judged normally.
+
 Candidate-quality reports are advisory: agents, autopilot and the deep permuter can keep working while a concern awaits review. Repair examples retains the warning and saved alternatives; exact matches still require the normal byte or objdiff judge.
 
 The permuter's bounded repair pass tries unused scalar locals, local and parameter `register` storage, and adjacent

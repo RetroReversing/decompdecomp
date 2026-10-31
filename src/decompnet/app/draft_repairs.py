@@ -26,6 +26,7 @@ from . import (
     pointer_cast_repairs,
     register_repairs,
     register_reuse_repairs,
+    scheduling_repairs,
     stack_padding_repairs,
     stack_repairs,
     storage_scope_repairs,
@@ -104,6 +105,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
         if refined and refined != plain:
             proposals.append(seeds.M2C_MACROS + refined)
             labels[proposals[-1]] = 'm2c_refinement'
+    for family, text in scheduling_repairs.variants(source, name):
+        proposals.append(text)
+        labels[text] = family
     if local := branch_locals.variant(source, name):
         proposals.insert(0, local)
         labels[local] = 'branch_locals'
