@@ -1254,3 +1254,11 @@ details.more[open] > summary::before { content: "− "; }
 .compiler-function-links button { font-size: 12px; }
 .compiler-cleanup { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 16px; }
 #compilerRareLimit { width: 64px; padding: 4px; }
+
+/* Native disclosures keep their open state while settings data is refreshed. */
+.settings-disclosure { margin-bottom: 20px; }
+.settings-disclosure > summary { cursor: pointer; list-style: none; }
+.settings-disclosure > summary::-webkit-details-marker { display: none; }
+.settings-disclosure > summary::before { content: ""; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); flex: none; }
+.settings-disclosure[open] > summary::before { transform: rotate(45deg); }
+.settings-disclosure > summary:focus-visible { outline: 2px solid var(--hl); outline-offset: -3px; }
