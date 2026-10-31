@@ -246,3 +246,19 @@ def test_selected_default_or_missing_profile_is_rejected(cleanup_net):
         with pytest.raises(NetworkError, match='no longer in use'):
             compiler_cleanup.cleanup(cleanup_net, 'demo', log=lambda _: None,
                                      source_profile={'toolchain': 'ido-5.3', 'flags': flags})
+
+
+def test_profile_migration_prefers_default_even_when_default_is_less_common(cleanup_net, monkeypatch):
+    from decompnet.app import compiler_cleanup
+    n = cleanup_net
+    cfg = n.cfg(n.project_row('demo'))
+    cfg['compiler_ranges'] = [{'start': 0x80001000, 'end': 0x80001000 + 84 * 16,
+                              'toolchain': 'ido-5.3', 'flags': ['-O1']}]
+    with n.store.tx() as db:
+        db.execute('UPDATE projects SET config=? WHERE slug=?', (json.dumps(cfg), 'demo'))
+    monkeypatch.setattr(n, '_judge_with', lambda *a: (True, SimpleNamespace(score=0), ''))
+    monkeypatch.setattr(n, 'regression_test', lambda *a, **k: [])
+    out = compiler_cleanup.cleanup(n, 'demo', log=lambda _: None,
+                                   source_profile={'toolchain': 'ido-5.3', 'flags': ['-O1']})
+    assert out['tested'] == 84 and len(out['changed']) == 84
+    assert out['profiles_after'] == 1
