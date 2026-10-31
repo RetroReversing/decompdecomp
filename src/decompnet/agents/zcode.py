@@ -25,7 +25,18 @@ import time
 import uuid
 from pathlib import Path
 
-from . import MODELS_CACHE, MODELS_LISTED, SAID_CHARS, Agent, args_brief, error_text, read_json, tool_name, usage_item
+from . import (
+    MODELS_CACHE,
+    MODELS_LISTED,
+    SAID_CHARS,
+    Agent,
+    _node,
+    args_brief,
+    error_text,
+    read_json,
+    tool_name,
+    usage_item,
+)
 
 TOOL_ALLOW = "mcp__decomp__*"  # the app's tools and nothing else: no shell, no file edits, no web, no plugin tools
 MCP_TIMEOUT_MS = 180_000  # one tool call may take this long (a fork's build)
@@ -114,11 +125,18 @@ class Zcode(Agent):
     name = "ZCode"
     command = "zcode"
     vendor = "Z.AI"
-    install = ("mkdir -p ~/.local/bin && printf '#!/bin/sh\\nexec node \"/Applications/ZCode.app/Contents/Resources"
-               "/glm/zcode.cjs\" \"$@\"\\n' > ~/.local/bin/zcode && chmod +x ~/.local/bin/zcode")
+    install = ("mkdir -p ~/.local/bin && printf '#!/bin/sh\\n"
+               "node_bin=\"${ZCODE_NODE:-}\"\\n"
+               "[ -n \"$node_bin\" ] || node_bin=\"$(command -v node 2>/dev/null)\"\\n"
+               "[ -n \"$node_bin\" ] || for d in \"$HOME\"/.nvm/versions/node/*/bin /opt/homebrew/bin /usr/local/bin; do "
+               "[ -x \"$d/node\" ] && node_bin=\"$d/node\" && break; done\\n"
+               "exec \"$node_bin\" \"/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs\" \"$@\"\\n"
+               "' > ~/.local/bin/zcode && chmod +x ~/.local/bin/zcode")
     windows_install = ("New-Item -ItemType Directory -Force -Path \"$env:USERPROFILE\\.local\\bin\" | Out-Null; "
                        "Set-Content -Path \"$env:USERPROFILE\\.local\\bin\\zcode.cmd\" -Value "
-                       "'@node \"%LOCALAPPDATA%\\Programs\\ZCode\\resources\\glm\\zcode.cjs\" %*'")
+                       "'@echo off\\r\\nif defined ZCODE_NODE (set \"NODE_EXE=%ZCODE_NODE%\") else "
+                       "(set \"NODE_EXE=node\")\\r\\n\"%NODE_EXE%\" \"%LOCALAPPDATA%\\Programs\\ZCode\\resources\\glm\\"
+                       "zcode.cjs\" %*'")
     signin = "Run `zcode login` once in a terminal (the desktop app's own sign-in doesn't carry over)."
     docs = "https://zcode.z.ai"
     takes_effort = True  # the thought level, after a "#" in the model's picker id
@@ -141,7 +159,10 @@ class Zcode(Agent):
         it through `session/create` in `stdin`'s script, so they ride on the helper thread, never the command line."""
         _here.mcp_url, _here.token, _here.model = mcp_url, token, model
         _here.workdir = str(workdir)
-        return [exe, "app-server"], _provider_config_env()
+        env = _provider_config_env()
+        if node := _node():  # the helper's environment has no PATH to speak of; the launcher takes it from here
+            env["ZCODE_NODE"] = node
+        return [exe, "app-server"], env
 
     def stdin(self, prompt: str) -> str:
         """The opening script: one session, created with only the app's MCP server and tools, then the prompt."""
