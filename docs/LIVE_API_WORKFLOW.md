@@ -119,3 +119,10 @@ gManager @ manager.c
 Paths stay inside the selected source/include roots. Existing symbol aliases map reference names to proven destination symbols. Only selected objects referenced by the prepared candidate or its macros are included; unrelated objects are skipped. Use single-object file-scope declarations, or supply a prepared subset when the original groups multiple declarations. The ordinary source candidate is still tried without those additional definitions if budget remains. Both alternatives use the existing judge, cache, claim and context-promotion rules; an exact function result still requires export/data-layout and complete-image verification.
 
 Configured numeric macro values select conditional source branches before extraction, preserving original line numbers. Unsupported expressions or compiler-specific conditions without configured values produce an actionable error instead of guessing. A prepared subset remains the fallback for complex preprocessing. Diff/brief/deep-search advisories now flag repeated extra address loads as a reason to inspect original definitions versus extern declarations.
+
+When a near-match differs only in compiler-generated helper calls, check the runtime-helper mapping hint before
+permuting. Confirm the target call sites and helper ABI, use an explicitly typed call or independently verified
+alias, and rejudge normally. A missing relocation is not a source-scheduling problem. Nearby exact-match profiles
+are bounded trial priorities, not automatic range assignments. Keep original SDK typedefs (including unions),
+macros and locals in the configured source context; preparation carries referenced declarations from the mapped
+file without importing unrelated objects or bodies.

@@ -38,9 +38,10 @@ def _run(net, proj, fn, log, check, max_profiles):
     own = compiler_for(cfg, fn['vram'])
     if own.get('cmd') or not own.get('toolchain') or toolchains.installed(own['toolchain']) is None:
         return {'tested': 0}
-    from .profile_hypotheses import prioritized
+    from .profile_hypotheses import neighbours, prioritized
     choices = [list(own['flags'])]
-    choices += [flags for flags in prioritized(proj, fn, own) if flags not in choices]
+    for flags in prioritized(proj, fn, own)+neighbours(net, proj, fn, own):
+        if flags not in choices:choices.append(flags)
     # Optimization hypotheses precede debug variants; do not spend the whole budget on -g forms.
     for flags in net.flag_variants(own['toolchain'], list(own['flags'])):
         if list(flags) not in choices:
@@ -72,6 +73,8 @@ def _run(net, proj, fn, log, check, max_profiles):
                     result['tested'] += 1
                     blocked = unresolved([problems])
                     if blocked:
+                        from .helper_call_diagnostics import suggestions
+                        for hint in suggestions(getattr(diff, 'rows', [])):log(hint)
                         result['link'] = blocked
                         break
                     if diff is not None:

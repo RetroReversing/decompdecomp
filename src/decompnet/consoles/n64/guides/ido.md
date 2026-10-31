@@ -85,3 +85,8 @@ Original object definitions
 - If a diff has repeated extra LUI address loads around global-field stores, compare the original translation unit's definitions with the candidate's extern declarations. Source-local definition/layout knowledge can affect code generation; the mechanism is not uniquely established.
 - Select only authorized original objects in Local source preparation, using `reference_symbol @ relative/file.c`. The app tries the preserved definitions before the version without them. Do not invent initializers, alignment or addresses to force a match; normal data-placement/export and complete-image checks remain necessary.
 - Numeric branch selection preserves source line numbers before function extraction. For unsupported preprocessing or unknown compiler-specific macros, supply explicit numeric overrides or a prepared subset.
+
+If only unresolved runtime-helper call operands differ, confirm the helper ABI at the target call sites before
+permuting. An explicit correctly typed helper call can resolve a relocation while retaining the exact instruction
+sequence. Preserve original SDK unions, record types, macros and locals. Nearby verified `-O1` profiles are useful
+trial priorities for SDK routines, but only the current function's byte judge can confirm a candidate.
