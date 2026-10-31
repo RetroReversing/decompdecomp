@@ -29,6 +29,14 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
   stand-in for a model that hands in the demo's own C; the app compiles and judges every function for real.</sub>
 </p>
 
+## ROM library for imported projects
+
+In **Settings → ROM library**, choose a folder containing your extracted game files. When a public decomp project
+declares an expected SHA-1, decompdecomp searches that folder and its subfolders and fills in a verified match.
+For a `.z64` target, it recognizes `.z64`, `.v64`, and `.n64` byte orders regardless of filename. Confirm ownership
+and click **Use path** to continue. The search does not unpack archives, move files, or start a build. Clear the
+setting to disable searches. If a verified game is already in the project, **Retry setup** reuses it.
+
 ## Install
 
 decompdecomp runs on **Linux and Windows 10/11** on x86-64, and **macOS 12+** on Intel or Apple Silicon. On Linux, install it with one command. The installer also gets
