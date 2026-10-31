@@ -339,3 +339,12 @@ about unrelated data sections and never substitutes for the normal judge.
 
 Exact judgments now retain a [portable verification bundle](match-verification-bundles.md).
 Historical evidence helps explain regressions without silently restoring matched status or flags.
+
+### Connected recipe replay
+
+The scheduling control now trains a source-free two-step recipe only after an exact judgment.
+A normal integrated local search recovered 945 → 155 → exact in nine compiles including its
+baseline (7.81 seconds). Resetting the same isolated checkpoint, retaining the learned sequence
+and clearing the miss cache recovered it in five compiles (7.63 seconds). Family prioritization
+reduced compiles; this small control does not establish a wall-clock or agent-token improvement.
+See [learned repair search](learned-repair-search.md) for scope, exploration and rotation rules.

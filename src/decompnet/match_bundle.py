@@ -57,6 +57,8 @@ def symbols(db, project_id):
 def capture(db, fn, attempt_id, source, context_version, settings):
     """Called only after a non-stale normal exact verdict, including later polishing attempts."""
     db.execute(SCHEMA)
+    if db.execute("SELECT 1 FROM sqlite_master WHERE name='verification_regressions'").fetchone():
+        db.execute('DELETE FROM verification_regressions WHERE function_id=?',(fn['id'],))
     proj = db.execute('SELECT * FROM projects WHERE id=?',(fn['project_id'],)).fetchone()
     cfg = json.loads(proj['config'])
     row = db.execute("SELECT header FROM context_versions WHERE project_id=? AND version=? AND unit IN (?, '') ORDER BY (unit=?) DESC LIMIT 1",
@@ -100,7 +102,8 @@ def status(net, fn):
     if details.get('imported'): reasons.append('historical record imported; verify locally before accepting it')
     if details['header_sha256'] is None: reasons.append('header was not captured in the original record')
     if details['mode']=='project': reasons.append('imported build must be rechecked in its own build system')
-    return details | {'changed_inputs':reasons,'source':row['source'],'header':row['header'],
+    alarm = net.store.one('SELECT * FROM verification_regressions WHERE function_id=?',fn['id']) if net.store.one("SELECT 1 FROM sqlite_master WHERE name='verification_regressions'") else None
+    return details | {'regression':dict(alarm) if alarm else None,'changed_inputs':reasons,'source':row['source'],'header':row['header'],
                       'note':'Last recorded exact attempt; recheck with the normal judge after any input change.'}
 
 
@@ -143,3 +146,21 @@ def restore_evidence(net, project_id, name, old_name, manifest):
         if fn:
             db.execute('INSERT OR IGNORE INTO verified_matches VALUES(?,?,?,?,?)',
                        (fn['id'],-1,json.dumps(historical),source,header))
+
+
+ALERT_SCHEMA = '''CREATE TABLE IF NOT EXISTS verification_regressions(
+ function_id INTEGER PRIMARY KEY REFERENCES functions(id) ON DELETE CASCADE,
+ attempt_id INTEGER NOT NULL, score INTEGER, observed_at REAL NOT NULL)'''
+
+
+def failed_recheck(db, fn, attempt_id, source, score):
+    """Only a new judge result for the captured exact source can raise an alarm, never a random variant."""
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE name='verified_matches'").fetchone():
+        return False
+    row = db.execute('SELECT details,source FROM verified_matches WHERE function_id=?',(fn['id'],)).fetchone()
+    if not row or row['source'] != source or json.loads(row['details']).get('imported'):
+        return False
+    db.execute(ALERT_SCHEMA)
+    exists = db.execute('SELECT 1 FROM verification_regressions WHERE function_id=?',(fn['id'],)).fetchone()
+    db.execute('INSERT OR REPLACE INTO verification_regressions VALUES(?,?,?,?)',(fn['id'],attempt_id,score,time.time()))
+    return not exists

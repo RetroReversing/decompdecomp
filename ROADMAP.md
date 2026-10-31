@@ -10,7 +10,8 @@ existing objdiff/whole-image gates; no generic preflight changes their build set
 Deep search now chains bounded local repairs after random improvements. Register reuse hypotheses share
 all normal draft/permuter paths. Fresh exact judgments repair score-zero/open bookkeeping; plain return
 conflicts can recover a buildable ROM candidate with an honest baseline and retained history. A bounded numeric/structural source frontier and immediate reseeding now preserve useful alternatives.
-Adaptive per-function budgets remain a planned follow-up.
+Project sweeps now use progress-sensitive soft allowances within the requested hard cap; rotated
+functions remain eligible next run. Explicit single-function searches keep their requested limit.
 
 Bounded integer/call repairs now include evidence-led local widening, candidate-owned callee prototype widths,
 integer lifetime splits/merges, call distribution into branches, terminal goto leaves and switch layout variants.
@@ -25,6 +26,12 @@ Last exact source/header/compiler evidence travels with saved progress; imported
 accepts code. MIPS stack diagnostics separate saved slots from local operands. Equivalent readers
 for non-MIPS architectures and imported-project GUI diagnostics remain planned. Experimental
 bitfield frame hypotheses require explicit local-family selection.
+
+Connected exact repair sequences now guide shared family ordering and deep local follow-ups.
+Each candidate retains its own mismatch advice. Compact build-scoped evidence reaches agents;
+failed rechecks of locally captured exact source raise deduplicated regression alerts.
+See [learned repair search](docs/learned-repair-search.md). Durable cross-restart alternative
+source frontiers and controlled live agent-token comparisons remain future work.
 
 What's planned for decompdecomp, roughly in order, and why. Every item keeps the rule that matters most: a match is
 byte-identical after linking (ROM mode) or objdiff 100% (fork mode). Nothing here accepts code that only does the
@@ -92,6 +99,8 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Targeted scalar scheduling repairs and experiment costs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Portable last-exact evidence | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ historical, own build |
 | Stack slot layout diagnostics | ✓ | ✓ | ✓ | ✓ | — reader planned | — reader planned | — reader planned | — GUI adapter planned |
+| Learned repair sequences, scoped brief evidence and sweep rotation | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ build-scoped |
+| Last-exact failed-recheck alerts | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ local judgments only |
 | Status | recommended | beta | beta | beta | beta | beta | beta | the project's own |
 | Start from your own copy | ✓ | ✓ | ✓ | ✓ unencrypted or decrypted program and modules (ISO, CSO, CHD) | ✓ | ✓ | ✓ | fork by address |
 | Judge | link · compare | link · compare | link · compare | link · compare | objdiff | objdiff | objdiff | objdiff |

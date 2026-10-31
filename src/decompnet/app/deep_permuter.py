@@ -19,7 +19,9 @@ from . import (
     permuter_focus,
     permuter_local,
     repair_ranking,
+    repair_sequences,
     search_frontier,
+    search_turns,
     stack_padding_repairs,
 )
 from .permute import Permuter, State
@@ -76,11 +78,14 @@ class Search(Permuter):
         self.current_family = ''
         self.last_outcome = ''
         self.last_score = None
+        self.allowance = search_turns.Allowance(minutes*60,time.monotonic()) if getattr(log,"adaptive_budget",False) else None
 
     def check(self):
         self.log.check_cancel()
         if time.monotonic() >= self.deadline:
             raise SearchLimit('Time limit reached')
+        if self.allowance and (reason := self.allowance.reason(time.monotonic())):
+            raise SearchLimit(reason)
         if self.tested >= self.limit or self.visited >= self.limit*20:
             raise SearchLimit('Variant limit reached')
 
@@ -205,10 +210,13 @@ class Search(Permuter):
         source = fn['best_source']
         context = self.net._context(proj['id'],fn['unit'])
         header = self.net.forks.permuter_header(fork,fn['name']) if fork else (context['header'] if context else '')
+        initial_rows = self.winner_diff[0] if self.winner_diff else repair_ranking.evidence(self.net,fn['id'],agent.id)
+        source_rows = {source:initial_rows}
+        lineage = repair_sequences.Lineage(self.net,proj,fn,source,initial_rows)
         while best > 0:
             self.check()
             self.local_seen.add(source)
-            rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
+            rows = source_rows.get(source,[])
             labels = {}
             choices = draft_repairs.variants(source, fn['name'], proj['arch'], fn['asm'] or '', flags, labels=labels, limit=None, header=header)
             stack = stack_padding_repairs.grow(source, fn['name'], proj['arch'], rows)
@@ -222,7 +230,8 @@ class Search(Permuter):
             ranked = adaptive_repairs.order(self.net, proj, fn, rows, repair_ranking.order(families, rows))
             # Every other burst keeps the original order for exploration.
             if self.refinement_rounds % 2 == 0:
-                choices.sort(key=lambda c: ranked.index(labels.get(c, 'local_repair')))
+                preferred = lineage.preferred(source)
+                choices.sort(key=lambda c: (labels.get(c,'local_repair') not in preferred, ranked.index(labels.get(c, 'local_repair'))))
 
             for candidate in dict.fromkeys(choices):
                 if candidate in self.local_seen:
@@ -231,13 +240,21 @@ class Search(Permuter):
                     return best, self.net._function(fn['name'], proj['slug'])['best_source']
                 self.local_seen.add(candidate)
                 trials += 1
-                with repair_trial({'kind': 'deep local repair', 'family': labels.get(candidate, 'local_repair'),
-                                   'base_source_sha256': hashlib.sha256(source.encode()).hexdigest()}):
-                    score = self._score(agent, proj, fn, candidate, best, fork)
+                self._parent_rows = rows
+                try:
+                    with repair_trial({'kind': 'deep local repair', 'family': labels.get(candidate, 'local_repair'),
+                                       'base_source_sha256': hashlib.sha256(source.encode()).hexdigest()}):
+                        score = self._score(agent, proj, fn, candidate, best, fork)
+                finally:
+                    del self._parent_rows
                 if score is not None and best < score <= best * 1.25 and not getattr(self, '_trial_reused', False):
                     measured_rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
                     alternatives.offer(candidate, score, measured_rows)
+                    source_rows[candidate] = measured_rows
+                    lineage.retain(source,candidate,labels.get(candidate,'local_repair'))
                 if score is not None and score < best:
+                    source_rows[candidate] = repair_ranking.evidence(self.net,fn['id'],agent.id)
+                    lineage.retain(source,candidate,labels.get(candidate,'local_repair'),exact=score==0)
                     best = score
                     fn = self.net._function(fn['name'], proj['slug'])
                     source = fn['best_source']
@@ -307,12 +324,14 @@ class Search(Permuter):
             self.last_outcome, self.last_score = 'compiling', None
             self.report()
             self._trial_outcome = 'unscored'
-            rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
+            rows = getattr(self,'_parent_rows',repair_ranking.evidence(self.net, fn['id'], agent.id))
             policy_focus = permuter_focus.classify(rows)
             policy_profile = adaptive_repairs.profile(self.net, proj, fn)
             started = time.monotonic()
             score = super()._score(agent, proj, fn, source, best, fork)
             elapsed_ms = max(0, round((time.monotonic() - started) * 1000))
+            if self.allowance and not self.measuring_baseline and getattr(self,'_trial_outcome','') == 'scored':
+                self.allowance.observe(score is not None and score < best,getattr(self,'_trial_output',None),time.monotonic())
             if getattr(self, '_trial_outcome', '') == 'no_edit':
                 self.tested -= 1
                 self.skipped += 1

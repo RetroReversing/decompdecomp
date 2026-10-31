@@ -144,7 +144,7 @@ async function refreshFn(first) {
       const bundle = d.verification;
       verificationPanel.hidden = !bundle;
       if (bundle) {
-        $("fnVerificationStatus").textContent = `Exact attempt recorded ${new Date(bundle.recorded_at * 1000).toLocaleString()}. ${bundle.changed_inputs.length ? `Inputs changed: ${bundle.changed_inputs.join(", ")}. Recheck before accepting progress.` : "Recorded inputs agree with this project."} ${bundle.note}`;
+        $("fnVerificationStatus").textContent = `Exact attempt recorded ${new Date(bundle.recorded_at * 1000).toLocaleString()}. ${bundle.changed_inputs.length ? `Inputs changed: ${bundle.changed_inputs.join(", ")}. Recheck before accepting progress.` : "Recorded inputs agree with this project."} ${bundle.note}${bundle.regression ? ` WARNING: the recorded exact source failed recheck at ${new Date(bundle.regression.observed_at * 1000).toLocaleString()}; ${bundle.regression.score == null ? "build/scoring failed" : `score ${bundle.regression.score}`}.` : ""}`;
         $("fnVerificationDownload").onclick = () => {
           const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], {type:"application/json"}));
           const link = document.createElement("a"); link.href = url; link.download = `${d.name}-verification.json`; link.click();

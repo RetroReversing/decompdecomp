@@ -18,3 +18,9 @@ supersedes the historical record. Older saves without this section remain suppor
 
 Only the latest exact record per function is retained; this is evidence for diagnosis,
 not a replacement for Git history or a complete reproducible-build archive.
+
+A new failed judge/build result for the captured local exact source creates a regression alert.
+It appears in notifications and the function's verification panel with its time and score (or
+build/scoring failure). Repeated failures update the existing alert. A new exact result clears
+it. Different candidate source and imported historical records do not establish a regression.
+The alert does not change code, compiler settings or matched status by itself.

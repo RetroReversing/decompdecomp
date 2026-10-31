@@ -363,3 +363,31 @@ def test_cached_deep_misses_do_not_train_adaptive_policy_twice(monkeypatch):
     search._score(AGENT, proj, fn, 'same candidate', 40, None)
     search._score(AGENT, proj, fn, 'same candidate', 40, None)
     assert net.store.one('SELECT SUM(attempted) n FROM repair_policy')['n'] == 1
+
+
+def test_learned_connected_recipes_run_first_and_each_winner_retargets_its_own_diff(monkeypatch):
+    from decompnet.app import repair_ranking, repair_sequences
+    net=setup(monkeypatch);proj=net.project_row('game')
+    with net.store.tx() as db:db.execute("UPDATE functions SET best_source='start'")
+    initial=[('r','left','right')];middle=[('s','stack left','stack right')]
+    fn=net.function();lineage=repair_sequences.Lineage(net,proj,fn,'start',initial)
+    lineage.retain('start','middle','first');lineage.retain('middle','end','second',exact=True)
+    def variants(source,*args,**kwargs):
+        choices={'start':[('noise','slow'),('first','middle')],'middle':[('noise','slow2'),('second','end')]}.get(source,[])
+        kwargs['labels'].update({candidate:family for family,candidate in choices})
+        return [candidate for _,candidate in choices]
+    monkeypatch.setattr(draft_repairs,'variants',variants)
+    seen=[];ranked=[]
+    original=repair_ranking.order
+    def rank(families,rows):ranked.append(rows);return original(families,rows)
+    monkeypatch.setattr(repair_ranking,'order',rank)
+    search=deep_permuter.Search(net,1,20,Log(),fn);search.winner_diff=(initial,'legend')
+    def judge(agent,proj,fn,source,best,fork):
+        seen.append(source);score={'middle':20,'end':0}.get(source,60)
+        net._last_diffs={(AGENT.id,fn['id']):(middle if source=='middle' else [],'legend')}
+        if score<best:
+            with net.store.tx() as db:db.execute('UPDATE functions SET best_source=?,best_score=? WHERE id=?',(source,score,fn['id']))
+        return score
+    monkeypatch.setattr(search,'_score',judge)
+    assert search.local_repairs(AGENT,proj,fn,40,None)[0]==0
+    assert seen==['middle','end'] and ranked==[initial,middle]
