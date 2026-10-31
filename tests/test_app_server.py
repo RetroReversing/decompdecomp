@@ -1386,3 +1386,18 @@ def test_slow_resume_does_not_block_building_the_app(tmp_path, monkeypatch):
     finally:
         release.set()
     assert resumed.wait(3)
+
+
+def test_project_list_reads_saved_summary_without_waiting_for_progress_sync(tmp_path, monkeypatch):
+    home = tmp_path / '.decomp'
+    home.mkdir()
+    net = RomNetwork(home / 'decomp.db', tmp_path)
+    with net.store.tx() as db:
+        db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                   ('game', 'Game', 'mips', str(tmp_path), json.dumps({'kind': 'fork', 'platform': 'n64'})))
+    def no_sync(*args, **kwargs):
+        raise AssertionError('project list must not wait for synchronization')
+    monkeypatch.setattr(net.progress, 'sync', no_sync)
+    summary = net.summary('game')
+    assert summary['title'] == 'Game'
+    assert summary['functions'] == 0
