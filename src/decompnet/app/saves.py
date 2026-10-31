@@ -703,7 +703,7 @@ def _apply_context(net, slug: str, folder: Path, manifest: dict, log,
     if manifest.get("title"):
         with net.store.tx() as db:
             db.execute("UPDATE projects SET name=? WHERE id=?", (manifest["title"], pid))
-    restorer, _ = net.local_agent("restored")
+    restorer = net.attribution_agent("restored")
     with net.store.tx() as db:
         for unit, file in (manifest.get("headers") or {}).items():
             check_cancel()
@@ -720,7 +720,7 @@ def _apply_context(net, slug: str, folder: Path, manifest: dict, log,
     for note in manifest.get("notes") or []:
         check_cancel()
         try:
-            net.add_note(net.local_agent(note.get("by") or "restored")[0], slug, note["text"], note.get("function"))
+            net.add_note(net.attribution_agent(note.get("by") or "restored"), slug, note["text"], note.get("function"))
         except NetworkError:
             continue  # its function is gone (a split the layout couldn't make again)
     with net.store.tx() as db:
@@ -774,7 +774,7 @@ def _judge_saved(net, slug: str, folder: Path, manifest: dict, by_name: dict, sa
             else:
                 best += 1
             continue
-        credit, _ = net.local_agent((info.get("matched_by") or info.get("best_by") or "restored"))
+        credit = net.attribution_agent(info.get("matched_by") or info.get("best_by") or "restored")
         agent, _ = net.local_agent("progress-judge")
         try:
             result = net.attempt(agent, name, text, slug)

@@ -9,6 +9,7 @@ import json
 import re
 import secrets
 import threading
+import time
 from pathlib import Path
 
 from ... import consoles
@@ -314,8 +315,7 @@ class Core(Network):
         self.progress.sync(slug, force=True)
         return cfg
 
-    def local_agent(self, name: str) -> tuple[Agent, str]:
-        """An agent identity for one runner on this machine (created on first use)."""
+    def _local_identity_name(self, name: str) -> str:
         row = self.store.one("SELECT id FROM agents WHERE name=?", name)
         # Saves can credit room members (@name) or older helpers with long names. Those labels aren't valid
         # new runner names; keep existing identities, and give new ones a stable name without merging credits.
@@ -323,7 +323,25 @@ class Core(Network):
             suffix = hashlib.sha256(name.encode("utf-8")).hexdigest()[:12]
             label = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-._") or "restored"
             name = f"{label[:27]}-{suffix}"
-            row = self.store.one("SELECT id FROM agents WHERE name=?", name)
+        return name
+
+    def attribution_agent(self, name: str) -> Agent:
+        """Credit saved work without issuing, rotating or exposing a runner's credentials."""
+        name = self._local_identity_name(name)
+        with self.store.tx() as db:
+            row = db.execute("SELECT id,name,owner,trusted FROM agents WHERE name=?", (name,)).fetchone()
+            if row is None:
+                now = time.time()
+                # This identity has no usable bearer token. Starting a runner explicitly issues one later.
+                db.execute("INSERT INTO agents(name,owner,token_hash,created_at,trusted,origin,terms_accepted_at) "
+                           "VALUES(?,?,?,?,?,?,?)", (name, "you", "attribution:" + secrets.token_hex(24), now, 1, "local", now))
+                row = db.execute("SELECT id,name,owner,trusted FROM agents WHERE name=?", (name,)).fetchone()
+        return Agent(row["id"], row["name"], row["owner"], bool(row["trusted"]))
+
+    def local_agent(self, name: str) -> tuple[Agent, str]:
+        """Issue credentials for a runner; attribution-only callers must use attribution_agent."""
+        name = self._local_identity_name(name)
+        row = self.store.one("SELECT id FROM agents WHERE name=?", name)
         if row is not None:
             token = "dn_" + secrets.token_urlsafe(24)
             with self.store.tx() as db:
