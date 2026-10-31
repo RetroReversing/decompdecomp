@@ -148,7 +148,7 @@ def raw_relocs(elf: ELFFile, shndx: int, start: int, size: int, code: bytes) -> 
                 at = off - start + delta
                 value = int.from_bytes(code[at:at + length], order) & mask
             raw.append({"off": off - start, "type": rtype, "symidx": rel["r_info_sym"], "rela": rel.is_RELA(),
-                        "value": value, "symtab": symtab})
+                        "value": value, "symtab": symtab, "order": len(raw)})
     raw.sort(key=lambda r: r["off"])
     return raw
 
