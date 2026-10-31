@@ -197,6 +197,14 @@ function renderHeader(ov) {
   const sync = ov.progress_sync;
   $("progressSyncNotice").hidden = !sync;
   if (sync) {
+    const pause = $("progressSyncPause");
+    pause.textContent = sync.paused ? "Resume verification" : "Pause verification";
+    pause.onclick = async () => {
+      pause.disabled = true;
+      try { await api("/api/verification", {method:"POST",body:{slug:S.slug,paused:!sync.paused}}); await refreshMap(true); }
+      catch (error) { toast(esc(error.message), "err"); }
+      finally { pause.disabled = false; }
+    };
     const counted = Number.isFinite(sync.total) && sync.total > 0;
     $("progressSyncText").textContent = `${sync.phase}${counted ? ` · ${sync.done.toLocaleString()} / ${sync.total.toLocaleString()} functions (${Math.floor(100 * sync.done / sync.total)}%)` : ""}`;
     $("progressSyncDetails").textContent = [sync.function ? `Checking ${sync.function}` : sync.message,

@@ -181,6 +181,14 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         except ValueError:
             return {}
 
+    ui_limiter = anyio.CapacityLimiter(4)
+
+    async def ui_call(fn, *args):
+        def snapshot():
+            with net.progress.view():
+                return fn(*args)
+        return await anyio.to_thread.run_sync(snapshot, limiter=ui_limiter)
+
     async def call(fn, *args):
         return await anyio.to_thread.run_sync(fn, *args)
 
@@ -195,7 +203,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     # the app's parts add their routes (routes/__init__.py says which is where); forks come after state and projects,
     # whose autopilot and with_project they use
     app = routes.App(net, mcp, home, port, secret, mcp_url, build_id, manager, jobs, settings, allowed_hosts,
-                     guard, body, call, fail, updater=updates.Updater(before_restart, port, secret),
+                     guard, body, call, fail, ui_call=ui_call, updater=updates.Updater(before_restart, port, secret),
                      busy=busy, quit_app=quit_app)
     for part in (pages, state, projects, repair_feedback, repository_sync, forks, setup, life, rooms):
         part.register(app)

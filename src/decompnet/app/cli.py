@@ -190,6 +190,8 @@ def run(args) -> int:
     state_file.write_text(json.dumps({"port": port, "secret": secret, "pid": os.getpid()}), encoding="utf-8")
     os.chmod(state_file, 0o600)
     cleanup.old_registrations(internal)
+    from .. import compiler_processes
+    compiler_processes.configure(internal / "compiler-processes")
     net = RomNetwork(internal / "decomp.db", home)
     mcp, manager, security, quit_app = build(net, internal, port, secret)
     app = mcp.streamable_http_app(transport_security=security, max_request_body_size=REQUEST_BODY_LIMIT, host="127.0.0.1")

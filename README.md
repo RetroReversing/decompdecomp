@@ -753,6 +753,12 @@ or count claims without submissions. Choose an explicit model; missing historica
 model attribution cannot be reconstructed. The filter also applies to named claims
 and never falls back to previously checked functions. Existing claims stay held.
 
+### Background verification and stuck compilers
+
+Saved-progress verification runs one project at a time. The sidebar and read-only project views show the current database while checks continue; the verification banner shows completed/total functions and lets you pause or resume. Pausing preserves the saved files and prevents project edits or judging from bypassing unfinished verification.
+
+Native compiler commands have a wall-time ceiling of 300 seconds (or their shorter command timeout). Set `DECOMP_COMPILER_TIMEOUT_SECONDS` before starting the app to change that ceiling. Imported builds also enforce their build timeout while waiting for output, including silent compilers. Timeout and cancellation stop the compiler tree; on macOS and Linux the app also stops remaining members of its isolated process group when a driver exits. On startup, recorded orphan groups are cleaned up only when process birth identities match and their previous app owner is gone. The tracker samples active groups once per second; unrecorded processes are never killed by startup cleanup. Windows uses tree termination during a run; startup orphan-group cleanup is currently POSIX-only.
+
 ### Compiler memory on macOS
 
 Native compiler and imported-project build processes are monitored while decompdecomp runs. If a process in a build tree exceeds 2 GiB of resident memory, the build is stopped and reports the limit. This is a sampled watchdog, so short spikes can exceed the limit. To change it for apps launched from Finder, run `launchctl setenv DECOMP_COMPILER_MEMORY_MB 1024` in Terminal and restart decompdecomp; the value is a limit in MiB (at least 16). Use `launchctl unsetenv DECOMP_COMPILER_MEMORY_MB` and restart to restore the default. The limit applies to each process; reduce deep permuter threads and agent concurrency to limit combined memory use. Compilers inside Linux VMs or containers have their own limits.

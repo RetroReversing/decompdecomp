@@ -12,7 +12,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import threading
 import time
@@ -150,20 +149,22 @@ def _exec(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float, cwd:
     # in the work folder, never in the app's own: KMC GCC's assembler (binutils 2.6) can't read its input when the
     # current directory is / ("Bad file descriptor"), as it can be for a program its launcher starts
     check = _CANCEL_CHECK.get()
-    if check is None and sys.platform != "darwin":
-        return subprocess.run(_wrap(cfg, work, argv), cwd=cwd or work, capture_output=True, text=True,
-                              encoding="utf-8", errors="replace", timeout=timeout, creationflags=NO_WINDOW)
+    timeout = min(timeout, limits.compiler_time_limit())
     proc = subprocess.Popen(_wrap(cfg, work, argv), cwd=cwd or work, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             text=True, encoding="utf-8", errors="replace", creationflags=NO_WINDOW,
-                            start_new_session=sys.platform == "darwin")
+                            start_new_session=os.name != "nt")
+    from . import compiler_processes
+    compiler_processes.track(proc.pid)
     started = time.monotonic()
     try:
-        with limits.CompilerMemoryWatchdog(proc) as watchdog:
+        with limits.CompilerMemoryWatchdog(proc, timeout=timeout) as watchdog:
             while True:
                 if check:
                     check()
                 try:
                     stdout, stderr = proc.communicate(timeout=0.1)
+                    if watchdog.timed_out:
+                        raise subprocess.TimeoutExpired(proc.args, timeout)
                     if watchdog.exceeded:
                         return subprocess.CompletedProcess(proc.args, 1, stdout, stderr + "\n" + watchdog.message())
                     return subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
@@ -171,7 +172,7 @@ def _exec(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float, cwd:
                     if time.monotonic() - started > timeout:
                         raise subprocess.TimeoutExpired(proc.args, timeout)
     except BaseException:
-        if sys.platform == "darwin":
+        if os.name != "nt":
             import signal
             try:
                 os.killpg(proc.pid, signal.SIGKILL)
@@ -179,6 +180,16 @@ def _exec(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float, cwd:
                 pass
         stop_process_tree(proc)
         raise
+    finally:
+        # A driver may exit before its children. Always reap its isolated group, not just the driver PID.
+        if os.name != "nt":
+            import signal
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        compiler_processes.untrack(proc.pid)
+
 
 
 def run_in(cfg: CompilerConfig, work: Path, argv: list[str], timeout: float = 300, *,

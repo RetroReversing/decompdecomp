@@ -1058,3 +1058,5 @@ Project overview reads query SDK signatures by the game’s indexed fingerprints
 - Done: verified ROM agent symbol substitutions can complete recorded donor transfers using the existing
   unambiguous-provenance and independent-pair requirements. Imported transfer-origin support remains a gap;
   `repair_mappings.harvest` explicitly restricts this path to ROM projects.
+
+- Windows compiler orphan cleanup after an app crash: add process birth verification and job-object ownership equivalent to the POSIX startup registry. Runtime timeout/tree termination is already supported.

@@ -26,7 +26,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import toolchains
+from .. import compiler, toolchains
 from ..network import NetworkError
 from ..rom.symbols import IDENT
 from . import saves
@@ -287,6 +287,8 @@ class Progress:
         self.local = threading.local()
         self.activity_lock = threading.Lock()
         self.activity: dict[str, dict] = {}
+        self.paused: set[str] = set()
+        self.verification_slot = threading.Semaphore(1)
         self.disk: dict[str, dict[str, str]] = {}
         self.projected: dict[str, dict[str, str]] = {}
         self.checked: dict[str, float] = {}
@@ -621,6 +623,21 @@ class Progress:
                 "elapsed_seconds": int(now - current["started"]),
                 "idle_seconds": int(now - current["updated"])}
 
+    def pause(self, slug: str):
+        with self.activity_lock:
+            self.paused.add(slug)
+        self._activity(slug, phase="Verification paused", paused=True)
+
+    def resume(self, slug: str):
+        with self.activity_lock:
+            self.paused.discard(slug)
+            self.activity.pop(slug, None)
+        self.errors.pop(slug, None)
+
+    def _check_paused(self, slug: str):
+        if slug in self.paused:
+            raise NetworkError("Saved-progress verification is paused. Resume it before changing this project.")
+
     def syncing(self, slug: str) -> bool:
         # Judging and edits also hold the project lock; they are not a saved-progress check.
         return self.status(slug) is not None
@@ -634,7 +651,9 @@ class Progress:
         changed."""
         if self.applying or getattr(self.net.store._local, "in_tx", False):
             return False
-        with self._project_lock(slug):
+        self._check_paused(slug)
+        with self._project_lock(slug), self.verification_slot:
+            self._check_paused(slug)
             self._activity(slug, phase="Reading saved files", done=0, total=None, function=None)
             self.local.busy = True
             try:
@@ -703,7 +722,8 @@ class Progress:
             finally:
                 self.local.busy = False
                 with self.activity_lock:
-                    self.activity.pop(slug, None)
+                    if slug not in self.paused:
+                        self.activity.pop(slug, None)
 
     def _publish_initial(self, slug: str, proj, folder: Path, disk: dict[str, str], dirty: _Dirty,
                          config_key: str) -> bool:
@@ -833,7 +853,10 @@ class Progress:
             def report(line):
                 self._activity(slug, message=line)
                 destination(line)
-            report.check_cancel = getattr(destination, "check_cancel", lambda: None)
+            def check_cancel():
+                self._check_paused(slug)
+                getattr(destination, "check_cancel", lambda: None)()
+            report.check_cancel = check_cancel
             report.progress = lambda **fields: self._activity(slug, **fields)
             getattr(report, "check_cancel", lambda: None)()
             # Captured before any render: the folder's revision is compared with what the database wrote last.
@@ -995,8 +1018,10 @@ class Progress:
                         if row["unit"] and row["unit"] not in units:
                             db.execute("DELETE FROM context_versions WHERE project_id=? AND unit=?",
                                        (pid, row["unit"]))
-                    by_name, _ = saves._apply_context(net, slug, folder, applied_manifest, report,
-                                                     files=applied_files)
+                    with compiler.cancellable(report.check_cancel):
+                        by_name, _ = saves._apply_context(net, slug, folder, applied_manifest, report,
+                                                         files=applied_files)
+                    report.check_cancel()
                     if not saves._publish(folder, pending, removed, expected=disk,
                                           chosen=bool(cfg.get("progress_folder"))):
                         raise _FolderChanged

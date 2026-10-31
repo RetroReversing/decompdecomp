@@ -1471,3 +1471,17 @@ def test_setup_agent_choices_endpoint_returns_installed_clis(app, monkeypatch):
     response = client.get('/api/fork/fix-setup')
     assert response.status_code == 200
     assert response.json() == {'agents': expected}
+
+
+def test_sidebar_reads_saved_snapshot_without_triggering_verification(app, monkeypatch):
+    client, net, _ = app
+    seen = []
+    monkeypatch.setattr(net.progress, 'sync', lambda *args, **kwargs: pytest.fail('UI must not start verification'))
+    def summary(slug):
+        seen.append(net.progress.viewing)
+        return {'slug':slug,'title':slug}
+    monkeypatch.setattr(net, 'summary', summary)
+    with net.store.tx() as db:
+        db.execute("INSERT OR IGNORE INTO projects(slug,name,root,config) VALUES('ui-snapshot','UI','/tmp','{}')")
+    response = client.get('/api/projects')
+    assert response.status_code == 200 and seen and all(seen)
