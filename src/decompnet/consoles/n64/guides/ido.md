@@ -69,3 +69,8 @@ Exact-winning changes respect the project's automatic compiler setting; similari
 remain suggestions. Missing global addresses need relocation evidence before random rewriting. A
 function match can still have a non-contiguous constant-pool export blocker; verify the whole image.
 See `docs/COMPILER_MATCHING_LEARNINGS.md` for the controlled IDO 5.3 regression and neutral reader experiments.
+
+After a source repair
+- Recheck relevant optimization profiles before further mutations: corrected SDK bodies can still need `-O1` or `-O3` instead of `-O2`. Deep search repeats its bounded cached flag preflight after saved local/random improvements; only exact results can apply automatically, respecting automatic-compiler settings.
+- With authorized local source, configure its function mapping and declarations. Deep search tries that typed template before permutations and preserves original line layout. Verify cleanup branches against retail; reference revisions can differ.
+- Equality operand order and unsigned integer product order can affect instruction scheduling. The local repair families try bounded simple-read variants; volatile accesses, calls and floating-point reassociation are excluded.
