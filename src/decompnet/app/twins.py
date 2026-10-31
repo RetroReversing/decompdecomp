@@ -309,7 +309,10 @@ class Twins:
         or a cut changes the functions, as they took 0.7 s on GTA San Andreas every 10 minutes; fork: from the target
         objects, looked at again every 10 minutes and cached in the project's state folder by their modification
         times)."""
-        fork = self.net.fork_slug(proj["slug"])
+        # Indexing already holds the shared index lock. Looking the project up again can
+        # synchronize progress and wait for a project lock whose owner needs this index
+        # to record a restored match. Read the kind from the caller's project snapshot.
+        fork = self.net.cfg(proj).get("kind") == "fork"
         layout = None if fork else self.net._layout_key(proj)
         with self._lock:
             hit = self._prints.get(proj["id"])
