@@ -388,3 +388,16 @@ Evidence: ten new source-assisted live-API matches in a retail MIPS II game, tot
 - The supplied voice-release source cleared a pointer on only one branch, whereas retail clears it after both paths. Source identity is advisory: the ordinary linked-byte judge remains mandatory.
 
 Controlled tests cover claim release/reacquisition, concurrent workers, source-improvement/profile sequencing, source mapping selection, side-effect exclusions and explicit profile-induced match reporting. They do not establish a new automatic match-rate benchmark.
+
+### Captured repair follow-ups: control flow, stores and call types
+
+Same-settings captured matches motivated bounded shared-return-tail, direct compound-store, redundant
+counted-loop-guard and float-bit-argument/prototype hypotheses. Named compiler-runtime casts/modulo also
+get explicit scalar-width candidates. Captures may include other function/declaration edits: a matching
+source pattern alone does not establish the cause. Function-specific and supporting diffs are now separate.
+
+Controlled regression evidence: pinned GCC 2.7.2 KMC, `-O2`, synthetic C controls for compound stores,
+shared return tails and paired float-constant/prototype changes produce the expected extracted function
+bytes. This checks candidate generation/compilation, not a new game match or a measured family success rate.
+The ordinary linked-byte/objdiff judge is still required for every application. Complex lvalues, volatile
+code, conflicting declarations, indirect/variadic call prototypes and unrecognised runtime names are excluded.

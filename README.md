@@ -832,3 +832,23 @@ revision. Failed alternatives do not replace a better starting candidate. Succes
 through the normal judge, and repair examples retain the automatic pass's family and source hashes.
 The pass supports ROM and writable imported projects through the shared local-repair runner; it does
 not change project compiler settings.
+
+### Agent continuation and repair evidence
+
+Claim packets diagnostically check inherited candidates before offering generated experiments. When an
+undeclared name has one consistent declaration in that function's scored history or current context,
+decompdecomp can prepend it candidate-locally and verify the result. Ambiguous types and failed recoveries
+remain explicit blockers; shared headers, saved C and match counts are unchanged. Checks are cached by
+claim/build/source scope; a five-second batch allowance is checked between builds, and active builds retain
+their normal timeout.
+
+Session transcripts now retain structured handoffs with remaining claims, recent scores, recorded notes,
+experiment history and the last exposed reply. A later session receives this as historical data and must
+refresh its candidate/claim state. Credit-required model failures pause with guidance to add credits or
+choose another model.
+
+Repair examples offer target-function, supporting-source and full-source diff views. Pattern candidates
+identify edits reproducible by bounded repair families; supporting declarations can still be essential.
+These hints do not classify, promote or apply examples automatically. Existing isolated replay remains the
+verification path. New hypotheses cover shared return tails, simple compound stores, redundant counted-loop
+guards, candidate-local float argument prototypes/constants, and explicitly named scalar runtime helpers.

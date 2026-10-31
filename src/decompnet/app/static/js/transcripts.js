@@ -117,7 +117,7 @@ $("helperTranscript").onclick = async () => {
       const details = document.createElement("details"), summary = document.createElement("summary");
       const labels = {prompt: "Initial prompt", instructions: "App instructions", tool_definitions: "Tool definitions",
         tool_request: "Tool request", tool_response: "Tool response", api_request: "API request (actual context)",
-        text: "Agent reply", think: "Exposed reasoning", usage: "Reported usage"};
+        handoff: "Session handoff", text: "Agent reply", think: "Exposed reasoning", usage: "Reported usage"};
       details.className = `transcript-event${entry.kind === "error" ? " transcript-event-error" : ""}`;
       details.open = entry.kind === "error" || (entry.kind === "text" && entry.text.length <= 2000);
       const label = document.createElement("span"), time = document.createElement("time"), size = document.createElement("span");
@@ -135,13 +135,24 @@ $("helperTranscript").onclick = async () => {
       const pre = document.createElement("pre"); pre.textContent = entry.text;
       const copy = document.createElement("button"); copy.type = "button"; copy.className = "ghost small-btn transcript-copy"; copy.textContent = "Copy text";
       copy.onclick = async () => { copy.textContent = await copyText(entry.text) ? "Copied" : "Copy failed — try again"; };
-      const response = entry.kind === "tool_response" ? transcriptToolResponse(entry.text) : null;
+      let response = entry.kind === "tool_response" ? transcriptToolResponse(entry.text) : null;
+      if (entry.kind === "handoff") {
+        try {
+          const handoff = JSON.parse(entry.text);
+          const lines = ['Historical continuation facts. Check current candidates and claims.'];
+          for (const fn of handoff.functions || []) {
+            lines.push(`### ${fn.name}`, `Best historical score: ${fn.best_score ?? 'unscored'}`, fn.history || '', ...(fn.notes || []));
+          }
+          if (handoff.last_reply) lines.push('### Last recorded reply', handoff.last_reply);
+          response = transcriptToolResponse(JSON.stringify({name: 'session_handoff', content: lines.join('\n\n')}));
+        } catch { /* Retain raw legacy or incomplete handoff data. */ }
+      }
       const catalog = entry.kind === "tool_definitions" ? transcriptToolCatalog(entry.text) : null;
       if (response) {
         const raw = document.createElement("details"), rawLabel = document.createElement("summary");
         raw.className = "transcript-tool-raw"; rawLabel.textContent = "Raw response (JSON)";
         raw.append(rawLabel, pre); details.append(summary, response.body, raw, copy);
-        label.textContent = `Tool response · ${response.name}`;
+        label.textContent = entry.kind === "handoff" ? "Session handoff" : `Tool response · ${response.name}`;
       } else if (catalog) {
         const raw = document.createElement("details"), rawLabel = document.createElement("summary");
         raw.className = "transcript-tool-raw"; rawLabel.textContent = "Full tool definitions (JSON)";

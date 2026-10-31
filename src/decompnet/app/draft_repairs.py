@@ -31,6 +31,7 @@ from . import (
     mmio_repairs,
     near_match_repairs,
     near_repairs,
+    observed_repairs,
     operand_order_repairs,
     pattern_repairs,
     pointer_cast_repairs,
@@ -45,7 +46,7 @@ from . import (
     structure_return_repairs,
 )
 
-AGENT_FAMILIES = ('arithmetic_operand_order', 'call_forwarded_arguments', 'small_copy', 'typed_record_address', 'one_shot_scope', 'one_shot_unwrap',
+AGENT_FAMILIES = ('runtime_scalar_signature', 'shared_return_tail', 'direct_compound_store', 'redundant_loop_guard', 'float_argument_bits', 'arithmetic_operand_order', 'call_forwarded_arguments', 'small_copy', 'typed_record_address', 'one_shot_scope', 'one_shot_unwrap',
                   'pointer_block_scope', 'array_address_share', 'combined_integer_lifetimes', 'inferred_record_layout',
                   'float_product_intermediate','pointer_chase_reuse','independent_assignment_order',
                   'terminal_early_return','member_store_replay','scalar_global_address','split_mask_stores')
@@ -108,6 +109,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     for text in mmio_repairs.variants(source, name, arch):
         proposals.append(text)
         labels[text] = 'mmio_address'
+    for family, text in observed_repairs.variants(source, name):
+        proposals.append(text)
+        labels[text] = family
     for family, text in near_match_repairs.variants(source, name, asm):
         proposals.append(text)
         labels[text] = family

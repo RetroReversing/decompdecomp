@@ -168,7 +168,7 @@ AUTH_WAIT = 60  # seconds before the first try again, doubling
 # "insufficient_quota", Anthropic: "credit balance is too low", OpenCode: "quota exceeded"): trying again can't help
 # until it's topped up
 _NO_CREDIT = re.compile(r"insufficient[ _](?:balance|credits?|funds|quota)|exceeded your current quota|"
-                        r"credit balance is too low|payment required|out of credits?", re.I)
+                        r"credit balance is too low|payment required|out of credits?|requires usage credits", re.I)
 # and when it's asked too much at once (HTTP 429): it works again in a while
 THROTTLED = re.compile(r"too many requests|rate[ _-]?limit|concurrency limit|\b429\b|overloaded", re.I)
 # and when a subscription's allowance is used up for now (Claude Code: "usage limit reached", "You've hit your
@@ -197,7 +197,7 @@ def no_credit(said: str) -> str | None:
     """The helper's error when its model's provider says the account is out of credit, else None."""
     if not (m := _NO_CREDIT.search(said)):
         return None
-    return (f"the model's provider says the account is out of credit (“{m.group(0)}”): top it up, then "
+    return (f"the model's provider says the account is out of credit (“{m.group(0)}”): top it up or select another available model, then "
             "start the agents again")
 
 
@@ -1208,6 +1208,10 @@ class Manager:
                                       agent.id, began)["n"]
         matches = self.net.store.one("SELECT COUNT(*) AS n FROM events WHERE agent_id=? AND kind='match' AND "
                                      "created_at>=?", agent.id, began)["n"]
+        from .session_handoffs import capture
+        handoff = capture(self.net, agent, s.slug, began, session=row)
+        if s.record:
+            s.record('handoff', handoff)
         u = s.usage
         with self.net.store.tx() as db:
             db.execute("UPDATE helper_sessions SET ended_at=?, outcome=?, usd=?, input_tokens=?, output_tokens=?, "
@@ -1222,7 +1226,8 @@ class Manager:
         s.record = None
 
     def prompt(self, s: Session) -> str:
-        text = self._prompt(s)
+        from .session_handoffs import previous
+        text = self._prompt(s) + previous(self.net, s.id, s.slug)
         # Keep detailed guides on demand; the work prompt already teaches the matching loop.
         ov = self.net.overview(s.slug)  # (only its platform's parts: tools.for_platform)
         text += "\nGuides to load when needed:\n\n" + tools.up_front(

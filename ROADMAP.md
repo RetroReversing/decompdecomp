@@ -1105,3 +1105,10 @@ Wrapper-family discovery on imported projects and non-MIPS targets: **—**. The
 ROM instructions plus resolved MIPS HI16/LO16/JAL relocation pairs. Imported objdiff units do not expose
 that same target representation; an object-format adapter and equivalent relocation checks are needed.
 Cross-project wrapper-family inference and multiple changing globals remain future work.
+
+Transcript follow-ups: inherited-candidate declaration diagnostics/recovery, structured per-helper session
+handoffs, credit-required model failures, target/supporting/full repair diffs and advisory pattern candidates
+are implemented in the shared agent/repair pipeline. New bounded repair families use the existing local,
+draft and deep-permuter paths and ordinary destination judges. Recovery only reuses unambiguous existing
+single-line declarations; missing complex/multiline types still require an agent. Handoffs record exposed
+notes/replies, not hidden reasoning, and never automatically execute suggested next steps.

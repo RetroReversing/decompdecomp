@@ -269,6 +269,8 @@ class RepairFeedback:
                 evidence['previous_diff'] = ''.join(difflib.unified_diff(evidence['previous']['source'].splitlines(True),new.splitlines(True),fromfile='previous.c',tofile='matched.c'))
             evidence['diff'] = ''.join(difflib.unified_diff(old.splitlines(True), new.splitlines(True),
                                                           fromfile='before.c', tofile='matched.c'))
+            from .repair_views import focused
+            evidence.update(focused(old, new, evidence.get('symbol') or evidence['function']))
         return result | {'evidence': evidence}
 
     def review(self, slug, case_id, status, category='', note=None):
