@@ -40,9 +40,11 @@ def import_sources(net, proj, corpus, path: Path, header: Path | None = None):
             source = csource.get(text, name)
             if not source or csource.is_stub(source):
                 continue
-            if name in found and found[name] != source:
+            from .sdk_macros import context as macro_context
+            candidate = macro_context(text, source) + source
+            if name in found and found[name] != candidate:
                 ambiguous.add(name)
-            found[name] = source
+            found[name] = candidate
     compiler = net.twins._compiler_key(net.cfg(proj)['compiler'])
     with net.store.tx() as db:
         db.execute('DELETE FROM sdk_sources WHERE corpus=? AND arch=? AND big_endian=?',
@@ -137,10 +139,12 @@ def run(twins, slug, job):
                 learned = repair_mappings.variant(twins, proj, fn, fn['best_source'])
                 if learned:
                     candidates.insert(0, ('learned-symbols', 'verified donor mappings', learned))
+            from .sdk_hypotheses import hints as library_hints
+            near_names = [hint['name'] for hint in library_hints(net,proj,fn)]
             sdk = net.store.all('SELECT DISTINCT s.* FROM sdk_sources s JOIN sdk_signatures i '
                                 'ON s.corpus=i.corpus AND s.name=i.name AND s.arch=i.arch AND s.big_endian=i.big_endian '
-                                'WHERE i.arch=? AND i.big_endian=? AND (i.fingerprint=? OR s.name=?) AND s.compiler=? ORDER BY s.corpus,s.name',
-                                proj['arch'], proj['big_endian'], fingerprint.key, fn['name'], twins._compiler_key(settings))
+                                'WHERE i.arch=? AND i.big_endian=? AND (i.fingerprint=? OR s.name=? OR s.name IN (SELECT value FROM json_each(?))) AND s.compiler=? ORDER BY s.corpus,s.name',
+                                proj['arch'], proj['big_endian'], fingerprint.key, fn['name'], json.dumps(near_names), twins._compiler_key(settings))
             sdk = [row for row in sdk if allowed(net, proj, row['corpus'])][:3]
             sdk_candidates = []
             for row in sdk:

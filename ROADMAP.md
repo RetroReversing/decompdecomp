@@ -1116,3 +1116,14 @@ are implemented in the shared agent/repair pipeline. New bounded repair families
 draft and deep-permuter paths and ordinary destination judges. Recovery only reuses unambiguous existing
 single-line declarations; missing complex/multiline types still require an agent. Handoffs record exposed
 notes/replies, not hidden reasoning, and never automatically execute suggested next steps.
+
+## Library formatter repair learning
+
+Implemented: approximate local SDK opcode leads, explicitly imported C macro dependencies, bounded
+formatter source-shape combinations, target jump-table case order and historical-baseline warnings.
+Shared C repairs reach ROM and imported-project judges through the existing draft/local/deep paths.
+Library leads are advisory; they cannot rename code or count progress without the normal checks.
+Target-table reading currently supports MIPS ROM assembly with bounded, mapped tables. Other
+processors and imported object-mode table discovery: **—**, require their relocation/table adapters.
+Approximate SDK hints in imported project mode: **—**, require reading the target unit object through
+that mode's existing object-format adapter. Generic C source-shape repairs already reach that mode.

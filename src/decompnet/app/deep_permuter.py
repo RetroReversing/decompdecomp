@@ -23,6 +23,7 @@ from . import (
     search_frontier,
     search_turns,
     stack_padding_repairs,
+    switch_tables,
 )
 from .permute import Permuter, State
 
@@ -239,7 +240,7 @@ class Search(Permuter):
             self.local_seen.add(source)
             rows = source_rows.get(source,[])
             labels = {}
-            choices = draft_repairs.variants(source, fn['name'], proj['arch'], fn['asm'] or '', flags, labels=labels, limit=None, header=header)
+            choices = draft_repairs.variants(source, fn['name'], proj['arch'], fn['asm'] or '', flags, labels=labels, limit=None, header=header, tables=switch_tables.read(self.net,proj,fn))
             stack = stack_padding_repairs.grow(source, fn['name'], proj['arch'], rows)
             for candidate in stack:
                 labels.setdefault(candidate, 'stack_padding')

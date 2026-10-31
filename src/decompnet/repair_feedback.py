@@ -101,6 +101,8 @@ class RepairFeedback:
                             "AND unit IN (?, '') ORDER BY (unit=?) DESC LIMIT 1",
                             (fn['project_id'], context_version, fn['unit'] or '', fn['unit'] or '')).fetchone()
         settings['context_unit'] = header['unit'] if header and settings['mode'] == 'rom' else None
+        from .app.baseline_status import revision as scoring_revision
+        settings['scoring_revision'] = scoring_revision()
         settings['context_sha256'] = hashlib.sha256(header['header'].encode()).hexdigest() if header and settings['mode'] == 'rom' else None
         db.execute('INSERT INTO repair_attempt_settings VALUES(?,?)', (attempt_id, json.dumps(settings)))
 

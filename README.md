@@ -852,3 +852,16 @@ identify edits reproducible by bounded repair families; supporting declarations 
 These hints do not classify, promote or apply examples automatically. Existing isolated replay remains the
 verification path. New hypotheses cover shared return tails, simple compound stores, redundant counted-loop
 guards, candidate-local float argument prototypes/constants, and explicitly named scalar runtime helpers.
+
+### Library leads and historical scores
+
+Local SDK object imports now retain instruction-shape fingerprints. Similar library routines can
+appear as **unverified** leads alongside exact signatures, and explicitly imported local C can be
+tried through the normal compiler and byte judge. Rescan existing SDK folders once to build the
+shape index. Unconditional macro dependencies are retained with imported C; no source is downloaded.
+
+Local repairs, Autopilot and the deep permuter can try bounded formatter source shapes and target
+jump-table case order. Small combinations cover interacting declaration and initialization choices.
+Only a verified destination match counts as progress. In a ROM function's inspector, **Historical
+score · recheck in Diff** indicates changed or missing compiler/header/scoring evidence; Diff shows
+the saved C compiled with the current inputs.

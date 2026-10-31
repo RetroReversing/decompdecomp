@@ -454,3 +454,40 @@ No out-of-line helper is accepted unless the ordinary linked comparison succeeds
 The original draft was rechecked at 6,602, but recovery from that entire draft has **not** been
 established for the new search. Avoid spending repeated agent turns on one comparison at a time:
 try a bounded consistent helper shape across repeated axis/bounds tests before escalating.
+
+### Library formatter structure and interacting local repairs
+
+An 819-instruction MIPS formatter matched using KMC GCC 2.7.2 with
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. The historical best draft needed a prototype
+repair to compile against the current header; its old score was not a valid current baseline.
+A related local formatter and a public KMC implementation supplied structural clues. No library
+source or game data is bundled with the app; library reuse uses explicitly imported local objects/C.
+
+Measured stages included case layout (13,833 → 10,359), separate character/length locals and
+conditional output shape (9,075 → 5,815), a switch-only flag-loop backedge (5,815 → 3,325),
+and duplicated short floating tails (3,325 → 2,035). These stages include multiple changes and
+are not isolated attribution claims. Signed output characters are required; an earlier candidate
+with unsigned output was rejected as a trustworthy baseline even though it scored better.
+
+Controlled replay on a private project/database copy starts from the existing score-176 attempt.
+The bounded declaration/initialization bundle recovered an exact linked verdict on proposal 3 of
+19 generated proposals. This recovers an already-known match; it does not count as a new live match
+or establish a general success rate. A raw instruction score of 100 can still have an exact linked
+verdict because relocation display labels differ: the linked byte judge remains authoritative.
+The successful original source also passed the complete cartridge rebuild before publication.
+
+New shared C hypotheses cover adjacent load/condition assignments, discarded-result conditional
+output macros, switch-only flag loops, short shared tails and unqualified scalar declaration/
+initialization order. Small cross-family bundles retain interacting choices even when an individual
+step scores worse. Switch-order proposals read bounded original jump tables and preserve entire
+fallthrough groups; C declarations at case scope and unsupported labels are rejected. All proposals
+still go through the ordinary compiler and destination byte/objdiff judge.
+
+Library opcode similarity is an advisory lead, never an exact identity or automatic rename. Imported
+local C retains unconditional macro dependencies. Saved-score records now include a scoring-code
+fingerprint; the function inspector explains missing/changed compiler, header and scorer evidence,
+and links to the current Diff measurement. No historical score is silently treated as current.
+
+A separate replay of the new target-table ordering rule improved the earlier score-13,833 draft
+to 12,104 without other edits. It remained unmatched. This is distinct from the larger manually
+adapted case-layout stage above; do not attribute the whole 13,833 → 10,359 improvement to this rule.

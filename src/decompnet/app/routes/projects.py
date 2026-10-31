@@ -351,7 +351,7 @@ def register(app: App) -> None:
     def p_cross_name(slug, request, data):
         old, new = str(data.get("function") or ""), str(data.get("name") or "")
         hints = net.twins.suggestions(slug, old)
-        if not any(h["name"] == new and h["score"] == 1 and h["kind"] != "similar code; unverified"
+        if not any(h["name"] == new and h["score"] == 1 and "unverified" not in h["kind"]
                    for h in hints):
             raise ValueError("that exact SDK or cross-game name is no longer suggested for this function")
         agent, _ = net.local_agent("you")

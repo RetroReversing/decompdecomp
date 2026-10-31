@@ -843,6 +843,8 @@ class Twins:
                 continue
             hints.append({"name": r["name"], "game": r["corpus"], "score": 1.0,
                           "kind": "SDK object signature; name only"})
+        from .sdk_hypotheses import hints as library_hints
+        hints += library_hints(self.net, proj, fn, limit)
         if proj["arch"] != "mips" or len(hints) >= limit:
             return finish(hints)
         rows = self.net.store.all(
@@ -874,6 +876,7 @@ class Twins:
         data = path.read_bytes()
         members = [data] if path.suffix.lower() == ".o" else _ar_members(data)
         signatures = []
+        shapes = []
         for member in members:
             try:
                 from elftools.common.exceptions import ELFError
@@ -884,6 +887,8 @@ class Twins:
                     continue
                 arch_id, order = machine
                 big = int((order or ("little" if elf.little_endian else "big")) == "big")
+                from .sdk_hypotheses import shapes as library_shapes
+                shapes += library_shapes(member, corpus, object_prints(member))
                 signatures += [(corpus, arch_id, big, name, p.key, p.size)
                                for name, p in object_prints(member).items() if p.size >= ACROSS_MIN_BYTES]
             except (ELFError, ValueError, KeyError, OSError):
@@ -891,6 +896,7 @@ class Twins:
         with self.net.store.tx() as db:
             db.executemany("INSERT OR IGNORE INTO sdk_signatures(corpus,arch,big_endian,name,fingerprint,size) "
                            "VALUES(?,?,?,?,?,?)", signatures)
+            db.executemany("INSERT OR REPLACE INTO sdk_shapes VALUES(?,?,?,?,?,?,?)", shapes)
         return len(signatures)
 
     def reuse_names(self, slug: str, job: Job | None = None, *, donor_slug: str | None = None) -> int:

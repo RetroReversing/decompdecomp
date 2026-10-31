@@ -54,3 +54,10 @@ These are bounded hypotheses, always checked by the exact judge. Under known `-g
 `source_lines` tests text-only statement placement that an AST formatter cannot preserve.
 Keep the successful source layout when debug labels affect scheduling. Compiler flags must remain
 those verified for the function; formatting variants do not justify changing the judge or guessing ABI arguments.
+
+For large formatting-library routines, inspect local SDK/library leads before broad permutation.
+Keep character and output-length variables distinct, signed output arguments, macros, fallthrough
+case groups and flag-loop labels. Try `condition_assignment`, `conditional_output`, `switch_flag_loop`,
+`shared_tail_copy`, `target_switch_order` and `formatter_bundle` through local repairs. These are
+bounded hypotheses, not match claims. Recheck a historical best against the current header/compiler;
+only the destination's exact linked verdict accepts C. See docs/COMPILER_MATCHING_LEARNINGS.md.
