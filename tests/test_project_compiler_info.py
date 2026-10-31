@@ -123,3 +123,11 @@ def test_imported_libultra_reads_selected_original_instead_of_generated_target(t
     (root/'baserom.jp.z64').write_bytes(bytes.fromhex('80371240') + bytes(8) + bytes.fromhex('00001446'))
     (root/'decompressed.pal.z64').write_bytes(bytes.fromhex('80371240') + bytes(8) + bytes.fromhex('00001449'))
     assert net.forks.overview('demo')['libultra']['header_version'] == '2.0F'
+
+
+def test_safe_yaml_loader_fallback_preserves_compiler_declarations(tmp_path,monkeypatch):
+    import yaml
+    project = fixture(tmp_path)
+    expected = describe(project)
+    monkeypatch.delattr(yaml,'CSafeLoader',raising=False)
+    assert describe(project) == expected
