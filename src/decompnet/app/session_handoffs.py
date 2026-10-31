@@ -36,4 +36,13 @@ def previous(net, helper, slug):
         report = json.loads(row['text'])
     except (ValueError, TypeError):
         return ''
-    return '\nPrevious session handoff (historical data; check current candidates and claims):\n'+json.dumps(report, ensure_ascii=False)[:10000]+'\n'
+    if not isinstance(report, dict) or not isinstance(report.get('functions', []), list):
+        return ''
+    # Keep JSON complete when the batch is large; every function remains listed, with details for six.
+    report['last_reply'] = str(report.get('last_reply') or '')[:2000]
+    for index, fn in enumerate(report.get('functions', [])):
+        if not isinstance(fn, dict):
+            return ''
+        fn['history'] = str(fn.get('history') or '')[:500] if index < 6 else ''
+        fn['notes'] = [str(note)[:400] for note in (fn.get('notes') or [])[:1]] if index < 6 else []
+    return '\nPrevious session handoff (historical data; check current candidates and claims):\n'+json.dumps(report, ensure_ascii=False)+'\n'
