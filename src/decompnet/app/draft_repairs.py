@@ -23,6 +23,7 @@ from . import (
     float_intermediate_repairs,
     global_store_repairs,
     inferred_layout_repairs,
+    inline_scheduling_repairs,
     integer_lifetime_repairs,
     lifetime_repairs,
     load_pair_repairs,
@@ -47,7 +48,7 @@ from . import (
     structure_return_repairs,
 )
 
-AGENT_FAMILIES = ('runtime_scalar_signature', 'shared_return_tail', 'direct_compound_store', 'redundant_loop_guard', 'float_argument_bits', 'arithmetic_operand_order', 'call_forwarded_arguments', 'small_copy', 'typed_record_address', 'one_shot_scope', 'one_shot_unwrap',
+AGENT_FAMILIES = inline_scheduling_repairs.FAMILIES + ('runtime_scalar_signature', 'shared_return_tail', 'direct_compound_store', 'redundant_loop_guard', 'float_argument_bits', 'arithmetic_operand_order', 'call_forwarded_arguments', 'small_copy', 'typed_record_address', 'one_shot_scope', 'one_shot_unwrap',
                   'pointer_block_scope', 'array_address_share', 'combined_integer_lifetimes', 'inferred_record_layout',
                   'float_product_intermediate','pointer_chase_reuse','independent_assignment_order',
                   'terminal_early_return','member_store_replay','scalar_global_address','split_mask_stores')
@@ -166,6 +167,10 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
         if refined and refined != plain:
             proposals.append(seeds.M2C_MACROS + refined)
             labels[proposals[-1]] = 'm2c_refinement'
+    if arch == "mips":
+        for family, text in inline_scheduling_repairs.variants(source, name):
+            proposals.append(text)
+            labels[text] = family
     for family, text in scheduling_repairs.variants(source, name):
         proposals.append(text)
         labels[text] = family
