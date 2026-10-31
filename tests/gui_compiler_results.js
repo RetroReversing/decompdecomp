@@ -31,3 +31,10 @@ assert.match(get("fnCompilerRanked").innerHTML, /data-compiler-choice="2" disabl
   await get("fnCompilerRanked").onclick({ target: { closest: () => ({ dataset: { compilerChoice: "0" } }) } });
   assert.equal(requests.length, 1);
 })().catch(e => { console.error(e); process.exitCode = 1; });
+const defaults = ctx.compilerRankedTable([
+  {toolchain:'alternate',flags:['-O1'],exact:true,percent:100},
+  {toolchain:'default',flags:['-O2'],exact:true,percent:100,default:true},
+],true);
+assert.ok(defaults.indexOf('data-compiler-choice="1"') < defaults.indexOf('data-compiler-choice="0"'));
+assert.match(defaults, /Default/);
+assert.match(defaults, /Use default/);

@@ -285,6 +285,8 @@ class GuiMixin:
             "insns": fn["n_insns"], "status": fn["status"], "best": fn["best_score"], **set_aside(fn),
             "deep_pass": deep_pass,
             "compiler_test": self.compiler_test_result(proj, fn),
+            "compiler_profile": compiler_for(self.cfg(proj), fn["vram"]),
+            "default_compiler": self.cfg(proj)["compiler"],
             "asm": self._asm_text(fn, proj),
             "source": fn["matched_source"] or fn["best_source"] or (latest["source"] if latest else None) or fn["seed"],
             "source_kind": "matched" if fn["matched_source"] else "best" if fn["best_source"] else

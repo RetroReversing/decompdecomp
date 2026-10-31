@@ -191,3 +191,26 @@ def test_cleanup_skips_shared_overlay_addresses(cleanup_net, monkeypatch):
     out = compiler_cleanup.cleanup(n, 'demo', log=lambda _: None)
     assert out['skipped'] == 2 and out['changed'] == []
     assert n.project_row('demo')['config'] == before
+
+
+def test_matched_function_cannot_apply_partial_profile_even_with_override(net, monkeypatch):
+    before = net.project_row('demo')['config']
+    monkeypatch.setattr(net, '_judge_with', lambda *a: (False, SimpleNamespace(score=1), ''))
+    with pytest.raises(NetworkError, match='byte for byte'):
+        net.apply_function_compiler('demo', 'f0', 'ido-5.3', ['-O1'], allow_non_improving=True)
+    assert net.project_row('demo')['config'] == before
+    assert net._function('f0', 'demo')['status'] == 'matched'
+
+
+def test_matched_function_can_return_to_verified_default_without_reopening(cleanup_net, monkeypatch):
+    n = cleanup_net
+    before = n._function('f0', 'demo')['matched_source']
+    monkeypatch.setattr(n, '_judge_with', lambda *a: (True, SimpleNamespace(score=0), ''))
+    monkeypatch.setattr(n, 'regression_test', lambda *a, **k: [])
+    n.apply_function_compiler('demo', 'f0', 'ido-5.3', ['-O2'])
+    fn = n._function('f0', 'demo')
+    assert fn['status'] == 'matched' and fn['matched_source'] == before
+    from decompnet.project import compiler_for
+    cfg = n.cfg(n.project_row('demo'))
+    assert compiler_for(cfg, fn['vram'])['flags'] == ['-O2']
+    assert compiler_for(cfg, 0x80001010)['flags'] == ['-O1']
