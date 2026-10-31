@@ -38,3 +38,7 @@ const defaults = ctx.compilerRankedTable([
 assert.ok(defaults.indexOf('data-compiler-choice="1"') < defaults.indexOf('data-compiler-choice="0"'));
 assert.match(defaults, /Default/);
 assert.match(defaults, /Use default/);
+
+const selected = ctx.compilerRankedTable([{toolchain:'active',flags:['-O2'],exact:true,percent:100,selected:true,apply_disabled:true}],true);
+assert.match(selected, /Currently selected/);
+assert.match(selected, /disabled>Selected/);

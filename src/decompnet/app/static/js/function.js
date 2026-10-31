@@ -142,7 +142,7 @@ async function refreshFn(first) {
         : "Not tested yet. Bulk tests in Settings skip functions with completed, up-to-date comparisons.";
       const buttonLabel = history ? "Run compiler test again" : "Test installed compilers & flags";
       $("fnTestCompilers").textContent = buttonLabel;
-      const key = `${slug}:${d.name}:${history?.completed_at || 0}:${history?.stale}`;
+      const key = `${slug}:${d.name}:${history?.completed_at || 0}:${history?.stale}:${JSON.stringify(d.compiler_profile)}`;
       if (history && $("fnCompilerRanked").dataset.history !== key) {
         renderFunctionCompilerComparison({...history.comparison, stale: history.stale}, slug, d.name);
         $("fnCompilerRanked").dataset.history = key;
@@ -499,18 +499,23 @@ function renderKnownCompilerProfiles(d) {
   const rows = d.compiler_test && !d.compiler_test.stale ? (d.compiler_test.comparison.ranked || []).filter(r => r.exact).map(r => ({...r})) : [];
   const same = (a, b) => a && b && a.toolchain === b.toolchain && JSON.stringify(a.flags) === JSON.stringify(b.flags);
   if (d.status === "matched" && current && !rows.some(r => same(r, current))) rows.push({...current, exact:true, percent:100, current:true});
-  rows.forEach(r => { r.default = same(r, defaultProfile); });
   if (defaultProfile && !rows.some(r => r.default)) {
     const tested = d.compiler_test && !d.compiler_test.stale ? d.compiler_test.comparison.ranked.find(r => same(r, defaultProfile)) : null;
     rows.push({...defaultProfile, ...(tested || {}), default:true, percent:tested?.percent ?? null, untested:!tested});
   }
+  rows.forEach(r => { r.default = same(r, defaultProfile); r.selected = same(r, current); });
+  setHtml($("fnCurrentCompiler"), current ? `<p><b>Currently selected:</b> ${esc(current.toolchain)}<code class="compiler-arguments">${esc(current.flags.join(" "))}</code></p>` : "");
   setHtml($("fnCompilerMatches"), compilerRankedTable(rows));
 }
 function renderFunctionCompilerComparison(c, slug, name) {
   const summary = $("fnCompilerSummary"), table = $("fnCompilerRanked");
   $("fnApplyCompiler").hidden = true;
   const matched = S.fnDetail?.status === "matched";
-  const ranked = (c?.ranked || []).map(r => ({...r, apply_disabled: c?.stale || (matched && (!r.exact || r.current))}));
+  const current = S.fnDetail?.compiler_profile;
+  const ranked = (c?.ranked || []).map(r => {
+    const selected = !!current && r.toolchain === current.toolchain && JSON.stringify(r.flags) === JSON.stringify(current.flags);
+    return {...r, selected, apply_disabled: c?.stale || selected || (matched && !r.exact)};
+  });
   setHtml(table, compilerRankedTable(ranked, true));
   summary.hidden = false;
   if (!c || c.best == null) summary.textContent = "No usable compiled results. See comparison details for errors.";
