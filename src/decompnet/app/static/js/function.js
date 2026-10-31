@@ -139,6 +139,20 @@ async function refreshFn(first) {
       ? `Name inferred from ${d.naming.source_project} · exact code match`
       : d.renamed ? `Renamed from ${d.naming.original_name}` : d.named ? "Named function" : "Generated name";
     fnBadge(d);
+    const verificationPanel = $("fnVerification");
+    if (verificationPanel) {
+      const bundle = d.verification;
+      verificationPanel.hidden = !bundle;
+      if (bundle) {
+        $("fnVerificationStatus").textContent = `Exact attempt recorded ${new Date(bundle.recorded_at * 1000).toLocaleString()}. ${bundle.changed_inputs.length ? `Inputs changed: ${bundle.changed_inputs.join(", ")}. Recheck before accepting progress.` : "Recorded inputs agree with this project."} ${bundle.note}`;
+        $("fnVerificationDownload").onclick = () => {
+          const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], {type:"application/json"}));
+          const link = document.createElement("a"); link.href = url; link.download = `${d.name}-verification.json`; link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        };
+      }
+    }
+
     $("fnDeepPanel").hidden = !deepPermuterBusy && (d.status !== "open" || d.best == null);
     const pass = d.deep_pass || {};
     $("fnDeepHistory").textContent = pass.completed ? `Deep pass completed · ${pass.minutes} min / ${Number(pass.max_variants).toLocaleString()} variants budget` : pass.stale ? "Previous pass saved; inputs changed, so this function is eligible again." : pass.state === "error" ? `Deep pass needs attention: ${pass.error}` : `Deep pass: ${pass.state || "not tried"}`;
@@ -346,6 +360,10 @@ function renderDiff(d) {
   const label = { matched: "Matching C", best: "Best attempt", latest: S.ov.kind === "fork" ? "The source now" : "Latest attempt" }[d.kind] || "Attempt";
   sum.innerHTML = `<b>${label}</b> · ${d.percent === 100 && d.score === 0 ? `<span class="ok">byte-identical</span>` : `${d.percent}%${d.score != null ? ` · score ${d.score}` : ""}`} · ${same} of ${target} instructions identical
     <span class="diff-key"><i class="k arg"></i>operands <i class="k repl"></i>different <i class="k mov"></i>moved</span>`;
+  if (d.stack_diagnostic) {
+    const diagnostic = document.createElement("p"); diagnostic.className = "small muted";
+    diagnostic.textContent = d.stack_diagnostic; probs.append(diagnostic);
+  }
   const html = [];
   let t = 0, run = [];
   const rowHtml = (r) => {

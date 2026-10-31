@@ -29,3 +29,28 @@ def frame_growth(rows):
         if not a or not b or a[1] != b[1] or int(a[2], 0)-int(b[2], 0) != delta:
             return None
     return delta
+
+
+def layout(rows):
+    """Separate frame, prologue/epilogue saves and other stack operands; never infer object sizes."""
+    frame = re.compile(r'addiu\s+\$sp,\s*\$sp,\s*(-?0x[0-9a-fA-F]+|-?\d+)$')
+    slot = re.compile(r'(\w+)\s+(\$\w+),\s*(-?0x[0-9a-fA-F]+|-?\d+)\(\$sp\)$')
+    target_frame = candidate_frame = None
+    saves, locals_ = [], []
+    target_count = sum(bool(row[1]) for row in rows)
+    index = 0
+    for _, target, candidate in rows:
+        a, b = frame.fullmatch(target), frame.fullmatch(candidate)
+        if a and b and int(a[1], 0) < 0 and int(b[1], 0) < 0:
+            target_frame, candidate_frame = -int(a[1], 0), -int(b[1], 0)
+        a, b = slot.fullmatch(target), slot.fullmatch(candidate)
+        if a and b and (a[1], a[2]) == (b[1], b[2]):
+            delta = int(a[3], 0)-int(b[3], 0)
+            saved = a[2] in {'$ra', '$fp', '$s8', '$gp', *('$s'+str(n) for n in range(8))}
+            record = {'register': a[2], 'target': int(a[3], 0), 'candidate': int(b[3], 0), 'delta': delta}
+            (saves if saved and (index < 32 or index >= target_count-32) else locals_).append(record)
+        index += bool(target)
+    return {'target_frame': target_frame, 'candidate_frame': candidate_frame,
+            'frame_delta': target_frame-candidate_frame if target_frame is not None and candidate_frame is not None else None,
+            'saved_slots': saves, 'local_operands': locals_,
+            'saved_deltas': sorted({r['delta'] for r in saves}), 'local_deltas': sorted({r['delta'] for r in locals_})}
