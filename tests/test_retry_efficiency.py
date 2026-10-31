@@ -84,6 +84,7 @@ def test_local_trial_misses_survive_new_claims_and_unrelated_edits(tmp_path,monk
     net.claim_row(a,'game','f');fn=net._function('f','game');seen=[]
     net._record(fn,a,10,source,1)
     monkeypatch.setattr('decompnet.app.agent_evidence.baseline',lambda *args:None)
+    monkeypatch.setattr('decompnet.app.agent_evidence.preflight',lambda *args:None)
     def compile(agent,function,text,slug):
         seen.append(text);net._record(fn,agent,20,text,1);return 'score 20'
     monkeypatch.setattr(net,'compile_and_diff',compile)

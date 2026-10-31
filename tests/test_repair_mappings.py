@@ -128,3 +128,38 @@ def test_learned_candidates_can_chain_existing_address_repairs(pair, monkeypatch
     monkeypatch.setattr(pair,'try_quietly',judge)
     assert free_candidates.run(pair.twins,'destination',Job()) == 1
     assert calls[0]=='learned' and 'combined' in calls
+
+
+def test_verified_agent_symbol_substitution_completes_recorded_transfer(pair):
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET matched_source='extern int D_80002000; int old(void){return D_80002000;}' WHERE id=1")
+        db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,source_function_id,outcome,created_at) VALUES(2,2,1,1,'miss',0)")
+    a,b=rows(pair)
+    seed='extern int D_80002000; int new(void){return D_80002000;}'
+    result=seed.replace('D_80002000','D_80003000')
+    rm.remember(pair,a,b,seed,{'old':'new','D_80002000':'D_80002000'})
+    agent,_=pair.local_agent('solver')
+    pair._record(b,agent,20,seed,1)
+    pair._record(b,agent,0,result,1,matched=True)
+    rm.harvest(pair.twins,pair._project('destination'),b['id'])
+    assert len(rm.origins(pair,rows(pair)[1],result))==1
+    assert len(rm.pairs(pair,pair._project('destination'),pair._project('source')))==1
+    bindings=json.loads(rm.origins(pair,rows(pair)[1],result)[0][0]['names'])
+    assert bindings['D_80002000']=='D_80003000'
+    # One pair still does not establish a generally reusable data mapping.
+    assert 'D_80002000' not in sm.regional_names(pair.twins,pair._project('destination'),pair._project('source'))
+
+
+def test_agent_mapping_harvest_rejects_literal_edits_or_comments_as_provenance(pair):
+    a,b=rows(pair)
+    seed='extern int D_80002000; int new(void){return D_80002000 + 1;}'
+    changed=seed.replace('D_80002000','D_80003000').replace('+ 1','+ 2')
+    rm.remember(pair,a,b,seed,{})
+    with pair.store.tx() as db:
+        db.execute("INSERT INTO cross_game_attempts(project_id,function_id,source_project_id,source_function_id,outcome,created_at) VALUES(2,2,1,1,'miss',0)")
+    agent,_=pair.local_agent('solver');pair._record(b,agent,20,seed,1)
+    pair._record(b,agent,0,changed,1,matched=True)
+    rm.harvest(pair.twins,pair._project('destination'),b['id'])
+    assert not rm.pairs(pair,pair._project('destination'),pair._project('source'))
+    assert not rm.symbol_only_change(seed,changed)
+    assert rm.symbol_only_change(seed,seed.replace('D_80002000','D_80003000'))

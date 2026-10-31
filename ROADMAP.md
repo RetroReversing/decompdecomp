@@ -1028,3 +1028,14 @@ Project overview reads query SDK signatures by the game’s indexed fingerprints
 - Done: local, guarded triage of untouched repair examples, duplicate grouping and preserved manual reviews.
 - Planned: broader real-game replay to establish whether inferred records or adaptive priorities yield
   more exact matches; the initial near-miss sample found no new matches from inferred records.
+
+### Agent transcript efficiency
+
+- Done: scoped diagnostic baseline preflight for generated agent batches, shared copy/scope/layout repair
+  availability and adaptive priorities in ROM and supported imported-project callers. Explicit patches
+  remain an escape path for correcting broken C; they still use the ordinary judge.
+- Done: compact project-range summaries, normal-lease-preserving suppression of unchanged claim packets,
+  explicit reasons for single-function batch fallbacks, and bounded retries for invalid authorization grants.
+- Done: verified ROM agent symbol substitutions can complete recorded donor transfers using the existing
+  unambiguous-provenance and independent-pair requirements. Imported transfer-origin support remains a gap;
+  `repair_mappings.harvest` explicitly restricts this path to ROM projects.

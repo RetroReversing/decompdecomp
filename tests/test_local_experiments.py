@@ -20,6 +20,8 @@ def test_applicable_families_one_snapshot_and_budget(tmp_path,monkeypatch,mode):
     def compile(agent,function,text,slug):
         seen.append(text);net._record(fn,agent,20,text,1);return 'score 20'
     monkeypatch.setattr(net,'compile_and_diff',compile)
+    # This test substitutes the judge; baseline/build diagnostics have separate mode-specific coverage.
+    monkeypatch.setattr('decompnet.app.agent_evidence.preflight',lambda *args:None)
     _,rev=agent_tokens.candidate(net,a,'game','f')
     args={'function':'f','revision':rev,'families':['signedness','declaration_order'],'max_trials':2}
     result=tools.call(net,a,'game','try_local_repairs',args)

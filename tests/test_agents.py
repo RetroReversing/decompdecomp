@@ -1275,3 +1275,17 @@ def test_paused_unchanged_queue_waits_without_starting_paid_session(tmp_path,mon
     monkeypatch.setattr(m,'_run_cli',lambda *args:pytest.fail('No provider call while all candidates are paused'))
     m._run(s)
     assert waits and 'paused' in waits[0] and s.runs==0
+
+
+def test_invalid_kimi_authorization_grant_uses_bounded_signin_retries(tmp_path,monkeypatch):
+    _no_agent_settings(monkeypatch)
+    net=_game(tmp_path);manager=agents.Manager(net,tmp_path,URL)
+    session=manager._record('game','kimi','kimi-1','kimi-1',{})
+    session.stop=Quick()
+    message='The provided authorization grant is invalid'
+    script=f'import sys; print({message!r},file=sys.stderr,flush=True); sys.exit(1)'
+    monkeypatch.setattr(manager,'_command',lambda *a:([sys.executable,'-c',script],dict(os.environ),''))
+    manager._run(session)
+    assert session.state=='paused' and 'sign in again' in session.why
+    assert session.runs==agents.AUTH_RETRIES
+    assert message in session.why
