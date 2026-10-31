@@ -265,7 +265,8 @@ def attempt(permuter, proj, fn, source, header, agent, fork):
     expected = inputs(net, proj, fn)
     result = net._compile(proj, header, source, fn)
     if not result.ok:
-        raise NetworkError('Prepared C did not compile: ' + str(result.log)[-1200:])
+        from .preparation_diagnostics import compile_error
+        raise NetworkError('Prepared C did not compile: ' + compile_error(net, fn, result.log))
     from ..rom.export import _single_definition
     if net.is_rom(proj) and not _single_definition(result.obj, fn['name']):
         raise NetworkError('Prepared declarations emitted extra function bodies. Supply a declarations-only header.')
@@ -312,6 +313,7 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                 continue
             st.holding(fn['name'], True)
             cache_key = None
+            improved_source = False
             try:
                 fresh = net.project_row(proj['slug'])
                 fn = net.store.one('SELECT * FROM functions WHERE id=?', fn['id'])
@@ -348,6 +350,7 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                                                (fn['id'], cache_key, 'error', str(exc)[:1200]))
                             continue
                     if score is not None and (fn['best_score'] is None or score < fn['best_score']):
+                        improved_source = True
                         report['improved'] += 1
                         st.add(improved=1)
                         if score == 0:
@@ -368,9 +371,30 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
             finally:
                 st.holding(fn['name'], False)
                 permuter._let_go(agent, fn)
+            if improved_source and not fork and hasattr(net, '_comparison_digest'):
+                followup(net, proj, fn, st, report, log_line, budget, deadline)
     except (NetworkError, OSError, ValueError) as exc:
         report['errors'].append(str(exc))
         log_line(str(exc))
     for message in report['errors']:
         log.info('permuter preparation: %s', message)
     return report
+
+
+def followup(net, proj, fn, st, report, log_line, budget, deadline):
+    """New prepared context deserves bounded flags before another source mutation; no claim is held here."""
+    from .matching_preflight import run as profiles
+    remaining=budget-report['tested']
+    if remaining<=0 or st.stop.is_set() or time.monotonic()>=deadline:return
+    fresh=net.project_row(proj['slug'])
+    current=net._function(fn['name'],proj['slug'])
+    if current['status']!='open':return
+    before=current['best_score']
+    result=profiles(net,fresh,current,log_line,
+                    lambda:not st.stop.is_set() and time.monotonic()<deadline,
+                    max_profiles=min(2,remaining))
+    report['tested']+=result['tested'];st.add(variants=result['tested'])
+    after=net._function(fn['name'],proj['slug'])
+    if before is not None and after['best_score'] is not None and after['best_score']<before:
+        report['improved']+=1;st.add(improved=1)
+        if after['status']=='matched':report['matched']+=1;st.add(matched=1)

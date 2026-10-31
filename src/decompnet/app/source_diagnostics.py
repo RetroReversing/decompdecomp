@@ -11,7 +11,8 @@ def hints(source, name, asm='', arch='', rows=None):
     clean = _blank(source)
     body = clean[span[0]:span[1]]
     from .helper_call_diagnostics import suggestions
-    result = suggestions(rows)
+    from .preparation_diagnostics import allocations
+    result = suggestions(rows) + allocations(source, rows)
     original=source[span[0]:span[1]]
     if all(re.search(r"case\s+'"+code+r"'\s*:",original) for code in ('s','f','c')):
         result.append('This resembles a formatting-library routine. Check local SDK/library leads before a broad search. '
