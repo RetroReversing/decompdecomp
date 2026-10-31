@@ -194,7 +194,24 @@ function markPlatforms() {
 }
 
 function renderHeader(ov) {
-  $("progressSyncNotice").hidden = !ov.progress_syncing;
+  const sync = ov.progress_sync;
+  $("progressSyncNotice").hidden = !sync;
+  if (sync) {
+    const counted = Number.isFinite(sync.total) && sync.total > 0;
+    $("progressSyncText").textContent = `${sync.phase}${counted ? ` · ${sync.done.toLocaleString()} / ${sync.total.toLocaleString()} functions (${Math.floor(100 * sync.done / sync.total)}%)` : ""}`;
+    $("progressSyncDetails").textContent = [sync.function ? `Checking ${sync.function}` : sync.message,
+      `${sync.elapsed_seconds}s elapsed`, sync.matched != null ? `${sync.matched} matches confirmed · ${sync.lost} no longer match` : null,
+      sync.idle_seconds >= 30 ? `No step completed for ${sync.idle_seconds}s; the current operation may still be running.` : null].filter(Boolean).join(" · ");
+    const bar = $("progressSyncBar");
+    bar.classList.toggle("determinate", counted);
+    bar.firstElementChild.style.width = counted ? `${100 * sync.done / sync.total}%` : "";
+    if (counted) {
+      bar.setAttribute("aria-valuenow", sync.done);
+      bar.setAttribute("aria-valuemax", sync.total);
+    } else {
+      bar.removeAttribute("aria-valuenow"); bar.removeAttribute("aria-valuemax");
+    }
+  }
   const fork = ov.kind === "fork";
   const chips = [`<span class="plat">${esc(ov.platform_name || "?")}</span>`];
   if (platformStatus(ov.platform) === "beta") chips.push(`<span class="chip-s beta" title="This platform works and needs more games tried on it: tell us how it goes">beta</span>`);

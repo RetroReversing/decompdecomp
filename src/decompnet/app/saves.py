@@ -740,7 +740,10 @@ def _judge_saved(net, slug: str, folder: Path, manifest: dict, by_name: dict, sa
         by_vram.setdefault(row["vram"], []).append(name)
     matched, lost, best = 0, [], 0
     log(f"judging {len(saved)} saved functions again")
-    for old_name, info in saved.items():
+    update = getattr(log, "progress", lambda **fields: None)
+    for index, (old_name, info) in enumerate(saved.items()):
+        update(phase="Verifying saved functions" if judge_code else "Reading saved function records",
+               done=index, total=len(saved), function=old_name, matched=matched, best=best, lost=len(lost))
         check_cancel()
         log(f"checking {old_name}")
         kind = "src" if "matched_by" in info else "best"
@@ -795,6 +798,7 @@ def _judge_saved(net, slug: str, folder: Path, manifest: dict, by_name: dict, sa
                 lost.append(name)
         else:
             best += 1
+    update(done=len(saved), total=len(saved), function=None, matched=matched, best=best, lost=len(lost))
     log(f"restored: {matched} matched functions, {best} best attempts" + (f"; {len(lost)} no longer match" if lost else ""))
     return {"matched": matched, "best": best, "lost": lost}
 
