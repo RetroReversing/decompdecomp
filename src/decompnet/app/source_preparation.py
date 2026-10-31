@@ -201,6 +201,8 @@ def prepare(reader, cfg, mapping, aliases, fallback):
         for match in reversed(list(re.finditer(r'\bstatic\b', clean[:name_at]))):
             body = body[:match.start()] + ' ' * len(match[0]) + body[match.end():]
     source = f'#line {original[:span[0]].count(chr(10)) + 1} "reference.c"\n' + rename(body, aliases)
+    from .source_type_context import referenced
+    header += '\n' + referenced(original, body, header)
     selected = []
     used=set(re.findall(_IDENT,source))
     # Follow only macros reached by this candidate, rather than pulling every header global in.

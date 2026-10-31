@@ -1116,3 +1116,7 @@ are implemented in the shared agent/repair pipeline. New bounded repair families
 draft and deep-permuter paths and ordinary destination judges. Recovery only reuses unambiguous existing
 single-line declarations; missing complex/multiline types still require an agent. Handoffs record exposed
 notes/replies, not hidden reasoning, and never automatically execute suggested next steps.
+
+- Done: local source preparation retains referenced mapped-file typedefs/macros; ROM preflight prioritizes bounded
+  same-toolchain neighbour profiles; helper-only diffs explain target-call mappings without mutating symbols.
+  Imported projects retain their own build headers/settings; no neighbour-profile override is applied to them.
