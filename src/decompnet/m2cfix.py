@@ -58,9 +58,10 @@ def _closing(text: str, start: int) -> int:
     return i
 
 
-def expand_macros(source: str) -> str:
+def expand_macros(source: str, header: str = '') -> str:
     """`source` with m2c's macros written out as plain C, so decomp-permuter's parser can read it. The macro block
     itself goes (its types are the project header's, spelled the same)."""
+    source = _field_macros(source, header)
     while (i := source.rfind("M2C_FIELD(")) >= 0:  # the innermost last, so an argument is plain by then
         start = i + len("M2C_FIELD(")
         end = _closing(source, start)
@@ -73,6 +74,45 @@ def expand_macros(source: str) -> str:
     for macro, plain in (("M2C_UNK8", "s8"), ("M2C_UNK16", "s16"), ("M2C_UNK32", "s32"), ("M2C_UNK", "s32")):
         source = source.replace(macro, plain)
     return re.sub(r"M2C_ERROR\([^)]*\)", "0", source)
+
+
+def _field_macros(source: str, header: str) -> str:
+    """Expand only a declared byte-field F macro, never an unrelated function with that name."""
+    from .forks.csource import _blank
+    if re.search(r'^\s*#\s*undef\s+F\b', header+'\n'+source, re.M):
+        return source
+    pattern = r'^\s*#\s*define\s+F\(\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*\)\s+([^\n]+)'
+    definitions = list(re.finditer(pattern, source, re.M)) or list(re.finditer(pattern, header, re.M))
+    if len(definitions) != 1:
+        return source
+    definition = definitions[0]
+    parameters = dict(zip(definition.groups()[:3], ('P', 'T', 'O')))
+    if len(parameters) != 3:
+        return source
+    body = re.sub(r'\b\w+\b', lambda m: parameters.get(m[0],m[0]), definition[4])
+    body = re.sub(r'\s+', '', body)
+    byte_type = next((byte for byte in ('u8','char','unsigned char')
+                      if body==f'(*(T*)(({byte.replace(" ","")}*)(P)+(O)))'), None)
+    if byte_type is None:
+        return source
+    # Recompute opaque spans after each innermost edit. Directives, comments and literals stay intact.
+    for _ in range(256):
+        clean = _blank(source)
+        clean = re.sub(r'^[ \t]*#[^\n]*', lambda m: ' '*len(m[0]), clean, flags=re.M)
+        hits = list(re.finditer(r'\bF\s*\(', clean))
+        if not hits:
+            break
+        hit = hits[-1]
+        start = hit.end()
+        end = _closing(clean, start)
+        if end > len(clean) or clean[end-1:end] != ')':
+            break
+        args = [a.strip() for a in _split_top_level(source[start:end-1])]
+        if len(args) != 3 or not re.fullmatch(r'(?:const\s+)?(?:[A-Za-z_]\w*(?:\s+[A-Za-z_]\w*)*)(?:\s*\*)*', args[1]):
+            break
+        base, ctype, offset = args
+        source = source[:hit.start()]+f'(*({ctype} *)(({byte_type} *)({base}) + ({offset})))'+source[end:]
+    return source
 
 
 def argument_registers_written(asm: str) -> set[int] | None:

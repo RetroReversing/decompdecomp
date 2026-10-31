@@ -1287,8 +1287,12 @@ class Manager:
                         await client.initialize()
                         tools = await client.list_tools()
                         names = {tool.name for tool in tools.tools}
-                        if not {"claim_function", "compile_and_diff", "release_function"} <= names:
+                        if not {"project_info", "claim_function", "compile_and_diff", "release_function"} <= names:
                             raise ValueError("The decomp MCP server did not expose the required tools.")
+                        # tools/list can succeed even when per-call helper/project authentication fails.
+                        result = await client.call_tool('project_info', {'detail': False})
+                        if result.is_error:
+                            raise ValueError('The authenticated project_info call failed.')
         try:
             self.net.authenticate(token)
             asyncio.run(asyncio.wait_for(check(), timeout=15))

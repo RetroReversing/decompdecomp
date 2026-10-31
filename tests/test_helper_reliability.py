@@ -10,8 +10,8 @@ from decompnet.app.agents import Fatal, Manager
 from decompnet.app.engine import RomNetwork
 
 
-@pytest.mark.parametrize('missing', [False, True])
-def test_mcp_preflight_checks_actual_advertised_tools(monkeypatch, missing):
+@pytest.mark.parametrize('missing,denied', [(False,False), (True,False), (False,True)])
+def test_mcp_preflight_checks_actual_advertised_tools(monkeypatch, missing, denied):
     import mcp
     import mcp.client.streamable_http as transport
     import mcp.shared._httpx_utils as http
@@ -35,7 +35,10 @@ def test_mcp_preflight_checks_actual_advertised_tools(monkeypatch, missing):
         async def initialize(self): seen.append('initialize')
         async def list_tools(self):
             return SimpleNamespace(tools=[SimpleNamespace(name=n) for n in
-                (['claim_function'] if missing else ['claim_function', 'compile_and_diff', 'release_function'])])
+                (['claim_function'] if missing else ['project_info','claim_function', 'compile_and_diff', 'release_function'])])
+        async def call_tool(self, name, arguments):
+            seen.append((name,arguments))
+            return SimpleNamespace(is_error=denied)
 
     monkeypatch.setattr(http, 'create_mcp_http_client', client)
     monkeypatch.setattr(transport, 'streamable_http_client', stream)
@@ -43,11 +46,12 @@ def test_mcp_preflight_checks_actual_advertised_tools(monkeypatch, missing):
     manager = Manager.__new__(Manager)
     manager.net = SimpleNamespace(authenticate=lambda token: seen.append('authenticated'))
     manager.mcp_url = 'http://127.0.0.1:1234/mcp'
-    if missing:
+    if missing or denied:
         with pytest.raises(Fatal, match='No model request'):
             manager._preflight_tools('test-token')
     else:
         manager._preflight_tools('test-token')
+        assert ('project_info', {'detail':False}) in seen
     assert seen[0] == 'authenticated'
     assert seen[1]['headers'] == {'Authorization': 'Bearer test-token'}
     assert 'initialize' in seen
@@ -119,7 +123,13 @@ def test_preflight_against_real_isolated_app(tmp_path, monkeypatch):
                 time.sleep(.02)
             assert server.started
             _, token = net.local_agent('test-helper')
+            monkeypatch.setattr(manager, 'project_of', lambda agent: 'game')
+            from decompnet.app import tools
+            monkeypatch.setitem(tools.HANDLERS, 'project_info', lambda *args, **kwargs: 'Connected to test project')
             manager._preflight_tools(token)
+            monkeypatch.setattr(manager, 'project_of', lambda agent: None)
+            with pytest.raises(Fatal, match='No model request'):
+                manager._preflight_tools(token)
             with pytest.raises(Fatal, match='No model request'):
                 manager._preflight_tools('invalid')
         finally:
