@@ -41,3 +41,14 @@ def test_adaptive_family_order_interleaves_original_exploration(monkeypatch):
     proj, fn = net.project_row('game'), net.function()
     monkeypatch.setattr(policy, 'factors', lambda *a: {'useful':4,'bad':0.25})
     assert policy.order(net, proj, fn, [], ['bad','unknown','useful']) == ['useful','bad','unknown']
+
+
+def test_metrics_audit_records_origin_and_collection_window_without_merging_legacy_rates():
+    net = FakeNet()
+    policy.record(net,'profile','call','call_arity',20,10,5,origin='deep permuter')
+    report = policy.coverage(net)
+    assert report['policy']['attempted'] == 1
+    source = report['sources'][0]
+    assert source['origin'] == 'deep permuter' and source['attempted'] == source['improved'] == 1
+    assert source['first_at'] <= source['last_at'] and source['elapsed_ms'] == 5
+    assert 'different collection window' in report['scope']

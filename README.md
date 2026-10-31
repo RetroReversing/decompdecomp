@@ -437,6 +437,8 @@ request; these notes survive only if that candidate produces a new verified matc
 `report_repair` can add an explanation afterwards. No additional model call is
 needed when the note travels with the candidate.
 
+The default **Comparable source repairs only** filter requires changed source and comparable captured build settings. Equivalent captures for the same function, target, successful source, settings and review state are grouped, with their count shown; the underlying evidence remains intact. **Metrics coverage** identifies cumulative policy/deep-history totals and collection windows by trial origin, so different cohorts are not mistaken for comparable success rates.
+
 Filter by category and review state, browse one or all projects, add review notes,
 and download summaries or full examples as local JSON. Full exports include code,
 assembly and available headers; summaries omit those fields and the code diff,
@@ -784,10 +786,12 @@ repair families under per-case trial/time limits. It reports recovered compiler 
 neutral/regressed trials and errors without updating game progress. Imported builds and missing historical
 inputs are explicitly skipped. See [the replay guide](docs/repair-replay.md) for scope and options.
 
-Use **Agents → Repair examples → Test automatic repairs** for up to 20 examples matching the current
+Use **Agents → Repair examples → Test automatic repairs** for examples from up to 20 distinct functions matching the current
 filters, or test a single expanded example. Trial/time controls, progress, results and **Stop replay**
 are in the dialog. Replays do not apply source or change review states. Source hashes distinguish
 direct random-rewrite evidence from inherited cascade labels before suggesting a new deterministic rule.
 Compact project facts summarise compiler ranges; each claim retains its actual compiler and user instructions.
 Repeated unchanged claims return a short status, and oversized/sparse batch requests explain why only one
 function was returned.
+
+Targeted local repair searches include arithmetic operand-order experiments and, on MIPS targets with direct-call/register evidence, forwarding declared incoming parameters into locally prototyped calls. These are bounded hypotheses, not semantic guarantees: only the ordinary linked-byte/objdiff judge can accept a match. Compiler/converter infrastructure failures are reported separately without consuming a failed-C attempt.

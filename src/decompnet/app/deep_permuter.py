@@ -314,7 +314,7 @@ class Search(Permuter):
             score = super()._score(agent, proj, fn, source, best, fork)
             elapsed_ms = max(0, round((time.monotonic() - started) * 1000))
             if not self.measuring_baseline:
-                adaptive_repairs.record(self.net, policy_profile, policy_focus, self.current_family, best, score, elapsed_ms)
+                adaptive_repairs.record(self.net, policy_profile, policy_focus, self.current_family, best, score, elapsed_ms, origin="deep permuter")
             if score is not None and score > 0:
                 with self.net.store.tx() as db:
                     db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',

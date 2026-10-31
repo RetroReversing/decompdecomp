@@ -416,3 +416,31 @@ def test_prior_reviewed_evidence_is_used_when_grouping_new_duplicates(setup):
     plan = net.repair_feedback.classify_new('demo')['examples']
     assert len(plan) == 1 and plan[0]['status'] == 'dismissed'
     assert f'#{case}' in plan[0]['note']
+
+
+def test_review_filter_requires_comparable_settings_and_groups_equivalent_captures(setup):
+    net, winner, _, _, fid = setup
+    net._record(fn(net,fid),winner,10,'before',1)
+    net._record(fn(net,fid),winner,0,'after',1,matched=True)
+    row = net.store.one('SELECT * FROM repair_examples ORDER BY id DESC LIMIT 1')
+    evidence = json.loads(row['evidence'])
+    evidence['comparable_settings'] = False
+    with net.store.tx() as db:
+        db.execute('UPDATE repair_examples SET evidence=? WHERE id=?', (json.dumps(evidence),row['id']))
+    assert not net.repair_feedback.listing('demo',comparable=True)['examples']
+    evidence['comparable_settings'] = True
+    with net.store.tx() as db:
+        db.execute('UPDATE repair_examples SET evidence=? WHERE id=?', (json.dumps(evidence),row['id']))
+        db.execute('INSERT INTO repair_examples(project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence) SELECT project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence FROM repair_examples WHERE id=?', (row['id'],))
+    examples = net.repair_feedback.listing('demo',comparable=True)['examples']
+    assert len(examples) == 1 and examples[0]['repetitions'] == 2
+
+
+def test_converter_infrastructure_failure_does_not_consume_attempt_budget(setup, monkeypatch):
+    net, winner, _, _, fid = setup
+    before = net.store.one('SELECT COUNT(*) n FROM attempts')['n']
+    monkeypatch.setattr(net,'_compile',lambda *args:SimpleNamespace(ok=False,log="Unknown section type '.rodata'"))
+    with pytest.raises(NetworkError,match='did not consume a repair attempt'):
+        net.compile_and_diff(winner,'target','int target(void){return 1;}','demo')
+    assert net.store.one('SELECT COUNT(*) n FROM attempts')['n'] == before
+    assert net.store.one('SELECT attempts FROM functions WHERE id=?',fid)['attempts'] == 0

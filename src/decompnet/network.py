@@ -1242,6 +1242,8 @@ class Network:
         result = self._compile(proj, ctx["header"], source, fn)
 
         if not result.ok:
+            if re.search(r"Unknown section type|converter did not produce a big-endian ELF32|Missing [^\n]*reinstall", result.log, re.I):
+                raise NetworkError("Toolchain infrastructure failure; this did not consume a repair attempt. Fix the compiler/converter setup before retrying.\n" + result.log.strip())
             self._record(fn, agent, None, source, ctx["version"], effective_settings=getattr(result,"effective_settings",None))
             text = f"❌ COMPILE ERROR (context v{ctx['version']})\n{result.log.strip()}"
             self.remember_compile(key, agent, fn, text, None)
