@@ -1132,6 +1132,10 @@ processors and imported object-mode table discovery: **—**, require their relo
 Approximate SDK hints in imported project mode: **—**, require reading the target unit object through
 that mode's existing object-format adapter. Generic C source-shape repairs already reach that mode.
 
+- Done: typed SDK math-call mapping hints, allocation-extent advisories, bounded post-preparation compiler checks,
+  and first-error compiler summaries with private full logs. Imported builds retain their own compiler settings;
+  allocation/prototype hints are advisory and never alter symbols or record layouts.
+
 ## Target-guided local scheduling repairs
 
 Implemented: candidate-owned missing first-call arguments evidenced by MIPS delay-slot loads,

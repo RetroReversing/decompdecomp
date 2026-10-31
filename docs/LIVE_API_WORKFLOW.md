@@ -126,3 +126,10 @@ alias, and rejudge normally. A missing relocation is not a source-scheduling pro
 are bounded trial priorities, not automatic range assignments. Keep original SDK typedefs (including unions),
 macros and locals in the configured source context; preparation carries referenced declarations from the mapped
 file without importing unrelated objects or bodies.
+
+Preparation errors now show the first compiler error and a path to the complete private log under
+`.decomp/logs/source-preparation/<function-id>.log` in the app workspace. Missing root declarations can cause many
+later syntax errors; fix the first one before rewriting a function. Math aliases need correct prototypes too.
+A sole allocation immediate discrepancy is a reason to inspect sizeof and the target call arguments, not to invent
+fields. After a prepared-source improvement, bounded compiler checks reuse its saved private context, respecting
+the same pass budget/deadline and compiler approval settings.

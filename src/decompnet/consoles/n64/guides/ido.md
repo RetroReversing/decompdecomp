@@ -90,3 +90,8 @@ If only unresolved runtime-helper call operands differ, confirm the helper ABI a
 permuting. An explicit correctly typed helper call can resolve a relocation while retaining the exact instruction
 sequence. Preserve original SDK unions, record types, macros and locals. Nearby verified `-O1` profiles are useful
 trial priorities for SDK routines, but only the current function's byte judge can confirm a candidate.
+
+A target-supported math alias must also have its correct float/double prototype; implicit-int returns change the
+calling convention. If only an allocation immediate differs, compare the ROM's requested extent with reference
+sizeof before changing any types. A different allocation extent does not prove a missing field. Prepared-source
+improvements merit bounded compiler-profile probes with that source's private header before further permutation.

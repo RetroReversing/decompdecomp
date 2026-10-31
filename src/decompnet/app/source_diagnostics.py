@@ -11,7 +11,9 @@ def hints(source, name, asm='', arch='', rows=None):
     clean = _blank(source)
     body = clean[span[0]:span[1]]
     from .helper_call_diagnostics import suggestions
-    result = suggestions(rows)
+    from .preparation_diagnostics import allocations
+    result = suggestions(rows) + allocations(source, rows)
+
     from .target_local_repairs import call_arguments
     if arch == "mips" and call_arguments(source, name, asm):
         result.append("The target supplies a first call argument that a candidate-owned void prototype omits. "

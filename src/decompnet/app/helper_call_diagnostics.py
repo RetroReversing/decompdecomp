@@ -4,6 +4,10 @@ import re
 HELPERS = {'__ull_div','__ll_div','__ull_rem','__ll_rem','__ll_mul','__ll_lshift','__ull_rshift','__ll_rshift'}
 
 
+MATH = {'sqrtf':'float', 'sinf':'float', 'cosf':'float', 'tanf':'float', 'fabsf':'float',
+        'sqrt':'double', 'sin':'double', 'cos':'double', 'tan':'double', 'fabs':'double'}
+
+
 def suggestions(rows):
     mappings={};count=0
     for row in rows or []:
@@ -12,10 +16,12 @@ def suggestions(rows):
         if kind==' ':continue
         left=re.fullmatch(r'(jal|bl|call)\s+([A-Za-z_]\w*)',target.strip())
         right=re.fullmatch(r'(jal|bl|call)\s+\??([A-Za-z_]\w*)',candidate.strip())
-        if not left or not right or left[1]!=right[1] or right[2] not in HELPERS or left[2]==right[2]:return []
+        if not left or not right or left[1]!=right[1] or right[2] not in HELPERS | MATH.keys() or left[2]==right[2]:return []
         if right[2] in mappings and mappings[right[2]]!=left[2]:return []
         mappings[right[2]]=left[2];count+=1
     if not count:return []
+    prototypes=' '.join(f'{MATH[a]} {b}({MATH[a]});' for a,b in sorted(mappings.items()) if a in MATH)
     return ['Only runtime-helper call targets differ: '+', '.join(f'{a} → {b}' for a,b in sorted(mappings.items()))+
             '. Confirm the helper ABI and each target call site, then use an explicit typed call or a verified symbol alias. '
-            'No addresses or symbols were changed; recompile and pass the byte judge before accepting it.']
+            'No addresses or symbols were changed; recompile and pass the byte judge before accepting it.'+
+            (' Expected SDK math prototypes: '+prototypes+' An alias alone does not declare its return/argument types; an implicit int return changes the ABI.' if prototypes else '')]

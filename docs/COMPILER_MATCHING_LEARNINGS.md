@@ -510,6 +510,26 @@ A separate replay of the new target-table ordering rule improved the earlier sco
 to 12,104 without other edits. It remained unmatched. This is distinct from the larger manually
 adapted case-layout stage above; do not attribute the whole 13,833 → 10,359 improvement to this rule.
 
+### Math prototypes, allocation extents and prepared-source flag checks
+
+A further source-assisted N64 batch recovered ten routines / 6,008 bytes and passed the complete original-cartridge
+comparison. Two floating matrix builders reached call-only differences at IDO 5.3 `-O2`; target-supported math
+aliases needed explicit float argument/return declarations, not merely renamed calls. An implicit-int declaration
+changes the ABI. Helper-only diagnostics now include known unary SDK math names and their expected prototypes,
+while keeping the existing requirement that all other compared instructions agree. They never assign symbols.
+
+A synthesizer initializer reached score 10 with a sole allocation immediate of 76 in the target versus 72 from
+reference `sizeof(ALAuxBus)`. Recording that target-observed allocation extent matched at `-O2`; it did not establish
+an unknown field or justify changing existing offsets. A sole immediate difference near a known allocation call
+now produces an advisory comparison, not an automatic layout rewrite.
+
+A buffer-save routine matched its improved original source at `-O3` after remaining unmatched at `-O2`. Normal local
+source preparation now checks up to two compiler profiles immediately after a saved improvement, using the promoted
+header, remaining pass budget/deadline and the existing settings approval/rejudge gates. Claims are released first;
+imported builds keep their own settings. First compiler errors are summarized before cascades, with complete logs
+stored privately under the app workspace rather than included in portable projects. Synthetic regressions verify
+these changes separately from the observed matches above.
+
 ## Candidate-local call, alias and lifetime repairs (31 October 2026)
 
 A 775-instruction MIPS routine matched with KMC GCC 2.7.2, using
