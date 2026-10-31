@@ -1,3 +1,37 @@
+/* Readable tool catalog; unknown payloads always retain their original text view. */
+function transcriptToolCatalog(text) {
+  let tools;
+  try { tools = JSON.parse(text); } catch { return null; }
+  if (!Array.isArray(tools) || !tools.length || !tools.every(t => t && typeof t === "object" && typeof (t.function || t).name === "string")) return null;
+  const catalog = document.createElement("div"); catalog.className = "transcript-tools";
+  const heading = document.createElement("p"); heading.className = "small muted";
+  heading.textContent = `${tools.length} tools available to this agent`; catalog.append(heading);
+  for (const item of tools) {
+    const tool = item.function || item, schema = tool.input_schema || tool.parameters || {};
+    const card = document.createElement("details"); card.className = "transcript-tool";
+    const summary = document.createElement("summary"), name = document.createElement("code"), description = document.createElement("p");
+    name.textContent = tool.name; summary.append(name); description.textContent = tool.description || "No description provided.";
+    card.append(summary, description);
+    const properties = schema.properties;
+    if (properties && typeof properties === "object" && Object.keys(properties).length) {
+      const list = document.createElement("dl"); list.className = "transcript-tool-params";
+      for (const [key, value] of Object.entries(properties)) {
+        const param = value && typeof value === "object" ? value : {};
+        const term = document.createElement("dt"), detail = document.createElement("dd");
+        term.textContent = `${key}${Array.isArray(schema.required) && schema.required.includes(key) ? " · required" : " · optional"}`;
+        const type = Array.isArray(param.type) ? param.type.join(" / ") : param.type || (param.enum ? "enum" : "value");
+        detail.textContent = [type, param.description, param.enum ? `Choices: ${JSON.stringify(param.enum)}` : "", Object.hasOwn(param, "default") ? `Default: ${JSON.stringify(param.default)}` : ""].filter(Boolean).join(" · ");
+        list.append(term, detail);
+      }
+      card.append(list);
+    } else {
+      const empty = document.createElement("p"); empty.className = "small muted";
+      empty.textContent = "No named parameters."; card.append(empty);
+    }
+    catalog.append(card);
+  }
+  return catalog;
+}
 /* Fetch transcripts only on request: full prompts and C must never ride along in the live poll. */
 $("helperTranscript").onclick = async () => {
   const helper = S.logFor, slug = S.slug;
@@ -33,7 +67,14 @@ $("helperTranscript").onclick = async () => {
       const pre = document.createElement("pre"); pre.textContent = entry.text;
       const copy = document.createElement("button"); copy.type = "button"; copy.className = "ghost small-btn transcript-copy"; copy.textContent = "Copy text";
       copy.onclick = async () => { copy.textContent = await copyText(entry.text) ? "Copied" : "Copy failed — try again"; };
-      details.append(summary, pre, copy); events.append(details); after = entry.id;
+      const catalog = entry.kind === "tool_definitions" ? transcriptToolCatalog(entry.text) : null;
+      if (catalog) {
+        const raw = document.createElement("details"), rawLabel = document.createElement("summary");
+        raw.className = "transcript-tool-raw"; rawLabel.textContent = "Full tool definitions (JSON)";
+        raw.append(rawLabel, pre); details.append(summary, catalog, raw, copy);
+        label.textContent = `Available tools · ${catalog.children.length - 1}`;
+      } else details.append(summary, pre, copy);
+      events.append(details); after = entry.id;
     }
     dialog.querySelector("[data-event-count]").textContent = `${events.children.length} events loaded`;
     more.hidden = !result.more;
