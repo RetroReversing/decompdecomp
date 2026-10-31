@@ -120,7 +120,6 @@ class AutopilotMixin:
                                 f"{drafts} of {state['tried']} functions matched from machine drafts")
 
     def on_improvement(self, proj, function_id: int) -> None:
-        # Imported automatic cascades remain unavailable; manual free passes cover both modes.
         if proj is not None:
             self.cascades.notify(proj, function_id)
 

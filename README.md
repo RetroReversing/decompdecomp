@@ -795,3 +795,17 @@ Repeated unchanged claims return a short status, and oversized/sparse batch requ
 function was returned.
 
 Targeted local repair searches include arithmetic operand-order experiments and, on MIPS targets with direct-call/register evidence, forwarding declared incoming parameters into locally prototyped calls. These are bounded hypotheses, not semantic guarantees: only the ordinary linked-byte/objdiff judge can accept a match. Compiler/converter infrastructure failures are reported separately without consuming a failed-C attempt.
+
+### Sharing code between local projects
+
+**Matches from other games → Run now** searches ROM-mode and imported projects with the same processor and
+byte order, including assembly-only targets and enabled local SDK signatures. The panel distinguishes detected
+shared code, candidates ready to test, and functions needing writable C scaffolding. Detection is not recovered C.
+Function details group name suggestions from both kinds of projects and SDKs.
+
+Verified C can move in either direction, including between imported projects. The receiving project's compiler
+and ordinary byte/objdiff judge decide; donor compiler settings do not exclude an exact-code lead. Unsupported
+source-less builds show a blocker. Supported existing C object rules are probed before adding candidate files;
+the original assembly and reference objects remain intact. When automatic reuse is enabled, new matches queue
+compatible projects under the existing shared time/attempt budget. Discovery is refreshed by free passes rather
+than repeated on every UI poll; wider similarity and SDK-source/template searches remain ROM-only.

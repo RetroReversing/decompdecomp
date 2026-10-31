@@ -623,11 +623,23 @@ class Twins:
     def across_games(self, slug: str, job: Job | None = None) -> int:
         """Matched code from the user's other games, tried on this game's identical functions: libraries (an SDK's,
         a compiler's runtime, middleware) come in the same code from one game to the next, built by the same
-        compiler. Same kind of processor, same compiler and flags, code identical once addresses are masked; the
+        compiler. Same kind of processor, code identical once addresses are masked; compiler agreement ranks donors first; the
         names swapped as each game's relocations say; the judge decides. Better partial donors are tried
         afterwards through the same destination judge. Returns matches only, never partial improvements."""
         proj = self.net.project_row(slug)
         fork = bool(self.net.fork_slug(slug))
+        from . import shared_reuse
+        shared_reuse.discover(self, proj, job=job)
+        if fork:
+            matched = shared_reuse.transfer(self, proj, job)
+            mine = self.prints(proj)
+            wanted = defaultdict(list)
+            for row in self.net.store.all("SELECT id FROM functions WHERE project_id=? AND status='open'", proj["id"]):
+                target = mine.get(row["id"])
+                if target and not target.asm and target.size >= ACROSS_MIN_BYTES:
+                    wanted[target.key].append(row["id"])
+            from .partial_reuse import run as reuse_partial
+            return matched + reuse_partial(self, proj, wanted, mine, job)
         if not (fork or self.net.is_rom(proj)) or slug in self.net.links:
             return 0
         from .free_candidates import exhausted
@@ -650,17 +662,6 @@ class Twins:
             self.index_project(other)
         matched = 0
         agent, _ = self.net.local_agent("autopilot")
-        for other in self.net.store.all("SELECT * FROM projects WHERE id != ? AND arch=? AND big_endian=?",
-                                        proj["id"], proj["arch"], proj["big_endian"]):
-            if job is not None and job.stop.is_set():
-                continue
-            if fork:  # (a project's arch column is empty: its console says its processor)
-                if self.net.fork_slug(other["slug"]) and other["slug"] not in self.net.links:
-                    try:
-                        matched += self._across_projects(agent, proj, other, wanted, mine, job)
-                    except Exception:  # another project that can't be read now (moved, half set up): never in the way
-                        log.exception("twins: %s from %s", slug, other["slug"])
-                continue
         if not fork:
             # Imported projects do not necessarily fill the database's architecture columns.
             for other in self.net.store.all("SELECT * FROM projects WHERE id != ?", proj["id"]):
@@ -679,6 +680,7 @@ class Twins:
                 "JOIN functions f ON f.id=i.function_id AND f.status='matched' "
                 "WHERE i.project_id != ? AND i.fingerprint IN (" + ",".join("?" for _ in part) + ")",
                 proj["id"], *part)
+        sources.sort(key=lambda a: a["compiler"] != self._compiler_key(cfg["compiler"]))
         source_prints = {p["id"]: self.prints(p) for p in others}
         source_symbols = {p["id"]: self.net.symbols(p["id"]) for p in others}
         target_symbols = self.net.symbols(proj["id"])
@@ -696,7 +698,7 @@ class Twins:
                 if bounded and exhausted(job):
                     return matched
                 b = self.net.store.one("SELECT * FROM functions WHERE id=? AND status='open'", b_id)
-                if b is None or self._compiler_key(compiler_for(cfg, b["vram"])) != a["compiler"]:
+                if b is None or self.net.store.one("SELECT 1 FROM claims WHERE function_id=?", b_id):
                     continue
                 if job is not None:
                     job.cross_candidates += 1
@@ -763,6 +765,8 @@ class Twins:
         return len(entries)
 
     def index_function(self, proj, fid: int) -> None:
+        for snapshot in getattr(self, "_shared_discovery", {}).values():
+            snapshot["at"] = 0  # new evidence is visible in the next bounded discovery pass
         if not self.net.is_rom(proj):
             return
         with self._index_lock:
@@ -802,14 +806,23 @@ class Twins:
             "WHERE a.project_id=? AND a.outcome='match' ORDER BY a.id DESC LIMIT 30", proj["id"])
         counts = self.net.store.all("SELECT outcome,COUNT(*) AS n FROM cross_game_attempts WHERE project_id=? "
                                     "GROUP BY outcome", proj["id"])
+        from .shared_reuse import summary
         return {"counts": {r["outcome"]: r["n"] for r in counts}, "recent": [dict(r) for r in rows],
-                "matches": [dict(r) for r in matches]}
+                "matches": [dict(r) for r in matches], "discovery": summary(self, proj)}
 
     def suggestions(self, slug: str, function: str, limit: int = 5) -> list[dict]:
         """Read-only cross-game and local SDK name hints. Similar code is a lead, never a verified match."""
         proj = self.net.project_row(slug)
-        if not self.net.is_rom(proj):
-            return []
+        from .shared_reuse import hints
+        if self.net.fork_slug(slug):
+            return hints(self, proj, function, limit)
+        def finish(items):
+            from .shared_reuse import hints as shared_hints
+            merged = {}
+            for hint in [*shared_hints(self, proj, function, limit), *items]:
+                merged.setdefault((hint["name"], hint["game"]), hint)
+            return list(merged.values())[:limit]
+
         fn = self.net._function(function, slug)
         target = self.prints(proj).get(fn["id"])
         if target is None or target.size < ACROSS_MIN_BYTES:
@@ -831,7 +844,7 @@ class Twins:
             hints.append({"name": r["name"], "game": r["corpus"], "score": 1.0,
                           "kind": "SDK object signature; name only"})
         if proj["arch"] != "mips" or len(hints) >= limit:
-            return hints[:limit]
+            return finish(hints)
         rows = self.net.store.all(
             "SELECT i.*, f.name, f.target, f.vram, p.name AS game,p.arch,p.big_endian "
             "FROM cross_game_index i JOIN functions f ON f.id=i.function_id AND f.status='matched' "
@@ -850,7 +863,7 @@ class Twins:
                 r = by_id[fid]
                 hints.append({"name": r["name"], "game": r["game"], "score": round(score, 3),
                               "kind": "similar code; unverified", "function_id": r["function_id"]})
-        return hints[:limit]
+        return finish(hints)
 
     def import_sdk_objects(self, path: Path, corpus: str) -> int:
         """Index only signatures and names from a user-selected local ELF object or ar archive."""
@@ -1027,57 +1040,6 @@ class Twins:
                     matched += 1
                     if job is not None:
                         job.cross_matched += 1
-        return matched
-
-    def _across_projects(self, agent, proj, other, wanted: dict[str, list[int]], mine: dict[int, Print],
-                         job: Job | None) -> int:
-        """across_games between two projects in project mode (PC: two games sharing the C runtime): their target
-        objects' code identical once relocations are masked, built by the same compiler (each file's,
-        Console.file_compiler), the other's definition taken from its source file with this one's names
-        (ForkEngine.twin_source), judged in this project. Returns how many matched."""
-        from .. import consoles
-
-        _, fp_b, cfg_b = self.net.forks.get(proj["slug"])
-        _, fp_a, cfg_a = self.net.forks.get(other["slug"])
-        con_a, con_b = consoles.of(cfg_a), consoles.of(cfg_b)
-        if con_a.arch != con_b.arch:
-            return 0
-        theirs = self.prints(other)
-        matched = 0
-        for a in self.net.store.all("SELECT * FROM functions WHERE project_id=? AND status='matched'", other["id"]):
-            pa = theirs.get(a["id"])
-            for b_id in (wanted.get(pa.key, []) if pa is not None else []):
-                from .free_candidates import exhausted
-                if job is not None and (job.stop.is_set() or (hasattr(job, 'reuse_limit') and exhausted(job))):
-                    return matched
-                b = self.net.store.one("SELECT * FROM functions WHERE id=? AND status='open'", b_id)
-                if b is None or _file_compiler(con_a, fp_a, a) != _file_compiler(con_b, fp_b, b):
-                    continue
-                names = self._fork_names(pa, mine[b_id], a, b)
-                try:
-                    source = self.net.forks.twin_source(proj, a, b, names, theirs=other) if names is not None else None
-                except (NetworkError, OSError, ValueError):
-                    source = None
-                if not source or self._missed(b_id, source):
-                    continue
-                if job is not None:
-                    job.cross_candidates += 1
-                    job.cross_tried += 1
-                    if hasattr(job, 'reuse_limit'):
-                        job.reuse_attempts += 1
-                outcome, why = self._attempt_twin(agent, proj, a, b, source, origin=f" in {other['name']}", theirs=True)
-                if outcome == "match":
-                    matched += 1
-                    if job is not None:
-                        job.cross_matched += 1
-                        if hasattr(job, 'reuse_limit'):
-                            job.reuse_matched += 1
-                            job.reuse_bytes += b['size']
-                    log.info("twins: %s matched from %s in %s", b["name"], a["name"], other["slug"])
-                elif outcome == "miss":
-                    with self.net.store.tx() as db:
-                        db.execute("INSERT OR REPLACE INTO twin_misses(function_id, source_hash, project_id, at, why) "
-                                   "VALUES(?,?,?,?,?)", (b_id, self._miss_key(source), proj["id"], time.time(), why))
         return matched
 
     def _try_pair(self, agent, proj, a, b) -> str:

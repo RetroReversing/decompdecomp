@@ -55,19 +55,19 @@ class Cascade:
             self.paused.discard(slug)
 
     def notify(self, donor, fid):
-        if not self.enabled or not self.net.is_rom(donor) or donor['arch'] != 'mips':
+        if not self.enabled:
             return
         fn = self.net.store.one('SELECT size,status,best_source FROM functions WHERE id=?', fid)
         if not fn or (fn['status'] != 'matched' and not fn['best_source']):
             return
-        # Only compatible projects with open functions in this donor's size neighbourhood are affected.
-        projects = self.net.store.all("SELECT DISTINCT p.* FROM projects p JOIN functions f ON f.project_id=p.id "
-                                      "WHERE p.id!=? AND p.arch=? AND p.big_endian=? AND f.status='open' AND f.size BETWEEN ? AND ?",
-                                      donor['id'], donor['arch'], donor['big_endian'], int(fn['size'] * .9), int(fn['size'] / .9))
+        from .shared_reuse import compatible
+        projects = [p for p in compatible(self.net, donor) if self.net.store.one(
+            "SELECT 1 FROM functions WHERE project_id=? AND status IN ('open','nosource') AND size BETWEEN ? AND ? LIMIT 1",
+            p['id'], int(fn['size'] * .9), int(fn['size'] / .9))]
         with self.lock:
             if not self.enabled:
                 return
-            self.pending.update(p['slug'] for p in projects if self.net.is_rom(p) and p['slug'] not in self.net.links
+            self.pending.update(p['slug'] for p in projects if p['slug'] not in self.net.links
                                 and p['slug'] not in self.paused)
             if self.running or not self.pending:
                 return
