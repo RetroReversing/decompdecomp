@@ -397,3 +397,20 @@ def gp_from_entry(image: bytes, entry: int, segments: list) -> int:
         elif hi is not None and name == "ori" and ins.rt.value == GP and ins.rs.value == GP:
             return hi | (word & IMMEDIATE_BITS)
     return 0
+
+
+def prepared_call_arguments(assembly: str, callee: str) -> int:
+    """Advisory o32 argument-register setup before a direct call, including its delay slot."""
+    import re
+
+    suffix = re.search(r'_([0-9A-Fa-f]{8})$', callee)
+    names = re.escape(callee) + (r'|func_' + suffix[1] if suffix else '')
+    lines = assembly.splitlines()
+    for index, line in enumerate(lines):
+        if not re.search(r'\bjal\s+(?:' + names + r')\b', line):
+            continue
+        window = lines[max(0, index-12):index+2]
+        registers = [int(m[1]) for text in window for m in
+                     re.finditer(r'\b[a-z][a-z0-9.]*\s+\$a([0-3])\s*,', text)]
+        return max(registers, default=-1) + 1
+    return 0

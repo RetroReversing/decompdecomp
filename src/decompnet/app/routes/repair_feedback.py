@@ -29,7 +29,13 @@ def register(app):
                 feedback.detail(slug,case_id,include_source=False)
                 ids=[case_id]
             else:
-                ids=[r['id'] for r in feedback.listing(slug,category,status,comparable=comparable)['examples'][:20]]
+                ids, seen = [], set()
+                for row in feedback.listing(slug,category,status,comparable=comparable)['examples']:
+                    key = (row['slug'],row['function'])
+                    if key not in seen:
+                        ids.append(row['id']); seen.add(key)
+                    if len(ids) == 20:
+                        break
             if not ids:raise NetworkError('No examples match these filters.')
             with app.jobs._lock:
                 if any(j['kind']=='repair-replay' and j['state']=='running' for j in app.jobs.jobs.values()):

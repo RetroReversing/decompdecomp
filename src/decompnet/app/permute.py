@@ -351,7 +351,7 @@ class Permuter:
                     if not getattr(self, 'trace_variants', False):
                         adaptive_repairs.record(self.net, policy_key, permuter_focus.classify(policy_rows),
                                                 labels.get(candidate, 'draft_repair'), best, score,
-                                                (time.monotonic()-policy_started)*1000)
+                                                (time.monotonic()-policy_started)*1000, origin="background deterministic")
                     measured=getattr(self.net,'_agent_outcomes',{}).get((agent.id,fn['id']))
                     if measured and measured.get('source')==candidate:
                         repair_ranking.remember(self.net,effect_scope,labels.get(candidate,'draft_repair'),baseline,measured)
@@ -530,7 +530,7 @@ class Permuter:
                         score = self._score(agent, proj, fn, cand, best, fork)
                     if not getattr(self, 'trace_variants', False):
                         adaptive_repairs.record(self.net, adaptive_repairs.profile(self.net, proj, fn), focus,
-                                                provenance['family'], best, score, (time.monotonic()-started)*1000)
+                                                provenance['family'], best, score, (time.monotonic()-started)*1000, origin="background random")
                     if score is None:
                         continue
                     measured_rows = repair_ranking.evidence(self.net, fn['id'], agent.id)

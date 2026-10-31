@@ -11,10 +11,10 @@ $("repairExamples").onclick = async () => {
     <label>Review state<select data-status aria-label="Review state"><option value="new" selected>New (not yet reviewed)</option><option value="">All review states</option></select></label>
     <button data-refresh type="button">Refresh</button><button data-classify type="button">Classify this project</button></div>
     <div class="repair-filter-checks"><label><input type="checkbox" data-all> Across all projects</label>
-    <label><input type="checkbox" data-comparable checked> Only with changed failed C</label></div></div>
+    <label><input type="checkbox" data-comparable checked> Comparable source repairs only</label></div></div>
     <div data-triage-work></div>
     <section class="repair-help" aria-label="Automatic repair replay"><h3>Test automatic repairs · no AI tokens</h3>
-    <p>Replay up to 20 examples matching these filters against captured successful compiler output. This is a regression test: it does not apply source, change game progress or mark examples implemented. Missing historical build inputs are reported as skips.</p>
+    <p>Replay examples from up to 20 distinct functions matching these filters against captured successful compiler output. This is a regression test: it does not apply source, change game progress or mark examples implemented. Missing historical build inputs are reported as skips.</p>
     <label>Trials per example <input data-replay-trials type="number" min="1" max="32" value="12"></label>
     <label>Seconds per example <input data-replay-seconds type="number" min="1" max="120" value="30"></label>
     <button data-replay-start type="button">Test automatic repairs</button><button data-replay-stop type="button" hidden>Stop replay</button>
@@ -26,11 +26,12 @@ $("repairExamples").onclick = async () => {
     <button data-recovery-start type="button">Rejudge next batch</button><button data-recovery-stop type="button" hidden>Stop</button>
     <p data-recovery-summary class="muted small" role="status"></p><div data-recovery-work></div></section>
     <section data-quality class="repair-list" aria-label="Candidate quality review"></section>
+    <details class="repair-help"><summary>Metrics coverage · all projects</summary><p data-metrics class="small muted"></p></details>
     <p data-count class="repair-count" role="status"></p><div data-list class="repair-list"></div>
     <button data-more hidden type="button">Older examples</button>
     <details class="repair-help"><summary>How to use these examples</summary><p>Expand a card to compare the failed candidate with the match.
     Send promising examples to a coding agent, or export them for analysis. Review and test any proposed app changes: examples do not teach the permuter automatically.</p>
-    <p class="muted small">Captures prefer comparable compiler settings. Headers, compiler changes and other edits may also matter; the diff alone does not prove the cause.</p></details></div>
+    <p class="muted small">Comparable source repairs require changed C and matching captured settings. Uncheck the filter to inspect compiler/context changes separately. Headers, compiler changes and other edits may also matter; the diff alone does not prove the cause.</p></details></div>
     <footer class="repair-footer"><div class="repair-export-actions"><button data-export-full type="button">Export full examples</button>
     <button data-export type="button">Export summaries</button><button data-prompt type="button">Copy analysis prompt</button></div>
     <p class="muted small">Full examples include game source and headers. Downloads stay local until you share them. Review notes may also contain code.</p></footer>`;
@@ -55,7 +56,7 @@ $("repairExamples").onclick = async () => {
     const title = document.createElement('span'); title.className = 'repair-card-title'; title.textContent = row.function;
     const meta = document.createElement('span'); meta.className = 'repair-card-meta'; meta.textContent = `#${row.id} · ${row.project}${row.agent ? ' · ' + row.agent : ''}`;
     const badges = document.createElement('span'); badges.className = 'repair-badges';
-    for (const value of [row.category.replaceAll('_', ' '), row.status, row.evidence_kind || 'source repair', ...(row.automation_known ? ['already automated'] : [])]) {
+    for (const value of [row.category.replaceAll('_', ' '), row.status, row.evidence_kind || 'source repair', ...(row.automation_known ? ['already automated'] : []), ...(row.repetitions > 1 ? [`${row.repetitions} equivalent captures`] : [])]) {
       const badge = document.createElement('span'); badge.className = 'repair-badge'; badge.textContent = value; badges.append(badge);
     }
     summary.append(title, meta, badges);
@@ -185,8 +186,12 @@ $("repairExamples").onclick = async () => {
         }
       }
       options(category, data.categories); options(status, data.states);
-      get('[data-count]').textContent = data.groups.map((group) => `${group.count} ${group.category.replaceAll('_', ' ')} (${group.status})`).join(' · ') || 'No examples for these filters.';
-      if (reset && !data.examples.length) { const empty = document.createElement('p'); empty.className = 'repair-empty'; empty.textContent = 'No examples match these filters. Try another review state or clear “Only with changed failed C” to include baseline and settings-only captures.'; list.append(empty); }
+      if (data.metrics) {
+        const m = data.metrics, describe = x => `${x.attempted.toLocaleString()} trials · ${x.improved.toLocaleString()} improvements · ${x.matched.toLocaleString()} matches`;
+        get('[data-metrics]').textContent = `Adaptive policy: ${describe(m.policy)}. ${m.deep ? `Deep history: ${describe(m.deep)}. ` : ""}${m.scope} ${m.sources.map(s => `${s.origin}: ${describe(s)}, ${new Date(s.first_at*1000).toLocaleString()} to ${new Date(s.last_at*1000).toLocaleString()}`).join("; ")}`;
+      }
+      get('[data-count]').textContent = data.groups.map((group) => `${group.count} captures · ${group.category.replaceAll('_', ' ')} (${group.status})`).join(' · ') || 'No examples for these filters.';
+      if (reset && !data.examples.length) { const empty = document.createElement('p'); empty.className = 'repair-empty'; empty.textContent = 'No examples match these filters. Try another review state or clear “Comparable source repairs only” to include baseline and settings-only captures.'; list.append(empty); }
       for (const row of data.examples) { list.append(card(row, data.states, data.categories)); before = row.id; }
       get('[data-more]').hidden = !data.more;
     } catch (error) { toast(esc(error.message), 'err'); }

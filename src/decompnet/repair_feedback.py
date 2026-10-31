@@ -197,24 +197,30 @@ class RepairFeedback:
                 raise NetworkError('Unknown review state.')
             clauses.append('e.status=?'); args.append(status)
         if comparable:
-            clauses.append("e.before_attempt_id IS NOT NULL AND json_extract(e.evidence,'$.before.source_sha256') != json_extract(e.evidence,'$.after.source_sha256')")
+            clauses.append("e.before_attempt_id IS NOT NULL AND json_extract(e.evidence,'$.comparable_settings')=1 AND json_extract(e.evidence,'$.before.source_sha256') != json_extract(e.evidence,'$.after.source_sha256')")
         return ' AND '.join(clauses), args
 
     def listing(self, slug='', category='', status='', before=0, comparable=False):
         where, args = self._where(slug, category, status, comparable)
-        rows = self.store.all('SELECT e.id,e.created_at,e.category,e.explanation,e.automation,e.status,'
+        partition = "project_id,function_id,category,status,json_extract(evidence,'$.target_sha256'),json_extract(evidence,'$.after.source_sha256'),json_extract(evidence,'$.after.settings'),json_extract(evidence,'$.after.context_version')"
+        prefix = ('WITH grouped AS (SELECT e.*,ROW_NUMBER() OVER (PARTITION BY ' + partition +
+                  ' ORDER BY id DESC) AS position,COUNT(*) OVER (PARTITION BY ' + partition +
+                  ') AS repetitions FROM repair_examples e WHERE ' + where + ') ')
+        rows = self.store.all(prefix + 'SELECT e.id,e.created_at,e.category,e.explanation,e.automation,e.status,e.repetitions,'
                               "CASE WHEN e.before_attempt_id IS NULL THEN 'no failed baseline' WHEN json_extract(e.evidence,'$.before.source_sha256')=json_extract(e.evidence,'$.after.source_sha256') THEN 'same source / settings' WHEN json_extract(e.evidence,'$.comparable_settings')=1 THEN 'source repair' ELSE 'settings also changed' END AS evidence_kind,"
                               "(json_extract(e.evidence,'$.provenance.kind')='deterministic draft repair' AND "
                               "(json_extract(e.evidence,'$.provenance.source_sha256') IS NULL OR "
                               "json_extract(e.evidence,'$.provenance.source_sha256')=json_extract(e.evidence,'$.after.source_sha256'))) AS automation_known,"
-                              'p.slug,p.name AS project,f.name AS function,a.name AS agent FROM repair_examples e '
+                              'p.slug,p.name AS project,f.name AS function,a.name AS agent FROM grouped e '
                               'JOIN projects p ON p.id=e.project_id JOIN functions f ON f.id=e.function_id '
-                              'LEFT JOIN agents a ON a.id=e.agent_id WHERE ' + where +
+                              'LEFT JOIN agents a ON a.id=e.agent_id WHERE e.position=1 '
                               ' AND (?=0 OR e.id<?) ORDER BY e.id DESC LIMIT 26', *args, before, before)
         groups = self.store.all('SELECT e.category,e.status,COUNT(*) AS count FROM repair_examples e WHERE ' + where +
                                 ' GROUP BY e.category,e.status', *args)
+        from .app.adaptive_repairs import coverage
         return {'examples': [dict(r) for r in rows[:25]], 'more': len(rows) > 25,
-                'groups': [dict(r) for r in groups], 'categories': CATEGORIES, 'states': STATES}
+                'groups': [dict(r) for r in groups], 'categories': CATEGORIES, 'states': STATES,
+                'metrics': coverage(self.net)}
 
     def detail(self, slug, case_id, include_source=True):
         where, args = self._where(slug)
