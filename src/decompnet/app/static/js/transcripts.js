@@ -1,3 +1,64 @@
+/* Markdown is escaped first: transcript content can never introduce HTML or script URLs. */
+function transcriptMarkdown(text) {
+  const escape = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+  const inline = text => {
+    const codes = [];
+    let safe = escape(text).replace(/`([^`]+)`/g, (_, code) => { codes.push(`<code>${code}</code>`); return `\u0000${codes.length - 1}\u0000`; });
+    safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    return safe.replace(/\u0000(\d+)\u0000/g, (_, index) => codes[Number(index)] || "");
+  };
+  const lines = text.split("\n"), blocks = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+    const fence = line.match(/^\s*(`{3,}|~{3,})([\w+-]*)/);
+    if (fence) {
+      const code = []; i++;
+      while (i < lines.length && !lines[i].trim().startsWith(fence[1])) code.push(lines[i++]);
+      if (i < lines.length) i++;
+      blocks.push(`<pre><code>${escape(code.join("\n"))}</code></pre>`); continue;
+    }
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) { const level = Math.min(6, heading[1].length + 1); blocks.push(`<h${level}>${inline(heading[2])}</h${level}>`); i++; continue; }
+    if (/^\s*(?:---+|\*\*\*+)\s*$/.test(line)) { blocks.push('<hr>'); i++; continue; }
+    if (/^\s*>/.test(line)) {
+      const quote = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) quote.push(lines[i++].replace(/^\s*> ?/, ""));
+      blocks.push(`<blockquote>${transcriptMarkdown(quote.join("\n"))}</blockquote>`); continue;
+    }
+    const list = line.match(/^\s*(?:([-+*])|(\d+)[.)])\s+(.+)$/);
+    if (list) {
+      const tag = list[2] ? 'ol' : 'ul', items = [];
+      while (i < lines.length) {
+        const item = lines[i].match(/^\s*(?:([-+*])|(\d+)[.)])\s+(.+)$/);
+        if (!item || Boolean(item[2]) !== Boolean(list[2])) break;
+        items.push(`<li>${inline(item[3])}</li>`); i++;
+      }
+      blocks.push(`<${tag}>${items.join("")}</${tag}>`); continue;
+    }
+    if (line.includes('|') && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[i + 1])) {
+      const cells = row => row.trim().replace(/^\||\|$/g, '').split('|');
+      const head = cells(line).map(c => `<th>${inline(c.trim())}</th>`).join(''); i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) rows.push(`<tr>${cells(lines[i++]).map(c => `<td>${inline(c.trim())}</td>`).join('')}</tr>`);
+      blocks.push(`<div class="transcript-md-table"><table><thead><tr>${head}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`); continue;
+    }
+    blocks.push(`<p>${inline(line)}</p>`); i++;
+  }
+  return blocks.join("\n");
+}
+function transcriptToolResponse(text) {
+  let response;
+  try { response = JSON.parse(text); } catch { return null; }
+  if (!response || typeof response !== "object" || typeof response.name !== "string") return null;
+  const content = response.content ?? response.error;
+  if (typeof content !== "string") return null;
+  const body = document.createElement("div"); body.className = "transcript-markdown";
+  body.innerHTML = transcriptMarkdown(content);
+  return {body, name:response.name};
+}
 /* Readable tool catalog; unknown payloads always retain their original text view. */
 function transcriptToolCatalog(text) {
   let tools;
@@ -67,8 +128,14 @@ $("helperTranscript").onclick = async () => {
       const pre = document.createElement("pre"); pre.textContent = entry.text;
       const copy = document.createElement("button"); copy.type = "button"; copy.className = "ghost small-btn transcript-copy"; copy.textContent = "Copy text";
       copy.onclick = async () => { copy.textContent = await copyText(entry.text) ? "Copied" : "Copy failed — try again"; };
+      const response = entry.kind === "tool_response" ? transcriptToolResponse(entry.text) : null;
       const catalog = entry.kind === "tool_definitions" ? transcriptToolCatalog(entry.text) : null;
-      if (catalog) {
+      if (response) {
+        const raw = document.createElement("details"), rawLabel = document.createElement("summary");
+        raw.className = "transcript-tool-raw"; rawLabel.textContent = "Raw response (JSON)";
+        raw.append(rawLabel, pre); details.append(summary, response.body, raw, copy);
+        label.textContent = `Tool response · ${response.name}`;
+      } else if (catalog) {
         const raw = document.createElement("details"), rawLabel = document.createElement("summary");
         raw.className = "transcript-tool-raw"; rawLabel.textContent = "Full tool definitions (JSON)";
         raw.append(rawLabel, pre); details.append(summary, catalog, raw, copy);

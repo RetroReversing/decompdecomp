@@ -115,3 +115,13 @@
 .transcript-tool-params dd { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
 .session-transcript .transcript-tool-raw { margin: 0 16px 12px; padding: 0; border: 1px solid var(--line); border-radius: 6px; }
 @media (max-width: 640px) { .transcript-tool-params { grid-template-columns: 1fr; gap: 4px; } .transcript-tool-params dd { margin-bottom: 10px; } }
+
+.transcript-markdown { padding: 8px 18px 18px; font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; }
+.transcript-markdown p { margin: 8px 0; }
+.transcript-markdown h2, .transcript-markdown h3, .transcript-markdown h4 { margin: 20px 0 8px; line-height: 1.4; }
+.transcript-markdown h2 { font-size: 18px; } .transcript-markdown h3 { font-size: 16px; }
+.transcript-markdown code { font-family: var(--mono); font-size: 12px; background: var(--bg); border-radius: 4px; padding: 2px 4px; }
+.session-transcript .transcript-markdown pre { border: 1px solid var(--line); border-radius: 6px; padding: 14px; margin: 12px 0; max-height: 45vh; white-space: pre; }
+.transcript-markdown pre code { padding: 0; }
+.transcript-markdown blockquote { margin: 12px 0; padding: 4px 14px; border-left: 3px solid var(--line); color: var(--muted); }
+.transcript-md-table { overflow: auto; } .transcript-md-table th, .transcript-md-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); text-align: left; }
