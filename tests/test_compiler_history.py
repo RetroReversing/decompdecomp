@@ -127,3 +127,31 @@ def test_matched_comparison_uses_matching_source_and_prefers_default(comparison,
     fn = net._function('f2', 'demo')
     assert fn['status'] == 'matched' and fn['matched_source'] == 'matching source'
     assert not net.compiler_test_result(net.project_row('demo'), fn)['stale']
+
+
+def test_flags_only_uses_each_functions_current_compiler_and_resumes(comparison, monkeypatch):
+    net, profiles, _, _ = comparison
+    profiles.append(('gcc-2.7.2-kmc', ('-O3',)))
+    proj = net.project_row('demo')
+    cfg = net.cfg(proj)
+    cfg['compiler_ranges'] = [{'start': 0x80001020, 'end': 0x80001040,
+                               'toolchain': 'sn-n64-281', 'flags': ['-O1']}]
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=? WHERE id=?', (json.dumps(cfg), proj['id']))
+    tested = []
+
+    def judge(proj, fn, tc, flags, source):
+        tested.append((fn['name'], tc, tuple(flags)))
+        return False, SimpleNamespace(percent=80.0, score=80), ''
+
+    monkeypatch.setattr(net, '_judge_with', judge)
+    result = net.run_compiler_comparison('demo', flags_only=True)
+    assert result['tried'] == 2
+    assert tested == [('f0', 'gcc-2.7.2-kmc', ('-O2',)), ('f0', 'gcc-2.7.2-kmc', ('-O3',)),
+                      ('f1', 'sn-n64-281', ('-O1',))]
+    history = net.compiler_test_result(net.project_row('demo'), net._function('f0', 'demo'))
+    assert not history['stale'] and history['comparison']['flags_only']
+    assert net.run_compiler_comparison('demo', flags_only=True)['skipped'] == 2
+    # A limited comparison must never make a later full compiler search look completed.
+    assert net.run_compiler_comparison('demo')['tried'] == 2
+    assert ('f0', 'sn-n64-281', ('-O1',)) in tested
