@@ -557,7 +557,7 @@ class CompilerMixin:
         for r in ranges:
             c = audits.get(((r["start"], r["end"]),)) or {}
             parts.append({"start": r["start"], "end": r["end"], "compiler": consoles.compiler_name(r["toolchain"]),
-                          "flags": " ".join(r["flags"]), "toolchain": r["toolchain"],
+                          "flags": " ".join(r["flags"]), "flag_list": list(r["flags"]), "toolchain": r["toolchain"],
                           "default": (r["toolchain"], tuple(r["flags"])) == main,
                           "family": toolchains.compiler_family(r["toolchain"]) or r["toolchain"],
                           "functions": sum(r["start"] <= f["vram"] < r["end"] for f in function_rows),

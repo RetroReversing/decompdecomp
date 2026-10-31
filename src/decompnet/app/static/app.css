@@ -1264,3 +1264,5 @@ details.more[open] > summary::before { content: "− "; }
 .settings-disclosure > summary:focus-visible { outline: 2px solid var(--hl); outline-offset: -3px; }
 
 .compiler-selected { background: var(--hl); color: var(--hl-ink); border-color: var(--hl); font-weight: 600; }
+
+.compiler-profile-action { padding: 10px 12px; border-top: 1px solid var(--line); }

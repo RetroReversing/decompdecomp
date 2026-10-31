@@ -25,7 +25,7 @@ def replace_range(config, start, end, target):
     config['compiler_ranges'] = sorted(kept, key=lambda item: item['start'])
 
 
-def cleanup(net, slug, rare_limit=3, log=print):
+def cleanup(net, slug, rare_limit=3, log=print, source_profile=None):
     net._rom_only(slug, 'compiler profile cleanup')
     if not 1 <= rare_limit <= 25:
         raise NetworkError('Choose a rare-profile limit between 1 and 25 functions.')
@@ -39,12 +39,27 @@ def cleanup(net, slug, rare_limit=3, log=print):
         addresses = Counter(fn['vram'] for fn in rows)
         starts = sorted(addresses)
         counts = Counter(profile(compiler_for(config, fn['vram'])) for fn in rows)
-        common = [p for p, _ in counts.most_common(3) if toolchains.installed(p[0]) is not None]
+        default = profile(config['compiler'])
+        if source_profile is not None:
+            if not isinstance(source_profile, dict) or not isinstance(source_profile.get('toolchain'), str) or not isinstance(source_profile.get('flags'), list) or not all(isinstance(flag, str) for flag in source_profile['flags']):
+                raise NetworkError('Choose a compiler profile from the current list.')
+            selected = profile(source_profile)
+            if selected == default or selected not in counts:
+                raise NetworkError('That non-default compiler profile is no longer in use. Refresh the list.')
+            if toolchains.installed(default[0]) is None:
+                raise NetworkError('Install the project default compiler before comparing this profile.')
+            common = [default]
+        else:
+            selected = None
+            common = [p for p, _ in counts.most_common(3) if toolchains.installed(p[0]) is not None]
         candidates = [fn for fn in rows if fn['status'] == 'matched' and fn['matched_source']
                       and profile(compiler_for(config, fn['vram'])) != profile(config['compiler'])
-                      and counts[profile(compiler_for(config, fn['vram']))] <= rare_limit]
+                      and (profile(compiler_for(config, fn['vram'])) == selected if selected else counts[profile(compiler_for(config, fn['vram']))] <= rare_limit)]
         changed, tested, skipped = [], 0, 0
-        log(f'Checking {len(candidates)} matched functions from profiles used by at most {rare_limit} functions. Testing up to three more-common installed profiles.')
+        if selected:
+            log(f'Checking all {len(candidates)} matched functions from the selected profile against the project default only.')
+        else:
+            log(f'Checking {len(candidates)} matched functions from profiles used by at most {rare_limit} functions. Testing up to three more-common installed profiles.')
         for index, fn in enumerate(candidates, 1):
             check_cancel()
             if addresses[fn['vram']] > 1 or net.store.one('SELECT 1 FROM claims WHERE function_id=?', fn['id']):
@@ -53,7 +68,7 @@ def cleanup(net, slug, rare_limit=3, log=print):
                 continue
             own = profile(compiler_for(config, fn['vram']))
             for target in common:
-                if target == own or counts[target] <= counts[own]:
+                if target == own or (selected is None and counts[target] <= counts[own]):
                     continue
                 check_cancel()
                 log(f'{index}/{len(candidates)}: {fn["name"]} — {target[0]} {" ".join(target[1])}')
