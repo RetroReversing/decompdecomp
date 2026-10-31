@@ -547,14 +547,23 @@ class CompilerMixin:
                     c["said"] = self.rangechecks.waiting_reason(c, rows)
         audits = {tuple(map(tuple, c["spans"])): c for c in checks if c.get("audit")}
         parts = []
+        function_rows = self.store.all("SELECT name,vram,status FROM functions WHERE project_id=? AND vram IS NOT NULL", proj["id"])
         for r in ranges:
             c = audits.get(((r["start"], r["end"]),)) or {}
             parts.append({"start": r["start"], "end": r["end"], "compiler": consoles.compiler_name(r["toolchain"]),
-                          "flags": " ".join(r["flags"]),
+                          "flags": " ".join(r["flags"]), "toolchain": r["toolchain"],
+                          "family": toolchains.compiler_family(r["toolchain"]) or r["toolchain"],
+                          "functions": sum(r["start"] <= f["vram"] < r["end"] for f in function_rows),
+                          "function_list": [dict(f) for f in function_rows if r["start"] <= f["vram"] < r["end"]],
                           "check": c.get("status", ""), "said": c.get("said", "")})
         elsewhere = sorted((r for r in (cmap.runs if cmap else []) if r.differs()), key=lambda r: -r.functions)
+        def uses_default(fn):
+            own = compiler_for(cfg, fn["vram"])
+            return (own["toolchain"], tuple(own["flags"])) == main
         # the compiler's name and its flags apart: "built with KMC GCC 2.7.2" reads at a glance, the flags are details
-        return {"compiler": consoles.compiler_name(main[0]), "flags": " ".join(main[1]), "parts": parts, "mips": cmap is not None,
+        return {"compiler": consoles.compiler_name(main[0]), "flags": " ".join(main[1]), "parts": parts,
+                "default_function_list": [dict(f) for f in function_rows if uses_default(f)],
+                "default_functions": sum(uses_default(f) for f in function_rows), "mips": cmap is not None,
                 "elsewhere": [{"start": r.start, "end": r.end, "compiler": self._short(r.label), "functions": r.functions,
                                "confirmed": r.confirmed} for r in elsewhere[:self.ANSWER_STRETCHES]],
                 "elsewhere_count": len(elsewhere),

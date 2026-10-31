@@ -209,7 +209,7 @@
     </nav>
   </header>
 
-  <div class="notice" id="progressSyncNotice" role="status" hidden><div>Checking saved progress. Counts may change as verification finishes.<div class="workbar" role="progressbar" aria-label="Checking saved progress"><i></i></div></div></div>
+  <div class="notice" id="progressSyncNotice" role="status" hidden><div id="progressSyncText"></div><div class="small muted" id="progressSyncDetails"></div><div class="workbar" id="progressSyncBar" role="progressbar" aria-label="Saved progress verification"><i></i></div></div>
   <div class="notice" id="coverageNotice" hidden></div>
   <div class="panel" id="progressPopulations" hidden></div>
   <div class="notice" id="compilerNotice" hidden></div>
@@ -418,7 +418,18 @@
         <header class="panel-head"><h2 id="compilerH">Compiler</h2><span class="muted small" id="compilerState"></span></header>
         <div class="pad">
           <p class="answer" id="compilerAnswer"></p>
-          <div id="compilerParts"></div>
+          <div class="compiler-view-controls" id="compilerViewControls" hidden>
+            <label>Group by <select id="compilerGroup"><option value="settings">Compiler + arguments</option><option value="family">Compiler family</option><option value="range">Address ranges</option></select></label>
+            <label>Sort <select id="compilerSort"><option value="count">Most ranges</option><option value="address">Address ↑</option><option value="address-desc">Address ↓</option><option value="compiler">Compiler name</option></select></label>
+          </div><div id="compilerParts"></div>
+          <div id="compilerCleanup" class="compiler-cleanup" hidden>
+            <h3>Consolidate compiler settings</h3>
+            <label>Rare profiles: at most <input id="compilerRareLimit" type="number" min="1" max="25" value="3"> functions</label>
+            <p class="small muted">Test matched C from rare profiles against up to three more-common installed profiles. Change settings only when the same source matches byte for byte. Busy functions, shared overlay addresses and unfinished drafts keep their settings. The final check protects every affected match.</p>
+            <button id="compilerCleanupGo" class="ghost" type="button">Clean up compiler settings</button>
+            <p id="compilerCleanupResult" class="small" role="status"></p>
+            <pre id="compilerCleanupLog" class="joblog" hidden></pre>
+          </div>
           <div id="compilerWaiting"></div>
           <label class="check" id="autoAdjustRow"><input type="checkbox" id="autoAdjust"><span><b>Apply proven changes by themselves.</b> When agents prove a part of the game was built with another compiler (its code matches with it, and its neighbours agree), the app uses it without asking you.</span></label>
           <div id="installedCompilerTest">
@@ -697,6 +708,7 @@
 <script src="/assets/js/deep-progress.js"></script>
 <script src="/assets/js/function.js"></script>
 <script src="/assets/js/compiler-progress.js"></script>
+<script src="/assets/js/compiler-groups.js"></script>
 <script src="/assets/js/steering.js"></script>
 <script src="/assets/js/pages.js"></script>
 </body>

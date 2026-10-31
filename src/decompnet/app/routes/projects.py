@@ -15,7 +15,7 @@ from starlette.responses import JSONResponse, Response
 from ... import consoles, hostenv, toolchains
 from ...forks.project import SCOPES
 from ...network import NetworkError
-from .. import saves
+from .. import compiler_cleanup, saves
 from ..engine import parse_ranges
 from . import App
 
@@ -67,6 +67,13 @@ def register(app: App) -> None:
         q = request.query_params
         return manager.transcript(slug, int(q.get('helper', 0)), int(q.get('session', 0)),
                                   int(q.get('after', 0)), int(q.get('before', 0)))
+
+    def p_compiler_cleanup(slug, request, data):
+        limit = int(data.get("rare_limit", 3))
+        if not 1 <= limit <= 25:
+            raise NetworkError("Choose a rare-profile limit between 1 and 25 functions.")
+        net._rom_only(slug, "compiler profile cleanup")
+        return {"job": jobs.start("compiler-cleanup", lambda log: compiler_cleanup.cleanup(net, slug, limit, log))}
 
     def p_compiler(slug, request, data):
         if data.get("function"):
@@ -381,7 +388,8 @@ def register(app: App) -> None:
         "/api/function": (lambda s, r, d: net.function_detail(s, r.query_params.get("name", "")), ["GET"]),
         "/api/diff": (lambda s, r, d: net.function_diff(s, r.query_params.get("name", ""),
                                                         r.query_params.get("which", "latest")), ["GET"]),
-        "/api/compiler": (p_compiler, ["POST"]), "/api/export": (p_export, ["POST"]), "/api/open": (p_open, ["POST"]),
+        "/api/compiler": (p_compiler, ["POST"]),
+        "/api/compiler/cleanup": (p_compiler_cleanup, ["POST"]), "/api/export": (p_export, ["POST"]), "/api/open": (p_open, ["POST"]),
         "/api/reimport": (p_reimport, ["POST"]),
         "/api/delete": (p_delete, ["POST"]),
         "/api/try": (p_try, ["POST"]), "/api/release": (p_release, ["POST"]), "/api/reopen": (p_reopen, ["POST"]), "/api/setaside": (p_set_aside, ["POST"]),
