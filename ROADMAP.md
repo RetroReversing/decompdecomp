@@ -1131,3 +1131,17 @@ Target-table reading currently supports MIPS ROM assembly with bounded, mapped t
 processors and imported object-mode table discovery: **—**, require their relocation/table adapters.
 Approximate SDK hints in imported project mode: **—**, require reading the target unit object through
 that mode's existing object-format adapter. Generic C source-shape repairs already reach that mode.
+
+## Target-guided local scheduling repairs
+
+Implemented: candidate-owned missing first-call arguments evidenced by MIPS delay-slot loads,
+byte-address alias hypotheses, single-field records across distinct call results, inverse record
+access shapes, direct boolean masks, split call-result locals and compatible dead-result reuse.
+Field-load capture tests offset orders observed in MIPS target assembly. Candidates are bounded
+and round-robin by family; two-family bundles and the existing iterative/deep frontier keep
+interactions available. Every accepted change still passes the ordinary destination judge.
+
+Generic source repairs reach ROM and imported-project mode on supported 32-bit processors.
+MIPS call/load evidence requires target assembly; other-processor argument recovery and
+64-bit record layouts: **—**, need ABI-aware argument and pointer-width adapters. Shared
+headers, symbol maps and compiler profiles are not changed by these local hypotheses.
