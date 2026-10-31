@@ -1445,6 +1445,10 @@ class Network:
                 from .match_bundle import capture as capture_bundle
                 capture_bundle(db,fn,attempt,source,ctx_version,effective_settings)
                 self.repair_feedback.capture(db, current, source, agent.id, via, ctx_version, attempt)
+            if not matched and not stale and (not used or all(used.get(k)==own.get(k) for k in ("toolchain","flags"))):
+                from .match_bundle import failed_recheck
+                if failed_recheck(db,fn,attempt,source,score):
+                    self._event(db,fn['project_id'],agent.id,'regression',fn['name'])
             db.execute("UPDATE functions SET attempts=attempts+1 WHERE id=?", (fn["id"],))
             from . import candidate_quality
             reported = not matched and candidate_quality.reported_source(self, current, source)

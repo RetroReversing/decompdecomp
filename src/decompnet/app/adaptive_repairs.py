@@ -87,7 +87,9 @@ def order(net, proj, fn, rows, families):
     from .experiment_evidence import factors as input_factors
     for family, factor in input_factors(net,proj,fn).items():
         measured[family] = min(measured.get(family,1),factor)
-    ranked = sorted(families, key=lambda family: -measured.get(family, 1))
+    from .repair_sequences import starting
+    learned = starting(net,proj,fn,rows)
+    ranked = sorted(families, key=lambda family: (family not in learned,-measured.get(family, 1)))
     # Interleave the original queue so a changed policy cannot starve unexplored families.
     return list(dict.fromkeys(family for pair in zip_longest(ranked, families)
                               for family in pair if family is not None))

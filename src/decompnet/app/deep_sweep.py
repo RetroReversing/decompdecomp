@@ -271,7 +271,7 @@ class Sweeps:
         proj = self.net.project_row(slug)
         stable = build_scope == candidate_scope.key(self.net, proj, before)
         self.record(fresh, signature(self.net, proj, fresh, minutes, variants),
-                    'completed' if stable else 'pending', minutes, variants, result)
+                    ('rotated' if str(result.get('reason','')).startswith('Budget rotation:') else 'completed') if stable else 'pending', minutes, variants, result)
 
     def record(self, fn, scope, state, minutes, variants, result=None, error=''):
         with self.lock:
@@ -286,7 +286,8 @@ class Sweeps:
         """Finish one turn per unchanged candidate; wait for claims or usable C without marking them done. `threads`
         functions are searched at once (0: what the computer can spare, workers.py); each is its own bounded turn."""
         count = workers.clamp(threads) if threads != 1 else 1
-        stats = {'visited': 0, 'tested': 0, 'matched': 0}
+        stats = {'visited': 0, 'tested': 0, 'matched': 0, 'rotated':0}
+        visited_turns = set()
         lock = threading.Lock()  # (the counters are shared by every thread's function)
         while True:
             log.check_cancel()
@@ -297,7 +298,7 @@ class Sweeps:
             for row in rows:
                 log.check_cancel()
                 fn = self.net._function(row['name'], slug)
-                if fn['status'] != 'open':
+                if fn['status'] != 'open' or fn['id'] in visited_turns:
                     continue
                 if not fn['best_source'] or fn['best_score'] is None:
                     waiting += 1
@@ -317,6 +318,11 @@ class Sweeps:
 
             def search(item, proj=proj, total=total, blocked=blocked):
                 self.search_one(slug, proj, item[0], item[1], minutes, variants, log, stats, lock, total, blocked)
+                previous = self.net.store.one('SELECT state FROM deep_permutation_passes WHERE function_id=?',item[0]['id'])
+                if previous and previous['state'] == 'rotated':
+                    with lock:
+                        visited_turns.add(item[0]['id'])
+                        stats['rotated'] += 1
             if count == 1:
                 for item in batch:
                     search(item)
@@ -329,7 +335,9 @@ class Sweeps:
             if not pending and not waiting:
                 self.save(slug, self.config(slug) | {'enabled': False})
                 log('Deep pass finished. Completed bounded passes are saved; this is not an exhaustive search of all C.')
-                return {'functions_tested': stats['visited'], 'tested': stats['tested'], 'matched': stats['matched']}
+                if stats['rotated']:
+                    log(f"{stats['rotated']} functions rotated early and remain eligible for the next run.")
+                return {'functions_tested': stats['visited'], 'tested': stats['tested'], 'matched': stats['matched'], 'rotated':stats['rotated']}
             log.progress({'phase': 'waiting for unclaimed functions or scored C', 'functions_tested': stats['visited'],
                           'matches': stats['matched'], 'waiting': waiting, 'total_unmatched': len(rows)})
             # Cancellation remains responsive while another worker owns the remaining functions.
@@ -352,6 +360,7 @@ class Sweeps:
             log(line)
         function_log.check_cancel = log.check_cancel
         function_log.progress = progress
+        function_log.adaptive_budget = True
         try:
             result = deep_permuter.run(self.net, slug, fn['name'], minutes, variants, function_log)
             # Also records test backends and older search providers that do not publish history.

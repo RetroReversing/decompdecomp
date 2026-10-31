@@ -407,3 +407,18 @@ def test_measurements_accumulate_by_family_and_phase_without_rewriting_old_total
             random['improved'], random['elapsed_ms'], random['score_gain']) == (4, 1, 1, 1, 1, 150, 10)
     assert rows['local repairs after random improvement']['matched'] == 1
     assert obj.recipes(fn['project_id'])[0]['tested'] == 7
+
+
+def test_rotated_functions_remain_eligible_next_sweep_without_looping_in_this_one(sweep,monkeypatch):
+    obj,net,calls,_=sweep
+    def rotate(net,slug,name,minutes,variants,log):
+        assert log.adaptive_budget
+        calls.append(name)
+        return {'tested':32,'matched':False,'reason':'Budget rotation: repeated function output without improvement'}
+    monkeypatch.setattr(deep_permuter,'run',rotate)
+    assert obj.run('game',1,100,Log())['functions_tested']==2
+    assert calls==['f0','f1']
+    assert net.store.one('SELECT state FROM deep_permutation_passes LIMIT 1')['state']=='rotated'
+    assert obj.run('game',1,100,Log())['functions_tested']==2
+    assert calls==['f0','f1','f0','f1']
+    assert net._function('f0','game')['status']=='open'
