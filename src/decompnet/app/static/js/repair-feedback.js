@@ -71,12 +71,25 @@ $("repairExamples").onclick = async () => {
         const pre = document.createElement('pre'); pre.className = 'repair-diff'; pre.setAttribute('tabindex', '0'); pre.setAttribute('aria-label', 'Source changes');
         const change = document.createElement('p'); change.className = 'muted small';
         change.textContent = data.evidence.source_change_label || '';
-        const diff = data.evidence.diff || 'No comparable failed source is available. Check the full technical evidence for settings and context.';
+        const view = document.createElement('select'); view.setAttribute('aria-label', 'Repair diff scope');
+        const choices = [['function_diff', 'Target function'], ['supporting_diff', 'Declarations and neighbouring functions'], ['diff', 'Full source']];
+        for (const [value, label] of choices) {
+          const option = document.createElement('option'); option.value = value; option.textContent = label;
+          option.disabled = data.evidence[value] == null; view.append(option);
+        }
+        view.value = data.evidence.function_diff == null ? 'diff' : 'function_diff';
+        const renderDiff = () => {
+        pre.replaceChildren();
+        const diff = data.evidence[view.value] || 'No changes in this scope.';
         for (const line of diff.split('\n')) {
           const span = document.createElement('span');
           span.className = line.startsWith('@@') ? 'diff-range' : line.startsWith('+') ? 'diff-added' : line.startsWith('-') ? 'diff-removed' : 'diff-context';
           span.textContent = line; pre.append(span);
         }
+        };
+        view.onchange = renderDiff; renderDiff();
+        change.textContent += " " + (data.evidence.focus_note || "");
+        if (data.evidence.pattern_candidates?.length) change.textContent += " Pattern candidates: " + data.evidence.pattern_candidates.join(', ') + '. ' + data.evidence.pattern_note;
         const raw = document.createElement('details'), rawTitle = document.createElement('summary'), rawText = document.createElement('pre');
         rawTitle.textContent = 'Full technical evidence'; rawText.textContent = JSON.stringify(data.evidence, null, 2);
         raw.append(rawTitle, rawText);
@@ -128,7 +141,7 @@ $("repairExamples").onclick = async () => {
         advanced.className = 'repair-review';
         advancedTitle.textContent = 'Classify and save review'; advanced.append(advancedTitle, review, kind, note, save);
         const evidence = document.createElement('details'), evidenceTitle = document.createElement('summary');
-        evidenceTitle.textContent = 'Before/after evidence and compiler settings'; evidence.append(evidenceTitle, change, pre, raw); evidence.open = true;
+        evidenceTitle.textContent = 'Before/after evidence and compiler settings'; evidence.append(evidenceTitle, change, view, pre, raw); evidence.open = true;
         const test = document.createElement('button'); test.type = 'button'; test.textContent = 'Test automatic repairs for this example';
         test.onclick = () => replay(row.id);
         body.append(explanation, test, providers, send, hint, log, evidence, advanced); details.loaded = true;

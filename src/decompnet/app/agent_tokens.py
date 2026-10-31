@@ -157,6 +157,7 @@ def brief(net, text, slug=None, agent=None):
         return m[0]
     text = re.sub(r'(^### Declarations it uses[^\n]*\n)(```c\n.*?\n```)',shared,text,flags=re.M|re.S)
     # A batch can contain more than one claimed function. Resolve each stored name from its brief header.
+    preflight_deadline = time.monotonic() + 5  # checked between builds; active compilers retain their own watchdog timeout
     for name in re.findall(r'^## CLAIMED: (.+?)(?:  \([^\n]*\))?$', text, re.M):
         if slug and name.startswith(slug + '/'):
             name = name[len(slug)+1:]
@@ -169,6 +170,27 @@ def brief(net, text, slug=None, agent=None):
                 source, revision = candidate(net, agent, slug, fn['name'])
                 # Only attach a revision when the exact candidate is present in the claim.
                 if source and source.strip() in text:
+                    from . import declaration_recovery
+                    # Only inherited candidates, once per claim/build scope; ordinary edits keep their normal judge.
+                    if time.monotonic() < preflight_deadline and fn['best_source'] and not net.store.one(
+                            'SELECT 1 FROM attempts a JOIN claims c ON c.function_id=a.function_id '
+                            'WHERE a.function_id=? AND a.agent_id=? AND a.created_at>=c.claimed_at', fn['id'], agent.id):
+                        prepared, report = declaration_recovery.preflight(net, agent, slug, fn, source)
+                        if prepared != source:
+                            text = text.replace(source, prepared, 1)
+                            latest = net.store.one('SELECT id,created_at FROM attempts WHERE function_id=? AND agent_id=? ORDER BY id DESC LIMIT 1', fn['id'], agent.id)
+                            claim = net.store.one('SELECT claimed_at FROM claims WHERE function_id=? AND agent_id=?', fn['id'], agent.id)
+                            stamp = (latest['id'] if latest and claim and latest['created_at'] >= claim['claimed_at'] else None,
+                                     claim['claimed_at'] if claim else None, target_scope(net,fn,''))
+                            if not hasattr(net, '_agent_selected'):
+                                net._agent_selected = {}
+                            net._agent_selected[agent.id,fn['id']] = {'stamp':stamp, 'source':prepared}
+                            while len(net._agent_selected) > 64:
+                                del net._agent_selected[next(iter(net._agent_selected))]
+                            source, revision = candidate(net, agent, slug, fn['name'])
+                            text += '\nKnown declarations restored and diagnostic build verified; candidate-local only. Submit through the normal judge to save any match.\n'
+                        elif report and report.get('score') is None:
+                            text += '\nInherited candidate preflight blocked; fix declarations/build before experiments:\n'+report.get('error', '')[:800]+'\n'
                     text += agent_targets.suggestions(source)
                     text += f"{fn['name']}: candidate revision {revision}; use compile_patch directly on the candidate above.\n"
                     from . import local_experiments
