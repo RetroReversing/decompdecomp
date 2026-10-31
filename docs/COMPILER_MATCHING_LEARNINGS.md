@@ -529,3 +529,42 @@ header, remaining pass budget/deadline and the existing settings approval/rejudg
 imported builds keep their own settings. First compiler errors are summarized before cascades, with complete logs
 stored privately under the app workspace rather than included in portable projects. Synthetic regressions verify
 these changes separately from the observed matches above.
+
+## Candidate-local call, alias and lifetime repairs (31 October 2026)
+
+A 775-instruction MIPS routine matched with KMC GCC 2.7.2, using
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. The normal linked judge accepted all 3,100 bytes;
+the standalone function check and complete normalized cartridge comparison also passed.
+
+Reusable observations from the investigation:
+
+- A candidate-owned `void callee(void)` declaration hid an argument explicitly loaded into
+  `$a0` in the target call's delay slot. Correct both the local declaration and call. Do not
+  infer no arguments from the existing candidate's prototype.
+- An auto-named global and a byte-array base plus a constant denoted the same address.
+  Expressing both reads through one base let this compiler reuse loads. Numeric-name
+  resolution is only a hypothesis; the destination linker must verify its addresses.
+- A single-field record can help even when each distinct call-result local accesses just
+  one field. Sharing that record shape recovered scheduling not reached by per-local
+  multi-field layout inference. Conversely, lowering one inferred record field to a raw
+  access corrected an unwanted store motion. Neither shape is universally better.
+- Repeated byte masks feeding only boolean conditions can prolong a temporary's lifetime.
+  Direct conditions, a separate call-result local and reuse of an earlier dead compatible
+  result slot are complementary source-shape hypotheses. Splitting is not always the
+  winning choice: the final manual matrix scheduling fix reused an earlier result slot.
+- Exact linked verdicts take precedence over symbolic display scores. Equivalent relocation
+  spellings in this controlled replay can leave a nonzero displayed diff even when the
+  linked bytes are exact; the ordinary engine records exact matches as score zero.
+
+The new source families are replayed against a private copy of the saved pre-match draft.
+Results below are controlled recovery experiments, not newly discovered live matches.
+Game source, ROM, database and generated replay artifacts stay outside this repository.
+
+Final controlled recovery: starting displayed score **1,810**, the bounded source generator
+recovered an **exact linked match in eight greedy refinement rounds / 175 compilations**.
+Each round tested at most 32 proposals, retaining the best judged improvement; exactness came
+from the original linked-byte checker, not the displayed score. The first narrower run stopped
+at 275; adding dead-result reuse, field-value lifetimes and target-observed load staging supplied
+the remaining steps. This is a private regression replay of an already-known match, not a
+claim that Autopilot finds every comparable routine within that budget. No global search
+budget, beam depth or compiler setting was enlarged for this change.

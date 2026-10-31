@@ -13,6 +13,11 @@ def hints(source, name, asm='', arch='', rows=None):
     from .helper_call_diagnostics import suggestions
     from .preparation_diagnostics import allocations
     result = suggestions(rows) + allocations(source, rows)
+
+    from .target_local_repairs import call_arguments
+    if arch == "mips" and call_arguments(source, name, asm):
+        result.append("The target supplies a first call argument that a candidate-owned void prototype omits. "
+                      "Try the target_call_argument local family; shared declarations stay unchanged.")
     original=source[span[0]:span[1]]
     if all(re.search(r"case\s+'"+code+r"'\s*:",original) for code in ('s','f','c')):
         result.append('This resembles a formatting-library routine. Check local SDK/library leads before a broad search. '
