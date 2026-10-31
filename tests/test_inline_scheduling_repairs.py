@@ -85,3 +85,9 @@ def test_variants_compile_and_keep_synthetic_results(tmp_path):
         path.write_text(candidate+'\nint main(void){return work()!=1;}')
         subprocess.run([compiler,'-std=c99',str(path),'-o',str(binary)],check=True,capture_output=True,timeout=15)
         subprocess.run([str(binary)],check=True,timeout=5)
+
+
+def test_comparison_helpers_do_not_change_integer_promotions():
+    for typ, bound in [('unsigned short', '70000'), ('int', '0xFFFFFFFF'), ('int', '2u')]:
+        source = f'int work(void){{{typ} x; x=2; return x > {bound};}}'
+        assert not family(source,'inline_scalar_shape')

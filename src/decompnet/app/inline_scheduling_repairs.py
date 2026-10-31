@@ -12,6 +12,17 @@ FAMILIES = ('inline_scalar_shape', 'expression_placement', 'stack_address_tempor
             'structured_backedge', 'loop_invariant_placement', 'scalar_schedule_order', 'combined_scheduling')
 
 
+def comparison_literal(text):
+    text = text.strip().strip('()').replace(' ', '')
+    if re.search(r'[uUlL]$',text):
+        return False
+    try:
+        value = int(text, 16 if '0x' in text.lower() else 10)
+    except ValueError:
+        return False
+    return -(2**31) <= value < 2**31
+
+
 def singles(source, name):
     part = view(source, name)
     if not part or re.search(r'\b(?:volatile|asm|__asm__)\b', part.clean):
@@ -29,7 +40,7 @@ def singles(source, name):
 
     for hit in list(re.finditer(rf'\b({IDENT})\s*(<|>)\s*(-?\s*{NUMBER})', part.body))[:4]:
         local = declarations.get(hit[1])
-        if local is None:
+        if local is None or local['type'] not in {'int', 's32', 'signed int'} or not comparison_literal(hit[3]):
             continue
         typ = local['type']
         a = part.opening+1+hit.start()
@@ -41,7 +52,9 @@ def singles(source, name):
     for op, reverse in (('<','>'), ('>','<')):
         hits = list(re.finditer(rf'\b({IDENT})\s*{op}\s*((?:\(\s*-?\s*{NUMBER}\s*\))|(?:-?\s*{NUMBER}))',part.body))
         for typ in dict.fromkeys(d['type'] for d in declarations.values()):
-            matching = [h for h in hits if h[1] in declarations and declarations[h[1]]['type'] == typ]
+            if typ not in {'int', 's32', 'signed int'}:
+                continue
+            matching = [h for h in hits if h[1] in declarations and declarations[h[1]]['type'] == typ and comparison_literal(h[2])]
             if not 2 <= len(matching) <= 8 or '__repair_inline' in source:
                 continue
             edits = [(part.opening+1+h.start(),part.opening+1+h.end(),f'__repair_inline({h[2]}, {h[1]})') for h in matching]
