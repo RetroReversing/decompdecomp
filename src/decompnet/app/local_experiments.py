@@ -34,6 +34,7 @@ from . import (
     stack_layout,
     stack_padding_repairs,
     store_address_repairs,
+    switch_tables,
 )
 
 EXPERIMENTAL = ('experimental_bitfield_frame',)
@@ -167,7 +168,7 @@ def available(net, agent, slug, fn, source, revision, requested):
         ctx=net._context(proj['id'],fn['unit'])
         header=net.forks.permuter_header(slug,fn['name']) if net.fork_slug(slug) else (ctx['header'] if ctx else '')
         labels={}
-        for candidate in draft_repairs.variants(source,fn['name'],proj['arch'],fn['asm'] or '',flags,labels,limit=None,header=header):
+        for candidate in draft_repairs.variants(source,fn['name'],proj['arch'],fn['asm'] or '',flags,labels,limit=None,header=header,tables=switch_tables.read(net,proj,fn)):
             family=labels[candidate]
             if family in pools and family in draft_repairs.AGENT_FAMILIES:
                 pools[family].append(candidate)

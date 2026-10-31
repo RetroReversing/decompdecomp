@@ -267,6 +267,7 @@ class GuiMixin:
 
     def function_detail(self, slug: str, name: str) -> dict:
         from ...match_bundle import status as bundle_status
+        from ..baseline_status import status as baseline_status
         from ..function_names import state as name_state
         sweep = getattr(self, 'deep_sweeps', None)
         deep_pass = sweep.history(slug, self._function(name, slug)) if sweep else {'state': 'not tried', 'completed': False}
@@ -289,7 +290,7 @@ class GuiMixin:
         return {
             **name_state(fn), "name": fn["name"], "vram": fn["vram"], "rom_offset": fn["rom_offset"], "size": fn["size"],
             "insns": fn["n_insns"], "status": fn["status"], "best": fn["best_score"], **set_aside(fn),
-            "deep_pass": deep_pass, "verification": bundle_status(self,fn),
+            "deep_pass": deep_pass, "verification": bundle_status(self,fn), "baseline_status": baseline_status(self,proj,fn),
             "compiler_test": self.compiler_test_result(proj, fn),
             "compiler_profile": compiler_for(self.cfg(proj), fn["vram"]),
             "default_compiler": self.cfg(proj)["compiler"],

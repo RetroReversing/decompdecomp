@@ -41,7 +41,7 @@ from ..network import NetworkError
 from ..permuter import mutate
 from ..project import compiler_for
 from ..repair_feedback import trial as repair_trial
-from . import draft_repairs, workers
+from . import draft_repairs, switch_tables, workers
 
 log = logging.getLogger("decompdecomp")
 NEAR = 0.06  # a near miss: at most this much of the function differs (best_score <= 6% of n_insns * 100)
@@ -296,7 +296,7 @@ class Permuter:
                 log.info('permuter: %s: header unavailable: %s', fn['name'], error)
                 continue
             labels = {}
-            candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels,header=header,limit=None)
+            candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels,header=header,limit=None,tables=switch_tables.read(self.net,proj,fn))
             from . import repair_ranking
             ranked = repair_ranking.order(dict.fromkeys(labels.get(text, 'draft_repair') for text in candidates),repair_ranking.evidence(self.net,fn['id'],agent.id))
             from . import agent_tokens

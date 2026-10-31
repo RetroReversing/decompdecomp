@@ -36,7 +36,7 @@ function groupNameHints(hints) {
     if (!group.hints.some((h) => h.game === hint.game && h.kind === hint.kind)) group.hints.push(hint);
   }
   return [...groups.values()].map((g) => ({ ...g,
-    exact: g.hints.filter((h) => h.score === 1 && h.kind !== "similar code; unverified").length,
+    exact: g.hints.filter((h) => h.score === 1 && !h.kind.includes("unverified")).length,
     score: Math.max(...g.hints.map((h) => h.score)),
   })).sort((a, b) => b.exact - a.exact || b.hints.length - a.hints.length || b.score - a.score || a.name.localeCompare(b.name));
 }
@@ -214,6 +214,14 @@ async function refreshFn(first) {
     $("copyAsm").onclick = () => copyTargetAssembly(d.asm);
     const kinds = { matched: "Matching C", best: "Best attempt so far", latest: S.ov.kind === "fork" ? "In the source now" : "Latest attempt", draft: "Machine draft (m2c)" };
     $("fnSrcKind").textContent = kinds[d.source_kind] || "No C yet";
+    if (d.baseline_status?.state === "historical") {
+      const recheck = document.createElement("button");
+      recheck.className = "small";
+      recheck.textContent = "Historical score · recheck in Diff";
+      recheck.title = d.baseline_status.reasons.join(" ");
+      recheck.onclick = () => showFnTab("diff");
+      $("fnSrcKind").append(" ", recheck);
+    }
     if (!S.editDirty || first) setEditor(d.source || "", d);
     $("copySrc").onclick = () => navigator.clipboard.writeText($("fnEdit").value).then(() => toast("Copied."));
     renderFnChart(d);

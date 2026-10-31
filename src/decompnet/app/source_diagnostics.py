@@ -12,6 +12,11 @@ def hints(source, name, asm='', arch='', rows=None):
     body = clean[span[0]:span[1]]
     from .helper_call_diagnostics import suggestions
     result = suggestions(rows)
+    original=source[span[0]:span[1]]
+    if all(re.search(r"case\s+'"+code+r"'\s*:",original) for code in ('s','f','c')):
+        result.append('This resembles a formatting-library routine. Check local SDK/library leads before a broad search. '
+                      'Keep format characters separate from integer output lengths, preserve output macros, case order, '
+                      'fallthrough groups and flag-loop labels. Source identity and a lower score still need the exact judge.')
     if arch == 'mips':
         from ..arch.mips_runtime import helper, specialized_calls
         loads = {}
