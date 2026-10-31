@@ -3,15 +3,13 @@ $("helperTranscript").onclick = async () => {
   const helper = S.logFor, slug = S.slug;
   if (!helper) return;
   const dialog = document.createElement("dialog");
-  dialog.className = "transcript-dialog";
-  dialog.innerHTML = `<h2>Session transcript</h2>
-    <p class="muted small">App prompts, exposed replies and full app tool exchanges, recorded from this update onward.
-    CLI internal system prompts, hidden reasoning, shell output and context compaction are not captured.
-    API requests include the context actually sent. Credentials are redacted.</p>
-    <div class="transcript-controls"><select aria-label="Session"></select>
-    <button data-older type="button">Older sessions</button><button data-refresh type="button">Refresh</button>
-    <button data-close type="button">Close</button></div>
-    <p data-usage></p><div data-events></div><button data-more type="button" hidden>Load more messages</button>`;
+  dialog.className = "transcript-dialog session-transcript";
+  dialog.innerHTML = `<header class="transcript-header"><div><span class="transcript-eyebrow">Agent activity</span><h2>Session transcript</h2><p class="small muted">Prompts, replies and tool exchanges from this helper.</p></div><button data-close type="button" class="ghost" aria-label="Close session transcript">Close</button></header>
+    <div class="transcript-toolbar"><label>Session<select aria-label="Session"></select></label><div class="row">
+    <button data-older type="button" class="ghost small-btn">Older sessions</button><button data-refresh type="button" class="ghost small-btn">Refresh</button></div></div>
+    <div class="transcript-usage"><span class="transcript-eyebrow">Reported usage</span><p data-usage></p></div>
+    <div class="transcript-timeline"><div class="transcript-timeline-heading"><h3>Timeline</h3><span data-event-count class="small muted"></span></div><div data-events></div><button data-more type="button" class="ghost" hidden>Load more messages</button></div>
+    <details class="transcript-coverage"><summary>What this transcript includes</summary><p class="small muted">App prompts, exposed replies and full app tool exchanges recorded while transcripts were enabled. CLI internal system prompts, hidden reasoning, shell output and context compaction are not captured. API requests include the context actually sent. Credentials are redacted. Earlier sessions cannot be reconstructed.</p></details>`;
   document.body.append(dialog);
   const select = dialog.querySelector("select"), events = dialog.querySelector("[data-events]");
   const older = dialog.querySelector("[data-older]"), more = dialog.querySelector("[data-more]");
@@ -25,10 +23,19 @@ $("helperTranscript").onclick = async () => {
       const labels = {prompt: "Initial prompt", instructions: "App instructions", tool_definitions: "Tool definitions",
         tool_request: "Tool request", tool_response: "Tool response", api_request: "API request (actual context)",
         text: "Agent reply", think: "Exposed reasoning", usage: "Reported usage"};
-      summary.textContent = `${clock(entry.created_at)} · ${labels[entry.kind] || entry.kind} · ${entry.text.length.toLocaleString()} characters`;
+      details.className = `transcript-event${entry.kind === "error" ? " transcript-event-error" : ""}`;
+      details.open = entry.kind === "error" || (entry.kind === "text" && entry.text.length <= 2000);
+      const label = document.createElement("span"), time = document.createElement("time"), size = document.createElement("span");
+      label.className = "transcript-event-label"; label.textContent = labels[entry.kind] || entry.kind;
+      time.textContent = clock(entry.created_at);
+      size.className = "transcript-event-size"; size.textContent = `${entry.text.length.toLocaleString()} characters`;
+      summary.append(label, time, size);
       const pre = document.createElement("pre"); pre.textContent = entry.text;
-      details.append(summary, pre); events.append(details); after = entry.id;
+      const copy = document.createElement("button"); copy.type = "button"; copy.className = "ghost small-btn transcript-copy"; copy.textContent = "Copy text";
+      copy.onclick = async () => { copy.textContent = await copyText(entry.text) ? "Copied" : "Copy failed — try again"; };
+      details.append(summary, pre, copy); events.append(details); after = entry.id;
     }
+    dialog.querySelector("[data-event-count]").textContent = `${events.children.length} events loaded`;
     more.hidden = !result.more;
     if (!events.children.length) events.textContent = "No transcript was recorded for this session. Earlier sessions cannot be reconstructed.";
     const row = result.session;
