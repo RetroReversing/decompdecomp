@@ -18,7 +18,8 @@ from . import (
     draft_repairs,
     permuter_focus,
     permuter_local,
-    region_repairs,
+    repair_ranking,
+    search_frontier,
     stack_padding_repairs,
 )
 from .permute import Permuter, State
@@ -199,14 +200,15 @@ class Search(Permuter):
         """Regenerate from each saved winner, sharing this search's deadline, cache and allowance."""
         flags = compiler_for(self.net.cfg(proj), fn['vram']).get('flags', []) if not fork else []
         trials = 0
-        detour_used = False
+        detours_used = set()
+        alternatives = search_frontier.Frontier()
         source = fn['best_source']
         context = self.net._context(proj['id'],fn['unit'])
         header = self.net.forks.permuter_header(fork,fn['name']) if fork else (context['header'] if context else '')
         while best > 0:
             self.check()
             self.local_seen.add(source)
-            rows = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0]
+            rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
             labels = {}
             choices = draft_repairs.variants(source, fn['name'], proj['arch'], fn['asm'] or '', flags, labels=labels, limit=None, header=header)
             stack = stack_padding_repairs.grow(source, fn['name'], proj['arch'], rows)
@@ -217,12 +219,11 @@ class Search(Permuter):
                 labels.setdefault(candidate, family)
                 choices.append(candidate)
             families = list(dict.fromkeys(labels.get(c, 'local_repair') for c in choices))
-            ranked = adaptive_repairs.order(self.net, proj, fn, rows, families)
+            ranked = adaptive_repairs.order(self.net, proj, fn, rows, repair_ranking.order(families, rows))
             # Every other burst keeps the original order for exploration.
             if self.refinement_rounds % 2 == 0:
                 choices.sort(key=lambda c: ranked.index(labels.get(c, 'local_repair')))
-            region_baseline = region_repairs.snapshot(rows)
-            detour = None
+
             for candidate in dict.fromkeys(choices):
                 if candidate in self.local_seen:
                     continue
@@ -233,25 +234,24 @@ class Search(Permuter):
                 with repair_trial({'kind': 'deep local repair', 'family': labels.get(candidate, 'local_repair'),
                                    'base_source_sha256': hashlib.sha256(source.encode()).hexdigest()}):
                     score = self._score(agent, proj, fn, candidate, best, fork)
-                if score is not None and best < score <= best * 1.25 and not detour_used:
-                    measured_rows = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0]
-                    regional_gain = 0 if getattr(self, '_trial_reused', False) else region_repairs.gain(
-                        region_baseline, region_repairs.snapshot(measured_rows))
-                    priority = (-regional_gain, score)
-                    if detour is None or priority < detour[0]:
-                        detour = (priority, candidate)
+                if score is not None and best < score <= best * 1.25 and not getattr(self, '_trial_reused', False):
+                    measured_rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
+                    alternatives.offer(candidate, score, measured_rows)
                 if score is not None and score < best:
                     best = score
                     fn = self.net._function(fn['name'], proj['slug'])
                     source = fn['best_source']
                     break
             else:
-                if detour and not detour_used:
-                    # One extra source shape, under this same deadline/allowance. It is never
-                    # saved as the best C; only a later normal judge improvement can be saved.
-                    detour_used = True
-                    source = detour[1]
-                    self.log('Trying one bounded source-shape detour; saved best C is unchanged.')
+                detour = next((node for node in alternatives.nodes
+                               if node['source'] not in detours_used and node['source'] not in self.local_seen), None)
+                # Local trials are already in local_seen; allow each retained source one expansion.
+                if detour is None:
+                    detour = next((node for node in alternatives.nodes if node['source'] not in detours_used), None)
+                if detour and len(detours_used) < 3:
+                    detours_used.add(detour['source'])
+                    source = detour['source']
+                    self.log('Trying a retained instruction-shape alternative; saved best C is unchanged.')
                     continue
                 break
         return best, self.net._function(fn['name'], proj['slug'])['best_source']
@@ -307,7 +307,7 @@ class Search(Permuter):
             self.last_outcome, self.last_score = 'compiling', None
             self.report()
             self._trial_outcome = 'unscored'
-            rows = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']), ([], ''))[0]
+            rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
             policy_focus = permuter_focus.classify(rows)
             policy_profile = adaptive_repairs.profile(self.net, proj, fn)
             started = time.monotonic()

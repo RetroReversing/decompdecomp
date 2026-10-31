@@ -9,13 +9,15 @@ existing objdiff/whole-image gates; no generic preflight changes their build set
 
 Deep search now chains bounded local repairs after random improvements. Register reuse hypotheses share
 all normal draft/permuter paths. Fresh exact judgments repair score-zero/open bookkeeping; plain return
-conflicts can recover a buildable ROM candidate with an honest baseline and retained history. Adaptive
-per-function budgets and a pool of alternative search candidates remain planned follow-ups.
+conflicts can recover a buildable ROM candidate with an honest baseline and retained history. A bounded numeric/structural source frontier and immediate reseeding now preserve useful alternatives.
+Adaptive per-function budgets remain a planned follow-up.
 
 Bounded integer/call repairs now include evidence-led local widening, candidate-owned callee prototype widths,
 integer lifetime splits/merges, call distribution into branches, terminal goto leaves and switch layout variants.
 They share the ROM/imported-project judge and existing budgets; a better similarity score remains a draft.
-General CFG liveness, fallthrough switch rewriting and shared-header prototype inference remain future work.
+Bounded scalar CFG liveness now supports masked-value reuse, extra lifetime merges and m2c draft hints.
+Unknown syntax gives no advice. General C/C++ CFG analysis, fallthrough switch rewriting and shared-header
+prototype inference remain future work.
 
 What's planned for decompdecomp, roughly in order, and why. Every item keeps the rule that matters most: a match is
 byte-identical after linking (ROM mode) or objdiff 100% (fork mode). Nothing here accepts code that only does the

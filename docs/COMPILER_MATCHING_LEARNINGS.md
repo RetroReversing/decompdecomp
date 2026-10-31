@@ -71,9 +71,59 @@ regression checks, not claims of extra game progress:
 - Isolating matrix-address and pointer-scope edits in the final solution did not lose the match;
   generated candidates stayed exact. These checks establish compatibility, not a measured improvement.
 
-Single-function deep search also explores one bounded local detour per local-repair burst under its
+Single-function deep search also explores up to three bounded retained alternatives per local-repair burst under its
 existing deadline/compile allowance. It returns the saved best source when the detour fails; only the
 normal judge can save a later improvement. Persistent multi-function iterative state is separate.
+
+### Verified follow-up: a 966-instruction menu function
+
+Profile: `gcc-2.7.2-kmc`, `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`.
+Evidence: [published exact checkpoint](https://github.com/RetroReversing/v-rally-decomp/commit/4562473).
+The normal app judge, independent standalone function check and complete 12,582,912-byte cartridge
+comparison accepted the result. All previously selected C remained selected.
+
+**Controlled final repair:** materializing a `u16` mask into an existing, subsequently reset 32-bit local
+recovered the target's in-place saved-register mask. A fresh temporary or assignment back to the input
+did not produce the same allocation. Reusing a non-overlapping local is a hypothesis to compile, not
+proof of the original source's variable names or grouping. The final source also retains earlier
+reconstruction choices; matching bytes do not establish portable source semantics or original spelling.
+
+Other observations from the staged search:
+
+- Associating a table displacement with its base before adding the index recovered address ordering.
+- A small bitfield local in an inline helper changed frame reservation. Ordinary unused array padding
+  shifted other locals and failed. This does not establish a general-purpose stack-padding idiom.
+- A redundant conditional disappeared from the instructions but changed scheduling/allocation. Moving
+  loop-counter initialization into an existing comma-expression recovered a call-delay-slot placement.
+  These edits were coupled; do not attribute the entire gain to one predicate or one line break.
+- Broad flag/type/declaration experiments were mostly neutral or worse. A controlled Linux-host versus
+  macOS-host compiler comparison emitted identical text for the tested input. No host-specific fix was
+  needed. Preserve the pinned profile, including `-g3`.
+- The final private disassembly score remained 120 because 12 numeric-versus-symbolic relocation rows
+  rendered differently. The linked-byte verdict was exact; the app correctly recorded score zero.
+  Never use a heuristic score, normalized display or register similarity as the acceptance gate.
+
+**Automation:** `masked_reuse_repairs.py` materializes a cast/mask into a local proven dead by the bounded
+CFG in `local_flow.py`. Its graph includes if/else, loop back edges, switch fallthrough, break/continue
+and direct gotos. Unknown syntax, escaped/qualified locals and unsupported control flow give no advice.
+The same analysis supplies additional lifetime merge candidates and small m2c draft hints without
+rewriting the default draft. These candidates share existing budgets and the unchanged judge.
+
+Search classification resolves known MIPS relocation operands before choosing weights, without changing
+the original rows or score. Deep/random search retains a bounded numeric/structural candidate frontier;
+iterative repair retains the numeric winner alongside structural alternatives and its existing bounded
+detour. New random improvements immediately seed a new batch; newly saved improvements are remeasured
+with current headers/settings. Existing scoped compile caches remain in use.
+
+**Private checkpoint replay:** the new masked-reuse family recovered exact linked bytes on its first
+candidate from both the score-130 and score-155 checkpoints, in approximately 1.1–1.2 seconds including
+a baseline compile on the test machine. The integrated deep local-repair phase also saved exact
+matches from both checkpoints: two compiles including baseline, approximately 3.2–3.4 seconds
+including proposal generation and bookkeeping. It did not finish the earlier score-180 checkpoint within its
+24 generated candidates. These are retrospective local-family checks with an already selected compiler
+profile, not fresh-start timing, extra progress or proof that the original 4h25m investigation now takes
+one second. Game source/ROMs and private checkpoints are not included in the app repository; regression
+fixtures here are synthetic.
 
 ## IDO 5.3 / 7.1, 32-bit big-endian MIPS
 
