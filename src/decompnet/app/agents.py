@@ -361,7 +361,7 @@ class Session:
             log.info("helper %s (%s): %s", self.agent_name, self.slug, text[:500])
 
     def snapshot(self, since: int = 0) -> dict:
-        return {"id": self.id, "kind": self.kind, "kind_name": agents.get(self.kind).name, "label": self.label,
+        return {"id": self.id, "kind": self.kind, "kind_name": agents.get(self.kind).name, "can_login": agents.get(self.kind).supports_login, "label": self.label,
                 "selection": self.options.get("selection") or {},
                 "per_session": self.options.get("per_session", PER_SESSION),
                 "task": self.options.get("task") or "",  # "readable": it polishes matched code
