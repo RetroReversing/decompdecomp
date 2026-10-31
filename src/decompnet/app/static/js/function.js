@@ -1,5 +1,15 @@
 "use strict";  // each script is strict on its own (see base.js)
 /* ------------------------------------------------------------------ inspector */
+// Copy the source assembly, never the highlighted DOM's address column.
+function assemblyForClipboard(text) {
+  return text.split("\n").map(line => line
+    .replace(/^(\s*)\/\*\s*[0-9a-fA-F]+\s+[0-9a-fA-F]+\s+[0-9a-fA-F]+\s*\*\/\s*/, "$1")
+    .replace(/^\s*(?:0x)?[0-9a-fA-F]{8,16}\s+(?=[A-Za-z.])/, "    ")
+  ).join("\n");
+}
+async function copyTargetAssembly(text) {
+  toast(await copyText(assemblyForClipboard(text)) ? "Assembly copied." : "Could not copy assembly. Check clipboard access.");
+}
 function highlightAsm(text) {
   return text.split("\n").map((line) => {
     if (/^\s*(glabel|endlabel)/.test(line)) return `<span class="cm">${esc(line)}</span>`;
@@ -187,6 +197,7 @@ async function refreshFn(first) {
       } catch (e) { toast(esc(e.message), "err"); }
     };
     $("fnAsm").innerHTML = highlightAsm(d.asm);
+    $("copyAsm").onclick = () => copyTargetAssembly(d.asm);
     const kinds = { matched: "Matching C", best: "Best attempt so far", latest: S.ov.kind === "fork" ? "In the source now" : "Latest attempt", draft: "Machine draft (m2c)" };
     $("fnSrcKind").textContent = kinds[d.source_kind] || "No C yet";
     if (!S.editDirty || first) setEditor(d.source || "", d);

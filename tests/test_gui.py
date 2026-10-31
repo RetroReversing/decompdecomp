@@ -382,3 +382,10 @@ def test_compiler_range_grouping_preserves_distinct_settings():
         pytest.skip("needs node to run the GUI scripts")
     subprocess.run([NODE, str(Path(__file__).with_name("gui_compiler_groups.js"))],
                    cwd=Path(__file__).resolve().parents[1], check=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_copy_target_assembly_preserves_labels_and_operands():
+    if NODE is None:
+        pytest.skip("needs node to run the GUI scripts")
+    subprocess.run([NODE, str(Path(__file__).with_name("gui_copy_assembly.js"))],
+                   cwd=Path(__file__).resolve().parents[1], check=True, timeout=GUI_TIMEOUT_SECONDS)
