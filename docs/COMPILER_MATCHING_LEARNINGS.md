@@ -413,3 +413,15 @@ Observed evidence: ten further source-assisted exact matches in a retail MIPS ga
 - Sequence-reader attempts remained unmatched with isolated ordinary-ABI calls. Target temporaries surviving calls suggest whole-unit/static-helper register specialization. Adding static helper bodies did not produce acceptable isolated matches and should not be repeated as a presumed fix. The app now reports this possibility as an advisory, not an ABI override or a reason to count a match.
 
 Compiler settings are still judged and applied through existing gates, and no proprietary toolchains or reference sources are fetched. Imported projects retain their own build/compiler workflow.
+
+## Original object definitions and conditional source extraction (31 October 2026)
+
+Observed evidence: ten further source-assisted exact matches in a retail MIPS game, totaling 2,728 bytes, passed a full byte-identical cartridge rebuild. Eight routines used IDO 5.3 `-O1 -mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul`; two matrix converters retained that profile at `-O2`.
+
+Two device-manager candidates scored 2,110 and 2,950 with their original bodies/types but extern-only global declarations. Restoring the original object definitions recovered exact code and removed repeated LUI address loads between field stores. A timer initializer likewise changed from 515 to zero after restoring its current-time object definition. The observations do not uniquely establish the compiler/assembler mechanism; do not assume every global should be redefined or automatically invent alignment.
+
+Local source preparation now accepts an explicit list of reference object definitions. Only referenced selected objects (including macro references) enter the candidate. The definition-preserving version precedes the version without those definitions, under one budget and the ordinary code/data judge. Original definition/body line numbers are retained; source-changing headers still use existing promotion guards. Export and complete-image verification remain separate required gates. No global symbol-table entries or placement rules are invented.
+
+A timer function extraction failed because alternate preprocessor branches had different brace counts. Branch selection now uses configured numeric macros before locating the function, blanking inactive text/directives without removing newlines. This is deliberately not a complete C preprocessor: unsupported expressions and unknown compiler-specific conditions require numeric overrides or a prepared subset. No reference scripts or external preprocessor commands execute.
+
+Three controller routines and both matrix converters recovered with original typed records and ordinary loops instead of accumulated draft mutations. Existing typed-reference preference remains appropriate; exact judges, not source resemblance, decide progress. Controlled tests of these new preparation paths do not claim a new automatic matching rate.

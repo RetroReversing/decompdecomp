@@ -195,8 +195,12 @@ def test_static_entry_point_is_emitted_without_changing_body_layout(tmp_path):
 
 
 
-def test_multiple_reference_definitions_require_an_explicit_subset(tmp_path):
+def test_conditional_definitions_select_configured_branch_and_duplicate_active_definitions_fail(tmp_path):
     cfg = config(tmp_path)
     (tmp_path / 'game.c').write_text('#ifdef DEBUG\nint original(void){return 1;}\n#else\nint original(void){return 2;}\n#endif\n')
+    (tmp_path / 'types.h').write_text('')
+    source,_=prep.prepare(prep.Reader(cfg),cfg,prep.mappings(cfg['mappings'])[0],{'original':'f'},'')
+    assert 'return 2' in source and 'return 1' not in source
+    (tmp_path / 'game.c').write_text('int original(void){return 1;}\nint original(void){return 2;}')
     with pytest.raises(NetworkError, match='More than one definition'):
         prep.prepare(prep.Reader(cfg), cfg, prep.mappings(cfg['mappings'])[0], {}, '')

@@ -80,3 +80,8 @@ Runtime and static-call evidence
 - Recorded SDK-signature identity prioritizes `-O1` before wider optimization probes; a name alone is insufficient evidence.
 - When target HI/LO relocations prove an interior code address, reference that entry directly instead of retaining a byte-pointer base-plus-offset expression that emits extra arithmetic. Candidate-local declarations do not establish a new function boundary.
 - Caller-saved temporaries live across a call can indicate compiler-specialized static-helper clobbers. Inspect the original translation unit and argument registers; adding helper bodies to an isolated candidate is not a proven remedy.
+
+Original object definitions
+- If a diff has repeated extra LUI address loads around global-field stores, compare the original translation unit's definitions with the candidate's extern declarations. Source-local definition/layout knowledge can affect code generation; the mechanism is not uniquely established.
+- Select only authorized original objects in Local source preparation, using `reference_symbol @ relative/file.c`. The app tries the preserved definitions before the version without them. Do not invent initializers, alignment or addresses to force a match; normal data-placement/export and complete-image checks remain necessary.
+- Numeric branch selection preserves source line numbers before function extraction. For unsupported preprocessing or unknown compiler-specific macros, supply explicit numeric overrides or a prepared subset.

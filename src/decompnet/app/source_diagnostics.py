@@ -4,7 +4,7 @@ import re
 from ..forks.csource import _blank, find
 
 
-def hints(source, name, asm='', arch=''):
+def hints(source, name, asm='', arch='', rows=None):
     span = find(source, name)
     if not span:
         return []
@@ -13,6 +13,18 @@ def hints(source, name, asm='', arch=''):
     result = []
     if arch == 'mips':
         from ..arch.mips_runtime import helper, specialized_calls
+        loads = {}
+        for row in rows or []:
+            if len(row)!=3 or row[0] not in {'>','i','|','o'}:continue
+            match=re.match(r'lui\s+\$at,\s*%hi\((D_[0-9A-Fa-f]{8})\)',row[2])
+            if match:
+                group=int(match[1][2:],16)>>16
+                loads[group]=loads.get(group,0)+1
+        if any(n>=2 for n in loads.values()):
+            result.append('The candidate has repeated extra address loads near global stores. Check whether original '
+                          'object definitions were replaced by extern declarations; local definition/layout knowledge '
+                          'can change address-load grouping. Try only explicitly selected reference definitions and '
+                          'verify data placement during export.')
         if kind := helper(asm):
             result.append('Target instructions suggest an O32 64-bit runtime helper ('+kind+'). '
                           'Check 64-bit argument/return widths and bounded MIPS III -32 -O1 profiles before mutating 32-bit drafts.')
