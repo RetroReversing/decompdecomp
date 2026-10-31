@@ -122,6 +122,13 @@ $("helperTranscript").onclick = async () => {
       details.open = entry.kind === "error" || (entry.kind === "text" && entry.text.length <= 2000);
       const label = document.createElement("span"), time = document.createElement("time"), size = document.createElement("span");
       label.className = "transcript-event-label"; label.textContent = labels[entry.kind] || entry.kind;
+      if (entry.kind === "tool_request") {
+        try {
+          const request = JSON.parse(entry.text);
+          const name = request?.name || request?.function?.name;
+          if (typeof name === "string" && name.trim()) label.textContent = `Tool request · ${name}`;
+        } catch { /* Older or incomplete entries keep the generic label and full original text. */ }
+      }
       time.textContent = clock(entry.created_at);
       size.className = "transcript-event-size"; size.textContent = `${entry.text.length.toLocaleString()} characters`;
       summary.append(label, time, size);
