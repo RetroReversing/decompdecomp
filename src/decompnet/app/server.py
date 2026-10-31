@@ -27,7 +27,7 @@ from .. import hostenv, wine
 from ..network import NetworkError
 from . import agents, collab, routes, saves, tools, updates, window, workers
 from .engine import RomNetwork
-from .routes import forks, life, pages, projects, repair_feedback, rooms, setup, state
+from .routes import forks, life, pages, projects, repair_feedback, repository_sync, rooms, setup, state
 from .support import Jobs, Settings, session_options
 
 
@@ -129,8 +129,19 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
             now["model"] = str(options["picked_model"])
         return now
     manager.options_now = options_now
-    net.deep_sweeps.resume()
-    manager.resume()  # helpers that were working when the app last stopped carry on (their records say which)
+    def resume_work():
+        # Project synchronization can rejudge thousands of saved functions. It must not block the HTTP server
+        # and window from starting, while the existing project locks still protect the restored work.
+        try:
+            net.deep_sweeps.resume()
+        except Exception:
+            jobs.logger.exception("Could not resume deep passes")
+        try:
+            manager.resume()
+        except Exception:
+            jobs.logger.exception("Could not resume helpers")
+
+    threading.Thread(target=resume_work, daemon=True, name="resume-work").start()
 
     mcp = tools.build_mcp(net, agent_of, observe=manager.record_agent)
 
@@ -186,7 +197,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     app = routes.App(net, mcp, home, port, secret, mcp_url, build_id, manager, jobs, settings, allowed_hosts,
                      guard, body, call, fail, updater=updates.Updater(before_restart, port, secret),
                      busy=busy, quit_app=quit_app)
-    for part in (pages, state, projects, repair_feedback, forks, setup, life, rooms):
+    for part in (pages, state, projects, repair_feedback, repository_sync, forks, setup, life, rooms):
         part.register(app)
 
     security = TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=sorted(allowed_hosts),

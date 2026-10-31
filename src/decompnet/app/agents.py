@@ -667,23 +667,28 @@ class Manager:
             self._launch(s)
 
     def resume(self) -> list[str]:
-        """Helpers the app stopped by quitting carry on, as their options are now (options_now)."""
+        """Resume saved helpers without holding the UI's agent-state lock during project synchronization."""
         ids = []
         with self._lock:
-            for s in list(self.sessions.values()):
-                if s.state != "stopped" or s.stopped_by != BY_QUIT:
+            pending = [s for s in self.sessions.values() if s.state == "stopped" and s.stopped_by == BY_QUIT]
+        for s in pending:
+            if self._down:
+                break
+            try:
+                self.net.project_row(s.slug)
+            except NetworkError:
+                continue
+            options = self.options_now(s.kind, dict(s.options))
+            if options is not None:
+                self._prepare(s.slug)
+            with self._lock:
+                if self._down or s.state != "stopped" or s.stopped_by != BY_QUIT:
                     continue
-                try:
-                    self.net.project_row(s.slug)
-                except NetworkError:
-                    continue
-                options = self.options_now(s.kind, dict(s.options))
                 if options is None:
                     s.stopped_by, s.why = BY_ITSELF, "its API endpoint was removed"
                     self._save(s)
                     continue
                 s.options = options
-                self._prepare(s.slug)
                 self._launch(s)
                 ids.append(s.id)
         return ids
@@ -700,13 +705,16 @@ class Manager:
         with self._lock:
             if slug in self._prep:
                 return
-            try:
-                if not self.net.fork_slug(slug):
-                    return
-                _, fp, cfg = self.net.forks.get(slug)
-                if not (self.net.forks.uncovered(slug) or {}).get("functions") or not fp.linkable():
-                    return
-            except Exception:  # agents work on what has files
+        try:
+            if not self.net.fork_slug(slug):
+                return
+            _, fp, cfg = self.net.forks.get(slug)
+            if not (self.net.forks.uncovered(slug) or {}).get("functions") or not fp.linkable():
+                return
+        except Exception:  # agents work on what has files
+            return
+        with self._lock:
+            if slug in self._prep:
                 return
             done = self._prep[slug] = threading.Event()
 

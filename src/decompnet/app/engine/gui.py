@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 from ... import compilermap, consoles, scoring, toolchains
-from ...network import IN_BUILD, PROGRESS_COLUMNS, set_aside
+from ...network import IN_BUILD, PROGRESS_COLUMNS, Network, set_aside
 from ...project import compiler_for
 
 # What the notification centre tells: news a person wants to hear about, not every claim and attempt agents make.
@@ -56,14 +56,15 @@ class GuiMixin:
         base = self._overview(slug, proj)
         from ..libultra import report as libultra_report
         from ..source_preparation import settings as source_settings
-        return base | {"libultra": libultra_report(self, proj), "last_activity": last, "autopilot": self.autopilot_status(slug),
+        return base | {"libultra": base["libultra"] if "libultra" in base else libultra_report(self, proj), "last_activity": last, "autopilot": self.autopilot_status(slug),
                        "permuter": self.permuter.status(proj["slug"]), "source_preparation": source_settings(self, proj),
                        "twins": None if twins is None else {
                            k: getattr(twins, k) for k in ("state", "pairs", "tried", "matched", "asm",
                                                         "cross_candidates", "cross_tried", "cross_matched")},
                        "cross_game": self.twins.cross_game_results(slug),
                        "free_search": dict(self.store.one('SELECT * FROM reuse_runs WHERE project_id=? ORDER BY id DESC LIMIT 1', proj['id']) or {}),
-                       "helper_matches": helpers,
+                       "helper_matches": helpers, "progress_syncing": self.progress.syncing(slug),
+                       "progress_sync": self.progress.status(slug),
                        "readable": self.readability.counts(proj)["readable"],
                        "spend": cfg.get("spend"), "instructions": cfg.get("instructions") or "",
                        "priority": cfg.get("priority", []),
@@ -114,7 +115,7 @@ class GuiMixin:
         """A project for the project list (the sidebar asks every 5 s, for every project): what it is and how far it
         got, from the database alone. It used to be each project's whole overview, a fork's files included, and with
         agents at work the list took 2.5-3.7 s."""
-        proj = self._project(slug)
+        proj = Network._project(self, slug)
         cfg = self.cfg(proj)
         agg = self.store.one(f"SELECT {PROGRESS_COLUMNS} FROM functions WHERE project_id=? AND {IN_BUILD}", proj["id"])
         console = self.console(proj)
@@ -132,7 +133,7 @@ class GuiMixin:
                 "last_activity": self.store.one("SELECT MAX(created_at) AS t FROM events WHERE project_id=?",
                                                 proj["id"])["t"],
                 "room": (self._room_info(slug) or {}).get("role"),
-                "autopilot": (self.autopilot_status(slug) or {}).get("state"),
+                "autopilot": (self.autopilots.get(slug) or {}).get("state") or ("done" if cfg.get("autopilot") else None),
                 "progress_error": self.progress.errors.get(slug)} | about
 
     def _room_info(self, slug: str) -> dict | None:
@@ -284,6 +285,8 @@ class GuiMixin:
             "insns": fn["n_insns"], "status": fn["status"], "best": fn["best_score"], **set_aside(fn),
             "deep_pass": deep_pass,
             "compiler_test": self.compiler_test_result(proj, fn),
+            "compiler_profile": compiler_for(self.cfg(proj), fn["vram"]),
+            "default_compiler": self.cfg(proj)["compiler"],
             "asm": self._asm_text(fn, proj),
             "source": fn["matched_source"] or fn["best_source"] or (latest["source"] if latest else None) or fn["seed"],
             "source_kind": "matched" if fn["matched_source"] else "best" if fn["best_source"] else

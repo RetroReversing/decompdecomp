@@ -250,18 +250,17 @@ class Sweeps:
         return self.status(slug)
 
     def resume(self):
-        # An interrupted function is retried; only completed bounded turns are skipped.
-        for proj in self.net.store.all('SELECT slug FROM projects'):
-            cfg = self.config(proj['slug'])
-            if cfg['enabled']:
-                try:
-                    self.start(proj['slug'], cfg['minutes'], cfg['max_variants'], False, cfg['threads'])
-                except NetworkError as error:
-                    self.save(proj['slug'], cfg | {'enabled': False, 'resume_error': str(error)})
-                    self.jobs.logger.warning('Deep pass could not resume: %s', error)
+        """Leave interrupted passes stopped; the user starts them again when ready."""
+        with self.net.store.tx() as db:
+            rows = db.execute("SELECT key,value FROM settings WHERE key LIKE 'deep-sweep:%'").fetchall()
+            for row in rows:
+                cfg = json.loads(row['value'])
+                if cfg.get('enabled'):
+                    cfg['enabled'] = False
+                    db.execute('UPDATE settings SET value=? WHERE key=?', (json.dumps(cfg), row['key']))
 
     def shutdown(self):
-        # Preserve enabled intent for the next launch, but let current searches release claims.
+        # Stop current searches; their completed records remain available for a manual restart.
         with self.lock:
             for current in self.active.values():
                 self.jobs.cancel(current['job'])

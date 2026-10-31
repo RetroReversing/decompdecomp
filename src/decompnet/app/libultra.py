@@ -58,7 +58,16 @@ def report(net, proj):
     corpora = defaultdict(set)
     names = defaultdict(set)
     versions = defaultdict(set)
-    for row in net.store.all("SELECT corpus,name,fingerprint FROM sdk_signatures WHERE arch='mips' AND big_endian=1"):
+    # Use the fingerprint index: most installed SDK signatures do not occur in this game.
+    # Materializing the whole library on every overview poll competed with agents for the GIL.
+    rows = []
+    fingerprints = list(keys)
+    for at in range(0, len(fingerprints), 400):
+        part = fingerprints[at:at + 400]
+        rows.extend(net.store.all("SELECT corpus,name,fingerprint FROM sdk_signatures "
+                                  "WHERE arch='mips' AND big_endian=1 AND fingerprint IN ("
+                                  + ','.join('?' for _ in part) + ')', *part))
+    for row in rows:
         if not allowed(net, proj, row["corpus"]):
             continue
         match = _VERSION.search(row["corpus"])

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -84,22 +85,25 @@ def _registry_file() -> Path | None:
 
 
 def catalog() -> list[dict]:
-    """The coding-plan providers in the registry, the way zcode's own standalone login reads them: each plan's
-    provider with its models, as picker ids the launcher offers ("provider/model")."""
+    """The coding-plan providers the CLI's own sign-in covers, from the registry it reads, as picker ids the launcher
+    offers ("provider/model"). A standalone `zcode login` provisions one provider per service — the individual coding
+    plan — and records it in the shared credentials as "account-provider:<id>:identity"; anything else in the registry
+    (the desktop app's other plan instances) isn't in the CLI's registry, and a session on it dies with 不存在 Model."""
     registry = read_json(registry) if (registry := _registry_file()) else {}
     rules = ((registry.get("config") or {}).get("providerConfigRules") or {}).get("providerRules") or []
-    signed_in = {family for family in ("zai", "bigmodel")
-                 if (Path.home() / ".zcode" / "v2" / "credentials.json").exists()
-                 and family in (Path.home() / ".zcode" / "v2" / "credentials.json").read_text(encoding="utf-8",
-                                                                                                 errors="replace")}
+    credentials = (Path.home() / ".zcode" / "v2" / "credentials.json")
+    text = credentials.read_text(encoding="utf-8", errors="replace") if credentials.is_file() else ""
+    provisioned = {m.group(1) for m in re.finditer(r'"account-provider:(account:[^"]+):identity"', text)}
+    if not provisioned:
+        return []  # the CLI has no sign-in of its own: no session on any of these would run
     out = []
     for rule in rules:
         config = rule.get("config") or {}
         access = config.get("access") or {}
         if access.get("type") != "zhipu-account":
             continue
-        if signed_in and access.get("accountType") not in signed_in:
-            continue  # a plan of a service this sign-in isn't on
+        if provisioned and rule.get("providerId") not in provisioned:
+            continue  # a plan the CLI's sign-in doesn't cover (the desktop app's own instances)
         for model in config.get("builtinModelIds") or []:
             if isinstance(model, str) and model.strip():
                 out.append({"id": f"{rule['providerId']}/{model.strip()}", "name": model.strip(),
@@ -130,6 +134,14 @@ class Zcode(Agent):
                "[ -n \"$node_bin\" ] || node_bin=\"$(command -v node 2>/dev/null)\"\\n"
                "[ -n \"$node_bin\" ] || for d in \"$HOME\"/.nvm/versions/node/*/bin /opt/homebrew/bin /usr/local/bin; do "
                "[ -x \"$d/node\" ] && node_bin=\"$d/node\" && break; done\\n"
+               "[ -n \"$ZCODE_BUILTIN_PROVIDER_CONFIG_FILE\" ] || "
+               "ZCODE_BUILTIN_PROVIDER_CONFIG_FILE=$(ls -t \"$HOME\"/.zcode/v2/runtime/provider/*/*/endpoint-*/"
+               "zcode-builtin.json 2>/dev/null | head -1)\\n"
+               "if [ -n \"$ZCODE_BUILTIN_PROVIDER_CONFIG_FILE\" ]; then\\n"
+               "  export ZCODE_BUILTIN_PROVIDER_CONFIG_FILE\\n"
+               "  export ZCODE_PERSONAL_PROVIDER_CONFIG_FILE=\"${ZCODE_PERSONAL_PROVIDER_CONFIG_FILE:-"
+               "$HOME/.zcode/v2/provider_config.json}\"\\n"
+               "fi\\n"
                "exec \"$node_bin\" \"/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs\" \"$@\"\\n"
                "' > ~/.local/bin/zcode && chmod +x ~/.local/bin/zcode")
     windows_install = ("New-Item -ItemType Directory -Force -Path \"$env:USERPROFILE\\.local\\bin\" | Out-Null; "

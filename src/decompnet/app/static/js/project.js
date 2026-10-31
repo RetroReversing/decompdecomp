@@ -194,6 +194,24 @@ function markPlatforms() {
 }
 
 function renderHeader(ov) {
+  const sync = ov.progress_sync;
+  $("progressSyncNotice").hidden = !sync;
+  if (sync) {
+    const counted = Number.isFinite(sync.total) && sync.total > 0;
+    $("progressSyncText").textContent = `${sync.phase}${counted ? ` · ${sync.done.toLocaleString()} / ${sync.total.toLocaleString()} functions (${Math.floor(100 * sync.done / sync.total)}%)` : ""}`;
+    $("progressSyncDetails").textContent = [sync.function ? `Checking ${sync.function}` : sync.message,
+      `${sync.elapsed_seconds}s elapsed`, sync.matched != null ? `${sync.matched} matches confirmed · ${sync.lost} no longer match` : null,
+      sync.idle_seconds >= 30 ? `No step completed for ${sync.idle_seconds}s; the current operation may still be running.` : null].filter(Boolean).join(" · ");
+    const bar = $("progressSyncBar");
+    bar.classList.toggle("determinate", counted);
+    bar.firstElementChild.style.width = counted ? `${100 * sync.done / sync.total}%` : "";
+    if (counted) {
+      bar.setAttribute("aria-valuenow", sync.done);
+      bar.setAttribute("aria-valuemax", sync.total);
+    } else {
+      bar.removeAttribute("aria-valuenow"); bar.removeAttribute("aria-valuemax");
+    }
+  }
   const fork = ov.kind === "fork";
   const chips = [`<span class="plat">${esc(ov.platform_name || "?")}</span>`];
   if (platformStatus(ov.platform) === "beta") chips.push(`<span class="chip-s beta" title="This platform works and needs more games tried on it: tell us how it goes">beta</span>`);
@@ -874,22 +892,30 @@ async function renderForkSetup() {
   } else {
     box.innerHTML = `<div class="fs-main">
         <p class="eyebrow">Last step</p>
-        <h2>Set it up the project's way</h2>
+        <h2>Set up this project</h2>
+        <div class="row"><select id="fsAgent" aria-label="Coding agent" hidden></select><button class="primary" id="fsFix" type="button" disabled>Set up with agent</button></div>
+        <p class="muted small" id="fsFixNote">Looking for installed coding agents…</p>
+        <p class="col-title">Or set it up yourself</p>
         <p class="muted">${esc(n.help)}</p>
         <ol class="steps"><li>Open a terminal in the project folder.</li><li>Follow the README: it says where your copy of the game goes and how to build.</li><li>Come back and click <b>Check again</b>.</li></ol>
         ${cmdBox(`cd "${S.ov.folder}"`)}
         ${n.readme ? `<p class="col-title">From the project's README</p><pre class="readme" id="fsReadme"></pre>` : ""}
-        <div class="row"><button class="primary" id="fsCheck" type="button">Check again</button>
-          <select id="fsAgent" aria-label="Coding agent" hidden></select><button class="ghost" id="fsFix" type="button" hidden>Fix with agent</button></div>
-        <p class="muted small" id="fsFixNote" hidden>Opens your coding agent in a terminal in the project folder, with the README and the error above. It uses its own account and permissions, may consume allowance, and can run commands there. Then come back and click Check again.</p>
+        <div class="row"><button class="ghost" id="fsCheck" type="button">Check again</button></div>
         <div class="workbar" role="progressbar" aria-label="Building project" hidden><i></i></div>
         <pre class="joblog tall" id="fsLog" hidden></pre>
       </div><aside class="fs-side">${facts}</aside>`;
+    const setupSlug = S.slug;
     api("/api/fork/fix-setup").then(({ agents: list }) => {
       const pick = $("fsAgent"), ready = list.filter((a) => a.installed);
-      if (!pick || !ready.length) return;
+      if (!pick || S.slug !== setupSlug) return;
+      if (!ready.length) {
+        $("fsFixNote").textContent = "Install and sign in to a coding agent such as Codex or Claude Code, then reopen this project to use assisted setup.";
+        return;
+      }
       pick.innerHTML = ready.map((a) => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
-      pick.hidden = $("fsFix").hidden = $("fsFixNote").hidden = false;
+      pick.hidden = false;
+      $("fsFix").disabled = false;
+      $("fsFixNote").textContent = "Opens your coding agent in a terminal in this project folder. It reads the README and helps install dependencies and build the project, using its own account and allowance. It may run commands and edit project files. Then come back and click Check again.";
       $("fsFix").onclick = async () => {
         const log = $("fsLog"), error = (log.hidden ? "" : log.textContent);
         $("fsFix").disabled = true;
@@ -899,7 +925,9 @@ async function renderForkSetup() {
           toast(esc(result.message), "match");
         } catch (e) { toast(esc(e.message), "err"); } finally { $("fsFix").disabled = false; }
       };
-    }).catch(() => {});
+    }).catch((error) => {
+      if (S.slug === setupSlug && $("fsFixNote")) $("fsFixNote").textContent = `Could not list coding agents: ${error.message}. Reopen the project to retry.`;
+    });
     if (n.readme) $("fsReadme").textContent = n.readme;
     wireCopies(box);
     $("fsCheck").onclick = () => run(() => api("/api/fork/check", { method: "POST", body: { slug: S.slug } }));

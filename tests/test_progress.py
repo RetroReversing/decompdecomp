@@ -982,3 +982,73 @@ def test_polishing_started_before_a_pull_cannot_replace_the_contribution(project
             assert not worker.is_alive()
             net.readability._readable(net._project("game"), net._function("f", "game"), agent, "stale polish")
     assert net._function("f", "game")["matched_source"] == "good PR"
+
+
+def test_read_only_view_does_not_bypass_judging_synchronization(project, monkeypatch):
+    net, _, _ = project
+    calls = []
+    monkeypatch.setattr(net.progress, 'sync', lambda slug, **kwargs: calls.append((slug, kwargs.get('force'))))
+    with net.progress.view():
+        net.project_row('game')
+        assert calls == []
+        with net.progress.judging('game'):
+            pass
+    assert calls == [('game', True), ('game', True)]
+    assert not net.progress.viewing
+
+
+def test_sync_activity_is_project_scoped_and_cleared_on_failure(project, monkeypatch):
+    net, _, _ = project
+    slug = "game"
+    entered, release = threading.Event(), threading.Event()
+    errors = []
+    def blocked_sync(*args):
+        net.progress._activity(slug, phase='Verifying saved functions', done=3, total=8,
+                               function='func_80001000', matched=2, lost=1)
+        entered.set()
+        assert release.wait(3)
+        raise RuntimeError('verification failed')
+    monkeypatch.setattr(net.progress, '_sync', blocked_sync)
+    net.progress.signatures.clear()
+    def run():
+        try:
+            net.progress.sync(slug, force=True)
+        except RuntimeError as exc:
+            errors.append(str(exc))
+    worker = threading.Thread(target=run)
+    worker.start()
+    try:
+        assert entered.wait(3)
+        status = net.progress.status(slug)
+        assert status['done'] == 3 and status['total'] == 8
+        assert status['function'] == 'func_80001000'
+        assert status['elapsed_seconds'] >= 0
+        assert net.progress.status('another-project') is None
+    finally:
+        release.set()
+        worker.join(4)
+    assert errors == ['verification failed']
+    assert net.progress.status(slug) is None
+
+
+def test_judging_lock_does_not_claim_saved_progress_is_running(project):
+    net, _, _ = project
+    slug = "game"
+    with net.progress._project_lock(slug):
+        assert not net.progress.syncing(slug)
+
+
+def test_saved_judge_reports_counts_including_missing_sources(project):
+    net, folder, _ = project
+    updates = []
+    def report(line):
+        pass
+    report.progress = lambda **fields: updates.append(fields)
+    rows = net.store.all("SELECT * FROM functions WHERE project_id=(SELECT id FROM projects WHERE slug='game')")
+    result = saves._judge_saved(net, 'game', folder, {}, {row['name']: row for row in rows},
+                               {'f': {'vram': 4096, 'matched_by': 'autopilot'},
+                                'g': {'vram': 4100, 'matched_by': 'autopilot'}}, report,
+                               files={'src/f.c': 'good source'})
+    assert result['matched'] == 1 and result['lost'] == ['g']
+    assert [(item['done'], item['total'], item['function']) for item in updates] == [
+        (0, 2, 'f'), (1, 2, 'g'), (2, 2, None)]

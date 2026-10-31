@@ -370,3 +370,15 @@ def test_deep_pass_is_project_scoped_and_keeps_table_scroll():
         pytest.skip('needs node')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_deep_pass_ui.js'))], check=True,
                    cwd=Path(__file__).resolve().parents[1], timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_agent_toolbar_has_remove_paused_control():
+    html = (Path(__file__).parents[1] / 'src/decompnet/app/static/index.html').read_text()
+    assert 'id="removePaused"' in html
+
+
+def test_compiler_range_grouping_preserves_distinct_settings():
+    if NODE is None:
+        pytest.skip("needs node to run the GUI scripts")
+    subprocess.run([NODE, str(Path(__file__).with_name("gui_compiler_groups.js"))],
+                   cwd=Path(__file__).resolve().parents[1], check=True, timeout=GUI_TIMEOUT_SECONDS)

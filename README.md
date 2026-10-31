@@ -31,6 +31,8 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
 
 ## Automatic repairs before paid agents
 
+The bounded repair pass also tries equal-type chained local assignments in either order, final void calls as explicit returns, and terminal scalar bounds checks as ordered early returns. Empty polling loops can use an explicit entry guard, including in combination with the final-call rewrite. Each candidate is compiled and judged normally.
+
 Candidate-quality reports are advisory: agents, autopilot and the deep permuter can keep working while a concern awaits review. Repair examples retains the warning and saved alternatives; exact matches still require the normal byte or objdiff judge.
 
 The permuter's bounded repair pass tries unused scalar locals, local and parameter `register` storage, and adjacent
@@ -606,6 +608,8 @@ prove what a function does, not what its author called it.
 **Has a whole game been decompiled with it?** Not yet. Games get far (hundreds or thousands of matched functions),
 and the export rebuilds the game byte for byte from matched C plus assembly for what isn't matched yet. A game at
 100%, polished, is the goal, and the first one will be announced here.
+
+**How do I commit progress to my standalone repository?** In project Settings, use **Save your progress → Sync to Git repository** and choose the checkout root of an existing decompdecomp `build.json`/`build.py` export. Commit or move its existing changes first, then click **Verify and sync**. The app checks additions in a private copy and requires the complete rebuilt image to equal your original before publishing source, isolated headers, per-function compiler settings and progress metadata. It lists the files ready to commit and explains which app matches could not be integrated. Existing hand-maintained C and build scripts stay intact; later syncs update only their own files, and committed manual edits take those sources out of sync ownership. No commit or push happens automatically. Ordinary `progress/` saves remain separate. Imported projects already keep their source in their own checkout; custom export layouts need an adapter.
 
 **What do I end up with?** The source code of a game you own, that builds it again. A DS game started from scratch
 reached 2,400 matched functions (58% of its code) in under two days, about half of them matched by free models, and

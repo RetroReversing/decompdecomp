@@ -30,3 +30,12 @@ def test_launch_needs_installed_cli_and_folder(tmp_path, monkeypatch):
     monkeypatch.setattr(setup_fix, '_which', lambda name: '/bin/x')
     with pytest.raises(NetworkError):
         setup_fix.launch(tmp_path, tmp_path / 'missing', '', 'claude', lambda text: None)
+
+
+def test_choices_lists_clis_without_starting_them(monkeypatch):
+    from decompnet.app import repair_investigations
+    monkeypatch.setattr(repair_investigations, '_which', lambda name: '/bin/agent' if name == 'claude' else None)
+    monkeypatch.setattr(setup_fix.subprocess, 'Popen', lambda *a, **k: pytest.fail('discovery launched a process'))
+    choices = setup_fix.choices()
+    assert any(item['id'] == 'claude' and item['installed'] for item in choices)
+    assert any(not item['installed'] for item in choices)

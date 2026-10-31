@@ -217,6 +217,9 @@ def _check_progress_folder(folder: Path, *, chosen: bool = False) -> None:
 
 def _check_save_paths(folder: Path, *, chosen: bool = False) -> None:
     """Reject links before README, the map or a save's files can follow one outside the selected save folder."""
+    if (folder / 'build.json').is_file() and (folder / 'build.py').is_file():
+        raise NetworkError('This is a standalone build checkout. Use Sync to Git repository instead of Save now, '
+                           'and keep the progress folder separate from the build tree.')
     _check_progress_folder(folder, chosen=chosen)
     for name in ("src", "best", "include"):
         path = folder / name
@@ -740,7 +743,10 @@ def _judge_saved(net, slug: str, folder: Path, manifest: dict, by_name: dict, sa
         by_vram.setdefault(row["vram"], []).append(name)
     matched, lost, best = 0, [], 0
     log(f"judging {len(saved)} saved functions again")
-    for old_name, info in saved.items():
+    update = getattr(log, "progress", lambda **fields: None)
+    for index, (old_name, info) in enumerate(saved.items()):
+        update(phase="Verifying saved functions" if judge_code else "Reading saved function records",
+               done=index, total=len(saved), function=old_name, matched=matched, best=best, lost=len(lost))
         check_cancel()
         log(f"checking {old_name}")
         kind = "src" if "matched_by" in info else "best"
@@ -795,6 +801,7 @@ def _judge_saved(net, slug: str, folder: Path, manifest: dict, by_name: dict, sa
                 lost.append(name)
         else:
             best += 1
+    update(done=len(saved), total=len(saved), function=None, matched=matched, best=best, lost=len(lost))
     log(f"restored: {matched} matched functions, {best} best attempts" + (f"; {len(lost)} no longer match" if lost else ""))
     return {"matched": matched, "best": best, "lost": lost}
 

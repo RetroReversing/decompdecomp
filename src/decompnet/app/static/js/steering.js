@@ -102,6 +102,15 @@ function renderSteering(ov) {
   $("saveTitle").textContent = ov.kind === "fork" ? "Save the closest attempts" : "Save your progress";
   $("saveAbout").hidden = ov.kind === "fork";
   $("saveAboutFork").hidden = ov.kind !== "fork";
+  $("repositorySync").hidden = ov.kind === "fork";
+  if (ov.kind !== "fork" && $("repositoryFolder").dataset.slug !== S.slug) {
+    const slug = S.slug;
+    $("repositoryFolder").dataset.slug = slug;
+    $("repositoryFolder").value = "";
+    api(`/api/repository-sync?slug=${encodeURIComponent(slug)}`).then(r => {
+      if (S.slug === slug && !$("repositoryFolder").value) $("repositoryFolder").value = r.folder || "";
+    }).catch(() => {});
+  }
   renderKnowledge();
   // what agents can't change themselves: where a function ends, and suggestions; a compiler's are in Settings → Compiler
   const sg = (ov.suggestions || []).filter((s) => !s.toolchain), bd = ov.boundaries || [];
@@ -479,6 +488,7 @@ async function renderProjectSettings() {
   if (!$("compilerPanel").hidden) {
     if (!S.st) await loadState();
     fillCompilers($("setTc"), ov.compiler.toolchain, ov.platform);
+    for (const option of $("setTc").options) if (option.value === ov.compiler.toolchain) option.textContent += " · Default";
     $("setFlags").value = ov.compiler.flags.join(" ");
     $("autoAdjust").checked = !!ov.auto_compiler;
     $("setRanges").value = "";
@@ -562,6 +572,10 @@ $("autoAdjust").onchange = async () => {
   } catch (err) { $("autoAdjust").checked = !on; toast(esc(err.message), "err"); }
 };
 $("compilerParts").onclick = async (e) => {
+  const fn = e.target.closest("[data-compiler-function]");
+  if (fn) { openFn(fn.dataset.compilerFunction); return; }
+  const profileButton = e.target.closest("button[data-profile-default]");
+  if (profileButton) { await compareProfileWithDefault(profileButton); return; }
   const b = e.target.closest("button[data-unrange]");
   if (!b) return;
   const remove = (reopen) => api("/api/compiler", { method: "POST", body: { slug: S.slug, ranges: b.dataset.unrange, remove: true, reopen } });
@@ -676,18 +690,101 @@ async function loadCompilerAnswer() {
   renderCompilerAnswer(a);
   if (a.checking) S.answerTimer = setTimeout(loadCompilerAnswer, COMPILER_ANSWER_EVERY_MS);
 }
+
+$("compilerAnswer").addEventListener("click", e => {
+  const fn = e.target.closest("[data-compiler-function]");
+  if (fn) openFn(fn.dataset.compilerFunction);
+});
+$("compilerCleanupGo").onclick = async () => {
+  const slug = S.slug, button = $("compilerCleanupGo"), log = $("compilerCleanupLog"), result = $("compilerCleanupResult");
+  const limit = Number($("compilerRareLimit").value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 25) return toast("Choose a limit from 1 to 25 functions.", "err");
+  result.textContent = "";
+  const finish = beginWork(log, "Checking uncommon compiler settings", [button], "Compiler cleanup finished.");
+  try {
+    const {job} = await api("/api/compiler/cleanup", {method:"POST", body:{slug, rare_limit:limit}});
+    const out = await followJob(job, log);
+    if (S.slug !== slug) return;
+    result.textContent = `${out.changed.length} functions moved · ${out.profiles_before} → ${out.profiles_after} used profiles · ${out.ranges_before} → ${out.ranges_after} ranges · ${out.tested} trial comparisons · ${out.unchanged} unchanged · ${out.skipped} busy or shared-address functions skipped`;
+    await loadCompilerAnswer();
+  } catch (error) { if (S.slug === slug) showJobError(log, error.message); }
+  finally { finish(); }
+};
+
+function compilerFunctionLinks(functions) {
+  return (functions || []).map(f => `<button class="link mono" type="button" data-compiler-function="${esc(f.name)}" title="${esc(f.status || "")}">${esc(f.name)}</button>`).join("");
+}
+let compilerPartsAnswer = null;
+let compilerPartsSlug = null;
+let compilerDisplayedGroups = [];
+const compilerProfileJobs = new Map();
+async function compareProfileWithDefault(button) {
+  const group = compilerDisplayedGroups[Number(button.dataset.profileDefault)], part = group?.parts[0];
+  if (!part || group.default) return;
+  const slug = S.slug, key = `${slug}:${group.id}`;
+  if (compilerProfileJobs.get(key)?.running) return;
+  const profile = {toolchain:part.toolchain, flags:part.flag_list || part.flags.split(/\s+/).filter(Boolean)};
+  const item = {running:true, message:"Comparing matched functions against the default…"};
+  compilerProfileJobs.set(key, item); renderCompilerParts(compilerPartsAnswer);
+  try {
+    const {job} = await api("/api/compiler/cleanup", {method:"POST", body:{slug,profile}});
+    const out = await followJob(job, null, lines => {
+      item.message = lines[lines.length - 1] || "Comparing against default…";
+      if (S.slug === slug) renderCompilerParts(compilerPartsAnswer);
+    });
+    item.message = `${out.changed.length} moved to default · ${out.unchanged} kept their settings · ${out.skipped} busy/shared-address skips · ${out.tested} comparisons`;
+    if (S.slug === slug) toast(esc(item.message), out.changed.length ? "match" : undefined);
+  } catch (error) { item.message = error.message; }
+  finally {
+    item.running = false;
+    if (S.slug === slug) { renderCompilerParts(compilerPartsAnswer); await loadCompilerAnswer(); }
+  }
+}
+const compilerGroupsOpen = new Set();
+const compilerReasonsOpen = new Set();
+function renderCompilerParts(a) {
+  if (compilerPartsSlug !== S.slug) { compilerPartsSlug = S.slug; compilerGroupsOpen.clear(); compilerReasonsOpen.clear(); }
+  compilerPartsAnswer = a;
+  const parts = a.parts || [], mode = $("compilerGroup").value, sort = $("compilerSort").value;
+  $("compilerViewControls").hidden = !parts.length;
+  const row = (p, showProfile) => {
+    const [word, why] = PART_STATE[p.check] || PART_STATE[""];
+    return `<li class="compiler-range"><div class="compiler-range-heading"><code>${hexShort(p.start)}–${hexShort(p.end)}</code>
+      <span class="part-state ${esc(p.check || "none")}">${esc(word)}</span>
+      ${p.functions != null ? `<span class="muted small">${plural(p.functions, "function")}</span>` : ""}
+      <button class="ghost small-btn" type="button" data-unrange="${hexShort(p.start)}-${hex8(p.end)}" title="Return this range to the default compiler">Remove</button></div>
+      ${showProfile ? `<div class="small"><b>${esc(p.compiler)}</b><code class="compiler-arguments">${esc(p.flags)}</code></div>` : ""}
+      ${p.file ? `<div class="muted small mono">${esc(p.file)}</div>` : ""}
+      <div class="compiler-function-links">${compilerFunctionLinks(p.function_list)}</div>
+      ${p.said || why ? `<details class="compiler-range-reason" data-range-reason="${p.start}-${p.end}"${compilerReasonsOpen.has(`${p.start}-${p.end}`) ? " open" : ""}><summary>Verification details</summary><p class="small muted">${esc(p.said || why)}</p></details>` : ""}</li>`;
+  };
+  const groups = compilerPartGroups(parts, mode, sort);
+  compilerDisplayedGroups = groups;
+  setHtml($("compilerParts"), mode === "range" ? `<ol class="compiler-range-list">${groups.flatMap(g => g.parts).map(p => row(p, true)).join("")}</ol>`
+    : groups.map((g, index) => `<details class="compiler-profile" data-compiler-group="${esc(g.id)}"${compilerGroupsOpen.has(g.id) ? " open" : ""}>
+      <summary><span><b>${esc(mode === "family" ? g.family.toUpperCase() : g.compiler)}</b>${g.default ? ` <span class="chip-s">${mode === "family" && g.profiles > 1 ? "Includes default" : "Default"}</span>` : ""}${mode === "settings" ? `<code class="compiler-arguments">${esc(g.flags || "No arguments")}</code>` : ""}<span class="compiler-profile-count">${plural(g.parts.length, "range")}${g.functions != null ? ` · ${plural(g.functions, "function")}` : ""}${mode === "family" ? ` · ${plural(g.profiles, "argument profile")}` : ""}</span></span></summary>
+      ${mode === "settings" && !g.default && S.ov.kind !== "fork" ? `<div class="compiler-profile-action"><button class="ghost small-btn" type="button" data-profile-default="${index}"${compilerProfileJobs.get(`${S.slug}:${g.id}`)?.running ? " disabled" : ""}>Compare all matches with default</button><p class="small muted">Only exact byte matches move to the project default. Drafts and non-matches keep their settings.</p><p class="small" role="status">${esc(compilerProfileJobs.get(`${S.slug}:${g.id}`)?.message || "")}</p></div>` : ""}
+      <ol class="compiler-range-list">${g.parts.map(p => row(p, mode === "family")).join("")}</ol></details>`).join(""));
+  $("compilerParts").querySelectorAll("details[data-range-reason]").forEach(d => d.ontoggle = () => {
+    if (!d.isConnected) return;
+    if (d.open) compilerReasonsOpen.add(d.dataset.rangeReason); else compilerReasonsOpen.delete(d.dataset.rangeReason);
+  });
+  $("compilerParts").querySelectorAll("details[data-compiler-group]").forEach(d => d.ontoggle = () => {
+    if (!d.isConnected) return;
+    if (d.open) compilerGroupsOpen.add(d.dataset.compilerGroup); else compilerGroupsOpen.delete(d.dataset.compilerGroup);
+  });
+}
+for (const id of ["compilerGroup", "compilerSort"]) $(id).onchange = () => { if (compilerPartsAnswer) renderCompilerParts(compilerPartsAnswer); };
 function renderCompilerAnswer(a) {
+  $("compilerCleanup").hidden = S.ov.kind === "fork";
   $("installedCompilerTest").hidden = S.ov.kind === "fork" || !a.mips;
   const parts = a.parts || [];
-  setHtml($("compilerAnswer"), `This game was built with <b>${esc(a.compiler)}</b>${a.flags ? ` <span class="flags mono" title="the flags it was given">${esc(a.flags)}</span>` : ""}.${parts.length ? ` ${parts.length === 1 ? "One part" : `${parts.length} parts`} of it with another compiler: below.` : ""}`
-    + (a.elsewhere_count ? ` <span class="muted">${a.elsewhere_count === 1 ? "One more stretch of code looks" : `${a.elsewhere_count.toLocaleString()} more stretches of code look`} like another compiler's work; the app suggests a change once agents' C proves it.</span>` : ""));
+  const defaultOpen = $("compilerAnswer").querySelector("[data-default-functions]")?.open;
+  setHtml($("compilerAnswer"), `<div class="compiler-default"><span class="small muted">Default settings</span><div><b>${esc(a.compiler)}</b></div><code class="compiler-arguments">${esc(a.flags || "No arguments")}</code></div>
+    ${a.default_function_list?.length ? `<details data-default-functions${defaultOpen ? " open" : ""}><summary>Functions using the default settings (${a.default_function_list.length})</summary><div class="compiler-function-links">${compilerFunctionLinks(a.default_function_list)}</div></details>` : ""}
+    <p class="small muted">${a.default_functions != null ? `${plural(a.default_functions, "function")} use the default. ` : ""}${plural(parts.length, "explicit range")}${a.elsewhere_count ? ` · ${plural(a.elsewhere_count, "other range")} look like a different compiler; not applied.` : "."}</p>`);
   $("compilerState").textContent = a.checking ? "checking…" : "";
-  setHtml($("compilerParts"), parts.length ? `<ol class="parts">${parts.map((p) => {
-    const [word, why] = PART_STATE[p.check] || PART_STATE[""];
-    return `<li><code>${hexShort(p.start)}–${hexShort(p.end)}</code><span class="grow">${esc(p.compiler)} <span class="flags mono">${esc(p.flags)}</span></span>
-      ${p.file ? `<span class="muted small mono">${esc(p.file)}</span>` : ""}<span class="part-state ${esc(p.check || "none")}" title="${esc(p.said || why)}">${word}</span>${p.check === "waiting" && p.said ? `<span class="small muted">${esc(p.said)}</span>` : ""}
-      <button class="ghost small-btn" type="button" data-unrange="${hexShort(p.start)}-${hex8(p.end)}" aria-label="Build ${hexShort(p.start)} to ${hexShort(p.end)} with ${esc(a.compiler)} again" title="Build this part with ${esc(a.compiler)} again">Remove</button></li>`;
-  }).join("")}</ol>` : "");
+  renderCompilerParts(a);
   const sv = a.survey || {};
   const checks = (a.checks || []).slice(-20).reverse();
   setHtml($("compilerEvidence"), `<p class="small">The app works out which compiler built each part by itself: it tries agents' C for functions that don't match yet with the other compilers the game uses (${
@@ -985,4 +1082,25 @@ $("deepSweepReset").onclick = async () => {
     if (S.slug === slug) renderDeepSweepResults(status);
   } catch (error) { showJobError(log, error.message); }
   finally { done(); }
+};
+
+
+// Repository sync is an explicit, cancellable build. Ordinary progress autosave stays independent.
+let repositorySyncJob = null;
+$("repositorySyncStop").onclick = async () => {
+  try { if (repositorySyncJob) await api("/api/job/cancel", {method:"POST", body:{id:repositorySyncJob}}); }
+  catch (error) { showJobError($("repositorySyncLog"), error.message); }
+};
+$("repositorySyncGo").onclick = async () => {
+  const log = $("repositorySyncLog"), button = $("repositorySyncGo"), stop = $("repositorySyncStop");
+  const finish = beginWork(log, "Verifying repository progress", [button], "Repository sync finished.");
+  showJobError(log, "");
+  try {
+    const {job} = await api("/api/repository-sync", {method:"POST", body:{slug:S.slug, folder:$("repositoryFolder").value.trim()}});
+    repositorySyncJob = job; stop.hidden = false;
+    const result = await followJob(job, log);
+    log.textContent += `\n${result.verified_build ? "Full rebuilt image verified." : "No source additions; no full rebuild was needed."}\n${result.accepted.length} functions synced; ${result.skipped.length} could not be integrated.\n${result.changes || "No Git changes."}`;
+    for (const item of result.skipped) log.textContent += `\n${item.function}: ${item.reason}`;
+  } catch (error) { showJobError(log, error.message); }
+  finally { repositorySyncJob = null; stop.hidden = true; finish(); }
 };

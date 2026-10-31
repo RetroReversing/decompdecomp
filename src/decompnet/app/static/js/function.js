@@ -115,7 +115,7 @@ async function refreshFn(first) {
         $("fnDeepMetrics").hidden = true;
         $("fnDeepStatus").textContent = "";
       }
-      $("fnCompilerRanked").replaceChildren();
+      $("fnCompilerMatches").replaceChildren();
       $("fnApplyCompiler").hidden = true;
       $("fnCompilerSummary").hidden = true;
       $("fnCompilerLog").textContent = "";
@@ -132,7 +132,9 @@ async function refreshFn(first) {
     $("fnDeepPanel").hidden = !deepPermuterBusy && (d.status !== "open" || d.best == null);
     const pass = d.deep_pass || {};
     $("fnDeepHistory").textContent = pass.completed ? `Deep pass completed · ${pass.minutes} min / ${Number(pass.max_variants).toLocaleString()} variants budget` : pass.stale ? "Previous pass saved; inputs changed, so this function is eligible again." : pass.state === "error" ? `Deep pass needs attention: ${pass.error}` : `Deep pass: ${pass.state || "not tried"}`;
-    $("fnCompilerTest").hidden = S.ov.kind === "fork" || d.status !== "open" || !S.ov.compilers?.length;
+    $("fnCompilerTest").hidden = S.ov.kind === "fork" || !S.ov.compilers?.length;
+    if (S.ov.kind !== "fork" && !compilerComparisonBusy) renderKnownCompilerProfiles(d);
+    $("fnTestCompilers").disabled = !d.source || d.source_kind === "draft";
     if (!compilerComparisonBusy && S.ov.kind !== "fork") {
       const history = d.compiler_test;
       $("fnCompilerHistory").textContent = history
@@ -140,10 +142,10 @@ async function refreshFn(first) {
         : "Not tested yet. Bulk tests in Settings skip functions with completed, up-to-date comparisons.";
       const buttonLabel = history ? "Run compiler test again" : "Test installed compilers & flags";
       $("fnTestCompilers").textContent = buttonLabel;
-      const key = `${slug}:${d.name}:${history?.completed_at || 0}:${history?.stale}`;
-      if (history && $("fnCompilerRanked").dataset.history !== key) {
-        renderFunctionCompilerComparison(history.comparison, slug, d.name);
-        $("fnCompilerRanked").dataset.history = key;
+      const key = `${slug}:${d.name}:${history?.completed_at || 0}:${history?.stale}:${JSON.stringify(d.compiler_profile)}`;
+      if (history && $("fnCompilerMatches").dataset.history !== key) {
+        renderFunctionCompilerComparison({...history.comparison, stale: history.stale}, slug, d.name);
+        $("fnCompilerMatches").dataset.history = key;
       }
     }
 
@@ -491,21 +493,55 @@ function renderProgress() {
 }
 
 
+function renderKnownCompilerProfiles(d) {
+  const defaultProfile = d.default_compiler;
+  const current = d.compiler_profile;
+  const rows = d.compiler_test && !d.compiler_test.stale ? (d.compiler_test.comparison.ranked || []).filter(r => r.exact).map(r => ({...r})) : [];
+  const same = (a, b) => a && b && a.toolchain === b.toolchain && JSON.stringify(a.flags) === JSON.stringify(b.flags);
+  if (d.status === "matched" && current && !rows.some(r => same(r, current))) rows.push({...current, exact:true, percent:100, current:true});
+  if (defaultProfile && !rows.some(r => same(r, defaultProfile))) {
+    const tested = d.compiler_test && !d.compiler_test.stale ? d.compiler_test.comparison.ranked.find(r => same(r, defaultProfile)) : null;
+    rows.push({...defaultProfile, ...(tested || {}), default:true, percent:tested?.percent ?? null, untested:!tested});
+  }
+  rows.forEach(r => { r.default = same(r, defaultProfile); r.selected = same(r, current); });
+  setHtml($("fnCurrentCompiler"), current ? `<p><b>Currently selected:</b> ${esc(current.toolchain)}<code class="compiler-arguments">${esc(current.flags.join(" "))}</code></p>` : "");
+  if (d.compiler_test) {
+    renderFunctionCompilerComparison({...d.compiler_test.comparison, stale:d.compiler_test.stale}, S.slug, d.name);
+  } else {
+    rows.forEach(r => { r.apply_disabled = r.selected || !r.exact; });
+    wireFunctionCompilerTable($("fnCompilerMatches"), rows, S.slug, d.name);
+  }
+}
 function renderFunctionCompilerComparison(c, slug, name) {
-  const summary = $("fnCompilerSummary"), table = $("fnCompilerRanked");
+  const summary = $("fnCompilerSummary"), table = $("fnCompilerMatches");
   $("fnApplyCompiler").hidden = true;
-  setHtml(table, compilerRankedTable(c?.ranked || [], true));
+  const matched = S.fnDetail?.status === "matched";
+  const current = S.fnDetail?.compiler_profile;
+  const ranked = (c?.ranked || []).map(r => {
+    const selected = !!current && r.toolchain === current.toolchain && JSON.stringify(r.flags) === JSON.stringify(current.flags);
+    return {...r, selected, apply_disabled: c?.stale || selected || (matched && !r.exact)};
+  });
+  const same = (a, b) => a && b && a.toolchain === b.toolchain && JSON.stringify(a.flags) === JSON.stringify(b.flags);
+  const defaultProfile = S.fnDetail?.default_compiler;
+  if (matched && current && !ranked.some(r => same(r, current))) ranked.push({...current, exact:true, percent:100, selected:true, apply_disabled:true, default:same(current, defaultProfile)});
+  if (defaultProfile && !ranked.some(r => same(r, defaultProfile))) ranked.push({...defaultProfile, default:true, untested:true, percent:null, apply_disabled:true});
+  wireFunctionCompilerTable(table, ranked, slug, name);
   summary.hidden = false;
   if (!c || c.best == null) summary.textContent = "No usable compiled results. See comparison details for errors.";
   else {
     const before = c.before == null ? "no previous score" : `${c.before.toFixed(2)}%`;
     summary.dataset.improved = String(c.improved);
-    summary.textContent = `${before} → ${c.best.toFixed(2)}% best tested. ${c.tested} combinations tested; ${c.exact_matches} exact matches. Choose any compiled result to apply to this function only.`;
+    summary.textContent = `${before} → ${c.best.toFixed(2)}% best tested. ${c.tested} combinations tested; ${c.exact_matches} exact matches. ${matched ? "Only an exact match can replace this function’s current settings." : "Choose any compiled result to apply to this function only."}${c.stale ? " These results are outdated; test again before applying." : ""}`;
   }
+}
+function wireFunctionCompilerTable(table, ranked, slug, name) {
+  const summary = $("fnCompilerSummary");
+  setHtml(table, compilerRankedTable(ranked, true));
   table.onclick = async (event) => {
     const button = event.target.closest("button[data-compiler-choice]");
     if (!button || S.slug !== slug || S.fn !== name) return;
-    const row = c.ranked[Number(button.dataset.compilerChoice)];
+    const row = ranked[Number(button.dataset.compilerChoice)];
+    if (!row || row.apply_disabled || row.percent == null) return;
     const done = beginWork(summary, "Applying selected compiler settings", [...table.querySelectorAll("button")], "Settings applied.");
     compilerComparisonBusy = true;
     try {

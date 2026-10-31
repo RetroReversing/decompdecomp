@@ -329,3 +329,11 @@ def test_a_project_mode_games_save_writes_its_closest_attempts(tmp_path):
     best = (root / "progress" / "best" / "f.c").read_text()
     assert "97.0% match" in best and "claude-sonnet-5-5-1" in best and "src/auto/u.c" in best and "return 1;" in best
     assert not (root / "progress" / "best" / "g.c").exists() and (root / "progress" / "README.md").exists()
+
+
+def test_plain_save_directs_standalone_build_checkouts_to_repository_sync(tmp_path):
+    (tmp_path/'build.json').write_text('{}')
+    (tmp_path/'build.py').write_text('# keep build setup')
+    with pytest.raises(NetworkError,match='Sync to Git repository'):
+        saves._check_save_paths(tmp_path,chosen=True)
+    assert (tmp_path/'build.py').read_text()=='# keep build setup'
