@@ -38,10 +38,10 @@ def register(app: App) -> None:
                         with net.progress.view():
                             return fn(slug, request, data)
                     result = fn(slug, request, data)
-                    if request.method == "POST" and net.store.one("SELECT 1 FROM projects WHERE slug=?", slug):
+                    if request.method == "POST" and request.url.path != "/api/verification" and net.store.one("SELECT 1 FROM projects WHERE slug=?", slug):
                         net.progress.sync(slug, force=True)
                     return result
-                return JSONResponse(await call(perform))
+                return JSONResponse(await ((app.ui_call or call) if request.method == "GET" else call)(perform))
             except (NetworkError, ValueError, toolchains.ToolchainError, OSError) as e:
                 return fail(e)
         return handler
@@ -140,6 +140,14 @@ def register(app: App) -> None:
                 slug, log=log, function=data.get("function", ""), untested_only=data.get("untested_only", True), flags_only=bool(data.get("flags_only", False))),
                 cancel_message="Compiler comparison stopped. Completed results are saved.")}
         return net.compiler_answer(slug, check_now=request.method == "POST")
+
+    def p_verification(slug, request, data):
+        if data.get("paused"):
+            net.progress.pause(slug)
+        else:
+            net.progress.resume(slug)
+            jobs.start("saved progress verification", lambda log: net.progress.sync(slug, force=True, logger=log))
+        return {"ok": True}
 
     def p_open(slug, request, data):
         why = hostenv.open_folder(Path(net.project_row(slug)["root"]))
@@ -411,6 +419,7 @@ def register(app: App) -> None:
         "/api/agent-results": (lambda s,r,d: net.agent_results(s,r.query_params.get('agent',''),r.query_params.get('kind','matched'),int(r.query_params.get('before',0)),int(r.query_params.get('after',0))), ["GET"]),
         "/api/stats": (lambda s, r, d: net.stats(s), ["GET"]),
         "/api/compilermap": (p_compilermap, ["GET", "POST"]),
+        "/api/verification": (p_verification, ["POST"]),
     }
     for path, (fn, methods) in routes.items():
         mcp.custom_route(path, methods=methods)(with_project(fn))

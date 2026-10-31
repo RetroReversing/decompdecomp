@@ -89,11 +89,11 @@ def register(app: App) -> None:
 
     @mcp.custom_route("/api/projects", methods=["GET"])
     async def api_projects(request: Request) -> Response:
-        return guard(request) or JSONResponse(await call(project_list))
+        return guard(request) or JSONResponse(await (app.ui_call or call)(project_list))
 
     @mcp.custom_route("/api/state", methods=["GET"])
     async def api_state(request: Request) -> Response:
-        return guard(request) or JSONResponse(await call(state))
+        return guard(request) or JSONResponse(await (app.ui_call or call)(state))
 
     @mcp.custom_route("/api/restore", methods=["POST"])
     async def api_restore(request: Request) -> Response:

@@ -779,6 +779,7 @@ def _judge_saved(net, slug: str, folder: Path, manifest: dict, by_name: dict, sa
         try:
             result = net.attempt(agent, name, text, slug)
         except (NetworkError, toolchains.ToolchainError) as e:
+            check_cancel()  # A paused/cancelled check is not a failed match; abort and roll back instead.
             # A compiler that isn't here (an unknown one can never be installed) must not stop the other saved work
             # from coming back; the function stays open for when the user picks one (#118).
             log(f"{name}: {e}")

@@ -46,6 +46,7 @@ class App:
     body: Callable[..., Any]  # await body(request): the JSON object sent, or {}
     call: Callable[..., Any]  # await call(fn, *args): fn run in a thread
     fail: Callable[..., Any]  # fail(error, code=400): the error as JSON
+    ui_call: Callable[..., Any] | None = None  # reserved capacity for snapshot-only UI reads
     updater: updates.Updater | None = None
     busy: Callable[[], bool] | None = None  # whether helpers or a job are working
     quit_app: Callable[[], None] | None = None  # quit: the window, every helper, the server

@@ -1052,3 +1052,16 @@ def test_saved_judge_reports_counts_including_missing_sources(project):
     assert result['matched'] == 1 and result['lost'] == ['g']
     assert [(item['done'], item['total'], item['function']) for item in updates] == [
         (0, 2, 'f'), (1, 2, 'g'), (2, 2, None)]
+
+
+def test_pause_keeps_ui_snapshot_readable_and_gates_mutations(project):
+    net, _, _ = project
+    net.progress.pause('game')
+    assert net.progress.status('game')['paused']
+    with net.progress.view():
+        assert net._project('game')['slug'] == 'game'
+    with pytest.raises(NetworkError, match='verification is paused'):
+        net.progress.sync('game', force=True)
+    net.progress.resume('game')
+    assert not net.progress.status('game')
+    net.progress.sync('game', force=True)
