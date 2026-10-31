@@ -28,3 +28,18 @@ def prioritized(proj, fn, own):
         if not any(flag.startswith('-O') for flag in flags):candidate.append('-O1')
         out.append(candidate)
     return [f for f in out if f!=flags]
+
+
+def neighbours(net, proj, fn, own):
+    """Nearby exact matches propose flags, not an inferred compiler range or a setting change."""
+    from ..project import compiler_for
+    rows=net.store.all("SELECT vram FROM functions WHERE project_id=? AND status='matched' AND best_score=0 "
+                       "AND vram BETWEEN ? AND ? ORDER BY ABS(vram-?) LIMIT 8",
+                       proj['id'],fn['vram']-16384,fn['vram']+16384,fn['vram'])
+    cfg=net.cfg(proj);ranked=[]
+    for row in rows:
+        profile=compiler_for(cfg,row['vram'])
+        flags=list(profile.get('flags',[]))
+        if profile.get('toolchain')==own.get('toolchain') and not profile.get('cmd') and flags!=list(own['flags']) and flags not in ranked:
+            ranked.append(flags)
+    return ranked[:2]

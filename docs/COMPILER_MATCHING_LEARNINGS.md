@@ -425,3 +425,21 @@ Local source preparation now accepts an explicit list of reference object defini
 A timer function extraction failed because alternate preprocessor branches had different brace counts. Branch selection now uses configured numeric macros before locating the function, blanking inactive text/directives without removing newlines. This is deliberately not a complete C preprocessor: unsupported expressions and unknown compiler-specific conditions require numeric overrides or a prepared subset. No reference scripts or external preprocessor commands execute.
 
 Three controller routines and both matrix converters recovered with original typed records and ordinary loops instead of accumulated draft mutations. Existing typed-reference preference remains appropriate; exact judges, not source resemblance, decide progress. Controlled tests of these new preparation paths do not claim a new automatic matching rate.
+
+### Original SDK context before broad permutation
+
+A source-assisted N64 batch recovered ten additional routines / 5,304 bytes using IDO 5.3
+`-O1 -mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul`, with a byte-identical full cartridge rebuild.
+Original controller/directory records, the inode byte/halfword union, macros and locals matched directly.
+One initializer reached score 20 with only two unresolved `__ull_div` calls; explicit unsigned 64-bit calls to
+an existing helper at the target's two call sites produced score zero. This establishes a verified mapping
+for those sites, not permission to assign that name/ABI to every unknown function.
+
+Preparation now carries referenced typedefs/macros from the explicitly mapped file into its private header.
+The bounded ROM compiler preflight prioritizes up to two distinct profiles from nearby exact matches of the
+same installed toolchain. These remain hypotheses: normal per-function judging and compiler-setting approval
+rules apply. Original source context is tried before profile testing, so retained improvements are checked
+with their promoted private header. Imported builds still supply their own compatible headers/settings.
+Helper-only diff diagnostics suggest mappings only when every other compared instruction agrees; they never
+write addresses, alter objects or bypass the ordinary judge. Tests cover this behavior with synthetic evidence;
+these implementation tests are separate from the ten observed matches above.
