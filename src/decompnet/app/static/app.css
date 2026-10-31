@@ -1249,3 +1249,8 @@ details.more[open] > summary::before { content: "− "; }
 .compiler-range-reason summary { font-size: 12px; color: var(--muted); cursor: pointer; }
 .compiler-view-controls select { min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); font: inherit; }
 #progressSyncBar.determinate i { animation: none; transform: none; transition: width .2s; }
+
+.compiler-function-links { display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 8px 0; max-height: 240px; overflow: auto; }
+.compiler-function-links button { font-size: 12px; }
+.compiler-cleanup { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 16px; }
+#compilerRareLimit { width: 64px; padding: 4px; }

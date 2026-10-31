@@ -90,6 +90,7 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Kernel stubs set aside and named | — | set aside (BIOS calls) | ✓ | set aside, named by library and NID | — | ✓ import thunks | — | — |
 | Function-end reports (`report_boundary`) | ✓ | ✓ | ✓ | ✓ | — | ✓ (agents agree, the rebuild checks) | — | — |
 | Compiler ranges and suggestions | ✓ | ✓ | ✓ | ✓ | from scratch: per source file (`try_compiler`, Settings); else the project's build | per source file (`try_compiler`, Settings) | per source file (`try_compiler`, Settings) | the project's build |
+| Verified cleanup of rare compiler profiles | ✓ ROM mode | ✓ ROM mode | ✓ ROM mode | ✓ ROM mode | — | — | — | — |
 | Flag search (`search_flags`) | ✓ | ✓ | ✓ | ✓ | the project's build | per source file (/Oy-, /O1, /Ob1) | the project's build | the project's build |
 | Compiler map and the judge's survey | ✓ | ✓ | ✓ | ✓ | — | ✓ per source file, Rich header | — | — |
 | Range checks: a range applies after its neighbours confirm it | ✓ | ✓ | ✓ | ✓ | — | ✓ over source files | — | — |
@@ -981,3 +982,10 @@ Deep-permuter trial measurements now retain scoring outcomes and elapsed judge t
 Local follow-up candidates after a random improvement are counted separately, so their improvements and cost can
 be evaluated without conflating them with initial repairs. Historic attempts remain in their existing counters;
 new outcome and timing measurements begin when this version runs.
+
+## Compiler profile cleanup in imported projects
+
+ROM projects can consolidate rare profiles after exact byte comparisons and a final regression check. Imported
+projects still need cleanup through their per-file build settings and objdiff unit checks, including stale-input
+validation and rollback before any settings change is published. The app hides cleanup for these projects until
+that path is implemented; their declared build commands must not be rewritten as ROM compiler ranges.
