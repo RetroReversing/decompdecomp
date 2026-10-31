@@ -1423,7 +1423,7 @@ def test_project_overview_reads_database_while_progress_lock_is_busy(app, monkey
             worker.start()
             assert done.wait(2), 'overview waited for saved-code verification'
         assert result[0].status_code == 200
-        assert result[0].json() == {'title': 'Busy project', 'progress_syncing': True}
+        assert result[0].json() == {'title': 'Busy project', 'progress_syncing': False}
     finally:
         worker.join(timeout=3)
         with net.store.tx() as db:

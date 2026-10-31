@@ -285,6 +285,8 @@ class Progress:
         self.net = net
         self.lock = threading.RLock()
         self.local = threading.local()
+        self.activity_lock = threading.Lock()
+        self.activity: dict[str, dict] = {}
         self.disk: dict[str, dict[str, str]] = {}
         self.projected: dict[str, dict[str, str]] = {}
         self.checked: dict[str, float] = {}
@@ -604,12 +606,24 @@ class Progress:
         finally:
             self.local.viewing = previous
 
+    def _activity(self, slug: str, **fields):
+        with self.activity_lock:
+            now = time.monotonic()
+            self.activity.setdefault(slug, {"started": now}).update(fields, updated=now)
+
+    def status(self, slug: str) -> dict | None:
+        with self.activity_lock:
+            current = self.activity.get(slug)
+            if current is None:
+                return None
+            now = time.monotonic()
+            return {k: v for k, v in current.items() if k not in {"started", "updated"}} | {
+                "elapsed_seconds": int(now - current["started"]),
+                "idle_seconds": int(now - current["updated"])}
+
     def syncing(self, slug: str) -> bool:
-        lock = self._project_lock(slug)
-        if not lock.acquire(blocking=False):
-            return True
-        lock.release()
-        return False
+        # Judging and edits also hold the project lock; they are not a saved-progress check.
+        return self.status(slug) is not None
 
     def sync(self, slug: str, *, force: bool = False, logger=None) -> bool:
         """Read contributions first, then publish only work changed locally since the last synchronization.
@@ -621,6 +635,7 @@ class Progress:
         if self.applying or getattr(self.net.store._local, "in_tx", False):
             return False
         with self._project_lock(slug):
+            self._activity(slug, phase="Reading saved files", done=0, total=None, function=None)
             self.local.busy = True
             try:
                 proj = self.net._project(slug)
@@ -648,6 +663,7 @@ class Progress:
                                 self.stamps[slug] = self._stamp(folder)
                                 return False
                 cached_signature = self.signatures.get(slug)
+                self._activity(slug, phase="Comparing saved files")
                 result = self._sync(slug, logger)
                 self.checked[slug] = time.monotonic()
                 self.sync_changes[slug] = self.net.store.conn.total_changes
@@ -686,6 +702,8 @@ class Progress:
                 raise
             finally:
                 self.local.busy = False
+                with self.activity_lock:
+                    self.activity.pop(slug, None)
 
     def _publish_initial(self, slug: str, proj, folder: Path, disk: dict[str, str], dirty: _Dirty,
                          config_key: str) -> bool:
@@ -811,7 +829,12 @@ class Progress:
             raise NetworkError("Restore progress/decompdecomp.json before continuing this project.")
         if saves.MANIFEST in disk and (before is None or snapshot.files != before.files):
             manifest = _manifest(disk, cfg)
-            report = logger or (lambda line: saves.log.info("%s: %s", slug, line))
+            destination = logger or (lambda line: saves.log.info("%s: %s", slug, line))
+            def report(line):
+                self._activity(slug, message=line)
+                destination(line)
+            report.check_cancel = getattr(destination, "check_cancel", lambda: None)
+            report.progress = lambda **fields: self._activity(slug, **fields)
             getattr(report, "check_cancel", lambda: None)()
             # Captured before any render: the folder's revision is compared with what the database wrote last.
             stored_revision = saves._stored_revision(cfg)
@@ -987,6 +1010,7 @@ class Progress:
             self.results[slug] = saves._judge_saved(net, slug, folder, manifest, by_name,
                                                     manifest.get("functions") or {}, report,
                                                     files=disk, judge_code=needs_judging)
+            self._activity(slug, phase="Saving verified progress", function=None)
             net.bump_generation(pid)
             proj = net._project(slug)
             # `_apply_context` and the judge write matches and notes of their own: acknowledge the writes this
