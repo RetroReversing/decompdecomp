@@ -763,7 +763,7 @@ function renderCompilerParts(a) {
   setHtml($("compilerParts"), mode === "range" ? `<ol class="compiler-range-list">${groups.flatMap(g => g.parts).map(p => row(p, true)).join("")}</ol>`
     : groups.map((g, index) => `<details class="compiler-profile" data-compiler-group="${esc(g.id)}"${compilerGroupsOpen.has(g.id) ? " open" : ""}>
       <summary><span><b>${esc(mode === "family" ? g.family.toUpperCase() : g.compiler)}</b>${g.default ? ` <span class="chip-s">${mode === "family" && g.profiles > 1 ? "Includes default" : "Default"}</span>` : ""}${mode === "settings" ? `<code class="compiler-arguments">${esc(g.flags || "No arguments")}</code>` : ""}<span class="compiler-profile-count">${plural(g.parts.length, "range")}${g.functions != null ? ` · ${plural(g.functions, "function")}` : ""}${mode === "family" ? ` · ${plural(g.profiles, "argument profile")}` : ""}</span></span></summary>
-      ${mode === "settings" && !g.default && S.ov.kind === "rom" ? `<div class="compiler-profile-action"><button class="ghost small-btn" type="button" data-profile-default="${index}"${compilerProfileJobs.get(`${S.slug}:${g.id}`)?.running ? " disabled" : ""}>Compare all matches with default</button><p class="small muted">Only exact byte matches move to the project default. Drafts and non-matches keep their settings.</p><p class="small" role="status">${esc(compilerProfileJobs.get(`${S.slug}:${g.id}`)?.message || "")}</p></div>` : ""}
+      ${mode === "settings" && !g.default && S.ov.kind !== "fork" ? `<div class="compiler-profile-action"><button class="ghost small-btn" type="button" data-profile-default="${index}"${compilerProfileJobs.get(`${S.slug}:${g.id}`)?.running ? " disabled" : ""}>Compare all matches with default</button><p class="small muted">Only exact byte matches move to the project default. Drafts and non-matches keep their settings.</p><p class="small" role="status">${esc(compilerProfileJobs.get(`${S.slug}:${g.id}`)?.message || "")}</p></div>` : ""}
       <ol class="compiler-range-list">${g.parts.map(p => row(p, mode === "family")).join("")}</ol></details>`).join(""));
   $("compilerParts").querySelectorAll("details[data-range-reason]").forEach(d => d.ontoggle = () => {
     if (!d.isConnected) return;
@@ -776,7 +776,7 @@ function renderCompilerParts(a) {
 }
 for (const id of ["compilerGroup", "compilerSort"]) $(id).onchange = () => { if (compilerPartsAnswer) renderCompilerParts(compilerPartsAnswer); };
 function renderCompilerAnswer(a) {
-  $("compilerCleanup").hidden = S.ov.kind !== "rom";
+  $("compilerCleanup").hidden = S.ov.kind === "fork";
   $("installedCompilerTest").hidden = S.ov.kind === "fork" || !a.mips;
   const parts = a.parts || [];
   const defaultOpen = $("compilerAnswer").querySelector("[data-default-functions]")?.open;

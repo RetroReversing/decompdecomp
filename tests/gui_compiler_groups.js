@@ -18,3 +18,19 @@ assert.equal(parts[0].start, 30); // grouping never mutates the source configura
 assert.equal(ctx.compilerPartGroups([], 'settings').length, 0);
 assert.equal(ctx.compilerPartGroups([{start:0,end:1,compiler:'Custom',flags:''}])[0].functions, null);
 console.log('compiler groups passed');
+
+// ROM overview responses omit kind; the profile migration action must still appear.
+const elements = new Map();
+ctx.$ = id => { if (!elements.has(id)) elements.set(id, {value:id === 'compilerGroup' ? 'settings' : 'most-ranges', querySelectorAll:()=>[]}); return elements.get(id); };
+ctx.S = {slug:'demo', ov:{}};
+ctx.esc = String; ctx.hexShort = String; ctx.hex8 = String;
+ctx.plural = (n, word) => `${n} ${word}`;
+ctx.PART_STATE = {'':['waiting','']};
+ctx.setHtml = (el, html) => { el.innerHTML = html; };
+const steering = fs.readFileSync('src/decompnet/app/static/js/steering.js','utf8');
+vm.runInContext(steering.slice(steering.indexOf('function compilerFunctionLinks'), steering.indexOf('for (const id of ["compilerGroup"')), ctx);
+ctx.renderCompilerParts({parts});
+assert.match(elements.get('compilerParts').innerHTML, /Compare all matches with default/);
+ctx.S.ov.kind = 'fork';
+ctx.renderCompilerParts({parts});
+assert.doesNotMatch(elements.get('compilerParts').innerHTML, /Compare all matches with default/);
