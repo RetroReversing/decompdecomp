@@ -685,6 +685,24 @@ A video-manager draft still differed by unreachable NOPs; debug-flag probes did 
 helper fragments entered with live saved/floating registers, so their isolated ordinary-C signatures remain
 unproven. Neither pattern is resolved by adding padding instructions, weakening boundaries or changing the judge.
 
+### Source-context follow-ups
+
+The five-match/2,600-byte live batch above motivates preserving unambiguous referenced definitions from the
+explicitly mapped source file, while retaining the plain context as a bounded alternative. This does not search
+other files or invent initializers/layouts. Definition/data promotion still uses the ordinary linked judge and
+standalone placement checks. Existing preparation/profile digests already include source, header and build state;
+regression tests cover retrying after each changes.
+
+Named-buffer alternatives now require an existing byte-array declaration and raw MIPS LUI/address evidence;
+scalar constants, arbitrary names and unproven addresses are not rewritten. Runtime-helper call-only diagnostics
+include signed/unsigned 64-bit prototype candidates for ABI review, never automatic symbol installation.
+Read-before-definition saved registers, mixed floating/pointer entry usage and target-only NOPs are advisory
+context/boundary leads, not authority to change signatures or insert padding. Original records and control flow
+are recommended ahead of broad searches when differences are only register allocation.
+
+A rejected partial compiler suggestion now keeps the working profile and returns to source search. Unexpected
+errors and cancellation are not swallowed. These synthetic regressions are separate from manual game matches;
+this change has not been installed into the running app during development.
 ### Bounded automation from the KMC local-lifetime case
 
 The verified `gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2 -g3` draw-pair case above

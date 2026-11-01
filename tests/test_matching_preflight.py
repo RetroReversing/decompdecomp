@@ -92,3 +92,24 @@ def test_similarity_alone_does_not_automatically_change_a_compiler_profile():
     result=preflight.run(net,proj,fn)
     assert result['best']['score']==20 and not result['best']['exact']
     assert not state['applied'] and len(state['suggested'])==1
+
+
+def test_rejected_partial_suggestion_keeps_working_profile_and_returns_to_search():
+    from decompnet.network import NetworkError
+    net,proj,fn,state=setup()
+    net._judge_with=lambda p,f,t,flags,s:(False,SimpleNamespace(score=20 if flags==['-O3'] else 50),'')
+    def reject(*args,**kwargs):raise NetworkError('not suggested: the C does not match')
+    net.suggest=reject;logs=[]
+    result=preflight.run(net,proj,fn,log=logs.append)
+    assert 'not suggested' in result['suggestion_rejected']
+    assert net.cfg(proj)['compiler']['flags']==['-O2'] and not state['applied']
+    assert any('continue source search' in line for line in logs)
+    assert preflight.run(net,proj,fn)['cached']
+
+
+def test_unexpected_suggestion_failure_is_not_swallowed():
+    from decompnet.network import NetworkError
+    net,proj,fn,state=setup()
+    def fail(*args,**kwargs):raise NetworkError('project was removed')
+    net.suggest=fail
+    with pytest.raises(NetworkError,match='project was removed'):preflight.run(net,proj,fn)

@@ -1173,6 +1173,12 @@ Isolated private replays recovered two recorded SN64 compiler-output controls wi
 a third selected KMC case was already recovered by the existing typed-temporary family. Replay recovery
 is a regression result, not a new game match. Mixed/context-dependent examples remain for review.
 
+- Done: mapped-file preparation tries up to eight unambiguous referenced object definitions verbatim before
+  its extern-only alternative; explicit definition selections and paired contexts remain supported. Named-buffer
+  address candidates require an existing array declaration and raw MIPS address evidence. Typed runtime-helper
+  call-only diagnostics, entry-context/NOP/record advisories, and rejected-preflight-suggestion recovery share
+  ordinary judges and budgets. Other processors' address/entry evidence adapters: **—**, planned work; imported
+  projects retain build-owned compiler profiles and ROM-only entry diagnostics do not alter their setup.
 ## Register-only local lifetime search
 
 Shared draft, agent-local and deep searches offer bounded branch-tail locals, scalar call staging

@@ -20,8 +20,11 @@ def suggestions(rows):
         if right[2] in mappings and mappings[right[2]]!=left[2]:return []
         mappings[right[2]]=left[2];count+=1
     if not count:return []
+    runtime_types={a: ('long long' if a.startswith('__ll_') else 'unsigned long long') for a in HELPERS}
+    runtime_prototypes=' '.join(f'{runtime_types[a]} {b}({runtime_types[a]}, '+('int' if 'shift' in a else runtime_types[a])+');' for a,b in sorted(mappings.items()) if a in HELPERS and 'shift' not in a)
     prototypes=' '.join(f'{MATH[a]} {b}({MATH[a]});' for a,b in sorted(mappings.items()) if a in MATH)
     return ['Only runtime-helper call targets differ: '+', '.join(f'{a} → {b}' for a,b in sorted(mappings.items()))+
-            '. Confirm the helper ABI and each target call site, then use an explicit typed call or a verified symbol alias. '
-            'No addresses or symbols were changed; recompile and pass the byte judge before accepting it.'+
+            '. Confirm the helper ABI and each target call site, then use an explicit typed call or a verified symbol alias. '+
+            (' Integer helper prototype candidates (confirm signedness and shift ABI): '+runtime_prototypes if runtime_prototypes else '')+
+            ' No addresses or symbols were changed; recompile and pass the byte judge before accepting it.'+
             (' Expected SDK math prototypes: '+prototypes+' An alias alone does not declare its return/argument types; an implicit int return changes the ABI.' if prototypes else '')]
