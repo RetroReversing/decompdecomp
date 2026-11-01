@@ -1243,6 +1243,7 @@ def test_reset_metrics_keeps_history_and_counts_new_work_across_restart(tmp_path
     row = manager.snapshot()[0]
     assert row['tokens'] == 1000000 and row['lifetime_tokens'] == 2000000
     assert row['metrics']['compiles'] == 4
+    assert row['metrics']['worked'] == 2
     assert row['metrics']['improved'] == 2 and row['metrics']['matched'] == 1
     assert row['metrics']['last_improvement'] == 104
     assert row['estimated_cost'] == pytest.approx(kinds.get('codex').estimate_cost('gpt-6-luna', {'input':1000000, 'tokens':1000000}))
@@ -1253,7 +1254,9 @@ def test_reset_metrics_keeps_history_and_counts_new_work_across_restart(tmp_path
     after = row['metrics_after']
     assert [f['name'] for f in net.agent_results('game', s.agent_name, 'matched', after=after)['functions']] == ['f1']
     assert {f['name'] for f in net.agent_results('game', s.agent_name, 'improved', after=after)['functions']} == {'f0','f1'}
+    assert {f['name'] for f in net.agent_results('game', s.agent_name, 'worked', after=after)['functions']} == {'f0','f1'}
     manager.reset_metrics(sid)
+    assert manager.snapshot()[0]['metrics']['worked'] == 0
     assert manager.snapshot()[0]['tokens'] == 0
     with pytest.raises(ValueError, match='no longer exists'):
         manager.reset_metrics('missing')

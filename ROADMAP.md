@@ -1420,3 +1420,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
 
 - Done: one tool-schema catalog serves transcripts, manual MCP setup, global agent tool settings and per-agent controls. Optional tool switches filter authenticated MCP discovery and API schemas, with dispatch enforcement for cached calls; essential claim/compile/release tools stay available. Persistent local usage counters include surviving historical transcript requests once, retain future calls across restarts/removal, and identify tools with zero recorded use without claiming complete pre-tracking coverage.
 - Done: manual MCP connection setup is collapsed by default in Agents & models, using the shared keyboard-accessible disclosure styling.
+
+- Done: agent cards show one reported-usage line (unknown usage is not zero), one agent-scoped compile total, current function match/instruction metadata, and a clickable distinct-functions-worked-on total that respects metric resets.
