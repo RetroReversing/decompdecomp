@@ -101,3 +101,15 @@ def test_mcp_records_full_arguments_results_and_errors(setup, monkeypatch):
     assert 'Missing function.' in events[-1]['text']
     assert json.loads(events[-2]['text'])['call_id'] == json.loads(events[-1]['text'])['call_id']
     assert json.loads(events[-1]['text'])['call_id'] != first_id
+
+
+def test_legacy_pre_prompt_probe_is_labelled_without_rewriting_history(setup):
+    net,manager,session,row=setup
+    session.record('tool_definitions',[{'name':'project_info'}])
+    session.record('tool_request',{'name':'project_info','arguments':{'detail':False}})
+    session.record('tool_response',{'name':'project_info','content':'probe'})
+    session.record('prompt','actual initial prompt')
+    session.record('tool_definitions',[{'name':'project_info'}])
+    events=manager.transcript('demo',session.id,row)['events']
+    assert [e['kind'] for e in events]==['connection_check_tools','connection_check_tool_request','connection_check_tool_response','prompt','tool_definitions']
+    assert net.store.one('SELECT kind FROM helper_messages WHERE session_id=? ORDER BY id',row)['kind']=='tool_definitions'

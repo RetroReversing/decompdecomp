@@ -53,7 +53,7 @@ def test_mcp_preflight_checks_actual_advertised_tools(monkeypatch, missing, deni
         manager._preflight_tools('test-token')
         assert ('project_info', {'detail':False}) in seen
     assert seen[0] == 'authenticated'
-    assert seen[1]['headers'] == {'Authorization': 'Bearer test-token'}
+    assert seen[1]['headers'] == {'Authorization': 'Bearer test-token', 'X-Decomp-Connection-Check':'1'}
     assert 'initialize' in seen
 
 
@@ -123,10 +123,17 @@ def test_preflight_against_real_isolated_app(tmp_path, monkeypatch):
                 time.sleep(.02)
             assert server.started
             _, token = net.local_agent('test-helper')
+            from decompnet.app.agents import Session
+            events=[]
+            session=Session('probe','codex','Probe','game','test-helper',{})
+            session.record=lambda kind,value:events.append((kind,value))
+            manager.sessions[session.id]=session
             monkeypatch.setattr(manager, 'project_of', lambda agent: 'game')
             from decompnet.app import tools
             monkeypatch.setitem(tools.HANDLERS, 'project_info', lambda *args, **kwargs: 'Connected to test project')
             manager._preflight_tools(token)
+            assert [kind for kind,_ in events] == ['connection_check_tools','connection_check_tool_request','connection_check_tool_response']
+            assert net.store.one('SELECT calls FROM agent_tool_usage WHERE name=?','project_info') is None
             monkeypatch.setattr(manager, 'project_of', lambda agent: None)
             with pytest.raises(Fatal, match='No model request'):
                 manager._preflight_tools(token)
@@ -148,6 +155,7 @@ def test_lost_tool_connection_pauses_instead_of_paid_retries(tmp_path, monkeypat
     monkeypatch.setattr(Manager, 'refresh_detected', lambda self: None)
     manager = Manager(net, tmp_path, 'http://127.0.0.1:1/mcp')
     monkeypatch.setattr(manager, '_preflight_tools', lambda token: None)
+    monkeypatch.setattr(manager, "prepare_session", lambda *a, **kw: None)
     event = {'type':'assistant', 'message':{'content':[{'type':'text', 'text':message}]}}
     code = f'print({json.dumps(event)!r})'
     monkeypatch.setattr(manager, '_command', lambda *args: ([sys.executable, '-c', code], dict(os.environ), ''))

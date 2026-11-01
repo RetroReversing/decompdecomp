@@ -69,3 +69,17 @@ def test_helper_tool_policy_survives_other_work_settings(tmp_path):
     assert net.selection('game','reader')['disabled_tools'] == ['guide','search_notes']
     manager.set_tool('1', 'guide', True)
     assert session.options['selection']['disabled_tools'] == ['search_notes']
+
+
+def test_connection_probe_checks_policy_without_counting_usage_or_session_budget(tmp_path,monkeypatch):
+    from decompnet.app import session_budget
+    net,_=_game(tmp_path,[('f',10,'open')])
+    agent,_=net.local_agent('reader')
+    budget=session_budget.start(net,agent.id,'game',{'session_tool_limit':1})
+    monkeypatch.setitem(tools.HANDLERS,'project_info',lambda *a,**kw:'Connected')
+    assert tools._dispatch(net,agent,'game','project_info',{},count_usage=False)=='Connected'
+    assert budget.calls==0 and budget.chars==0
+    assert net.store.one('SELECT * FROM agent_tool_usage WHERE name=?','project_info') is None
+    tool_policy.set_global(net,'guide',False)
+    with pytest.raises(NetworkError,match='disabled'):
+        tools._dispatch(net,agent,'game','guide',{},count_usage=False)

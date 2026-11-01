@@ -101,3 +101,36 @@ def test_the_api_cannot_call_add_note_without_a_function():
 
     add_note = next(t["function"] for t in api_tool_schemas() if t["function"]["name"] == "add_note")
     assert "function" in add_note["parameters"]["required"]
+
+
+def test_user_can_accept_single_model_tip_without_claiming_model_consensus(net):
+    a=agent(net,'claude-opus-5.5-1')
+    kid=int(net.knowledge.share(a,'game','For register-only differences, shorten temporary live ranges.').split('#')[1].split('.')[0])
+    net.knowledge.set_auto('game',True)
+    assert net.knowledge.listing('game')['items'][0]['status']=='proposed'
+    net.knowledge.decide('game',kid,accept=True)
+    listing=net.knowledge.listing('game')['items'][0]
+    assert listing['status']=='accepted' and len(listing['models'])==1
+    assert 'shorten temporary' in net.knowledge.for_prompt('game')
+    assert 'agreed by different models' not in net.knowledge.for_prompt('game')
+    assert 'shorten temporary' not in net.knowledge.for_prompt('other')
+    net.knowledge.decide('game',kid,accept=False)
+    assert 'shorten temporary' not in net.knowledge.for_prompt('game')
+
+
+def test_reusable_compiler_behavior_tips_are_allowed_and_function_note_destination_is_documented(net):
+    a=agent(net,'claude-opus-5.5-1')
+    assert 'Proposed' in net.knowledge.share(a,'game','GCC matching tip: reuse a local across disjoint live ranges to affect register allocation.')
+    from decompnet.agents.api import api_tool_schemas
+    description=next(t['function']['description'] for t in api_tool_schemas() if t['function']['name']=='share_knowledge')
+    assert 'NOT function-specific' in description and 'add_note(function=' in description
+
+
+def test_pending_proposal_ui_offers_manual_acceptance():
+    import shutil
+    import subprocess
+    from pathlib import Path
+    node=shutil.which('node')
+    if node is None:
+        pytest.skip('needs node')
+    subprocess.run([node,str(Path(__file__).with_name('gui_knowledge_accept.js'))],check=True,timeout=30)

@@ -73,6 +73,8 @@ _SIGNIN = re.compile(r"auth|log ?in|sign(ed)? ?in|credential|api.?key|unauthori[
 # diffs would otherwise ride along into the next one), but pays for its system prompt, tools and guides again:
 # with 2 per session that was most of what small functions cost.
 PER_SESSION = 8
+STARTUP_FACTS_CHARS = 1800
+STARTUP_BRIEF_CHARS = 6000
 MAX_AT_ONCE = 8  # helpers started with one click
 MAX_PER_START = 24  # helpers one start may begin in total, across the models it picks: without it, many models at once
                     # would launch hundreds (a start used to check only each endpoint's own max_sessions)
@@ -335,6 +337,7 @@ class Session:
     record: Callable[[str, object], None] | None = field(default=None, repr=False)  # current session transcript callback
     session_id: int = 0
     prompt_config: dict | None = field(default=None, repr=False)
+    startup_context: str | None = field(default=None, repr=False)
     context_budget: object | None = field(default=None, repr=False)
     rotated: bool = False
     stop: threading.Event = field(default_factory=threading.Event)
@@ -1224,6 +1227,7 @@ class Manager:
     def _session_begin(self, s: Session) -> int:
         from .prompt_settings import effective
         s.prompt_config = effective(self.net, s.options)
+        s.startup_context = None
         s.usage = _fresh_usage()
         with self.net.store.tx() as db:
             row = db.execute("INSERT INTO helper_sessions(helper_id, project, kind, model, agent, started_at, task) "
@@ -1285,6 +1289,23 @@ class Manager:
         self._save(s)
         s.record = None
 
+    def prepare_session(self, s: Session, agent=None, *, token=None) -> None:
+        """Preload facts and one ordinary claim, once; previews never claim work."""
+        if s.startup_context is not None:
+            return
+        if agent is None:
+            agent = self.net.authenticate(token)
+        facts = tools._project_info(self.net, s.slug, detail=False).split('Next:')[0][:STARTUP_FACTS_CHARS]
+        parts = ['App-provided startup context (already fetched; no project_info call needed):', facts]
+        if s.options.get('task') != 'readable':
+            packet = tools._claim(self.net, agent, s.slug, '', '', count=1)
+            if len(packet) > STARTUP_BRIEF_CHARS:
+                packet = packet[:STARTUP_BRIEF_CHARS].rsplit('\n', 1)[0] + '\n[Startup brief abbreviated. Read get_function(section=brief) or get_candidate for omitted evidence before editing.]'
+            parts += ['The app already called claim_function(count=1) for you. Start with the brief below. '
+                      'Do not claim again before working on or releasing this function. '
+                      'If no function was available, do not invent one; end the session.', packet]
+        s.startup_context = '\n\n'.join(parts)
+
     def prompt(self, s: Session) -> str:
         from .session_handoffs import previous
         text = self._prompt(s) + previous(self.net, s.id, s.slug)
@@ -1306,6 +1327,8 @@ class Manager:
                 for fn in held:
                     source,revision = agent_tokens.candidate(self.net,agent,s.slug,fn['name'])
                     text += '\n'+fn['name']+': '+local_experiments.summary(self.net,agent,s.slug,fn,source,revision)
+        if s.startup_context:
+            text += '\n\n' + s.startup_context
         return text
 
     def _prompt(self, s: Session) -> str:
@@ -1348,7 +1371,7 @@ class Manager:
             from mcp.client.streamable_http import streamable_http_client
             from mcp.shared._httpx_utils import create_mcp_http_client
 
-            async with create_mcp_http_client(headers={"Authorization": f"Bearer {token}"}) as http:
+            async with create_mcp_http_client(headers={"Authorization": f"Bearer {token}", "X-Decomp-Connection-Check":"1"}) as http:
                 async with streamable_http_client(self.mcp_url, http_client=http) as streams:
                     async with ClientSession(*streams[:2]) as client:
                         await client.initialize()
@@ -1372,6 +1395,7 @@ class Manager:
         if why := k.validate_model(s.model):
             raise Fatal(why)
         self._preflight_tools(token)
+        self.prepare_session(s, token=token)
         cmd, env, prompt = self._command(s, token, workdir)
         if s.record:
             previous = s.record
