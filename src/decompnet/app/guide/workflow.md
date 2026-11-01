@@ -79,3 +79,13 @@ Consult the current-parent failed-trial history: unchanged inputs need not repea
 or flag combinations. A changed source lifetime, header, target or compiler profile is a new experiment.
 Do not infer original source spelling from an exact generating expression, or count a replay of an already
 matched source as a new match. Only the ordinary judge accepts a match.
+
+## After an expensive match
+
+Repair examples can automatically analyze a new captured match with four bounded edit reversions and
+supported GCC before/after diagnostics. Results are saved as evidence; matched source stays unchanged.
+One analysis runs at a time; busy, unsupported or missing-input cases can use manual replay later.
+Use its smaller retained edit set to propose a reusable repair, then test that rule independently.
+Different phase dumps, empty conflict sets or deleted pseudos are leads, not proof of causality.
+Learned exact sequences are scoped by compiler profile and mismatch shape. Consult per-family efficiency
+with its denominators: trial-minute rates use summed compiler-trial elapsed time, not actual CPU minutes.

@@ -103,6 +103,17 @@ def order(net, proj, fn, rows, families):
                               for family in pair if family is not None))
 
 
+def efficiency(net):
+    """Measured trial-time rates, never CPU-time claims or cross-profile causal comparisons."""
+    prepare(net)
+    rows = net.store.all('SELECT * FROM repair_policy ORDER BY attempted DESC LIMIT 64')
+    return [dict(row) | {'matches_per_compile':row['matched']/row['attempted'] if row['attempted'] else None,
+                         'improvements_per_compile':row['improved']/row['attempted'] if row['attempted'] else None,
+                         'matches_per_trial_minute':row['matched']*60000/row['elapsed_ms'] if row['elapsed_ms'] else None,
+                         'trial_seconds':row['elapsed_ms']/1000,'cpu_seconds':None,
+                         'evidence':'measured' if row['attempted']>=MIN_TRIALS else 'sparse'} for row in rows]
+
+
 def coverage(net):
     """Expose denominators and collection windows; legacy aggregates cannot be compared as one cohort."""
     prepare(net)
@@ -112,5 +123,5 @@ def coverage(net):
     if net.store.one("SELECT 1 FROM sqlite_master WHERE type='table' AND name='deep_permutation_recipes'"):
         deep = dict(net.store.one("SELECT COALESCE(SUM(tested),0) attempted,COALESCE(SUM(improvements),0) improved,COALESCE(SUM(matches),0) matched FROM deep_permutation_recipes"))
     from .experiment_evidence import listing
-    return {'policy':policy,'sources':sources,'deep':deep,'input_effects':listing(net),
+    return {'efficiency':efficiency(net),'policy':policy,'sources':sources,'deep':deep,'input_effects':listing(net),
             'scope':'All projects. Policy trials are uncached, scoped by build profile and mismatch. Deep history has a different collection window; do not compare rates directly. Coverage by origin starts with this update; elapsed time is summed trial time, not wall-clock duration.'}

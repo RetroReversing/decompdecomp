@@ -186,3 +186,9 @@ Use `allocation_initialization_order`, `pointer_argument_alias`, `spill_declarat
 `byte_fill_constant` and the bounded `allocation_schedule_bridge` when offered. They automate
 subsets of these observations, not the complete historical search. Exact results do not prove
 original variable names, types or source spelling. See `docs/COMPILER_MATCHING_LEARNINGS.md`.
+
+For stubborn misses, Repair examples' GCC diagnostics now compare frozen before/after allocator and
+scheduler phases. Compare `lreg`/`greg` assignments and lifetimes with `sched`/`sched2`/`dbr`, only when
+both diagnostic builds preserve ordinary output. Pseudo numbering changes are not causal proof. New
+captures can run bounded ablation automatically; use the retained edit set as a hypothesis for a local
+family, keeping the original exact source until a separate ordinary judge accepts any replacement.

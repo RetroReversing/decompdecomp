@@ -38,6 +38,11 @@ repair pipeline. A function match now carries a separate MIPS export-layout chec
 
 ## Automatic repairs before paid agents
 
+New captured matches can run bounded local edit minimisation and paired GCC diagnostics in the background.
+Repair examples shows the saved analysis and its on/off control; successful game source stays unchanged.
+Learned sequences use compiler and mismatch-shape evidence, and metrics expose wins per compile and per
+measured trial minute. No model tokens are used for this analysis.
+
 Register near misses now include compact allocation clues and bounded pointer-lifetime, mixed declaration-order,
 byte-fill constant and independent initialization-order repairs. The search retains different register/spill
 layouts alongside the numeric winner. Opt-in iterative autopilot can chain four edits within its existing

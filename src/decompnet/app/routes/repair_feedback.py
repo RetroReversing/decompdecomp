@@ -8,6 +8,18 @@ from .. import repair_investigations
 def register(app):
     feedback = app.net.repair_feedback
 
+    @app.mcp.custom_route('/api/repair-examples/analysis', methods=['GET','POST'])
+    async def automatic_analysis(request):
+        if bad := app.guard(request,write=request.method=='POST'):return bad
+        from .. import repair_outcomes
+        try:
+            if request.method=='POST':
+                data=await app.body(request)
+                await app.call(repair_outcomes.configure,feedback,data['enabled'])
+            return JSONResponse({'enabled':await app.call(repair_outcomes.enabled,feedback),
+                                 'budget':'One background analysis at a time; four ablations, 20-second soft deadline plus in-flight capped compiler work. Busy captures remain available for manual replay.'})
+        except (NetworkError,ValueError,KeyError,TypeError) as error:return app.fail(error)
+
     @app.mcp.custom_route('/api/repair-examples/replay', methods=['POST'])
     async def replay_examples(request):
         if bad := app.guard(request, write=True):

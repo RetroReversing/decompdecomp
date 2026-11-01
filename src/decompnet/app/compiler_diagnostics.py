@@ -97,3 +97,28 @@ def diagnose(profile, header, source, name, *, root='.', baseline_obj=None):
     return {'toolchain':tid,'original_flags':profile.get('flags',[]),'diagnostic_flags':['-da'],
             'output_unchanged':equal,**captured,
             'note':'Isolated diagnostic compilation; no settings or progress changed. Removed pseudos and empty conflict lists are investigation leads, not proof of a spill cause. Phase evidence is comparable only when output_unchanged is true.'}
+
+
+def compare(before,after):
+    """Compare frozen GCC phases only when diagnostic flags preserved both normal outputs."""
+    if not before.get('output_unchanged') or not after.get('output_unchanged'):
+        return {'comparable':False,'note':'Diagnostic output changed or is unavailable; do not attribute a cause.'}
+    phases = []
+    for phase in ('rtl','jump','cse','loop','flow','combine','sched','lreg','greg','sched2','jump2','dbr'):
+        a,b = before.get('phases',{}).get(phase),after.get('phases',{}).get(phase)
+        if not a or not b:continue
+        if a.get('truncated') or b.get('truncated'):continue
+        if a.get('captured_sha256')==b.get('captured_sha256'):continue
+        phases.append({'phase':phase,'register_count_before':a.get('register_count'),
+                       'register_count_after':b.get('register_count'),
+                       'assignments_changed':a.get('assignments')!=b.get('assignments'),
+                       'lifetimes_changed':a.get('lifetimes')!=b.get('lifetimes'),
+                       'empty_conflicts_changed':a.get('empty_conflicts')!=b.get('empty_conflicts')})
+    changed = {p['phase'] for p in phases}
+    allocation=any(p['phase'] in {'lreg','greg'} and (p['assignments_changed'] or p['empty_conflicts_changed']) for p in phases)
+    lifetime=any(p['lifetimes_changed'] for p in phases)
+    scheduling=bool(changed & {'sched','sched2','dbr'})
+    lead = ('allocation/lifetime' if allocation else 'lifetime and scheduling' if lifetime and scheduling
+            else 'lifetime' if lifetime else 'scheduling' if scheduling else 'earlier optimization' if changed else 'no comparable phase changes')
+    return {'comparable':True,'changed':phases,'lead':lead,
+            'note':'Different input source can renumber pseudos and dumps. Phase changes are investigation leads, not causal proof.'}

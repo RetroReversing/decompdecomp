@@ -9,7 +9,7 @@ import time
 
 from ..match_bundle import compiler_identity
 from ..project import compiler_for
-from . import adaptive_repairs, expression_recipes, permuter_focus
+from . import adaptive_repairs, allocation_evidence, expression_recipes, permuter_focus
 
 MAX_STEPS = 4
 SCHEMA = '''CREATE TABLE IF NOT EXISTS repair_sequences(
@@ -50,15 +50,27 @@ def profile(net, proj, fn):
     return hashlib.sha256((adaptive_repairs.profile(net,proj,fn)+repr(compiler_identity(compiler))).encode()).hexdigest()
 
 
+def focus(rows,arch=None):
+    """Source-free shape buckets, sharing across functions without learning addresses/register names."""
+    d = allocation_evidence.diagnose(rows,arch)
+    delta = None if d['target_frame'] is None else d['target_frame']-d['candidate_frame']
+    shape = [permuter_focus.classify(rows),len(d['register_map']),
+             None if delta is None else (0 if delta==0 else 1 if delta>0 else -1),
+             bool(d['spill_offsets']),d['scheduling']]
+    return 'shape-v1:'+json.dumps(shape,separators=(',',':'))
+
+
 def starting(net, proj, fn, rows):
-    return next_families(net,profile(net,proj,fn),permuter_focus.classify(rows),[])
+    key = profile(net,proj,fn)
+    return list(dict.fromkeys(next_families(net,key,focus(rows,proj['arch']),[])+next_families(net,key,permuter_focus.classify(rows),[])))
 
 
 class Lineage:
     def __init__(self, net, proj, fn, source, rows):
         self.net = net
         self.profile = profile(net,proj,fn)
-        self.focus = permuter_focus.classify(rows)
+        self.focus = focus(rows,proj['arch'])
+        self.legacy_focus = permuter_focus.classify(rows)
         self.paths = {source: []}
 
     def retain(self, parent, source, family, exact=False):
@@ -73,4 +85,6 @@ class Lineage:
                 expression_recipes.learn(self.net,self.profile,parent,source)
 
     def preferred(self, source):
-        return next_families(self.net,self.profile,self.focus,self.paths[source]) if source in self.paths else []
+        if source not in self.paths:return []
+        return list(dict.fromkeys(next_families(self.net,self.profile,self.focus,self.paths[source])+
+                                  next_families(self.net,self.profile,self.legacy_focus,self.paths[source])))

@@ -1307,3 +1307,37 @@ values stop the proof. An ABI contract rejects incompatible integer layouts. The
 pipeline reaches ROM and imported projects; ordinary compilation and exact judging remain
 mandatory. A synthetic mask/shift regression emits identical `.text` with the pinned KMC
 compiler. This is not a measured new game match.
+
+## Learning from successful repairs without spending model tokens
+
+New captures in the desktop app can run a bounded automatic compiler-output ablation: at most four
+edit-reversion probes, plus frozen before/after controls and supported GCC diagnostics, with a 20-second
+soft deadline. In-flight compiler operations retain their existing caps. Only one automatic analysis runs
+at once across projects; captures arriving while busy remain available for manual replay. No source is
+adopted, match status changed, or repair marked implemented. The Repair examples analysis toggle controls
+future work; `DECOMP_REPAIR_ANALYSIS=off` disables scheduling for a process. Historical cases use manual replay.
+
+The ablator identifies removable captured edits under frozen output, not semantic necessity or the original
+source. Native pinned GCC diagnostics compare before/after phase hashes, register counts, lifetime records,
+assignments and conflict summaries only after proving `-da` preserved both outputs. Truncated/missing phases
+cannot establish a comparison. Pseudo renumbering can change dumps without revealing a cause.
+
+Exact connected repair sequences now use source-free mismatch-shape buckets (category, coherent register
+substitution count, frame-gap direction, local-offset differences and scheduling evidence), in addition to
+the compiler/build profile. Old category-only recipes remain fallback hints; unverified paths do not train.
+The existing adaptive policy retains exploration and incorporates measured trial costs. Metrics expose
+matches and improvements per compile plus matches per **summed elapsed trial minute**, with denominators,
+profile/focus and sparse-evidence labels. This is not measured CPU time or whole-run wall time; unknown timing
+has no time rate. Concurrent trial durations must not be presented as one elapsed run.
+
+Imported projects currently skip frozen standalone replay without a copied build adapter. Other compiler
+backends can use ablation when standalone captured inputs are supported, but GCC phase flags are not sent to
+non-GCC drivers. These limitations remain explicit rather than fabricating comparable compiler evidence.
+
+Private regression validation of the automatic analysis used the last pre-match 737-instruction pair
+under the unchanged KMC `-G0 -mips3 -mgp32 -mfp32 -O2 -g3` profile. The baseline remained score 60.
+Token-level ablation identified two captured edits; reverting either failed frozen-output preservation,
+so neither was discarded. Both diagnostic builds preserved their ordinary output. Captured register
+assignments stayed unchanged, while lifetime and scheduling dumps differed. This supports investigating
+initialization order without claiming a newly discovered allocation cause. No source was applied and
+this replay does not count as another matched function.

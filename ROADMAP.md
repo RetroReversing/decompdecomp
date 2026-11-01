@@ -1469,3 +1469,13 @@ remain planned: the initial browser toolchain has no matching build-context adap
 
 - Done: Repair examples puts compact source-repair cards and filters first, with candidate concerns, local testing/analysis and exports in separate disclosures. Cards preview the captured explanation and open directly onto source changes; coding-agent setup loads only when its investigation section is expanded. Review statuses use plain labels, form controls stack on narrow windows, and per-example tests reveal their progress section automatically.
 - Done: session transcripts distinguish app-only connection probes from tools exposed to the agent, including legacy pre-prompt probes without rewriting saved events. New probe calls do not increment agent tool-use counters. CLI and API matching sessions preload bounded project facts and one ordinary coordinated claim; prompt previews never claim, and polishing keeps its own file-claim flow. Reusable matching knowledge has explicit per-function note guidance, allows general known-compiler behavior tips, and pending single-model proposals can be accepted or rejected manually without changing the two-model automatic acceptance rule.
+
+### Post-match repair analysis and cost evidence
+
+- Done: bounded automatic frozen-output ablation for new supported captures, a Repair examples toggle,
+  persisted reports, and source-free summary exports; no progress adoption or review changes.
+- Done: paired native-GCC phase comparisons gated on unchanged compiler output, mismatch-shape-specific
+  exact repair sequence hints, and per-profile/focus compile and elapsed-trial-time efficiency rates.
+- Planned: copied-build replay adapters for imported projects and phase diagnostics for other compiler
+  backends. They explicitly skip instead of using guessed standalone build settings. Timing currently
+  measures summed trial elapsed time; per-child CPU accounting across compiler runtimes remains planned.
