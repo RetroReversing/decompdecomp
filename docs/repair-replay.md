@@ -27,8 +27,11 @@ Use `--ids 123 456` to select specific cases. Limits are per example; baseline/c
 the current trial can finish after the soft deadline, with normal compiler subprocess timeouts still active.
 No toolchains are downloaded. Install the captured compiler through the app first if necessary.
 
-The report checks source/header hashes, identical captured settings, and a reproducible baseline/control
-difference. Missing historical C or context, changed settings and uninstalled tools are reported as skips.
+The report checks source/header hashes, identical captured compiler/build settings, and a reproducible baseline/control
+difference. Captures differing only in judge revision can also be recompiled under the same compiler/header;
+the report and dialog explicitly label that case, and historical scores are not compared. To inspect one
+in the app, clear **Comparable source repairs only** and use its single-example replay. Other settings
+or header changes still block replay. Missing historical C or context, changed settings and uninstalled tools are reported as skips.
 Candidate families rotate, one candidate per family per round, so a large family cannot spend every trial.
 
 Results include `compile_error`, `improved`, `neutral`, `regressed`, and `control_output_recovered`.

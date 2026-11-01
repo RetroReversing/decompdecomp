@@ -21,8 +21,11 @@ def variants(source,name,header=''):
         fields=set();valid=True
         plain=r'(?:unsigned\s+|signed\s+)?(?:char|short|int|long)|[su](?:8|16|32|64)|float|double|u?int(?:8|16|32|64)_t'
         for declaration in filter(str.strip,body.split(';')):
-            field=re.fullmatch(rf'\s*((?:{plain})|(?:struct\s+)?{IDENT}\s*\*+)\s+({IDENT})\s*(?:\[\s*\d+\s*\])?\s*',declaration)
-            if not field:valid=False;break
+            extent=r'(?:0[xX][0-9a-fA-F]+|\d+)'
+            suffix=rf'({IDENT})\s*(?:\[\s*({extent})\s*\])?\s*'
+            field=(re.fullmatch(rf'\s*({plain})\s+'+suffix,declaration)
+                   or re.fullmatch(rf'\s*((?:struct\s+)?{IDENT}\s*\*+)\s*'+suffix,declaration))
+            if not field or (field[3] and int(field[3],16 if field[3].lower().startswith('0x') else 10)==0):valid=False;break
             fields.add(field[2])
         if valid:records[typ]=fields
     objects={}

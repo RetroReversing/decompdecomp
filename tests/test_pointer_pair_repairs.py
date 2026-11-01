@@ -151,3 +151,20 @@ def test_macro_indirection_stringification_and_shadowed_callees_are_conservative
     shadow=CALL.replace('void work(void)','void work(void *(*take)(void))')
     assert not repairs.call_stages(shadow,'work')
     assert not repairs.call_stages(CALL.replace('use(1, take());','use(HIDDEN, take());'),'work','#define HIDDEN side_effect()')
+
+
+def test_field_store_order_supports_plain_pointer_members_and_known_array_fields():
+    source='typedef struct { int a[0x4]; int b[4]; void *pointer; } Pair; void work(Pair *out, int x, int y, int i) { out->a[i]=x; out->b[i]=y; }'
+    proposals=field_order_repairs.variants(source,'work')
+    assert proposals and 'out->b[i]=y;' in proposals[0][1]
+    assert not field_order_repairs.variants(source.replace('int a[0x4]','int a[0]'),'work')
+
+
+def test_one_line_declarations_do_not_become_part_of_the_repaired_definition():
+    from decompnet.forks.csource import find
+    source='typedef struct { int a; int b; } Pair; int global; void work(Pair *p, int x, int y) { p->a=x; p->b=y; }'
+    start,end=find(source,'work')
+    assert source[:start].endswith(';') and 'typedef' not in source[start:end]
+    for _,candidate in field_order_repairs.variants(source,'work'):
+        assert candidate[:start]==source[:start]
+    assert field_order_repairs.variants(source,'work')
