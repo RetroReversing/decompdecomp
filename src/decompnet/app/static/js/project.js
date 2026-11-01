@@ -241,7 +241,10 @@ function markPlatforms() {
 function renderHeader(ov) {
   const sync = ov.progress_sync;
   $("progressSyncNotice").hidden = !sync;
+  if (!sync) $("progressSyncNotice").open = false;
   if (sync) {
+    $("progressSyncNotice").classList.toggle("paused", !!sync.paused);
+    $("progressSyncToggle").title = `${sync.paused ? "Verification paused" : sync.phase} — show verification details`;
     const pause = $("progressSyncPause");
     pause.textContent = sync.paused ? "Resume verification" : "Pause verification";
     pause.onclick = async () => {
