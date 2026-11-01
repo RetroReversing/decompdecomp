@@ -29,6 +29,8 @@ def test_distinct_improvements_ignore_ties_failures_and_other_projects(tmp_path)
                                (fid, second.id, 0, 1, 1))
                     db.execute("UPDATE functions SET status='matched',matched_agent_id=? WHERE id=?", (second.id, fid))
     board = {r['agent']: r for r in net.stats('demo')['agents']}
+    assert board['first']['worked'] == 2
+    assert {r['name'] for r in net.agent_results('demo','first','worked')['functions']} == {'one','two'}
     assert board['first']['improved'] == 2  # repeated improvements to each function count once
     assert board['first']['matched'] == 0
     assert board['second']['improved'] == 1  # direct match counts, ties and failures do not

@@ -24,8 +24,8 @@ assert(html.indexOf('data-result-kind="improved"')<html.indexOf('class="state'))
 const menu=html.slice(html.indexOf('class="agent-menu"'),html.indexOf('</details>'));
 for(const action of ['data-rename','data-queue','data-log','data-reset-metrics'])assert(menu.includes(action));
 assert(menu.includes('What it said and did'));
-assert(html.includes('51.5M tokens'));assert(html.includes('API-equivalent'));
-assert(html.includes('51,480,188 total tokens used'));assert(html.includes('8 functions/session'));
+assert(html.includes('51.5M reported tokens'));assert(html.includes('API-equivalent'));
+assert(!html.includes('total tokens used'));assert.equal((html.match(/1506 compiles/g)||[]).length,1);assert(html.includes('8 functions/session'));
 assert(!html.match(/data-agent-details="test" open/));
 vm.runInContext("agentDetailsOpen.add('test')",c);agent.metrics.improved++;
 c.renderSessions([agent]);html=elements.get('sessions').html;
@@ -33,3 +33,12 @@ assert(html.includes('data-agent-details="test" open'));assert(html.includes('<s
 agent.state='stopped';c.renderSessions([agent]);html=elements.get('sessions').html;
 assert(html.includes('Start again'));assert(html.includes('Remove agent'));assert(!html.includes('data-stop='));
 assert.equal(c.compactAgentNumber(999), '999');assert.equal(c.compactAgentNumber(5000), '5k');
+
+assert(html.includes('data-result-kind="worked"'));
+agent.tokens=0;agent.estimated_cost=0;c.renderSessions([agent]);html=elements.get('sessions').html;
+assert(html.includes('Token usage not reported yet'));assert(!html.includes('0 tokens'));assert(!html.includes('API-equivalent'));
+const base=fs.readFileSync(path.join(__dirname,'../src/decompnet/app/static/js/base.js'),'utf8');
+vm.runInContext(base.split('\n').filter(line=>line.startsWith('const pctOf =')||line.startsWith('const pctText =')).join('\n'),c);
+c.fnLink=name=>name;c.reading=()=> 'Reading';
+vm.runInContext(source.slice(source.indexOf('function helperState('),source.indexOf('/* What each model cost')),c);
+assert.equal(c.helperState({state:'working'},{name:'f',n_insns:85,best_score:85,attempts:40}),'Working on f (99.0% match · 85 instructions)');

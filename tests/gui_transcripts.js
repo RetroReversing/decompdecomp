@@ -2,6 +2,7 @@
 const fs = require('fs'), vm = require('vm'), assert = require('assert'), path = require('path');
 class Element {
   constructor(tag) { this.tag = tag; this.children = []; this.hidden = false; this.value = ''; this.textContent = ''; this.isConnected = true; this.parts = {}; }
+  setAttribute() {}
   append(...nodes) { this.children.push(...nodes); }
   set value(value) { this._value = String(value); }
   get value() { return this._value; }
@@ -36,6 +37,7 @@ const context = { S: {logFor: '7', slug: 'demo'}, document: {body, createElement
     return {sessions, session: row(id), events: [{id: q.get('after') === '1' ? 2 : 1, created_at: 1, kind: id === 4 ? 'error' : id === 5 ? 'tool_request' : 'prompt', text: id === 5 ? JSON.stringify({name:'claim_function',arguments:{count:4}}) : long}], more: q.get('after') !== '1'};
   }, URL, Date };
 vm.createContext(context);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/static/js/tool-catalog.js'), 'utf8'),context);
 vm.runInContext(source.slice(0, source.indexOf('$("helperTranscript").onclick =')), context);
 const md = context.transcriptMarkdown('# Claimed\n**Ready** and `value`\n- First\n- Second\n```asm\n<unsafe> $a0\n```\n| Name | Value |\n| --- | --- |\n| A | B |\n<script>evil()</script>\n[x](javascript:alert(1))');
 assert.match(md, /<h2>Claimed<\/h2>/);
@@ -52,7 +54,7 @@ assert.equal(context.transcriptToolResponse('bad json'), null);
 assert.equal(context.transcriptToolResponse(JSON.stringify({name:'x',content:{unknown:true}})), null);
 const definition = {name:'project_info', description:'<script>never execute</script>', input_schema:{type:'object', required:['detail'], properties:{detail:{type:'boolean', description:'Show details', default:false}}}};
 const catalog = context.transcriptToolCatalog(JSON.stringify([definition]));
-assert.equal(catalog.children[0].textContent, '1 tools available to this agent');
+assert.equal(catalog.children[0].textContent, '1 tools');
 const card = catalog.children[1];
 assert.equal(card.children[0].children[0].textContent, 'project_info');
 assert.equal(card.children[1].textContent, '<script>never execute</script>');
@@ -63,6 +65,12 @@ assert.equal(context.transcriptToolCatalog('broken JSON'), null);
 assert.equal(context.transcriptToolCatalog(JSON.stringify([null])), null);
 assert.equal(context.transcriptToolCatalog('{}'), null);
 
+let toggled;
+const editable=context.toolCatalog([{...definition,calls:0,enabled:false},{...definition,name:'core',required:true,calls:5}],{editable:true,onToggle:(name,enabled)=>{toggled=[name,enabled];}});
+const toggle=editable.children[1].children[0].children[1];
+assert.equal(toggle.checked,false);toggle.checked=true;toggle.onchange();assert.deepEqual(toggled,['project_info',true]);
+assert.equal(editable.children[2].children[0].children[1].disabled,true);
+assert.match(editable.children[2].children[0].children[2].textContent,/5 recorded calls.*required/);
 vm.runInContext(source.slice(source.indexOf('$("helperTranscript").onclick =')), context);
 (async () => {
   await button.onclick();

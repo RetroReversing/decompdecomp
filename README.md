@@ -1038,3 +1038,18 @@ detailed measured outcomes and timing coverage. It contains no source code, ROM
 bytes or credentials. Missing older measurements are blank; `partial` timing must
 be compared using `measured_attempts` and measured gains, rather than all-time
 counts. Totals and newer outcome measurements overlap and must not be added.
+
+### Agent tools and usage
+
+In **Agents & models → Agent tools & usage**, optional tools can be disabled globally.
+Tools are sorted by recorded use, with the least used first. Refresh the counts to
+include recent calls. Core project, claim, function, compile and release tools stay enabled.
+Each agent also has a **Tools** button to disable additional tools for that agent.
+Disabled definitions are omitted from MCP tool discovery and API model schemas;
+new sessions or MCP reconnects refresh the context, while cached disabled calls are rejected immediately.
+Counters are local and survive app restarts and agent removal. They include surviving
+saved transcript requests plus future recorded calls; older unrecorded calls cannot
+be reconstructed. Zero means zero recorded uses, not proof that a tool was never used.
+The same expandable tool descriptions and parameter cards appear in transcripts and manual MCP setup.
+
+Browser workers receive the host's supported KMC flag variations with each function task. Switching a browser variation is local until submission. The host accepts only a variation offered by that task, recompiles it independently, and publishes a function-only profile/source bundle only after an exact ROM-byte verdict and a final authorization/freshness check. Other compiler families still require browser WASM toolchains.

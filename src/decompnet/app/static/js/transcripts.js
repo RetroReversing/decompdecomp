@@ -78,39 +78,12 @@ function transcriptToolTitle(request) {
   }).join(', ') + (entries.length > 4 ? ', …' : '');
   return `${request.name}(${preview.length > 160 ? preview.slice(0, 159) + '…' : preview})`;
 }
-/* Readable tool catalog; unknown payloads always retain their original text view. */
+/* Older malformed catalogs retain the raw transcript text. */
 function transcriptToolCatalog(text) {
   let tools;
   try { tools = JSON.parse(text); } catch { return null; }
-  if (!Array.isArray(tools) || !tools.length || !tools.every(t => t && typeof t === "object" && typeof (t.function || t).name === "string")) return null;
-  const catalog = document.createElement("div"); catalog.className = "transcript-tools";
-  const heading = document.createElement("p"); heading.className = "small muted";
-  heading.textContent = `${tools.length} tools available to this agent`; catalog.append(heading);
-  for (const item of tools) {
-    const tool = item.function || item, schema = tool.input_schema || tool.parameters || {};
-    const card = document.createElement("details"); card.className = "transcript-tool";
-    const summary = document.createElement("summary"), name = document.createElement("code"), description = document.createElement("p");
-    name.textContent = tool.name; summary.append(name); description.textContent = tool.description || "No description provided.";
-    card.append(summary, description);
-    const properties = schema.properties;
-    if (properties && typeof properties === "object" && Object.keys(properties).length) {
-      const list = document.createElement("dl"); list.className = "transcript-tool-params";
-      for (const [key, value] of Object.entries(properties)) {
-        const param = value && typeof value === "object" ? value : {};
-        const term = document.createElement("dt"), detail = document.createElement("dd");
-        term.textContent = `${key}${Array.isArray(schema.required) && schema.required.includes(key) ? " · required" : " · optional"}`;
-        const type = Array.isArray(param.type) ? param.type.join(" / ") : param.type || (param.enum ? "enum" : "value");
-        detail.textContent = [type, param.description, param.enum ? `Choices: ${JSON.stringify(param.enum)}` : "", Object.hasOwn(param, "default") ? `Default: ${JSON.stringify(param.default)}` : ""].filter(Boolean).join(" · ");
-        list.append(term, detail);
-      }
-      card.append(list);
-    } else {
-      const empty = document.createElement("p"); empty.className = "small muted";
-      empty.textContent = "No named parameters."; card.append(empty);
-    }
-    catalog.append(card);
-  }
-  return catalog;
+  if (!Array.isArray(tools) || !tools.length || !tools.every(t => t && typeof t === 'object' && typeof (t.function || t).name === 'string')) return null;
+  return toolCatalog(tools);
 }
 /* Fetch transcripts only on request: full prompts and C must never ride along in the live poll. */
 $("helperTranscript").onclick = async () => {
