@@ -2,11 +2,13 @@
 import difflib
 import hashlib
 
+from .repair_tokens import tokens
+
 
 def minimize(before, after, preserves, *, trials=12, stopped=lambda:False):
     if not 1 <= trials <= 128:
         raise ValueError('Use 1–128 ablation trials.')
-    left, right = before.splitlines(True), after.splitlines(True)
+    left, right = tokens(before), tokens(after)
     edits = [op for op in difflib.SequenceMatcher(None,left,right,autojunk=False).get_opcodes() if op[0]!='equal']
     retained = set(range(len(edits)))
     def materialize(keep):
@@ -34,4 +36,5 @@ def minimize(before, after, preserves, *, trials=12, stopped=lambda:False):
     return {'source':materialize(retained),'edits':len(edits),'retained':sorted(retained),
             'reverted':len(edits)-len(retained),'trials':tested,
             'exhausted':len(tested)>=trials or stopped(),
+            'granularity':'C tokens (including whitespace and comments)',
             'verdict':'Frozen compiler-output ablation only; not semantic necessity or a linked game-match verdict.'}

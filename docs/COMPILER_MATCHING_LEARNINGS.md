@@ -1231,3 +1231,33 @@ lengths agree. These are advisory, including relocation spelling differences.
 The exact judge is unchanged. A numeric winner and a candidate with fewer position
 changes can coexist in the bounded frontier; a smaller score alone does not prove
 that fewer actual instructions differ.
+
+## Small expression recipes and proven local ranges
+
+Edit minimization now works on lossless C tokens, rather than changed lines. Strings and
+comments remain indivisible. It keeps the existing trial/time limits and frozen-output
+comparison: removing an edit is compiler-output evidence, not proof of semantic necessity.
+Several edits on one line can now be separated without rewriting the rest of the line.
+
+Connected deep-search edges ending in an ordinary exact verdict, accepted exact local
+experiment results and exact iterative-search edges, can teach small expression templates. Identifier slots allow existing
+local names to differ. Templates require unique lexical context, bind only existing names,
+and cannot introduce new names, literals, calls or control-flow statements. They are private
+SQLite records, scoped to the existing compiler/build profile. Deep search, agent local
+experiments and the optional iterative phase try them within their existing compile budgets.
+They do not automatically adopt a source or replace the judge.
+
+Controlled regression on a previously matched large MIPS function, using pinned KMC GCC
+2.7.2 (`-G0 -mips3 -mgp32 -mfp32 -O2 -fno-strength-reduce -msoft-float`): token minimization
+isolated one retained type edit; replaying its learned template recovered score 22 to exact
+zero, also after renaming the affected local. These are recoveries of the same known match,
+not new live matches or evidence of a broad success rate. No live source was changed.
+
+`proven_local_width` propagates intervals through straight-line integer assignments,
+constant masks, nonnegative shifts and bounded arithmetic. It proposes signed short storage
+only when every assignment to an unescaped signed-int local fits, keeping int promotions.
+Unknown statements, macros, branches, calls, type-dependent operations, overflow and unknown
+values stop the proof. An ABI contract rejects incompatible integer layouts. The shared draft
+pipeline reaches ROM and imported projects; ordinary compilation and exact judging remain
+mandatory. A synthetic mask/shift regression emits identical `.text` with the pinned KMC
+compiler. This is not a measured new game match.

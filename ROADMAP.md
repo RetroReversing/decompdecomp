@@ -1434,3 +1434,15 @@ remain planned: the initial browser toolchain has no matching build-context adap
   compilers before enabling these compiler-facing source families there. Diagnostics
   and frontier retention already apply across processors; the MIPS replay is not a
   claim of matching gains on other architectures.
+
+### Expression recipes and bounded value proofs
+
+- Done: token-level frozen-output ablation separates independent edits on the same line.
+- Done: private compiler-profile expression recipes learned from exact connected deep-search
+  edges, accepted local experiments and iterative-search victories; reused in deep/local search and optional iterative repairs.
+- Done: shared draft repairs prove intervals for straight-line signed integer locals before
+  proposing narrower storage, with compiler ABI checks and the ordinary exact judge.
+- Planned: CFG-aware interval joins and loop invariants. Branches and unknown statements are
+  deliberately rejected rather than assigned speculative bounds.
+- Planned: train recipes from reviewed historical repair examples only after a fresh ordinary
+  exact verdict. Frozen-control replay alone must not train acceptance evidence.
