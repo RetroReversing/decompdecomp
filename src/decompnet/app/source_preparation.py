@@ -390,7 +390,7 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                     from .permuter_inputs import build_state
                     state = (st.started_at, fresh['config'], build_state(fresh)) if fork else inputs(net, fresh, fn)
                     digest = hashlib.sha256(repr((state, source, header, cfg)).encode()).hexdigest()
-                    cache_key = 'local-source-v1:' + digest
+                    cache_key = 'local-source-v2:' + digest
                     if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], cache_key):
                         continue
                     report['tested'] += 1
@@ -425,6 +425,8 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                         if score == 0:
                             report['matched'] += 1
                             st.add(matched=1)
+                    if not fork and score is not None and fn['best_score'] is not None and score >= fn['best_score']:
+                        private_profiles(net, fresh, fn, source, header, st, report, log_line, budget, deadline)
                     with net.store.tx() as db:
                         db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
                                    (fn['id'], cache_key, str(score), 'local source preparation'))
@@ -467,3 +469,41 @@ def followup(net, proj, fn, st, report, log_line, budget, deadline):
     if before is not None and after['best_score'] is not None and after['best_score']<before:
         report['improved']+=1;st.add(improved=1)
         if after['status']=='matched':report['matched']+=1;st.add(matched=1)
+
+
+def private_profiles(net, proj, fn, source, header, st, report, log_line, budget, deadline):
+    """Probe unpromoted context too; retain evidence without bypassing profile/context approval gates."""
+    from .. import toolchains
+    from ..project import compiler_for
+    from ..rom.export import _single_definition
+    from .profile_hypotheses import prioritized
+    if not hasattr(net, 'is_rom') or not net.is_rom(proj):return
+    cfg=json.loads(proj['config'])
+    own=compiler_for(cfg,fn['vram'])
+    if own.get('cmd') or not own.get('toolchain') or toolchains.installed(own['toolchain']) is None:return
+    expected=inputs(net,proj,fn)
+    choices=[]
+    for flags in prioritized(proj,fn,own)+net.flag_variants(own['toolchain'],list(own['flags'])):
+        if list(flags)!=list(own['flags']) and list(flags) not in choices:choices.append(list(flags))
+    for flags in choices[:2]:
+        if st.stop.is_set() or report['tested']>=budget or time.monotonic()>=deadline:return
+        key='local-source-profile-v1:'+hashlib.sha256(repr((expected,source,header,own['toolchain'],flags)).encode()).hexdigest()
+        if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?',fn['id'],key):continue
+        private={**dict(proj),'config':json.dumps({**cfg,'compiler':{**own,'flags':flags},'compiler_ranges':[]})}
+        report['tested']+=1;st.add(variants=1)
+        result=net._compile(private,header,source,fn)
+        if not result.ok or not _single_definition(result.obj,fn['name']):continue
+        candidate,verdict,problems=net._evaluate(fn,proj,result.obj)
+        if candidate is None:continue
+        diff=scoring.diff(net._target_obj(fn,proj),candidate)
+        exact=bool(verdict if verdict is not None else diff.bytes_match)
+        score=0 if exact else max(1,diff.score)
+        current=net.store.one('SELECT * FROM functions WHERE id=?',fn['id'])
+        if inputs(net,net.project_row(proj['slug']),current)!=expected:return
+        evidence={'toolchain':own['toolchain'],'flags':flags,'source':source,'header':header,
+                  'score':score,'exact':exact,'problems':problems,'review_required':True}
+        with net.store.tx() as db:
+            db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
+                       (fn['id'],key,str(score),'private-context compiler probe; review required',json.dumps(evidence)))
+        log_line(f"{fn['name']}: prepared context with {' '.join(flags)} scored {score}; private source/header/profile evidence saved for review. Working settings unchanged.")
+        if exact:return
