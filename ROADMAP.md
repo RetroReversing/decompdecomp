@@ -1498,3 +1498,12 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Done: selective branch pointer lifetime combinations and declaration-order bridges in shared C candidate
   repairs, with guarded terminal switch-tail distribution and advisory repeated-call shortfall clues.
   ROM and imported candidates use their unchanged ordinary judge. Unsupported control/macros stay unchanged.
+
+- Done: bounded repair combinations retain equal-score deep-search alternatives, scoped cached
+  local diff evidence and family paths. The optional iterative phase persists paths and gives
+  measured structure gains a limited follow-up burst without dropping pending work. Correct-region
+  damage ranks structural alternatives without excluding the numeric winner or changing the judge.
+- Done: Repair examples can benchmark multi-step frozen-control recovery, reporting compiles,
+  elapsed time, first recovery and family path. Deep activity and iterative notes report bounded
+  exhaustion/budgets and failed or pruned work. Imported standalone replay still requires a copied
+  build adapter; live imported deep search uses its existing normal judge.

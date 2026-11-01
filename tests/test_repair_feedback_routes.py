@@ -155,6 +155,8 @@ def test_replay_is_guarded_scoped_and_cancellable(repair_app,monkeypatch):
     assert client.post(url,json=data|{'seconds':121},headers=headers).status_code==400
     assert client.post(url,json=data|{'diagnostics':'yes'},headers=headers).status_code==400
     assert client.post(url,json=data|{'minimize':1},headers=headers).status_code==400
+    assert client.post(url,json=data|{'combinations':'yes'},headers=headers).status_code==400
+    assert client.post(url,json=data|{'combinations':True,'minimize':True},headers=headers).status_code==400
     response=client.post(url,json=data,headers=headers)
     assert response.status_code==200 and entered.wait(2)
     assert seen==[('demo',[42],12,30)]

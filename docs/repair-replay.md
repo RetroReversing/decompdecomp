@@ -101,3 +101,38 @@ uv run python -m decompnet.app.repair_replay /private/repair-examples.json \
 Scalar failed-source penalties are now scoped to the exact parent C as well as its build inputs.
 Changing source permits relevant families to be explored again. Exact failed compiled candidates remain
 cached under their existing build context: retrying a family does not mean recompiling identical input.
+
+## Benchmark multi-step repair search
+
+In **Test automatic repairs**, select **Benchmark repair combinations**. This turns off edit
+minimization; selecting minimization turns benchmarking off. The same option is available offline:
+
+```sh
+uv run python -m decompnet.app.repair_replay /private/repair-examples.json \
+  --output /private/combination-results.json --trials 128 --seconds 120 --combinations
+```
+
+This uses the autopilot beam (width three, depth four), round-robin candidate families, and the
+same per-example trial/time budget across every step. Up to three measured structure improvements
+can each receive two immediate follow-up probes; the rest of the wave stays queued. Search stops
+on recovery of the full frozen control output. Reports show candidate compiles separately from
+the two baseline/control compiles, elapsed wall time, first recovery trial, family path, pending
+work and stop reason. Optional GCC diagnostic compiles are additional, as described above.
+The single-step runner also reports compile count, first recovery trial and elapsed time so it
+can serve as a comparison. Use identical evidence, tools, budgets and machine conditions; timings
+are observations, not promised speedups. Compare failed cases as well as successful ones.
+
+The path records generator families, not atomic semantic edits: one family can itself propose a
+bundle. Source hashes identify the actual candidates. Region preservation, equivalent-output
+pruning and path ranking only guide exploration. Only full control-output equality recovers a
+replay; normal linked/objdiff checks are still required before adopting any game change.
+
+Deep search now retains bounded equal-score alternatives as well as worse alternatives. Cached
+local near-misses retain their own diff rows so a later run can explore an untried second edge
+without recompiling the same first edge. Numeric-only historical cache entries still skip known
+misses but do not supply invented structural evidence. Compiler/header/target/build scope changes
+invalidate reuse. Failed or unscored builds remain retryable; they are counted separately.
+Autopilot persists pending sources, family paths and visited edges in its existing scoped frontier.
+
+Deep activity and autopilot notes distinguish budgets, supported-variant/depth exhaustion,
+failed/unscored trials and pruned alternatives. No bounded search exhausts every possible C program.

@@ -83,8 +83,9 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   const reviewed = requests.find(r => r.opts?.body.source_hash === 'hash');
   assert.equal(reviewed.opts.body.function, 'suspect'); assert.equal(reviewed.opts.body.slug, 'demo');
   assert.equal(quality.children.length, 0);
-  assert(requests[0].url.includes('comparable=1'));
-  assert(requests[0].url.includes('status=new'));
+  const initialListing = requests.find(r => r.url.startsWith('/api/repair-examples?'));
+  assert(initialListing.url.includes('comparable=1'));
+  assert(initialListing.url.includes('status=new'));
   const statusFilter = dialog.querySelector('[data-status]'); statusFilter.value = ''; await statusFilter.onchange();
   assert(requests.filter(r => !r.url.includes('/quality')).at(-1).url.includes('status='));
   const details = list.children[0]; details.open = true; await details.listeners.toggle();
