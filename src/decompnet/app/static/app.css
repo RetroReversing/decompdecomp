@@ -1322,3 +1322,5 @@ th[aria-sort="ascending"] .table-sort, th[aria-sort="descending"] .table-sort { 
 .deep-worker[hidden] { display:none; }
 .prompt-setting { margin-bottom:20px; }
 .prompt-setting textarea { width:100%; box-sizing:border-box; font:12px/1.6 var(--mono); resize:vertical; }
+
+.agent-results-summary { flex-wrap:wrap; }

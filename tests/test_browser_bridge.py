@@ -132,7 +132,8 @@ def test_capability_expiry_removes_pending_tasks(pair):
     assert packet['id'] not in bridge.tasks
 
 
-def test_real_submission_uses_original_compiler_and_linked_byte_judge(pair, monkeypatch):
+@pytest.mark.parametrize('use_variant',[False,True])
+def test_real_submission_uses_original_compiler_and_linked_byte_judge(pair, monkeypatch, use_variant):
     from decompnet import toolchains
     if toolchains.installed('gcc-2.7.2-kmc') is None:
         pytest.skip('needs installed KMC compiler')
@@ -149,6 +150,44 @@ def test_real_submission_uses_original_compiler_and_linked_byte_judge(pair, monk
     bridge,key,session,_ = paired(pair)
     packet = bridge.task(key,session,fid)
     task = bridge.consume(key,session,packet['id'])
-    outcome = bridge.submit(key,session,task,'int new(int a,int b) { return a+b; }')
+    variant=next(v for v in packet['compilerVariants'] if '-O1' in v['flags']) if use_variant else None
+    outcome = bridge.submit(key,session,task,'int new(int a,int b) { return a+b; }', variant['id'] if variant else None)
     assert outcome['matched'] and outcome['hostVerified']
     assert pair.store.one('SELECT status FROM functions WHERE id=?',fid)['status'] == 'matched'
+    if use_variant:
+        from decompnet.project import compiler_for
+        updated=pair.project_row('destination')
+        assert compiler_for(json.loads(updated['config']), packet['vram'])['flags']==variant['flags']
+
+
+def test_task_offers_only_supported_host_generated_variations(pair, monkeypatch):
+    fid=prepared(pair)
+    monkeypatch.setattr(pair,'flag_variants',lambda *a:[['-O1'],['-O1'],['-O2','-funrecognised']])
+    bridge,key,session,_=paired(pair)
+    packet=bridge.task(key,session,fid)
+    assert [v['flags'] for v in packet['compilerVariants']]==[['-O2'],['-O1']]
+    task=bridge.consume(key,session,packet['id'])
+    with pytest.raises(ValueError,match='offered'):
+        bridge.submit(key,session,task,'int new(void){return 0;}','invented-variant')
+    assert not pair.store.one('SELECT 1 FROM attempts')
+    assert not session['busy']
+
+
+def test_revoked_variant_cannot_publish_profile_or_match(pair, monkeypatch):
+    fid=prepared(pair)
+    bridge,key,session,_=paired(pair)
+    packet=bridge.task(key,session,fid)
+    variant=next(v for v in packet['compilerVariants'] if v['flags']!=packet['compiler']['flags'])
+    task=bridge.consume(key,session,packet['id'])
+    original=pair.project_row('destination')['config']
+    def compile_and_revoke(*args):
+        from types import SimpleNamespace
+        bridge.revoke('destination')
+        return SimpleNamespace(ok=True,obj=b'object',effective_settings={})
+    monkeypatch.setattr(pair,'_compile',compile_and_revoke)
+    monkeypatch.setattr('decompnet.rom.export._single_definition',lambda *a:True)
+    monkeypatch.setattr(pair,'_evaluate',lambda *a:(object(),True,[]))
+    with pytest.raises(PermissionError):bridge.submit(key,session,task,'int new(void){return 0;}',variant['id'])
+    assert pair.project_row('destination')['config']==original
+    assert not pair.store.one('SELECT 1 FROM attempts')
+    assert not pair.store.one('SELECT 1 FROM claims')

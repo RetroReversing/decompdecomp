@@ -636,6 +636,9 @@ class Manager:
                 raise ValueError("This agent no longer exists. Refresh the agents list.")
             if per_session is not None and (type(per_session) is not int or not 1 <= per_session <= 20):
                 raise ValueError("Functions per session must be a whole number from 1 to 20.")
+            policy = self.net.validate_selection(policy)
+            if 'disabled_tools' not in policy and 'disabled_tools' in (s.options.get('selection') or {}):
+                policy = {**policy, 'disabled_tools':s.options['selection']['disabled_tools']}
             policy = self.net.set_selection(s.slug, s.agent_name, policy)
             if per_session is not None:
                 s.options["per_session"] = per_session
@@ -667,6 +670,20 @@ class Manager:
                 return self.app_instructions(session)
         from .prompt_settings import effective
         return effective(self.net, {})['instructions']
+
+    def set_tool(self, sid, name, enabled):
+        from .tool_policy import validate
+        validate([name])
+        if type(enabled) is not bool:
+            raise ValueError('Tool enabled must be true or false.')
+        with self._lock:
+            session = self.sessions.get(sid)
+            if session is None:
+                raise ValueError('This agent no longer exists. Refresh the agents list.')
+            policy = dict(session.options.get('selection') or {})
+            blocked = set(policy.get('disabled_tools', []))
+            blocked.discard(name) if enabled else blocked.add(name)
+            return self.set_selection(sid, {**policy, 'disabled_tools':sorted(blocked)})
 
     def _launch(self, s: Session) -> None:
         self.net.set_selection(s.slug, s.agent_name, s.options.get("selection"))

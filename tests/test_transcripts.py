@@ -14,7 +14,7 @@ def setup(tmp_path):
     net = RomNetwork(tmp_path / 'app.db', tmp_path)
     with net.store.tx() as db:
         db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
-                   ('demo','Synthetic transcript project','mips',str(tmp_path),'{}'))
+                   ('demo', 'Synthetic transcript project', 'mips', str(tmp_path), '{}'))
     manager = Manager(net, tmp_path, 'http://127.0.0.1/mcp')
     session = Session('1', 'codex', 'helper', 'demo', 'helper', {'api_key': 'private-key'})
     manager.sessions['1'] = session
