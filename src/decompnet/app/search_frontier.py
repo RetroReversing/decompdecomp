@@ -46,7 +46,9 @@ class Frontier:
         if (baseline_score is None or score >= baseline_score) and unhelpful_detour(arch, baseline, rows):
             return
         rows = permuter_focus.normalized(rows)
-        node = {'source': source, 'score': score, 'fitness': structure(rows),
+        from ..diff_summary import summarize
+        summary = summarize(rows)
+        node = {'summary': summary, 'source': source, 'score': score, 'fitness': structure(rows),
                 'frame_distance': permuter_focus.stack_distance(rows),
                 'kind': permuter_focus.classify(rows), 'regions': region_repairs.snapshot(rows),
                 'allocation': allocation_evidence.signature(rows,arch),
@@ -56,6 +58,11 @@ class Frontier:
         structural = sorted(pool, key=lambda n: (n['fitness'], n['frame_distance'], n['score']))
         # Preserve distinct failure shapes: a moved load can be a useful sibling of a register miss.
         selected = numeric[:1]
+        positioned = [n for n in pool if n['summary']['position_differences'] is not None]
+        if positioned:
+            candidate = min(positioned, key=lambda n:(n['summary']['position_differences'],n['score']))
+            if candidate not in selected:
+                selected.append(candidate)
         for candidate in structural:
             if not any(n['allocation'] == candidate['allocation'] for n in selected):
                 selected.append(candidate)

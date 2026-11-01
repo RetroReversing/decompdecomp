@@ -1240,3 +1240,40 @@ also contains defined equivalent expressions affecting late optimization; it is 
 hypothesis, not a reconstruction of original spelling. A direct stack field is not evidence of a
 compiler spill. Instruction multiset/register/frame diagnostics guide exploration only; they never
 change numeric scores or replace the ordinary exact judge.
+
+## KMC count lifetimes, delay slots and a final frame-only miss
+
+A private 814-instruction MIPS routine matched under pinned KMC GCC 2.7.2 with
+`-G0 -mips3 -mgp32 -mfp32 -O2 -fno-strength-reduce -msoft-float`. Its final
+score-400 parent had two opcode differences. A separate unsigned-halfword count,
+qualification of the existing guarded initial read, and a bounded modular-identity
+lifetime shape recovered the target NOP, immediate shift and registers. The
+32-bit identity temporary left a frame-only score of 22; a signed-short temporary
+removed eight unused frame bytes and reached exact linked score 0.
+
+The generator replayed the frozen score-400 parent in five proposals: normalization
+scope 400, separate count 560, qualified count read 1115, the unsigned guard bundle
+22, and its guarded signed-short variant 0. The dedicated width family also
+replayed 22 -> 0 directly. These recover an existing match, not additional live
+progress or a general success rate. Volatile qualification alone was worse; the
+interacting bundle matters. No calls, data, BSS or extra helper functions were
+emitted by the exact candidate. The independent function and complete original
+12,582,912-byte cartridge comparison passed for the accepted game source.
+
+The guard is not a general padding recipe. The count is reloaded and halved before
+the test, establishing 0..32767. Unsigned add/sub operations and the selected
+compiler's signed16 truncation recover that same value. Generated narrow variants
+have an integer-layout/conversion compile-time gate; host execution checks cover
+skipped phases and later conditional reuse, and an optional pinned-compiler test
+checks absence of the guard call and extra data. The generator never invents a
+callee: only an existing void(void) declaration can supply the unreachable arm.
+Unknown field types, escapes, nonconstant shifts and external loop exits are
+rejected. Original count values are restored on phase exit, including when a
+later overwrite is conditional. Reads remain in place under their original guards.
+
+Search/UI diagnostics now distinguish opcode, register, stack, branch-target and
+operand differences, and count differing rendered instruction positions when
+lengths agree. These are advisory, including relocation spelling differences.
+The exact judge is unchanged. A numeric winner and a candidate with fewer position
+changes can coexist in the bounded frontier; a smaller score alone does not prove
+that fewer actual instructions differ.

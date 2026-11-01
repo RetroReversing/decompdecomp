@@ -4037,7 +4037,9 @@ class ForkEngine:
             return {"kind": None, "rows": None}
         problems = [f"a loaded constant differs: {m.describe()}" for m in d.literals]
         problems += [f"refers to `{mine}` where the original refers to `{orig}`" for orig, mine in d.renamed]
+        from ..diff_summary import text as summary_text
         return {"kind": "matched" if fn["status"] == "matched" else "latest", "rows": [list(r) for r in d.rows],
+                "mismatch_summary": summary_text(d.rows),
                 "score": None, "percent": _floor_pct(d.match_percent, d.matched), "problems": problems}
 
     def function_detail(self, slug: str, name: str) -> dict:

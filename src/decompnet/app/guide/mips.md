@@ -61,3 +61,20 @@ case groups and flag-loop labels. Try `condition_assignment`, `conditional_outpu
 `shared_tail_copy`, `target_switch_order` and `formatter_bundle` through local repairs. These are
 bounded hypotheses, not match claims. Recheck a historical best against the current header/compiler;
 only the destination's exact linked verdict accepts C. See docs/COMPILER_MATCHING_LEARNINGS.md.
+
+### Count-loop and frame-only repairs
+
+For a count loop whose final misses are a NOP/shift or register scheduling, try
+`count_phase_lifetime`, `count_load_qualification` and `count_lifetime_bundle`.
+They preserve the existing read locations, prove an unsigned16 count and restore
+its value for later phases. Qualification alone can worsen allocation, so use the
+bounded combined candidates rather than assuming each intermediate must improve.
+`normalization_scope` tests an equivalent one-iteration block around an existing
+signed16 normalization. No load or cast is moved across the loop test.
+
+If only stack offsets differ, `modular_guard_width` is prioritized. It recognizes
+an existing bounded identity guard, not arbitrary locals, and checks the selected
+compiler's integer/narrowing contract. The demonstrated KMC result is a controlled
+replay of one known match. Never add observable calls, reads, stale captures or
+undefined arithmetic to manufacture a frame. Mismatch categories and rendered
+position counts guide investigation; the ordinary exact judge still accepts C.

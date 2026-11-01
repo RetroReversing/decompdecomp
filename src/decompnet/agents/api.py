@@ -94,10 +94,11 @@ class Api(Agent):
         if s.options.get("api_key"):
             headers["Authorization"] = f"Bearer {s.options['api_key']}"
         schema = api_tool_schemas(fork=bool(net.fork_slug(s.slug)), names=tools.project_tools(net, s.slug, agent))
-        messages = [{"role": "system", "content": tools.INSTRUCTIONS},
+        messages = [{"role": "system", "content": manager.app_instructions(s)},
                     {"role": "user", "content": manager.prompt(s)}]
         if s.record:
             s.record('prompt', messages)
+            s.record('instructions', messages[0]['content'])
             s.record('tool_definitions', schema)
         count = int(s.options.get("per_session", PER_SESSION))
         used_tool, start, done = False, len(messages), 0
@@ -175,10 +176,10 @@ class Api(Agent):
                     s.usage["tool_calls"] += 1
                     s.push("tool", f"{name}({args_brief(args)})")
                     if s.record:
-                        s.record('tool_request', {'name': name, 'arguments': args})
+                        s.record('tool_request', {'name': name, 'arguments': args, 'call_id': c['id']})
                     result = tools.call(net, agent, s.slug, name, args)
                     if s.record:
-                        s.record('tool_response', {'name': name, 'content': result})
+                        s.record('tool_response', {'name': name, 'content': result, 'call_id': c['id']})
                     messages.append({"role": "tool", "tool_call_id": c["id"], "content": result})
                     finishing |= name in FINISHING
                 # Done with what it held (in a room the host holds the claim: nothing here says when): what led up
@@ -329,7 +330,8 @@ def _too_long(r) -> bool:
 def fit(messages: list[dict], budget: int, keep: int = 2) -> int:
     """Shrink the conversation to `budget` tokens, only from `keep` on (what's before it, finished functions folded
     into a line each, stays as it was sent, for the provider's prompt cache): older tool output goes first (a
-    function's assembly and diffs from several steps ago), then older reasoning. The latest exchange stays whole.
+    function's assembly and diffs from several steps ago), then older reasoning. The latest exchange stays whole unless its result alone exceeds
+    the remaining budget.
     Returns the estimate after."""
     total = sum(_tokens(m) for m in messages)
     keep_from = max(keep, len(messages) - 2)
@@ -351,6 +353,26 @@ def fit(messages: list[dict], budget: int, keep: int = 2) -> int:
         if m.get("role") in ("tool", "assistant") and isinstance(text, str) and len(text) > 120:
             before = _tokens(m)
             m["content"] = text[:80] + "\n[Earlier output trimmed; call the tool to recover.]"
+            total -= before - _tokens(m)
+    # A single large function can exceed a small model's entire window. Preserve
+    # custom prompts and call IDs; shorten its newest result only as a last resort.
+    for m in messages[max(2, keep):]:
+        text = m.get("content")
+        if total <= budget:
+            break
+        if m.get("role") == "tool" and isinstance(text, str) and len(text) > 120:
+            before = _tokens(m)
+            suffix = "\n[Output trimmed to fit context; fetch a smaller section with the tool.]"
+            allowance = budget - (total - before)
+            low, high = 0, len(text)
+            while low < high:
+                middle = (low + high + 1) // 2
+                m["content"] = text[:middle] + suffix
+                if _tokens(m) <= allowance:
+                    low = middle
+                else:
+                    high = middle - 1
+            m["content"] = text[:low] + suffix
             total -= before - _tokens(m)
     return total
 
