@@ -174,3 +174,34 @@ Diff panels, briefs, deep searches and preparation logs advise checking SDK cons
 missing recovery branches before broad permutation. These advisories do not replace constants or remove paths.
 Imported MIPS builds can use available target evidence for the source families, but keep their own compiler settings.
 Other processors retain existing repairs: these target-evidence recognizers need processor-specific adapters.
+
+
+## Keep source bodies and headers separate
+
+For a local ROM project, submit a body and its private declarations directly. Do not concatenate the
+header into repeated scratch copies of the body. Original line breaks and any supplied `#line`
+directives remain intact. An exact result saves only this function’s source, header and profile together.
+A miss leaves its working candidate unchanged. Each string is limited to 1 MB; imported builds retain
+their own headers and currently do not support this path.
+
+```python
+job = _call(connection, '/api/source-preparation', dict(
+    slug=slug, action='try-pair', function=name,
+    source=Path('candidate.c').read_text(), header=Path('context.h').read_text(),
+    # Optional: settings={'toolchain': 'installed-compiler-id', 'flags': ['complete', 'flags']}
+))
+# Poll /api/job?id=<job['job']>; inspect matched/score in the completed result.
+```
+
+Settings offers the same operation under **Local source preparation → Try a source body and header directly**.
+The optional flags field uses the function’s selected compiler. Without it, the complete selected profile is used.
+Claims, single-function emission, normal linking/data checks and atomic publication still apply.
+
+**Fresh check & apply source, header & flags** can recompile a complete historical exact bundle after
+inputs have changed. It does not trust the old verdict: the current target/data must pass again, and any
+change during compilation aborts publication. The strict legacy `apply-review` action still rejects stale inputs;
+the explicit fresh action is `recheck-review`. Old exact bundles are listed before scored misses.
+
+Mapped preparation may also try up to two private headers captured from nearby exact functions when a
+record type and target call overlap. It uses same-project verified snapshots, not a mutable shared header.
+These remain ordinary candidates within the existing pass budget; type-name similarity is not a match.

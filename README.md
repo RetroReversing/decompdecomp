@@ -102,6 +102,13 @@ shows reference-versus-saved calls and concrete compiled control differences. Ex
 declaration conflicts suggest prototype/caller review before body permutation. Better saved drafts
 stay selected; possible SDK/retail differences are advisory and do not generate branch patches.
 
+Local ROM preparation can also try private declaration snapshots from nearby exact functions when
+record names and target calls overlap. These are bounded hypotheses, never shared-header edits.
+In **Settings → Local source preparation → Try a source body and header directly**, paste the two
+separately and optionally enter a complete flag profile. A fresh byte/data judgment saves an exact
+source/header/profile bundle together; misses keep the working candidate. Prepared profile reviews
+can explicitly recheck old evidence against current inputs before applying anything.
+
 ## Changing a ROM project's compiler
 
 Changing the game's compiler or an address range checks every affected matched function before saving.
