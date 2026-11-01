@@ -372,3 +372,36 @@ def test_identical_output_plateau_can_continue_at_each_depth():
         return {'seed':['a'], 'a':['b'], 'b':['done']}[source]
     assert search.advance(state, evaluate, variants, lambda: False)
     assert calls == ['seed', 'a', 'b', 'done']
+
+
+def test_unscored_reports_are_audited_but_not_cached(pair, monkeypatch):
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET best_source='seed',best_score=20,n_insns=8 WHERE id=2")
+    monkeypatch.setattr(pair, 'try_quietly', lambda *a: dict(score=None, matched=False))
+    search.run(pair.twins, 'destination', Job())
+    assert pair.store.one("SELECT COUNT(*) n FROM free_match_attempts WHERE strategy='iterative-repair'")['n'] == 1
+    assert pair.store.one('SELECT COUNT(*) n FROM reuse_trials')['n'] == 0
+
+
+def test_header_and_compiler_inputs_invalidate_scoped_frontier_cache(pair, monkeypatch):
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET best_source='seed',best_score=20,n_insns=8 WHERE id=2")
+    calls = []
+    monkeypatch.setattr(pair, 'try_quietly', lambda a,p,f,s: calls.append(s) or dict(score=20,matched=False))
+    from decompnet.app import address_repairs, similar_matches
+    monkeypatch.setattr(address_repairs, 'variants', lambda *a: [])
+    monkeypatch.setattr(similar_matches, 'repair_variants', lambda *a: [])
+    search.run(pair.twins, 'destination', Job())
+    search.run(pair.twins, 'destination', Job())
+    assert calls == ['seed']
+    original = pair._context
+    monkeypatch.setattr(pair, '_context', lambda *a: dict(original(*a)) | {'header':'changed header'})
+    search.run(pair.twins, 'destination', Job())
+    assert calls == ['seed','seed']
+    proj = pair.project_row('destination')
+    config = json.loads(proj['config'])
+    config['compiler']['flags'] = ['-O3']
+    with pair.store.tx() as db:
+        db.execute('UPDATE projects SET config=? WHERE id=?', (json.dumps(config),proj['id']))
+    search.run(pair.twins, 'destination', Job())
+    assert calls == ['seed','seed','seed']

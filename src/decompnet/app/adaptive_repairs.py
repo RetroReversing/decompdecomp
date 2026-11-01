@@ -42,22 +42,23 @@ def prepare(net):
         net._repair_policy_ready = True
 
 
-def record(net, key, focus, family, baseline, score, elapsed_ms=0, origin="local experiments"):
+def record(net, key, focus, family, baseline, score, elapsed_ms=0, origin="local experiments", *, exact=None):
     """Called once per measured trial; unknown/failed results count as spent work, not wins."""
     if not family or not isinstance(baseline, (int, float)) or not math.isfinite(baseline):
         return
     prepare(net)
     improved = isinstance(score, (int, float)) and 0 <= score < baseline
+    matched = improved and score == 0 and (exact is None or exact is True)
     with net.store.tx() as db:
         db.execute('''INSERT INTO repair_policy VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(profile,focus,family)
             DO UPDATE SET attempted=attempted+1, improved=improved+excluded.improved,
             matched=matched+excluded.matched, failed=failed+excluded.failed,
             elapsed_ms=elapsed_ms+excluded.elapsed_ms''',
-                   (key, focus, family, 1, int(improved), int(improved and score == 0),
+                   (key, focus, family, 1, int(improved), int(matched),
                     int(score is None), max(0, int(elapsed_ms))))
         now = time.time()
         db.execute("INSERT INTO repair_policy_coverage VALUES(?,?,?,?,?,?,?) ON CONFLICT(origin) DO UPDATE SET last_at=excluded.last_at,attempted=attempted+1,improved=improved+excluded.improved,matched=matched+excluded.matched,elapsed_ms=elapsed_ms+excluded.elapsed_ms",
-                   (origin,now,now,1,int(improved),int(improved and score == 0),max(0,int(elapsed_ms))))
+                   (origin,now,now,1,int(improved),int(matched),max(0,int(elapsed_ms))))
 
 
 def factors(net, key, focus):
@@ -75,7 +76,16 @@ def factors(net, key, focus):
         # Unknown durations are neutral; bounded factors and queue interleaving keep exploration.
         elapsed=row['elapsed_ms']/row['attempted']
         speed=max(.5,min(2,math.sqrt(typical/elapsed))) if typical and elapsed>0 else 1
-        result[row['family']] = max(MIN_FACTOR, min(MAX_FACTOR, math.sqrt(rate * MIN_TRIALS)*speed))
+        # Verified exact throughput leads once a cohort has enough trials. Smooth one
+        # win over 32 typical trials so a lucky fast hit cannot monopolize the queue.
+        # These are summed elapsed trial durations, not measured CPU seconds.
+        prior_ms = MIN_TRIALS * typical if typical else 0
+        exact_rate = ((row['matched'] + 1) / (row['elapsed_ms'] + prior_ms)
+                      if row['elapsed_ms'] > 0 and prior_ms else None)
+        reference = 1 / prior_ms if prior_ms else None
+        throughput = math.sqrt(exact_rate / reference) if exact_rate and reference else 1
+        result[row['family']] = max(MIN_FACTOR, min(MAX_FACTOR,
+            min(2, math.sqrt(rate * MIN_TRIALS)) * speed * max(.5, min(2, throughput))))
     return result
 
 

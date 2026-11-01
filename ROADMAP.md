@@ -1589,3 +1589,17 @@ remain planned: the initial browser toolchain has no matching build-context adap
   elapsed time, first recovery and family path. Deep activity and iterative notes report bounded
   exhaustion/budgets and failed or pruned work. Imported standalone replay still requires a copied
   build adapter; live imported deep search uses its existing normal judge.
+
+### Repair search measurement and combinations
+
+- Done: two bounded flat-score family combination probes, retained exact alternatives in
+  optional frozen benchmarks, and preservation of remaining parent waves after an exact hit.
+- Done: full-scope iterative cache keys and uncached iterative timing/outcome training of
+  adaptive priorities, with smoothed exact throughput and exploration retained.
+- Done: reusable unresolved-case batch benchmark with equal budgets, source-free reports,
+  first-exact cost and measured baseline/best scores. Copied evaluator required; no adoption.
+- Validated: eight private unresolved N64 functions, 128 candidate trials, no matches or
+  score improvements. This does not establish gains on other consoles.
+- Planned: copied imported-build benchmark adapters and broader independent unresolved
+  cohorts; the current iterative autopilot remains MIPS ROM-only. Shared measurement and
+  policy helpers remain usable by existing supported local/deep paths.
