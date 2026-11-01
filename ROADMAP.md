@@ -1161,6 +1161,11 @@ Agent work selection now explains every strategy in the dropdown and selected-op
 candidate nor a recorded successful compilation, in both project modes; existing claims continue normally.
 This is historical compile evidence, not a fresh build preflight or a claim that the function cannot compile.
 
+- Done: MIPS raw-word I/O profile priorities, proven-address/width MMIO expression candidates, I/O local-storage
+  candidates, and aggregate copies using existing byte-only records. Shared diff/preparation advisories flag
+  constant and recovery-branch discrepancies without editing them. Ordinary judges, budgets and compiler approval
+  gates remain. Imported projects retain build-owned settings; analogous target evidence on other processors: **—**,
+  requires processor/ABI adapters. Existing one-retry stale preparation handling is reused rather than widened.
 Captured lifetime follow-ups: split scalar casts from constant bitwise operations, reuse a dead unsigned
 shift result in a store outside loops/gotos, and split a same-type floating cast before a product while
 preserving factor order. Integrated with shared draft/local/deep families and advisory repair pattern views.

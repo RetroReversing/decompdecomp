@@ -24,6 +24,8 @@ def hints(source, name, asm='', arch='', rows=None):
                       'Keep format characters separate from integer output lengths, preserve output macros, case order, '
                       'fallthrough groups and flag-loop labels. Source identity and a lower score still need the exact judge.')
     if arch == 'mips':
+        from .sdk_io_repairs import hints as io_hints
+        result.extend(io_hints(source,asm,rows))
         from ..arch.mips_runtime import helper, specialized_calls
         loads = {}
         for row in rows or []:
