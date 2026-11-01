@@ -1293,3 +1293,16 @@ Repeated prepared register-only misses receive targeted lifetime/type/helper-con
 results exclude cached repeats, separate compiler profiles and retain denominators; after 32 trials a family
 can influence preparation order with original-order exploration retained. These observations are not causal
 model/compiler rankings, and no family or unmatched function is automatically excluded.
+
+### Navigation loading and response ownership
+
+- Done: project and function navigation clears stale identities/data immediately,
+  displays a loading bar and supports retry. Overview and map reads start in
+  parallel. Abandoned primary GETs are cancelled where supported; generation
+  checks still reject responses that arrive after cancellation or A → B → A visits.
+- Done: a pending function read cannot block a different function. Delayed map,
+  compiler-column, statistics and diff responses cannot repaint a later visit.
+  Compiler/deep-search jobs continue on the backend while their UI callbacks stay
+  tied to the initiating function view; new views do not inherit old progress.
+- Done: unfinished imported projects can be closed directly from setup, keeping
+  the repository folder and all files on disk for a later import.

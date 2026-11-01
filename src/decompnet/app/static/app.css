@@ -1282,5 +1282,10 @@ details.more[open] > summary::before { content: "− "; }
 .compiler-progress[data-finished="true"] .compiler-progress-stats > div { grid-column: auto; }
 .compiler-table td button.small-btn { white-space: nowrap; }
 
+/* A selected identity must never label the previous view's data or controls. */
+.navigation-loading { padding: 24px; }
+#project[data-loading] > :not(.navigation-loading) { display: none !important; }
+#drawer[data-loading] .drawer-body { display: none !important; }
+#drawer[data-loading] .drawer-head .row > :not([data-close]):not(#fnPrev):not(#fnNext) { visibility: hidden; pointer-events: none; }
 /* Numeric evidence stays separate from symbolic assembly and its score. */
 .raw-address { display: block; color: var(--muted); font: 11px/1.5 var(--mono); }

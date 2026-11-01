@@ -13,7 +13,7 @@ function showDrawer(id) {
 function hideDrawer(id) {
   const d = $(id);
   if (d.hidden) return;
-  if (id === "drawer") { giveBack(null); S.fn = null; if (S.map.length) drawMap(); }
+  if (id === "drawer") { if (typeof cancelFunctionRead === "function") cancelFunctionRead(); giveBack(null); S.fn = null; S.fnDetail = null; S.fnNav = (S.fnNav || 0) + 1; if (S.map.length) drawMap(); }
   if (id === "dialog") S.dialogKind = "";
   d.hidden = true;
   if ($("drawer").hidden && $("dialog").hidden) document.body.classList.remove("locked");
@@ -471,6 +471,7 @@ function projectCompilerFacts(ov) {
 }
 
 async function renderProjectSettings() {
+  const settingsGen = S.gen, settingsSlug = S.slug;
   renderDeepSweep();
   if ($("compilerImprovements").dataset.slug !== S.slug) $("compilerImprovements").replaceChildren();
   if ($("compilerProgress").dataset.slug !== S.slug) {
@@ -491,6 +492,7 @@ async function renderProjectSettings() {
     : "Every function is built with this compiler and these flags. If almost nothing matches, the game was probably built with another compiler or flags.";
   if (!$("compilerPanel").hidden) {
     if (!S.st) await loadState();
+    if (settingsGen !== S.gen || settingsSlug !== S.slug) return;
     fillCompilers($("setTc"), ov.compiler.toolchain, ov.platform);
     for (const option of $("setTc").options) if (option.value === ov.compiler.toolchain) option.textContent += " · Default";
     $("setFlags").value = ov.compiler.flags.join(" ");

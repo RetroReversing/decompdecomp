@@ -53,9 +53,10 @@ function renderMapView() {
 /* The compiler map's colours come in a request of their own, after the map is drawn: after a match the compiler map
    is built again, and the ROM map waited for it (GTA San Andreas: 710-800 ms). */
 async function loadMapColumns(slug) {
+  const gen = S.gen;
   let data;
   try { data = await api(`/api/mapcolumns?slug=${slug}`); } catch { return; }
-  if (slug !== S.slug || !data.rows.length) return;
+  if (gen !== S.gen || slug !== S.slug || !data.rows.length) return;
   const col = Object.fromEntries(data.keys.map((k, i) => [k, i]));
   const at = new Map(S.map.map((f, i) => [f.vram, i]));
   for (const r of data.rows) {
