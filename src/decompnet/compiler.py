@@ -28,6 +28,7 @@ MAX_SOURCE_BYTES = 64 * 1024
 # concurrency cap, so a hostile submission can't take the host down with it.
 LIMITS = ["--as=2147483648", "--cpu=30", "--fsize=67108864"]
 _SLOTS = threading.BoundedSemaphore(max(2, (os.cpu_count() or 4) - 1))
+_ARTIFACT_SINK = contextvars.ContextVar("compiler_artifact_sink", default=None)
 _CANCEL_CHECK = contextvars.ContextVar("compiler_cancel_check", default=None)
 
 
@@ -39,6 +40,16 @@ def cancellable(check):
         yield
     finally:
         _CANCEL_CHECK.reset(token)
+
+
+@contextmanager
+def capture_artifacts(sink):
+    """Opt-in diagnostic reader, invoked before the private compile directory is removed."""
+    token = _ARTIFACT_SINK.set(sink)
+    try:
+        yield
+    finally:
+        _ARTIFACT_SINK.reset(token)
 
 _COMMENTS_AND_STRINGS = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', re.S)
 _FORBIDDEN = [
@@ -231,7 +242,9 @@ def compile_source(cfg: CompilerConfig, context_header: str, source: str, truste
         if not result.ok and cfg.cplusplus and not result.log.startswith("compiler timed out") and "Compiler or build process exceeded" not in result.log:
             cpp = _compile_as(cfg, work, root, source, "cpp")
             if cpp.ok or _CPP.search(source):
-                return cpp
+                result = cpp
+        if sink := _ARTIFACT_SINK.get():
+            sink(work)
         return result
 
 

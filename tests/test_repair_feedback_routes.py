@@ -142,7 +142,7 @@ def test_replay_is_guarded_scoped_and_cancellable(repair_app,monkeypatch):
     client,net,_=repair_app
     seen=[];entered=threading.Event()
     monkeypatch.setattr(net.repair_feedback,'listing',lambda slug,*args,**kwargs: {'examples':[{'id':42,'slug':'demo','function':'f'},{'id':43,'slug':'demo','function':'f'}]})
-    def run(feedback,slug,ids,trials,seconds,log):
+    def run(feedback,slug,ids,trials,seconds,log,**options):
         seen.append((slug,ids,trials,seconds));entered.set()
         for _ in range(100):
             log.check_cancel();time.sleep(.01)
@@ -153,6 +153,8 @@ def test_replay_is_guarded_scoped_and_cancellable(repair_app,monkeypatch):
     assert client.post(url,json={},headers=headers).status_code==400
     assert client.post(url,json=data|{'trials':True},headers=headers).status_code==400
     assert client.post(url,json=data|{'seconds':121},headers=headers).status_code==400
+    assert client.post(url,json=data|{'diagnostics':'yes'},headers=headers).status_code==400
+    assert client.post(url,json=data|{'minimize':1},headers=headers).status_code==400
     response=client.post(url,json=data,headers=headers)
     assert response.status_code==200 and entered.wait(2)
     assert seen==[('demo',[42],12,30)]

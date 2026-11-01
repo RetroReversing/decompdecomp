@@ -300,8 +300,7 @@ class Permuter:
             from . import normalization_repairs, repair_ranking
             normalization_repairs.extend_frame(candidates, labels, fn['best_source'], fn['name'], proj['arch'], repair_ranking.evidence(self.net,fn['id'],agent.id))
             ranked = repair_ranking.order(dict.fromkeys(labels.get(text, 'draft_repair') for text in candidates),repair_ranking.evidence(self.net,fn['id'],agent.id))
-            from . import agent_tokens
-            effect_scope=agent_tokens.target_scope(self.net,fn,'') if hasattr(self.net,'_context') else None
+            effect_scope=repair_ranking.effect_scope(self.net,fn,fn['best_source']) if hasattr(self.net,'_context') else None
             ranked=repair_ranking.demote(self.net,effect_scope,ranked)
             if not self._hold(agent, fn, count_turn=False):
                 continue
