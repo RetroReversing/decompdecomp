@@ -474,3 +474,17 @@ def test_imported_room_search_uses_host_build_and_syncs_improvements(monkeypatch
     assert search._score_work(AGENT, net.project_row('game'), net.function(), 'draft', 40, 'fork') == 20
     assert calls == [('judge', 'f', 'draft'), ('sync',)]
     assert search._compiler_preflight(net.project_row('game'), net.function(), None, None) == {'tested': 0}
+
+
+def test_deep_search_does_not_rotate_background_permuter_credentials(monkeypatch):
+    net = setup(monkeypatch)
+    names = []
+    original = net.local_agent
+    def agent(name):
+        names.append(name)
+        return original(name)
+    net.local_agent = agent
+    monkeypatch.setattr(Permuter, '_score', lambda *args: 40)
+    deep_permuter.run(net, 'game', 'f', 1, 1, Log())
+    assert names == [f'permuter-{net.function()["id"]}']
+    assert names[0] != 'permuter'

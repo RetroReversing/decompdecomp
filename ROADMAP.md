@@ -1380,3 +1380,5 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   coverage, and project/platform/version/build metadata without source or ROM data.
 
 - Done: deep-pass activity cards default to active only, retain expandable output when sorted, and show measured elapsed duration for active and completed functions.
+
+- Done: parallel deep searches use per-function runner credentials outside rooms too, preventing token invalidation between workers and the background permuter.

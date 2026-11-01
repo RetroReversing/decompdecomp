@@ -429,3 +429,13 @@ def test_room_client_can_start_a_deep_pass(sweep, monkeypatch):
     net.links['game'] = object()
     monkeypatch.setattr(obj.jobs, 'start', lambda *args, **kwargs: 'room-pass')
     assert obj.start('game', minutes=1, max_variants=10, threads=2)['job'] == 'room-pass'
+
+
+def test_function_runner_credentials_survive_other_workers_starting(sweep):
+    _, net, _, _ = sweep
+    background, background_token = net.local_agent('permuter')
+    first, first_token = net.local_agent(f'permuter-{net._function("f0", "game")["id"]}')
+    second, second_token = net.local_agent(f'permuter-{net._function("f1", "game")["id"]}')
+    assert len({background.id, first.id, second.id}) == 3
+    for agent, token in ((background, background_token), (first, first_token), (second, second_token)):
+        assert net.authenticate(token).id == agent.id
