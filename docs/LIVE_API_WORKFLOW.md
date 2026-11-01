@@ -155,3 +155,22 @@ checks still decide whether their placement is valid.
 Warnings about implicit declarations now appear in preparation logs even after successful compilation. An
 input-change race can retry once with fresh destination state, spending the same compile/time budget. Claim
 loss, compiler failures and imported builds are not automatically retried. No stale result can be promoted.
+
+### Target-supported SDK I/O candidates
+
+For MIPS targets, raw instruction words proving multiple uncached accesses prioritize a bounded `-O1` check
+under an installed IDO toolchain. This is an I/O profile hypothesis, not SDK identity inferred from a name.
+Prepared-source improvements already repeat preflight using the promoted source/header digest and the remaining
+budget. Stale-input preparation retries remain limited to one; settings approval and claim gates are unchanged.
+
+Local repair families can try numeric versus existing symbolic volatile MMIO expressions only when target machine
+words prove the same address and width. They never create symbols or infer addresses from a numeric-looking name.
+Candidate-local I/O status scalars can try register, volatile stack and ordinary cached storage; hardware accesses
+retain their own volatile qualification, and address-taken locals are excluded. Existing all-byte response records
+can replace consecutive field reads with an aggregate copy when target unaligned word-copy evidence supports it.
+No fields, padding or packed attributes are invented. The ordinary judge decides every result.
+
+Diff panels, briefs, deep searches and preparation logs advise checking SDK constants, polling masks and added or
+missing recovery branches before broad permutation. These advisories do not replace constants or remove paths.
+Imported MIPS builds can use available target evidence for the source families, but keep their own compiler settings.
+Other processors retain existing repairs: these target-evidence recognizers need processor-specific adapters.
