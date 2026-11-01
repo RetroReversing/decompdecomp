@@ -1555,6 +1555,17 @@ remain planned: the initial browser toolchain has no matching build-context adap
   backends. They explicitly skip instead of using guessed standalone build settings. Timing currently
   measures summed trial elapsed time; per-child CPU accounting across compiler runtimes remains planned.
 
+### Repair capture follow-ups
+
+- Done: bounded later scalar declaration swaps, typed clamp and record-pointer load staging, independent loop update order and call postincrement placement in shared draft, autopilot, deep and explicit local repair paths. Every candidate uses the ordinary judge.
+- Done: missing call arguments use known matched callee signatures and unambiguous incoming caller parameters. Address-taken scalar buffers grow only from compatible, bounded contiguous constant-index callee writes. Called matched helper changes refresh local retry evidence.
+- Done: single-line macro directives and dependent statements remain protected while unaffected regions can receive repairs; unsupported preprocessing receives an explicit diagnostic.
+- Planned: preprocessing-backed conditional/multiline macro repairs, CFG-aware dynamic callee write extents, and captured callee bodies for frozen historical replay. Unknown field layouts/signatures, ambiguous arguments and pointer aliases deliberately skip these narrow families. Shared C hypotheses reach ROM and imported projects across processors; compiler-specific matching gains require ordinary verdicts and are not inferred from source-pattern coverage.
+
+- Done: the update dialog offers packaged-app users source checkout instructions, Git/uv prerequisite links, a new destination path and an explicit background Git download from their configured repository/branch. Completion supplies terminal commands and explains the development copy's separate project home. Downloads never install, launch or replace the packaged app, and existing destinations are rejected.
+
+- Done: restarted matching sessions receive a complete renewed-claim brief. Room clients reconcile their own stale local leases only after a successful host grant, transactionally in ROM and imported project flows; host failures and other workers' claims remain intact. Existing batched tasks can be renewed by name without being mistaken for a new conflicting claim.
+
 - Done: selective branch pointer lifetime combinations and declaration-order bridges in shared C candidate
   repairs, with guarded terminal switch-tail distribution and advisory repeated-call shortfall clues.
   ROM and imported candidates use their unchanged ordinary judge. Unsupported control/macros stay unchanged.

@@ -2880,10 +2880,10 @@ class ForkEngine:
         if name is None:
             return "Nothing left to claim in this room: every function with a source file matches or someone is on it. 🎉"
         try:
-            fn = self.net.claim_row(agent, slug, name, strategy)
+            fn = self.net._room_claim_row(agent, slug, name, strategy)
         except NetworkError:  # the host has a newer tree (new files, a split): follow it, then claim here
             link.sync()
-            fn = self.net.claim_row(agent, slug, name, strategy)
+            fn = self.net._room_claim_row(agent, slug, name, strategy)
         return self.brief(fn, agent, "CLAIMED")
 
     def get_function(self, agent: Agent | None, slug: str, function: str) -> str:

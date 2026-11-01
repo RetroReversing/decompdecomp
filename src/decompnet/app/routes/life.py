@@ -49,6 +49,18 @@ def register(app: App) -> None:
                                  "job": updater.job})
         return JSONResponse(await call(lambda: updater.status(refresh)))
 
+    @mcp.custom_route("/api/update/checkout", methods=["GET", "POST"])
+    async def api_checkout(request: Request) -> Response:
+        if (bad := guard(request, write=request.method == "POST")):
+            return bad
+        try:
+            if request.method == 'POST':
+                data = await body(request)
+                return JSONResponse(await call(updater.checkout.start, str(data.get('path') or '')))
+            return JSONResponse(updater.checkout.status())
+        except ValueError as e:
+            return fail(e)
+
     def checking() -> bool:
         return settings.data.get("check_updates", True) is not False and os.environ.get("DECOMP_UPDATES") != "off"
 
