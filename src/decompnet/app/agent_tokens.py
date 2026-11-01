@@ -124,11 +124,24 @@ def history(net, fn):
             + '; '.join(fingerprints) + '. Scores may use older headers/settings. Read existing notes before repeating approaches.\n')
 
 
+def assembly_text(net, slug, agent, text):
+    """Remove presentation columns only; operands, labels and other comments are evidence."""
+    if not agent or not slug or net.selection(slug, agent.name).get('assembly_metadata', True):
+        return text
+    text = re.sub(r'(?m)^(\s*)/\*\s*[0-9a-fA-F]+\s+[0-9a-fA-F]+\s+[0-9a-fA-F]+\s*\*/[ \t]*', r'\1', text)
+    return re.sub(r'(?m)^[ \t]*(?:0x)?[0-9a-fA-F]{8,16}[ \t]+(?=[A-Za-z.])', '    ', text)
+
+
+def assembly_blocks(net, slug, agent, text):
+    return re.sub(r'```asm\n(.*?)\n```',
+                  lambda m: '```asm\n' + assembly_text(net, slug, agent, m[1]) + '\n```', text, flags=re.S)
+
+
 def brief(net, text, slug=None, agent=None):
     # Keep the complete candidate and user instructions. Long target listings and auxiliary sections remain
     # available through get_function / get_assembly, rather than repeated on every claim.
     def assembly(m):
-        lines = m[1].splitlines()
+        lines = assembly_text(net, slug, agent, m[1]).splitlines()
         return '```asm\n'+'\n'.join(lines[:24])+('\n… use get_assembly for later lines.' if len(lines)>24 else '')+'\n```'
     text = re.sub(r'```asm\n(.*?)\n```', assembly, text, flags=re.S)
     # Keep compiler facts, declarations, candidate C and user instructions. Supporting evidence is
@@ -284,7 +297,7 @@ def assembly(net, slug, function, start=0, limit=60, focus="", agent=None):
     else:
         prefix=''
     start, limit = max(0, int(start)), max(1, min(200, int(limit)))
-    return prefix+f'Target assembly lines {start}:{min(start+limit,len(lines))} of {len(lines)}\n'+'\n'.join(lines[start:start+limit])
+    return prefix+f'Target assembly lines {start}:{min(start+limit,len(lines))} of {len(lines)}\n'+assembly_text(net, slug, agent, '\n'.join(lines[start:start+limit]))
 
 
 def diff_page(net, agent, slug, function, context=1, start=0, limit=40):
@@ -376,7 +389,7 @@ def function_view(net, agent, slug, function, section='all'):
         return get_candidate(net, agent, slug, function)
     if section not in ('all', 'notes', 'declarations', 'compiler', 'layouts'):
         raise NetworkError('Choose section all, history, candidate, notes, declarations, compiler or layouts.')
-    text = net.get_function(function, slug, agent)
+    text = assembly_blocks(net, slug, agent, net.get_function(function, slug, agent))
     if section == 'all':
         return text + history(net, net._function(function, slug))
     titles = {'notes': ('Notes',), 'declarations': ('Declarations', 'Data it uses'),

@@ -556,3 +556,37 @@ def test_infrastructure_errors_are_not_cached_as_bad_source(tmp_path, monkeypatc
     monkeypatch.setattr(tools,'_compile',broken)
     agent_tokens.variants(net,a,'game','f',rev,[{'old':source,'new':bad}], 'local repairs')
     assert not agent_tokens.compiled_before(net,net._function('f','game'),bad)
+
+
+@pytest.mark.parametrize('imported', [False, True])
+def test_assembly_metadata_setting_applies_to_pages_briefs_and_full_reads(tmp_path, monkeypatch, imported):
+    from types import SimpleNamespace
+    net, _ = _game(tmp_path, [('f', 10, 'open')])
+    agent, _ = net.local_agent('reader')
+    raw = ('glabel f\n/* 3B18C 8003A58C 03E00008 */ jr $ra\n'
+           '8003A590  nop\n.L8003A598:\n    beq $a0, $zero, .L8003A598\n'
+           '    lui $a0, %hi(D_80040000) # retain comment')
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET asm=? WHERE name=?', (raw, 'f'))
+    text = '### Target assembly\n```asm\n' + raw + '\n```'
+    monkeypatch.setattr(net, 'get_function', lambda *args: text)
+    if imported:
+        monkeypatch.setattr(net, 'fork_slug', lambda slug: slug)
+        net.forks.get = lambda slug: (None, SimpleNamespace(
+            unit=lambda _: None, diff=lambda *args: SimpleNamespace(target_asm=lambda: raw)), {})
+        net.forks._meta = lambda fn: {}
+    else:
+        monkeypatch.setattr(net, '_asm_text', lambda *args: raw)
+    assert '03E00008' in agent_tokens.assembly(net, 'game', 'f', focus='page', agent=agent)
+    net.set_selection('game', agent.name, {'assembly_metadata': False})
+    outputs = [agent_tokens.assembly(net, 'game', 'f', focus='page', agent=agent),
+               agent_tokens.brief(net, text, 'game', agent),
+               agent_tokens.function_view(net, agent, 'game', 'f', 'all')]
+    for output in outputs:
+        assert '03E00008' not in output and '8003A590' not in output
+        assert 'jr $ra' in output and 'nop' in output
+        assert '.L8003A598:' in output and '%hi(D_80040000)' in output
+        assert '# retain comment' in output
+    net.set_selection('game', agent.name, {'assembly_metadata': True})
+    assert raw in agent_tokens.assembly(net, 'game', 'f', focus='page', agent=agent)
+    assert net._function('f', 'game')['asm'] == raw  # no stored target edits

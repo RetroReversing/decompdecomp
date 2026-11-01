@@ -761,6 +761,10 @@ class Network:
         else:
             below = None
         result = {"strategy": strategy, "match_below": below}
+        if 'assembly_metadata' in policy:
+            if type(policy['assembly_metadata']) is not bool:
+                raise NetworkError('Assembly byte and address columns must be true or false.')
+            result['assembly_metadata'] = policy['assembly_metadata']
         if 'model_untried' in policy:
             if not isinstance(policy['model_untried'], bool):
                 raise NetworkError('Never tried by model must be true or false.')
