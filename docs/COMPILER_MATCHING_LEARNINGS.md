@@ -964,3 +964,24 @@ Distinct source/header/profile trials retain their mismatch family and elapsed t
 misses suggest original type/call-context and declaration-lifetime experiments before equivalent rewrites.
 Private local family yields can affect preparation ordering after a minimum sample, while exploration and
 ordinary judging remain. Synthetic tests verify these controls; they do not claim new game matches.
+
+
+### Joint prepared profiles and explicit helper signatures
+
+A five-match source-assisted MIPS batch used IDO 5.3 with `-O3` for four functions and
+`-O2` for one, all with `-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul`.
+Original typed records and verified per-function profiles were tested as complete combinations.
+A particle candidate improved 438 to 200 under typed `-O3` context, then became exact after
+material-return signedness and sound helper float-argument declarations were corrected together.
+There was no single-change ablation, so neither correction alone is claimed as causal.
+
+An older SDK audio reference lacked timing logic in the better retained draft. A filesystem
+reference needed target-verified retail delete/save behavior. Another original source replay stayed
+at 300, with `-O3` worsening to 1828; the original `-O2` profile was restored. These results justify
+explicit declaration/call/control review and reusable input-scoped failed trials, not automatic
+prototype or retail branch replacement.
+
+Private profile search now budgets new probes rather than slicing two already cached choices.
+Later preparation passes advance through installed-toolchain flag variants, caching link failures too.
+Compile/time caps and source/header/profile review remain; no private probe changes live build flags.
+Synthetic tests cover scheduling and advisory diagnostics separately from the manual game matches.

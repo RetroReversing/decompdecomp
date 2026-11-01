@@ -92,13 +92,15 @@ def record(net, proj, fn, source, header, score, rows, lead=None, elapsed_ms=0, 
     scope=scope or destination(net,proj,fn);settings=profile(net,proj,fn)
     signature=key(scope,source,header,family,settings)
     comparison=compare(rows,proj['arch'],source,fn['name'])
+    from .source_next_steps import recommendations
+    comparison['next_steps']=recommendations(source,dict(fn).get('best_source') or '',comparison)
     if proj['arch']=='mips':
         from ..arch.mips_runtime import incoming_arguments
         comparison['entry']=incoming_arguments(fn['asm'] or '')
     baseline=fn['best_score'];improved=score is not None and (baseline is None or score<baseline)
     item={'scope':scope,'family':family,'profile':settings,'lead':lead,'score':score,'baseline':baseline,
           'exact':score==0,'improved':improved,'error':error[:2000], 'elapsed_ms':max(0,int(elapsed_ms)),
-          'baseline_source_sha256':hashlib.sha256((fn['best_source'] or '').encode()).hexdigest(),
+          'baseline_source_sha256':hashlib.sha256((dict(fn).get('best_source') or '').encode()).hexdigest(),
           'source_sha256':hashlib.sha256(source.encode()).hexdigest(),'header_sha256':hashlib.sha256(header.encode()).hexdigest(),
           'comparison':comparison}
     with net.store.tx() as db:
@@ -155,11 +157,14 @@ def brief(net, proj, fn):
                         code=(row['asm'] or '').splitlines();at=next((i for i,line in enumerate(code) if re.search(r'\bjal\s+'+re.escape(fn['name'])+r'\b',line)),None)
                         lines.append('Caller '+row['name']+(':\n'+'\n'.join(code[max(0,at-3):at+2]) if at is not None else ' (inspect its call-site argument setup).'))
     scope=destination(net,proj,fn)
-    misses=[]
+    misses=[];next_steps=[]
     for row in net.store.all('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature LIKE ? ORDER BY rowid DESC LIMIT 80',fn['id'],PREFIX+'%'):
         item=json.loads(row['feedback'])
-        if (item['scope']==scope and item.get('baseline_source_sha256')==hashlib.sha256((fn['best_source'] or '').encode()).hexdigest()
+        if item['scope']==scope and not item['improved']:
+            next_steps.extend(item['comparison'].get('next_steps',[]))
+        if (item['scope']==scope and item.get('baseline_source_sha256')==hashlib.sha256((dict(fn).get('best_source') or '').encode()).hexdigest()
                 and item['comparison']['register_only'] and not item['improved']):misses.append(item)
+    lines.extend(list(dict.fromkeys(next_steps))[:3])
     if len(misses)>=3:
         lines.append(f'{len(misses)} distinct prepared source/context/profile probes retained register-only misses for these inputs. Try declaration lifetimes, original record/prototype context or helper calling convention before equivalent expression rewrites. All mutation families remain available.')
     return '\n'.join(lines)
