@@ -125,3 +125,11 @@ def test_modern_elf_dwarf_versions_have_real_function_locations(tmp_path,version
     spans=source_lines.locations(obj.read_bytes(),'run')
     assert spans and all(1 <= line <= 5 for _,_,line in spans)
     assert not source_lines.locations(obj.read_bytes(),'run','unrelated.h')
+
+
+def test_project_fragment_lines_translate_to_candidate_declarations():
+    fragment = 'int f(){\nreturn 1;\n}'
+    candidate = 'extern int x;\n\n' + fragment
+    info = {'available':True,'lines':[{'line':2,'instructions':[{'marker':'i','target':'add','compiled':'sub'}]}], 'unmapped':0}
+    assert 'C line 4: return 1;' in source_lines.render_candidate(info, fragment, candidate)
+    assert 'no line locations inferred' in source_lines.render_candidate(info,fragment,'different C')

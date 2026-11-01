@@ -39,11 +39,21 @@ def candidate(net, agent, slug, function):
     return source, revision
 
 
+def candidate_line_note(net, agent, slug, fn, source):
+    """Use the exact candidate/build baseline, never line locations from another source."""
+    if not source:
+        return ''
+    from . import agent_evidence
+    evidence = agent_evidence.baseline(net, agent, slug, fn, source)
+    note = evidence.get('line_note', '') if evidence and evidence.get('source') == source else ''
+    return note or '\nC-line mapping unavailable for this candidate/build; no line locations inferred.'
+
+
 def get_candidate(net, agent, slug, function):
     source, revision = candidate(net, agent, slug, function)
     from . import local_experiments
     remaining = local_experiments.summary(net,agent,slug,net._function(function,slug),source,revision)
-    return f'Candidate revision {revision}\n```c\n{source}\n```\n{remaining}'
+    return f'Candidate revision {revision}\n```c\n{source}\n```\n{remaining}' + candidate_line_note(net, agent, slug, net._function(function,slug), source)
 
 
 def stale(net, agent, fn, submitted, source, actual):
@@ -206,6 +216,10 @@ def brief(net, text, slug=None, agent=None):
                             text += '\nInherited candidate preflight blocked; fix declarations/build before experiments:\n'+report.get('error', '')[:800]+'\n'
                     text += agent_targets.suggestions(source)
                     text += f"{fn['name']}: candidate revision {revision}; use compile_patch directly on the candidate above.\n"
+                    line_note = candidate_line_note(net, agent, slug, fn, source)
+                    # Startup packets are bounded: keep this short evidence ahead of long assembly/source sections.
+                    text = f"{fn['name']} · candidate revision {revision}:" + line_note + '\n\n' + text
+
                     from . import local_experiments
                     text += local_experiments.summary(net,agent,slug,fn,source,revision)+'\n'
         except NetworkError:
@@ -351,7 +365,8 @@ def feedback(net, agent, slug, function, text, previous):
         # Show newly changed differing rows first, with ordinary first-region fallback.
         changed = [(r[0], f'[{i}] {r[1]}', r[2]) for i,r in enumerate(rows) if r[0]!=' ' and (previous is None or i>=len(previous) or r!=previous[i])]
         detail = 'Changed differing rows (first 12):\n' + scoring.render_rows(changed[:12], 0, max_rows=18, legend=legend, more_hint=False)
-    return head + detail + warn + '\nFull/paged instructions: last_diff(function, start=0, limit=40).'
+    from ..source_lines import feedback_note
+    return head + detail + feedback_note(text) + warn + '\nFull/paged instructions: last_diff(function, start=0, limit=40).'
 
 
 def function_view(net, agent, slug, function, section='all'):
