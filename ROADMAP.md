@@ -1,5 +1,9 @@
 # Roadmap
 
+Implemented: copy a complete selected session (including unloaded messages) to the clipboard; export all recorded sessions and full events for one project agent as JSON to Downloads,
+independent of transcript dialog pagination. Unrecorded CLI internals cannot be reconstructed.
+
+
 Implemented: ROM function compiler results show current project assignment and matched-function counts for
 each exact compiler/ordered-flags profile. Imported projects own their build settings; equivalent per-file
 profile usage needs a build-system adapter and remains planned.

@@ -103,6 +103,42 @@ def test_mcp_records_full_arguments_results_and_errors(setup, monkeypatch):
     assert json.loads(events[-1]['text'])['call_id'] != first_id
 
 
+def test_export_all_sessions_and_events_without_paging_or_other_agents(setup, tmp_path, monkeypatch):
+    from pathlib import Path
+    net, manager, session, row = setup
+    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
+    for i in range(275):
+        session.record('tool_response', {'index': i, 'password': 'secret'})
+    for _ in range(35):
+        manager._session_begin(session)
+    session.record('text', 'last session')
+    result = manager.transcripts.export('demo', 1)
+    data = json.loads(Path(result['path']).read_text())
+    assert result['sessions'] == len(data['sessions']) == 36
+    assert result['events'] == 276
+    assert len(data['sessions'][0]['events']) == 275
+    assert data['sessions'][-1]['events'][0]['text'] == 'last session'
+    assert 'secret' not in Path(result['path']).read_text()
+    other = manager.transcripts.export('other', 1)
+    assert json.loads(Path(other['path']).read_text())['sessions'] == []
+    assert manager.transcripts.export('demo', 2)['sessions'] == 0
+    assert manager.transcripts.export('demo', 1)['path'] != result['path']
+
+
+def test_whole_session_includes_unloaded_events_and_checks_ownership(setup):
+    net, manager, session, row = setup
+    for index in range(60):
+        session.record('text', f'message {index}')
+    result = manager.transcript('demo', 1, row, whole=True)
+    assert len(result['events']) == 60 and not result['more']
+    assert result['events'][-1]['text'] == 'message 59'
+    assert len(manager.transcript('demo', 1, row)['events']) == 25
+    with pytest.raises(NetworkError):
+        manager.transcript('demo', 2, row, whole=True)
+    with pytest.raises(NetworkError):
+        manager.transcript('other', 1, row, whole=True)
+
+
 def test_legacy_pre_prompt_probe_is_labelled_without_rewriting_history(setup):
     net,manager,session,row=setup
     session.record('tool_definitions',[{'name':'project_info'}])

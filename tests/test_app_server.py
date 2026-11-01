@@ -1178,7 +1178,7 @@ def test_sdk_inventory_is_global_and_selection_is_a_guarded_project_setting(app,
     assert response.status_code == 200 and selected == [('example', [])]
 
 
-def test_transcript_route_requires_window_auth_and_checks_project(app, tmp_path):
+def test_transcript_route_requires_window_auth_and_checks_project(app, tmp_path, monkeypatch):
     client, net, manager = app
     with net.store.tx() as db:
         db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
@@ -1192,6 +1192,15 @@ def test_transcript_route_requires_window_auth_and_checks_project(app, tmp_path)
     assert result.status_code == 200
     assert result.json()['events'][0]['text'] == 'The full initial prompt'
     assert client.get(url.replace('trace-demo', 'other')).status_code == 400
+    from pathlib import Path
+    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
+    payload = {'slug': 'trace-demo', 'helper': 9001}
+    assert client.post('/api/transcript', json=payload).status_code == 403
+    exported = client.post('/api/transcript', json=payload, headers={'X-Decomp': '1'})
+    assert exported.status_code == 200
+    data = json.loads(Path(exported.json()['path']).read_text())
+    assert data['sessions'][0]['events'][0]['text'] == 'The full initial prompt'
+
 
 
 def test_agent_rename_route_keeps_identity_and_checks_input(app):
