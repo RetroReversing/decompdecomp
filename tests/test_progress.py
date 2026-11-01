@@ -1174,3 +1174,39 @@ def test_post_judge_promotion_does_not_overwrite_concurrent_editor(project,monke
     monkeypatch.setattr(saves,'_publish',publish)
     net.progress.sync('game',force=True)
     assert net._function('f','game')['best_source']=='new editor contribution'
+
+
+@pytest.mark.parametrize('platform',['n64','ps2'])
+def test_exported_assembly_local_symbols_can_be_verified_again(project,platform):
+    net,folder,_=project
+    pid=net._project('game')['id']
+    names=['.L00100380','.Ltmp0','.Lfunction_end']
+    cfg=json.loads(net._project('game')['config']);cfg['platform']=platform
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=? WHERE id=?',(json.dumps(cfg),pid))
+        for i,name in enumerate(names):
+            db.execute('INSERT INTO symbols(project_id,name,address,size,kind) VALUES(?,?,?,?,?)',
+                       (pid,name,0x100380+i*4,0,'data'))
+    net.progress.sync('game',force=True)
+    saved=(folder/saves.MANIFEST).read_bytes()
+    data=json.loads(saved)
+    assert set(names)<={s['name'] for s in data['symbols']}
+    net.progress.sync('game',force=True)
+    assert (folder/saves.MANIFEST).read_bytes()==saved
+
+
+@pytest.mark.parametrize('name',['../bad','.L../bad','.Lbad/name','bad-name','label:','a;evil',''])
+def test_assembly_label_support_does_not_allow_paths_or_invalid_symbols(project,name):
+    net,folder,_=project
+    manifest(folder,symbols=[{'name':name,'address':4,'size':0,'kind':'data'}])
+    before=(folder/saves.MANIFEST).read_bytes()
+    with pytest.raises(NetworkError,match='invalid name'):
+        net.progress.sync('game',force=True)
+    assert (folder/saves.MANIFEST).read_bytes()==before
+
+
+def test_local_assembly_labels_are_not_allowed_as_c_layout_names(project):
+    net,folder,_=project
+    manifest(folder,layout=[{'name':'.L00100380','vram':0x100380,'size':4,'status':'open'}])
+    with pytest.raises(NetworkError,match='layout entry'):
+        net.progress.sync('game',force=True)

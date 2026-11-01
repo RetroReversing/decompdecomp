@@ -1626,3 +1626,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Done: the update dialog separates installed/available builds, packaged releases and source checkout into responsive sections. Source checkout has a native parent-folder Browse control, full-width path field, styled download action and collapsed setup instructions; the running build commit fills missing install metadata.
 
 - Done: repeating completed deep passes binds the project ID correctly, avoiding a server error on start. Regression coverage verifies only open-function pass records in the selected project are reset; saved improvements and other projects remain intact.
+
+- Done: progress manifests round-trip compiler assembly-local labels such as .L00100380 in symbol metadata. C function/layout names remain strict identifiers; path-like or malformed symbols are rejected before files are changed.

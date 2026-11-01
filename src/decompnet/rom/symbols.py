@@ -18,6 +18,8 @@ from dataclasses import dataclass
 # (a number in their C is lui+ori, the game's symbol lui+addiu)
 AUTO_NAME = re.compile(r"^(?:func|D|B|jtbl|L|RO|STR|FLT|DBL|bss|data|sub|gUnknown|unk|off|dword|word|byte|loc)_([0-9A-Fa-f]{1,8})(?:_overlay_[0-9]{3})?$")
 IDENT = re.compile(r"^[A-Za-z_]\w*$")
+# GAS/compiler-local labels are metadata, never C function names or source-file paths.
+ASM_LOCAL = re.compile(r"^\.L[A-Za-z0-9_.$]+$")
 
 
 @dataclass
