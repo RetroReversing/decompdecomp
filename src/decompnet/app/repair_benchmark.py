@@ -45,7 +45,8 @@ def run(source, baseline_score, evaluate, generate, *, trials, deadline, check_c
     reason = ('control_output_recovered' if matched else 'time_budget' if time.monotonic() >= deadline
               else 'trial_budget' if len(results) >= trials and state['pending'] else state['reason'])
     return {'baseline_score': baseline.get('score'), 'baseline_exact': bool(baseline.get('matched')),
-            'best_score': min((r['score'] for r in results if isinstance(r.get('score'), (int,float))), default=baseline.get('score')),
+            'best_score': min((score for score in [baseline.get('score')]+[r.get('score') for r in results]
+                               if isinstance(score, (int,float))), default=None),
             'trials': results, 'summary': dict(Counter(r['outcome'] for r in results)),
             'remaining': len(state['pending']), 'reason': reason, 'elapsed_seconds': time.monotonic()-started,
             'candidate_compiles': len(results),
