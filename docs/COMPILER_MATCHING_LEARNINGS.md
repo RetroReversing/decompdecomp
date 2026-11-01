@@ -1382,3 +1382,37 @@ observation remains unresolved: its nearby padding includes two NOPs followed by
 Concrete source comparisons and compiled immediate differences are now shown as revision leads.
 Unsuccessful preparations are summarized only under their original source/build scope, so changed
 inputs remain eligible and old failed experiments are not mistaken for universal impossibility.
+
+
+### CPU recovery from source context and measured retail differences
+
+A source-assisted eight-match batch under provisional IDO 5.3 with `-mips2 -G 0 -non_shared
+-Xcpluscomm -Wab,-r4300_mul` required original aggregate/prototype context, preserving an actual
+cache-access call, a four-byte application-record gap, retail switch labels and an 18-character
+limit in place of 16. Five used `-O3`; three menu/state routines used `-O2`. Those are manual
+recoveries, not evidence that the full automatic pipeline already reproduces all eight.
+
+Private CPU replay of two pre-match inputs at `-O2` used the ordinary sandboxed compiler and ROM
+link/data judge. The layout baseline scored **40**, with four mapped stores consistently shifted by
+four bytes. A generated private gap before the earliest affected field recovered linked-byte/data
+exactness. The constant baseline scored **50**; a generated coherent 16-to-18 macro trial recovered
+linked-byte/data exactness. These replay known matches; no new function or coverage is claimed.
+A separate controlled switch replay retained already-mapped retail data bindings, removed the grouped
+error arm and restored older case numbers. Table-based relabelling plus an agreeing structural arm clone
+also recovered linked-byte/data exactness. Arbitrary missing arm bodies or unknown bindings remain
+unsupported. The source and ROM remain private; no live project or repository was changed by these replays.
+
+Mapped source trials now preserve actual differing ANSI prototypes, with actual source types rather
+than guessed scalar/aggregate replacements. A target call can disable a conflicting header macro
+while retaining the actual declaration. Named records from exact neighbours are transferred privately
+with their record dependency closure; incompatible scalar aliases reject that merge. Layout probes
+require at least two mapped field operands with the same small positive displacement; store mappings
+use the assignment's left side, not a similarly named saved-state record on the right. Constant trials
+require aligned instruction evidence tied to a comparison or explicit sizeof(array) bound. Switch
+clones need identical target instruction structure, ABI registers/constants and a bijective data-symbol
+mapping. These hypotheses retain the ordinary judge; they never establish missing source semantics.
+
+The movement near misses at scores 51/60 remain unresolved. Actual pointer-ABI corrections, original
+helpers/constants, aggregate copies and line directives did not match; one flattened ABI rewrite
+scored 1011. Reuse focused declaration/stack/helper families and cache failures by exact source,
+header, target and build state instead of repeating those experiments across agents.

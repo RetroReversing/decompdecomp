@@ -172,3 +172,47 @@ def recheck_exact(net, proj, log, limit=20):
         if hasattr(log,'progress'):log.progress({'phase':'Rechecking exact bundles','finished':result['tested'],'total':len(selected)})
     log(f"Rechecked {result['tested']} bundles: {result['matched']} matched, {len(result['errors'])} skipped or failed.")
     return result
+
+
+def promote_measured(net, proj, fn, source, header, settings, agent, expected):
+    """Caller holds the claim. Recompile under frozen inputs; only an explicit ROM byte/data verdict wins."""
+    from ..rom.export import _single_definition
+    if not net.is_rom(proj) or net.fork_slug(proj['slug']):
+        raise NetworkError('Automatic prepared bundles require a local ROM project.')
+    current=net._function(fn['name'],proj['slug']);fresh=net.project_row(proj['slug'])
+    if current['status']!='open' or prep.inputs(net,fresh,current)!=expected:
+        raise NetworkError('Prepared inputs changed before automatic recheck. Run preparation again.')
+    private={**dict(fresh),'config':json.dumps(scoped_config(fresh,current,settings))}
+    result=net._compile(private,header,source,current)
+    if not result.ok or not _single_definition(result.obj,fn['name']):
+        raise NetworkError('Automatic bundle recheck did not compile as one function. Evidence retained for review.')
+    candidate,verdict,_=net._evaluate(current,fresh,result.obj)
+    if candidate is None or verdict is not True:
+        raise NetworkError('Automatic bundle recheck failed linked-byte/data verification. Evidence retained for review.')
+    # _record atomically rechecks the claim/inputs and publishes context, profile and source.
+    net._record(current,agent,0,source,0,matched=True,via='local-source-auto-exact',
+                effective_settings=result.effective_settings,prepared_header=header,
+                prepared_inputs=expected,prepared_compiler=settings)
+    return True
+
+
+def auto_existing(net, proj, fn, agent):
+    """One historical exact, rejudged on current inputs; failed rechecks are cached only in that scope."""
+    if not prep.settings(net,proj).get('auto_exact'):return None
+    rows=net.store.all("SELECT signature,feedback FROM reuse_trials WHERE function_id=? AND outcome='0' "
+                       "AND signature LIKE 'local-source-profile-%' ORDER BY rowid DESC LIMIT 1",fn['id'])
+    if not rows:return None
+    item=json.loads(rows[0]['feedback'] or '{}')
+    if not item.get('exact') or not all(k in item for k in ('toolchain','flags','source','header')):return None
+    key='local-source-auto-recheck:'+hashlib.sha256((digest(net,proj,fn)+rows[0]['signature']).encode()).hexdigest()
+    if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?',fn['id'],key):return None
+    expected=prep.inputs(net,proj,fn)
+    try:
+        promote_measured(net,proj,fn,item['source'],item['header'],
+                         {'toolchain':item['toolchain'],'flags':item['flags']},agent,expected)
+        return {'tested':1,'matched':True}
+    except NetworkError as error:
+        with net.store.tx() as db:
+            db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
+                       (fn['id'],key,'failed',str(error)[:1200]))
+        return {'tested':1,'matched':False,'error':str(error)}

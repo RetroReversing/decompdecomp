@@ -140,13 +140,31 @@ Mapped source preparation preserves reached SDK macros from the mapped file's au
 even with an explicit private header. Conflicting macro definitions require review. Small candidate-owned
 pointer initialization helpers can be expanded as bounded, separately judged hypotheses; calls with side
 effects, control flow, unknown macros and volatile arguments are excluded. Typed-object/base-folding notes
-and bounded retail switch-table comparisons highlight context or revision differences without inventing layouts
-or missing case bodies. MIPS tables accept both named jump-table and address-based symbols.
+and bounded retail switch-table comparisons highlight context or revision differences; the CPU trials below
+remain private hypotheses and skip unsupported layouts or missing case bodies. MIPS tables accept both named jump-table and address-based symbols.
 
 In **Local source preparation → Prepared profile evidence**, **Fresh check & apply up to 20 exact bundles**
 rechecks one saved exact source/header/profile bundle per function. Each is independently recompiled and
 ROM-data verified before publication. Busy or stale failures are listed and leave other functions eligible.
 Imported projects keep their build-owned headers and profile workflow.
+
+Mapped ROM preparation also queues bounded **CPU-only source recovery** trials before broader flag
+searches. It can restore actual reference prototypes (including aggregate returns/arguments), preserve
+a target call instead of a header macro, reuse verified named record declarations, try a small record
+gap supported by at least two mapped memory operands, and test comparison constants/explicit array
+extents from aligned instructions. MIPS retail switch tables can relabel source arms and clone an arm
+only when an existing target arm has the same instruction structure and a bijective data-symbol map.
+These are private hypotheses: unknown declarations, ambiguous line associations, unsupported arm shapes
+and missing table readers are skipped. Reference files and shared headers are never edited.
+
+Enable **Automatically recheck and save exact source/header/compiler bundles** in Settings → Local
+source preparation for unattended promotion. This option is off by default and machine-local. The app
+recompiles each exact profile bundle again, requires the linked-byte/data verdict, and atomically saves
+its source, private context and function-only profile while rechecking claims and inputs. Approximate
+scores never authorize a compiler change. Failed rechecks are scoped to current inputs and don't block
+new candidates. Cached measured follow-ups resume in later bounded passes; register/stack near misses
+reuse focused declaration, stack-padding and helper-expansion families. Imported projects retain their
+existing build-owned header/profile workflow and require an adapter for these private-context trials.
 
 ## Changing a ROM project's compiler
 

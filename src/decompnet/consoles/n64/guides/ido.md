@@ -151,3 +151,21 @@ body and range checks rather than declaring the underlying callee Boolean. Mask-
 can change loop lowering even with the same field width. With only two load-order differences,
 try focused scheduling/declaration hypotheses; with only an extra restore/return suffix, inspect
 adjacent original padding for an unreachable epilogue. Neither finding relaxes byte/data checks.
+
+
+### Let CPU source trials handle evidenced context differences
+
+Mapped-source preparation can compare actual helper prototypes, preserve calls seen in the target,
+and privately reuse exact neighbours' named records anchored by shared calls or object addresses.
+For aligned MIPS operands with unambiguous compiler line associations, it tries a small consistent
+positive record gap (at least two field mappings), comparison macros/literals and explicit array bounds.
+Stores map to the assignment's destination, not a similarly named saved-state field on its right.
+Retail jump-table labels and structurally identical arm clones are bounded hypotheses, never a source
+of arbitrary missing code. Missing line/table/type evidence means the corresponding trial is skipped.
+
+CPU replay of known `-O2` pre-match inputs recovered an exact record-gap trial from score 40 and an
+exact 16-to-18 limit trial from score 50. These are replay validation, not additional matched coverage.
+Enable automatic exact-bundle rechecks in Local source preparation to save freshly verified private
+source/header/profile bundles unattended. Normal claim, stale-input, linked-data and export checks
+still apply; approximate scores do not change compiler settings. Existing register/stack/declaration
+families remain useful for near misses that these structural repairs do not solve.

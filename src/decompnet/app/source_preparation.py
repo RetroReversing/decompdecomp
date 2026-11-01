@@ -90,6 +90,9 @@ def contexts(text):
 def configure(net, proj, data):
     cfg = {key: str(data.get(key, '')).strip() for key in ('root', 'header', 'include_roots', 'mappings', 'overrides', 'aliases', 'definitions', 'contexts', 'helpers')}
     cfg['enabled'] = bool(data.get('enabled'))
+    if type(data.get('auto_exact',False)) is not bool:
+        raise NetworkError('Choose the automatic exact-bundle option with its checkbox.')
+    cfg['auto_exact'] = data.get('auto_exact', False)
     if any(len(value) > 128_000 for value in cfg.values() if isinstance(value, str)):
         raise NetworkError('Source preparation settings are too large; choose a smaller mapping.')
     from . import source_definitions
@@ -299,7 +302,9 @@ def prepare_variants(reader, cfg, mapping, aliases, fallback):
             reference=rename(reference,aliases)
         except NetworkError as error:
             reader.advisories.append('Predicate helper context unavailable; retaining the original candidate. '+str(error))
-        hypotheses=[('predicate-helper-context',candidate) for candidate in predicate_contexts(pair[0],mapping[0],pair[1],reference)]
+        from .cpu_source_context import variants as reference_trials
+        hypotheses=[(family,(s,h)) for family,s,h in reference_trials(pair[0], pair[1], reference, cfg.get('_target_calls',[]))] if reference else []
+        hypotheses += [('predicate-helper-context',candidate) for candidate in predicate_contexts(pair[0],mapping[0],pair[1],reference)]
         hypotheses += [('mask-signedness-context',candidate) for candidate in signed_contexts(*pair)]
         for family,candidate in hypotheses:
             if cfg.get('_build_owned') and candidate[1]!=pair[1]:continue
@@ -339,7 +344,7 @@ def promote_context(net, db, fn, expected, header, agent):
     return version
 
 
-def attempt(permuter, proj, fn, source, header, agent, fork, diagnostic=None, lead=None):
+def attempt(permuter, proj, fn, source, header, agent, fork, diagnostic=None, lead=None, measurement=None):
     net = permuter.net
     if fork:
         # The existing build must supply its own compatible types. Never edit its build setup or headers.
@@ -387,6 +392,10 @@ def attempt(permuter, proj, fn, source, header, agent, fork, diagnostic=None, le
         from .switch_tables import hints, read
         for hint in hints(source,fn['name'],read(net,proj,fn),header):diagnostic(fn['name']+': '+hint)
     score = 0 if diff.bytes_match else max(1, diff.score)
+    if measurement is not None and score:
+        from .cpu_source_repairs import locations
+        measurement.update(rows=[list(r) for r in diff.rows[:512]],
+                           lines=locations(result.obj,fn['name'],diff.rows,source))
     if fn['best_score'] is None or score < fn['best_score']:
         net._record(fn, agent, score, source, 0, matched=diff.bytes_match, via='local-source',
                     effective_settings=getattr(result, 'effective_settings', None),
@@ -429,14 +438,35 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                 fn = net.store.one('SELECT * FROM functions WHERE id=?', fn['id'])
                 if fn['status'] != 'open':
                     continue
+                if not fork and cfg.get('auto_exact'):
+                    from .prepared_evidence import auto_existing
+                    checked=auto_existing(net,fresh,fn,agent)
+                    if checked:
+                        report['tested']+=checked['tested'];st.add(variants=checked['tested'])
+                        if checked['matched']:
+                            report['matched']+=1;report['improved']+=1;st.add(matched=1,improved=1)
+                            log_line(fn['name']+': historical exact bundle reverified and saved automatically.')
+                            continue
+                        log_line(fn['name']+': automatic bundle recheck failed; trying current source. '+checked.get('error',''))
+                        if report['tested']>=budget or st.stop.is_set() or time.monotonic()>=deadline:break
                 fallback = net.forks.permuter_header(fork, fn['name']) if fork else net._context(proj['id'], fn['unit'])['header']
                 reader.advisories.clear()
                 log_line(fn['name'] + ': reading and preparing selected source context…')
-                variants = prepare_variants(reader, {**cfg,'_build_owned':bool(fork)}, mapping, aliases, fallback)
+                from .source_lead_analysis import features
+                target_calls=features([line.split('*/',1)[-1].strip() for line in (fn['asm'] or '').splitlines()], fresh['arch'])['calls']
+                variants = prepare_variants(reader, {**cfg,'_build_owned':bool(fork),'_target_calls':target_calls}, mapping, aliases, fallback)
                 if time.monotonic() >= deadline:
                     log_line(fn['name'] + ': source preparation used this round’s time allowance before compilation. Use a smaller coherent header before retrying.')
                     break
                 if not fork:
+                    from .cpu_source_context import variants as call_contexts
+                    from .source_lead_analysis import features
+                    target_calls=features([line.split('*/',1)[-1].strip() for line in (fn['asm'] or '').splitlines()], fresh['arch'])['calls']
+                    for body, context in list(variants)[:2]:
+                        for family,s,h in call_contexts(body,context,'',target_calls):
+                            pair=(s,h)
+                            if pair not in variants:
+                                variants.append(pair);reader.origins[pair]={**reader.origins[(body,context)],'family':family}
                     from .related_source_context import candidates as related_contexts
                     for body, context in list(variants):
                         for related in related_contexts(net, fresh, fn, body, context):
@@ -470,8 +500,8 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                     # Imported build files can change independently: retry on a new explicit pass/session.
                     from .permuter_inputs import build_state
                     state = (st.started_at, fresh['config'], build_state(fresh)) if fork else inputs(net, fresh, fn)
-                    digest = hashlib.sha256(repr((state, source, header, cfg)).encode()).hexdigest()
-                    cache_key = 'local-source-v5:' + digest
+                    from .cpu_source_recovery import pending, trial_key
+                    cache_key = trial_key(state,source,header,cfg)
                     lead=reader.origins.get((source,header),{'symbol':mapping[1],'file':mapping[2],'family':'original-context'})
                     if not fork:
                         from ..project import compiler_for
@@ -479,17 +509,22 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                         if rejected(net,fn,destination(net,fresh,fn),source,header,lead,compiler_for(json.loads(fresh['config']),fn['vram'])):
                             log_line(fn['name']+': retained rejected source lead; unchanged trial skipped.')
                             continue
-                    if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], cache_key):
+                    cached=net.store.one('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], cache_key)
+                    if cached:
                         if not fork:
-                            private_profiles(net, fresh, fn, source, header, st, report, log_line, budget, deadline, reader.origins.get((source,header)))
+                            from .cpu_source_recovery import extend
+                            extend(net,fresh,fn,variants,reader.origins,source,header,json.loads(cached['feedback'] or '{}').get('cpu',{}),lead)
+                            if not pending(net,fn,state,cfg,variants,reader.origins,(source,header)):
+                                private_profiles(net, fresh, fn, source, header, st, report, log_line, budget, deadline, reader.origins.get((source,header)))
                         continue
                     report['tested'] += 1
                     st.add(variants=1, repairs=1)
                     log_line(f'Preparing {fn["name"]} ({report["tested"]}/{budget})')
+                    measurement={}
                     with repair_trial({'kind': 'local source preparation', 'source_sha256': hashlib.sha256(source.encode()).hexdigest(),
                                        'header_sha256': hashlib.sha256(header.encode()).hexdigest()}):
                         try:
-                            score = attempt(permuter, fresh, fn, source, header, agent, fork, log_line, lead)
+                            score = attempt(permuter, fresh, fn, source, header, agent, fork, log_line, lead, measurement)
                         except NetworkError as exc:
                             if (str(exc).startswith('The function, header or build inputs changed') and not fork
                                     and not retried and not st.stop.is_set() and time.monotonic()<deadline
@@ -510,6 +545,9 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                                     db.execute('UPDATE reuse_trials SET feedback=? WHERE function_id=? AND signature=?',
                                                (json.dumps(trial_feedback(fresh,fn,source,header,error=str(exc))),fn['id'],cache_key))
                             continue
+                    if not fork and measurement:
+                        from .cpu_source_recovery import extend
+                        extend(net,fresh,fn,variants,reader.origins,source,header,measurement,lead)
                     if score is not None and (fn['best_score'] is None or score < fn['best_score']):
                         improved_source = True
                         report['improved'] += 1
@@ -517,13 +555,14 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                         if score == 0:
                             report['matched'] += 1
                             st.add(matched=1)
-                    if not fork and score is not None and fn['best_score'] is not None and score >= fn['best_score']:
+                    if (not fork and score is not None and fn['best_score'] is not None and score >= fn['best_score']
+                            and not pending(net,fn,state,cfg,variants,reader.origins,(source,header))):
                         private_profiles(net, fresh, fn, source, header, st, report, log_line, budget, deadline, lead)
                     with net.store.tx() as db:
                         db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
                                    (fn['id'], cache_key, str(score), 'local source preparation'))
                         db.execute('UPDATE reuse_trials SET feedback=? WHERE function_id=? AND signature=?',
-                                   (json.dumps(trial_feedback(fresh,fn,source,header,score)),fn['id'],cache_key))
+                                   (json.dumps(trial_feedback(fresh,fn,source,header,score,measurement=measurement)),fn['id'],cache_key))
             except (NetworkError, OSError, ValueError) as exc:
                 message = f'{fn["name"]}: {exc}'
                 report['errors'].append(message)
@@ -611,7 +650,7 @@ def private_profiles(net, proj, fn, source, header, st, report, log_line, budget
                            (fn['id'],key,'failed','private-context link failure',json.dumps({'category':'link_error','diagnostic':'; '.join(problems),'exact':False})))
             continue
         diff=scoring.diff(net._target_obj(fn,proj),candidate)
-        exact=bool(verdict if verdict is not None else diff.bytes_match)
+        exact=verdict is True
         score=0 if exact else max(1,diff.score)
         current=net.store.one('SELECT * FROM functions WHERE id=?',fn['id'])
         if inputs(net,net.project_row(proj['slug']),current)!=expected:return
@@ -626,10 +665,19 @@ def private_profiles(net, proj, fn, source, header, st, report, log_line, budget
             db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
                        (fn['id'],key,str(score),'private-context compiler probe; review required',json.dumps(evidence)))
         log_line(f"{fn['name']}: prepared context with {' '.join(flags)} scored {score}; private source/header/profile evidence saved for review. Working settings unchanged.")
-        if exact:return
+        if exact:
+            if settings(net,proj).get('auto_exact'):
+                from .prepared_evidence import promote_measured
+                agent,_=net.local_agent('autopilot')
+                if st.stop.is_set() or report['tested']>=budget or time.monotonic()>=deadline:return
+                report['tested']+=1;st.add(variants=1)
+                promote_measured(net,proj,fn,source,header,{'toolchain':own['toolchain'],'flags':flags},agent,expected)
+                report['matched']+=1;report['improved']+=1;st.add(matched=1,improved=1)
+                log_line(fn['name']+': exact private bundle reverified and saved automatically.')
+            return
 
 
-def trial_feedback(proj, fn, source, header, score=None, error=''):
+def trial_feedback(proj, fn, source, header, score=None, error='', measurement=None):
     """Precise local evidence so unchanged source/context/profile misses are not rediscovered."""
     from ..project import compiler_for
     own=compiler_for(json.loads(proj['config']),fn['vram'])
@@ -637,4 +685,4 @@ def trial_feedback(proj, fn, source, header, score=None, error=''):
             'header_sha256':hashlib.sha256(header.encode()).hexdigest(),
             'toolchain':own.get('toolchain'),'flags':own.get('flags',[]),'score':score,
             'category':('compile_or_link_error' if error else 'exact' if score==0 else 'scored_miss'),
-            'diagnostic':error[:2000],'exact':score==0}
+            'diagnostic':error[:2000],'exact':score==0,'cpu':measurement or {}}
