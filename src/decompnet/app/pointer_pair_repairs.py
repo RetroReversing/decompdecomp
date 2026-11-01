@@ -59,6 +59,7 @@ def context(source,name,header):
     part=view(source,name)
     if not part or re.search(r'\b(?:volatile|asm|__asm__|setjmp|longjmp)\b',part.clean):return None,[],{}
     combined=_blank(header)+'\n'+part.clean
+    if re.search(r'::|\b(?:class|template|namespace)\b',combined):return None,[],{}
     qualified=qualified_types(combined)
     active=part.clean[max(part.clean.rfind(ch,0,part.opening) for ch in ';{}')+1:part.end]
     if qualified & set(re.findall(IDENT,active)):return None,[],{}
@@ -162,7 +163,9 @@ def call_stages(source,name,header=''):
     # Only one unambiguous direct prototype returning an explicitly spelled pointer.
     prototypes={}
     prefix=_blank(header)+'\n'+part.clean[:part.opening]
-    for hit in re.finditer(rf'(?<![\w*])((?:struct\s+)?{IDENT}\s*\*+)\s*({IDENT})\s*\(([^;{{}}()]*)\)\s*;',prefix):
+    base=rf'(?:(?:unsigned|signed)\s+(?:char|short|int|long(?:\s+long)?)|long\s+long|(?:struct\s+)?{IDENT})'
+    pointer=rf'(?:(?:const|volatile)\s+)*{base}\s*\*+'
+    for hit in re.finditer(rf'(?:^|(?<=[;{{}}]))\s*(?:(?:extern|static)\s+)?({pointer})\s*({IDENT})\s*\(([^;{{}}()]*)\)\s*;',prefix):
         prototypes.setdefault(hit[2],[]).append(hit[1])
     flow=local_flow.analyze(source,name,declarations=ds)
     if not flow:return []

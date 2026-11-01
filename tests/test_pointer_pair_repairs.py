@@ -168,3 +168,18 @@ def test_one_line_declarations_do_not_become_part_of_the_repaired_definition():
     for _,candidate in field_order_repairs.variants(source,'work'):
         assert candidate[:start]==source[:start]
     assert field_order_repairs.variants(source,'work')
+
+
+def test_pointer_call_staging_does_not_drop_return_qualifiers_or_unsigned_types():
+    source=CALL.replace('void *take(void);','const void *take(void);')
+    candidates=repairs.call_stages(source,'work')
+    assert candidates and all('const void * __repair_pointer_call;' in text for _,text in candidates)
+    source=CALL.replace('void *take(void);','unsigned char *take(void);')
+    candidates=repairs.call_stages(source,'work')
+    assert candidates and all('unsigned char * __repair_pointer_call;' in text for _,text in candidates)
+
+
+def test_cpp_header_types_are_not_assumed_to_have_builtin_c_semantics():
+    header='class Value { public: volatile int field; };'
+    assert not repairs.variants(CALL,'work',header)
+    assert not field_order_repairs.variants(HEADER+'void work(Pair *p,int x,int y) { p->a=x; p->b=y; }','work',header)

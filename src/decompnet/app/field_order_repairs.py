@@ -12,6 +12,7 @@ def variants(source,name,header=''):
     part=view(source,name)
     if not part or re.search(r'\b(?:volatile|asm|__asm__)\b',part.clean):return []
     context=_blank(header)+'\n'+part.clean
+    if re.search(r'::|\b(?:class|template|namespace)\b',context):return []
     qualified=qualified_types(context)
     if qualified & set(re.findall(IDENT,part.clean[find(source,name)[0]:part.end])):return []
     records={}

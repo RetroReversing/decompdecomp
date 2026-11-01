@@ -857,6 +857,10 @@ judge against copied targets. Source/header hashes and target hashes were checke
   has no proven alias relationship to the destination. The automatic field-order family leaves
   this case alone, rather than treating an exact historical edit as a general alias proof.
 
+Against the existing narrow follow-up module, the word-zero-test control already recovered,
+while the pointer-load and pointer-call controls did not. This comparison is not an exhaustive
+baseline against every existing family.
+
 These are recoveries of previously solved captures, not new game progress. Single pointer
 repairs are prioritised before a bounded declaration-order cross product. Typed pointer reuse
 requires CFG liveness, definite initialization and unescaped storage. Store-order trials require
