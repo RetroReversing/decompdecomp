@@ -1118,7 +1118,7 @@ This test demonstrates search coverage, not an additional game match. Exact reva
 compiler-setting approval gates remain unchanged.
 
 A subsequent ten-candidate source-assisted live-API batch passed ten byte judgments
-(4,424 function bytes): nine at IDO 5.3 `-O3` and one model selector at `-O2`, with
+(4,424 function bytes): eight at IDO 5.3 `-O3` and the scheduler/model selector at `-O2`, with
 `-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul`. The batch is manual evidence;
 none of these matches is attributed to the new diagnostics automatically fixing code.
 
