@@ -444,3 +444,12 @@ def test_rewrite_metrics_merge_sort_and_csv_round_trip():
     assert rows[1]['timing_coverage'] == 'partial'
     assert rows[1]['mean_ms'] == '125'
     assert rows[1]['project'] == 'example' and rows[1]['build'] == 'abc123'
+
+
+def test_manual_mcp_panel_is_a_collapsed_native_disclosure():
+    html = (Path(__file__).parent.parent / 'src/decompnet/app/static/index.html').read_text()
+    start = html.index('<details class="panel manual-mcp settings-disclosure"')
+    panel = html[start:html.index('<div class="cols ag-cols">', start)]
+    assert 'open' not in panel.split('>', 1)[0]
+    assert '<summary class="panel-head"><h2 id="mcpHeading">Connect another AI tool with MCP</h2></summary>' in panel
+    assert 'id="mcpCreate"' in panel and panel.rstrip().endswith('</details>')

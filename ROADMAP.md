@@ -1417,3 +1417,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Done: metrics CSV export saves through the private app API to Downloads with a visible saved path or error, avoiding embedded-webview Blob downloads. Recent deep-search cards distinguish completed turns from active workers and expose failure reasons.
 
 - Done: agent improvement lists correctly convert match ratios to percentages and label the current total match explicitly, distinguishing it from the agent’s historical improvement.
+
+- Done: manual MCP connection setup is collapsed by default in Agents & models, using the shared keyboard-accessible disclosure styling.
