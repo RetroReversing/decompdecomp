@@ -2955,16 +2955,16 @@ class ForkEngine:
                 return {"text": f"❌ REJECTED and undone: {unit.source} is linked into the game, and with your change "
                                 f"the game no longer builds byte for byte:\n{_tail(ok[1])}", "score": None,
                         "matched": False}
-            from ..source_lines import render as render_source_lines
+            from ..source_lines import render_candidate
             mapped, mapped_source = self._source_mismatches(fp, unit, fn, d.rows)
-            line_note = render_source_lines(mapped, mapped_source)
+            line_note = render_candidate(mapped, mapped_source, source)
             pct = d.match_percent if d.match_percent is not None else 0.0
             score = max(1, len(d.literals)) if d.literals else scaled(pct, fn["n_insns"])
             matched = d.matched
             if diagnostic:
                 undo()
                 return {'text': ('MATCH! diagnostic only' if matched else f'score {score} ({pct:.1f}%)')+'; source restored.',
-                        'score':score,'matched':matched,'percent':pct,'rows':d.rows}
+                        'score':score,'matched':matched,'percent':pct,'rows':d.rows,'line_note':line_note}
             if not matched and not keep and not was_matched:  # tried, not kept: the file stays as it was
                 undo()
                 if quiet is None or score < quiet:

@@ -1,5 +1,9 @@
 # Roadmap
 
+Implemented: startup claim packets and get_candidate include bounded C-line mismatch evidence for the exact
+candidate/build; compact compile feedback retains it. Uses cached baseline builds and unchanged compiler flags.
+Missing/unsupported line tables remain explicitly unavailable; mappings are advisory associations, not causes.
+
 Implemented: function notes can be removed, managed-agent session notes append to one handoff, and saved
 score evidence shows the session’s score reduction. Legacy notes are grouped only with session evidence;
 remote workers without local helper-session history retain separate notes and unavailable score attribution.

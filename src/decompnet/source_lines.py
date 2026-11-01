@@ -185,3 +185,32 @@ def render(info, source, limit=8):
     if info['unmapped']:
         text.append(f"  {info['unmapped']} differences have no compiled C location (including target-only instructions).")
     return '\n'.join(text)
+
+
+def feedback_note(text):
+    """Retain bounded source locations when compact tool feedback replaces the assembly listing."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith('C-line mapping unavailable'):
+            return '\n' + line
+        if line.startswith('Compiled C lines associated with differences'):
+            selected = [line]
+            for following in lines[index + 1:]:
+                if not following.startswith('  '):
+                    break
+                selected.append(following)
+            return '\n' + '\n'.join(selected)
+    return ''
+
+
+def render_candidate(info, mapped_source, candidate, limit=4):
+    """Translate a project function fragment to the exact submitted C, including preceding declarations."""
+    if not info['available']:
+        return render(info, candidate, limit=limit)
+    fragment = mapped_source.rstrip()
+    at = candidate.find(fragment) if fragment else -1
+    if at < 0 or candidate.find(fragment, at + 1) >= 0:
+        return '\nC-line mapping unavailable for this candidate source; no line locations inferred.'
+    offset = candidate[:at].count('\n')
+    mapped = {**info, 'lines': [{**line, 'line': line['line'] + offset} for line in info['lines']]}
+    return render(mapped, candidate, limit=limit)

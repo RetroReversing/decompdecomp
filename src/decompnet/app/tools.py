@@ -651,7 +651,7 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
 
     @tool
     async def get_candidate(ctx: Context, function: str) -> str:
-        """Read your current candidate C and revision for compile_patch, without assembly or notes."""
+        """Read your current candidate C/revision and bounded advisory C-line mismatch locations, when compiler debug information is available. No full assembly listing or historical notes."""
         return await run(ctx, 'get_candidate', function=function)
 
     @tool
