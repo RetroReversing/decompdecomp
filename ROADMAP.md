@@ -1155,3 +1155,8 @@ headers, symbol maps and compiler profiles are not changed by these local hypoth
   Original bit-pattern object initializers remain verbatim; extraction rejects call expressions posing as definitions.
   Imported builds keep their own headers/settings: automatic SDK replacement there is **—**, requires their
   build system's existing header compatibility workflow. SDK-version identity remains advisory, not inferred fact.
+
+Agent work selection now explains every strategy in the dropdown and selected-option help. The shared
+`no_compiling_c` strategy restricts automatic and named new claims to open functions with neither a scored
+candidate nor a recorded successful compilation, in both project modes; existing claims continue normally.
+This is historical compile evidence, not a fresh build preflight or a claim that the function cannot compile.

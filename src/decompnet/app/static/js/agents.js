@@ -279,6 +279,7 @@ function renderSessions(sessions) {
   box.querySelectorAll("[data-queue]").forEach((b) => { b.onclick = () => {
     const s = sessions.find((x) => x.id === b.dataset.queue);
     const panel = dialog(`Work selection · ${s.label}`, `${s.task === "readable" ? "" : selectionFields(s.selection)}<label class="field"><span>Functions per session</span><input data-session-size type="number" min="1" max="20" value="${s.per_session || 8}"></label><p class="muted small">Session size changes apply at the next session. The current function stays with its agent.</p><button class="primary" data-save-selection>Save</button><button class="ghost" data-cancel-selection>Cancel</button>`);
+    panel.addEventListener("change", () => updateSelectionDescription(panel));
     panel.querySelector("[data-cancel-selection]").onclick = closeDialog;
     panel.querySelector("[data-save-selection]").onclick = async () => {
       try {
@@ -352,12 +353,26 @@ $("removePaused").onclick = async () => {
 /* ------------------------------------------------------------------ the launcher: agent, model, how many */
 const LZ = { kind: null, model: "", customModel: false, apiSingleModel: null, apiCustomModel: "", models: [],
   multiple: false, endpointModels: {}, byKind: {}, count: 1, per: null, effort: "", task: "", selection: {} };
-const QUEUE_STRATEGIES = [["", "Automatic (recommended)"], ["easiest", "Easiest first"],
-  ["oldest_checked", "Oldest checked first"], ["least_tried", "Least tried first"], ["untried", "Untried first"], ["hardest", "Largest first"], ["closest", "Closest to matching"],
-  ["finish", "Finish source files"], ["random", "Random"]];
+const QUEUE_STRATEGIES = [
+  ["", "Automatic (recommended)", "Uses default/adaptive routing: easiest for ROM projects, finish source files for imported projects."],
+  ["easiest", "Easiest first", "Favours reusable matches and smaller functions; deprioritises abandoned functions and poorly performing regions."],
+  ["oldest_checked", "Oldest checked first", "Longest time since the last recorded attempt; never checked comes first."],
+  ["least_tried", "Least tried first", "Fewest recorded attempts first, then smaller functions."],
+  ["untried", "Untried first", "Zero-attempt functions first, favouring smaller functions; already-tried functions can follow."],
+  ["no_compiling_c", "No compiling C yet", "Only functions without a recorded successful C compilation or scored candidate. Includes never-tried functions and compile failures; stops when none remain."],
+  ["hardest", "Largest first", "Most instructions first. Size does not necessarily mean difficulty."],
+  ["closest", "Closest to matching", "Scored candidates first; fewer abandonments, then the smallest mismatch relative to function size."],
+  ["finish", "Finish source files", "Favours reusable matches, fewer abandonments and smaller functions; among similar sizes, files with fewer unmatched functions come first."],
+  ["random", "Random", "Random eligible function. Your filters, active claims and dependency rules still apply."]
+];
+function updateSelectionDescription(box) {
+  const select = box.querySelector('[data-selection-strategy]'), hint = box.querySelector('[data-selection-description]');
+  if (select && hint) hint.textContent = QUEUE_STRATEGIES.find(([value]) => value === select.value)?.[2] || '';
+}
 function selectionFields(policy = {}) {
-  return `<label class="field"><span>Next function</span><select data-selection-strategy>${QUEUE_STRATEGIES.map(([v, label]) =>
-    `<option value="${v}" ${(policy.strategy || "") === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+  return `<label class="field"><span>Next function</span><select data-selection-strategy>${QUEUE_STRATEGIES.map(([v, label, description]) =>
+    `<option value="${v}" ${(policy.strategy || "") === v ? "selected" : ""}> ${esc(label)} — ${esc(description)}</option>`).join("")}</select></label>
+    <p class="small muted" data-selection-description aria-live="polite">${esc(QUEUE_STRATEGIES.find(([v]) => v === (policy.strategy || ""))?.[2] || "")}</p>
     <label class="check"><input data-selection-model-untried type="checkbox" ${policy.model_untried ? "checked" : ""}><span>Only functions never checked by this model</span></label>
     <p class="small muted">Uses recorded model IDs across workers and sessions, ignoring effort suffixes. Requires an explicit model. Candidate submissions count, including compile errors; claims alone do not. Unknown historical model usage cannot be reconstructed. Oldest checked first puts never-checked functions first.</p>
     <label class="field"><span>Only functions below match % (optional)</span><input data-selection-below type="number" min="0" max="100" step="any" placeholder="No limit" value="${esc(policy.match_below ?? "")}"></label>
@@ -576,6 +591,7 @@ function renderLauncher(box, compact = true) {
     </div>`;
   const selectionBox = box.querySelector("[data-launch-selection]");
   if (selectionBox) selectionBox.onchange = () => {
+    updateSelectionDescription(selectionBox);
     try { LZ.selection = readSelection(selectionBox); } catch (e) { toast(esc(e.message), "err"); }
   };
   wireCopies(box);
