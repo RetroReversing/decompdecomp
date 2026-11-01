@@ -461,8 +461,31 @@ class ForkProject:
             log("compiling every source file, so objdiff can measure each one (some work in progress may not compile)")
             self.build_all(log=log)
         if not (self.root / "objdiff.json").exists():
+            self.generate_objdiff(log=log)
+        if not (self.root / "objdiff.json").exists():
             raise ForkError("the project built, but has no objdiff.json, so decompdecomp can't measure matches. "
                             "Some projects generate it with an extra step; check the README.")
+
+    def generate_objdiff(self, log=print) -> bool:
+        """Create missing, ROM-verified references for a supported Splat layout."""
+        if (self.root / "objdiff.json").exists():
+            return False
+        path = self._splat_yaml()
+        if path is None:
+            return False
+        import yaml
+        from elftools.common.exceptions import ELFError
+
+        from .. import consoles, toolchains
+
+        try:
+            config = yaml.safe_load(path.read_text(encoding="utf-8"))
+            if not isinstance(config, dict) or not isinstance(config.get("options"), dict):
+                raise ForkError("automatic objdiff setup needs a supported Splat configuration")
+            return consoles.get(config["options"].get("platform")).generate_objdiff(self, path, config, log=log)
+        except (OSError, ValueError, ELFError, yaml.YAMLError, subprocess.TimeoutExpired,
+                toolchains.ToolchainError) as error:
+            raise ForkError(f"automatic objdiff setup could not finish: {error}. Check the project's setup manually.") from None
 
     def build_problem(self) -> str | None:
         """Why the project's build can't run on this computer as it is, or None: no objdiff.json, or a program the
