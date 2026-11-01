@@ -37,12 +37,14 @@ def rewrite_evidence(evidence):
             'direct':direct,'note':'Replay still required; the final rewrite name alone does not isolate a cause.'}
 
 
-def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_cancel=lambda:None, progress=lambda value:None, minimize=False, diagnostics=False, ablation_only=False):
+def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_cancel=lambda:None, progress=lambda value:None, minimize=False, diagnostics=False, ablation_only=False, combinations=False):
     """Replay one frozen case; injectable measurement permits the same runner with a copied project judge."""
     if not 1 <= trials <= 128 or not 1 <= seconds <= 600:
         raise ValueError('Use 1–128 trials and 1–600 seconds per example.')
-    if not isinstance(minimize,bool) or not isinstance(diagnostics,bool):
+    if not isinstance(minimize,bool) or not isinstance(diagnostics,bool) or not isinstance(combinations,bool):
         raise ValueError('Replay analysis switches must be booleans.')
+    if minimize and combinations:
+        raise ValueError('Choose either edit minimization or combination benchmarking for this run.')
     evidence = example['evidence']
     report = {'id':example.get('id'), 'function':evidence['function'], 'trials':[], 'summary':{},
               'rewrite_evidence':rewrite_evidence(evidence)}
@@ -82,7 +84,8 @@ def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_ca
             from .compiler_diagnostics import allocated_output
             data = allocated_output(result.obj)
             return {'object':obj,'data':data,'raw_obj':result.obj} if obj else {'error':'Compiled object does not define the captured function.'}
-    deadline = time.monotonic()+seconds
+    started = time.monotonic()
+    deadline = started+seconds
     check_cancel()
     baseline = measure(before['source'])
     check_cancel()
@@ -124,6 +127,28 @@ def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_ca
             counts[outcome] += 1
     if ablation_only:
         return report | {'summary':dict(counts),'remaining':0}
+    if combinations and not minimize:
+        from . import repair_benchmark
+        def evaluate(source):
+            measured = baseline if source == before['source'] else measure(source)
+            if measured.get('error'):
+                return {'score': None, 'matched': False, 'outcome': 'compile_error'}
+            obj = measured['object']
+            diff = scoring.diff(target, obj)
+            exact = obj.fingerprint() == target.fingerprint() and measured.get('data') == control.get('data')
+            return {'score': diff.score, 'rows': diff.rows, 'matched': exact,
+                    'candidate_target': repr((obj.fingerprint(), measured.get('data'))),
+                    'outcome': 'control_output_recovered' if exact else 'improved' if diff.score < baseline_score
+                    else 'neutral' if diff.score == baseline_score else 'regressed'}
+        def generate(source):
+            labels = {}
+            candidates = draft_repairs.variants(source, name, platform.arch, evidence.get('target_asm') or '',
+                                                profile.get('flags', []), labels, limit=None, header=after['header'])
+            return [(labels.get(c, 'source_shape'), c) for c in candidates]
+        result = repair_benchmark.run(before['source'], baseline_score, evaluate, generate, trials=trials,
+                                      deadline=deadline, check_cancel=check_cancel, progress=progress)
+        return report | result | {'control_compiles': 2, 'search_mode': 'bounded_combinations',
+                                  'elapsed_seconds': time.monotonic()-started}
     labels = {}
     candidates = draft_repairs.variants(before['source'],name,platform.arch,evidence.get('target_asm') or '',
                                         profile.get('flags',[]),labels,limit=None,header=after['header'])
@@ -151,7 +176,10 @@ def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_ca
             counts[row['outcome']] += 1
             report['trials'].append(row)
             progress({'tested':len(report['trials']),'budget':trials,'family':family,'outcome':row['outcome']})
-    report.update(summary=dict(counts), remaining=sum(map(len,pools.values())))
+    report.update(summary=dict(counts), remaining=sum(map(len,pools.values())),
+                  elapsed_seconds=time.monotonic()-started, search_mode='single_step', control_compiles=2,
+                  candidate_compiles=sum(counts[k] for k in ('compile_error','control_output_recovered','improved','neutral','regressed')),
+                  first_exact_trial=next((i+1 for i,r in enumerate(report['trials']) if r['outcome']=='control_output_recovered'),None))
     return report
 
 
@@ -165,6 +193,7 @@ def main():
     parser.add_argument('--seconds',type=int,default=120)
     parser.add_argument('--minimize',action='store_true',help='Use up to half the trial budget to revert captured edits while preserving the full allocated control output.')
     parser.add_argument('--diagnostics',action='store_true',help='Opt in to two additional native GCC runs and a bounded phase summary; no tool downloads.')
+    parser.add_argument('--combinations',action='store_true',help='Benchmark bounded multi-step repairs, stopping at control-output recovery; reports compiles, path and elapsed time.')
     args = parser.parse_args()
     if not 1 <= args.limit <= 100:
         parser.error('Use --limit 1–100.')
@@ -175,7 +204,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='decomp-repair-replay-') as root:
         for case in selected:
             try:
-                results.append(replay(case,trials=args.trials,seconds=args.seconds,root=root,minimize=args.minimize,diagnostics=args.diagnostics))
+                results.append(replay(case,trials=args.trials,seconds=args.seconds,root=root,minimize=args.minimize,diagnostics=args.diagnostics,combinations=args.combinations))
             except (ValueError,KeyError,OSError,toolchains.ToolchainError) as error:
                 results.append({'id':case.get('id'),'skipped':str(error)[:500]})
     args.output.write_text(json.dumps({'schema_version':1,'examples':results},indent=2)+'\n')

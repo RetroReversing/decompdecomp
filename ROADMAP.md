@@ -1569,3 +1569,12 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Planned: validate these source families on non-MIPS compiler adapters before enabling them.
   Imported projects share MIPS source repairs but retain build-owned compiler settings;
   automatic standalone profile adoption is ROM-only.
+
+- Done: bounded repair combinations retain equal-score deep-search alternatives, scoped cached
+  local diff evidence and family paths. The optional iterative phase persists paths and gives
+  measured structure gains a limited follow-up burst without dropping pending work. Correct-region
+  damage ranks structural alternatives without excluding the numeric winner or changing the judge.
+- Done: Repair examples can benchmark multi-step frozen-control recovery, reporting compiles,
+  elapsed time, first recovery and family path. Deep activity and iterative notes report bounded
+  exhaustion/budgets and failed or pruned work. Imported standalone replay still requires a copied
+  build adapter; live imported deep search uses its existing normal judge.

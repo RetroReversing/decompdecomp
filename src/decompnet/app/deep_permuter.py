@@ -79,6 +79,7 @@ class Search(Permuter):
         self.current_family = ''
         self.last_outcome = ''
         self.last_score = None
+        self.local_status = {}
         self.allowance = search_turns.Allowance(minutes*60,time.monotonic()) if getattr(log,"adaptive_budget",False) else None
 
     def _hold(self, agent, fn, **kwargs):
@@ -144,8 +145,10 @@ class Search(Permuter):
             raise SearchLimit('Time limit reached')
         if self.allowance and (reason := self.allowance.reason(time.monotonic())):
             raise SearchLimit(reason)
-        if self.tested >= self.limit or self.visited >= self.limit*20:
+        if self.tested >= self.limit:
             raise SearchLimit('Variant limit reached')
+        if self.visited >= self.limit*20:
+            raise SearchLimit('Cached/rejected visit limit reached')
 
     def metrics(self):
         """Use the ordinary score scale; a near miss must never round up to a displayed 100%."""
@@ -154,7 +157,8 @@ class Search(Permuter):
                 return None
             return 100.0 if score == 0 else min(99.9, int(max(0, 100*(1-score/self.max_score))*10)/10)
         return {'starting_score': self.starting_score, 'starting_percent': percent(self.starting_score),
-                'best_score': self.best, 'best_percent': percent(self.best), 'improvements': self.improvements}
+                'best_score': self.best, 'best_percent': percent(self.best), 'improvements': self.improvements,
+                'local_search': self.local_status}
 
     def report(self):
         if self.best is not None and (self.recorded_best is None or self.best < self.recorded_best):
@@ -295,8 +299,16 @@ class Search(Permuter):
         initial_rows = self.winner_diff[0] if self.winner_diff else repair_ranking.evidence(self.net,fn['id'],agent.id)
         source_rows = {source:initial_rows}
         lineage = repair_sequences.Lineage(self.net,proj,fn,source,initial_rows)
+        expanded = set()
+        counters = {'compile_failed': 0, 'frontier_pruned': 0, 'depth_limit': 0}
+        self.local_status = {'reason': 'searching', **counters}
         while best > 0:
             self.check()
+            path = lineage.paths.get(source, [])
+            if len(path) >= repair_sequences.MAX_STEPS:
+                counters['depth_limit'] += 1
+                break
+            expanded.add(source)
             self.local_seen.add(source)
             rows = source_rows.get(source,[])
             labels = {}
@@ -325,19 +337,29 @@ class Search(Permuter):
                 if candidate in self.local_seen:
                     continue
                 if max_trials is not None and trials >= max_trials:
+                    self.local_status = {'reason': 'burst_budget', **counters}
+                    self.log(f'Local search paused at its burst budget; {trials} proposals visited.')
                     return best, self.net._function(fn['name'], proj['slug'])['best_source']
                 self.local_seen.add(candidate)
                 trials += 1
                 self._parent_rows = rows
                 try:
                     with repair_trial({'kind': 'deep local repair', 'family': labels.get(candidate, 'local_repair'),
+                                       'lineage': path+[labels.get(candidate, 'local_repair')],
                                        'base_source_sha256': hashlib.sha256(source.encode()).hexdigest()}):
                         score = self._score(agent, proj, fn, candidate, best, fork)
                 finally:
                     del self._parent_rows
-                if score is not None and best < score <= best * 1.25 and not getattr(self, '_trial_reused', False):
-                    measured_rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
-                    alternatives.offer(candidate, score, measured_rows, arch=proj['arch'], baseline=rows)
+                if score is None:
+                    counters['compile_failed'] += 1
+                if score is not None and best <= score <= best * 1.25:
+                    measured_rows = (self._cached_rows if getattr(self, '_trial_reused', False)
+                                     else repair_ranking.evidence(self.net, fn['id'], agent.id))
+                    if getattr(self, '_trial_reused', False) and not measured_rows:
+                        continue
+                    alternatives.offer(candidate, score, measured_rows, arch=proj['arch'], baseline=rows, baseline_score=best)
+                    if not any(n['source'] == candidate for n in alternatives.nodes):
+                        counters['frontier_pruned'] += 1
                     source_rows[candidate] = measured_rows
                     lineage.retain(source,candidate,labels.get(candidate,'local_repair'))
                 if score is not None and score < best:
@@ -357,6 +379,7 @@ class Search(Permuter):
                         alternatives = search_frontier.Frontier()
                         detours_used.clear()
                         source_rows = {source:[]}
+                        expanded.clear()
                         lineage = repair_sequences.Lineage(self.net,proj,fn,source,[])
                         self.winner_diff = None
                     break
@@ -366,12 +389,16 @@ class Search(Permuter):
                 # Local trials are already in local_seen; allow each retained source one expansion.
                 if detour is None:
                     detour = next((node for node in alternatives.nodes if node['source'] not in detours_used), None)
-                if detour and len(detours_used) < 3:
+                if detour and len(detours_used) < 3 and detour['source'] not in expanded:
                     detours_used.add(detour['source'])
                     source = detour['source']
-                    self.log('Trying a retained instruction-shape alternative; saved best C is unchanged.')
+                    self.log('Trying a bounded repair combination on a retained alternative; saved best C is unchanged.')
                     continue
                 break
+        self.local_status = {'reason': 'matched' if best == 0 else 'depth_limit' if counters['depth_limit']
+                             else 'supported_variants_exhausted', **counters}
+        self.log(f"Local search: {self.local_status['reason']}; {trials} proposals visited; "
+                 f"{counters['compile_failed']} failed/unscored trials; {counters['frontier_pruned']} alternatives pruned by frontier bounds.")
         return best, self.net._function(fn['name'], proj['slug'])['best_source']
 
     def _after_improvement(self, agent, proj, fn, state, fork, best, source):
@@ -413,7 +440,9 @@ class Search(Permuter):
         scope = agent_tokens.target_scope(self.net, {**dict(fn), 'best_source': source}, '')
         key = 'deep-v1:'+hashlib.sha256((scope+source).encode()).hexdigest()
         cached = self.net.store.one('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], key)
-        score = json.loads(cached['feedback']) if cached and cached['feedback'] else None
+        feedback = json.loads(cached['feedback']) if cached and cached['feedback'] else None
+        score = feedback.get('score') if isinstance(feedback, dict) else feedback
+        self._cached_rows = feedback.get('rows', []) if isinstance(feedback, dict) else []
         reused = not self.measuring_baseline and isinstance(score, int) and score >= best
         self._trial_reused = reused
         elapsed_ms = 0
@@ -439,9 +468,16 @@ class Search(Permuter):
             if not self.measuring_baseline and getattr(self, '_trial_outcome', '') != 'no_edit':
                 adaptive_repairs.record(self.net, policy_profile, policy_focus, self.current_family, best, score, elapsed_ms, origin="deep permuter")
             if score is not None and score > 0:
+                provenance = current_trial() or {}
+                own = getattr(self.net, '_last_diffs', {}).get((agent.id, fn['id']))
+                # Only a local near-miss needs diff rows to resume its second edge. Random
+                # trials keep their compact score cache; do not grow it by a full diff per compile.
+                feedback = ({'score': score, 'rows': own[0]} if own and provenance.get('kind') == 'deep local repair'
+                            and best <= score <= best*1.25 else score)
                 with self.net.store.tx() as db:
                     db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
-                               (fn['id'], key, 'miss', 'deep function search', json.dumps(score)))
+                               (fn['id'], key, 'miss', 'deep function search; path: '+ ' → '.join((current_trial() or {}).get('lineage', [])),
+                                json.dumps(feedback)))
         if not self.measuring_baseline:
             self.recipe(fn, source, best, score, 'skipped' if reused else 'tested', elapsed_ms)
             if self.tested and self.tested % 100 == 0 and not reused:
@@ -553,6 +589,8 @@ def run(net, slug, name, minutes, max_variants, log):
                     reason = 'Time limit reached'
     except SearchLimit as error:
         reason = str(error)
+        if search.local_status.get('reason') == 'searching':
+            search.local_status['reason'] = reason
     except NetworkError as error:
         reason = f'Stopped: {error}'
         raise
