@@ -70,9 +70,12 @@ def register(app):
                 if not isinstance(source, str) or not source.strip() or len(source.encode()) > 128*1024:
                     raise ValueError('Submit nonempty C source up to 128 KiB.')
                 validate_source(source)
+                variant_id=body.get('variantId')
+                if variant_id is not None and (not isinstance(variant_id, str) or len(variant_id)>64):
+                    raise ValueError('Choose a host compiler variation.')
                 task = bridge.consume(key, session, str(body.get('taskId') or ''))
                 try:
-                    jid = app.jobs.start('browser-check', lambda log: bridge.submit(key, session, task, source))
+                    jid = app.jobs.start('browser-check', lambda log: bridge.submit(key, session, task, source, variant_id))
                 except Exception:
                     session['busy'] = False
                     raise
