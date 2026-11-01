@@ -204,3 +204,21 @@ def test_conditional_definitions_select_configured_branch_and_duplicate_active_d
     (tmp_path / 'game.c').write_text('int original(void){return 1;}\nint original(void){return 2;}')
     with pytest.raises(NetworkError, match='More than one definition'):
         prep.prepare(prep.Reader(cfg), cfg, prep.mappings(cfg['mappings'])[0], {}, '')
+
+
+def test_reference_preserves_reached_same_file_graphics_style_macros(tmp_path):
+    cfg = config(tmp_path)
+    (tmp_path/'types.h').write_text('typedef struct { unsigned w0,w1; } Packet;\n')
+    original = '#define WORD 0x1234\n#define PUSH(p) do { \\\n Packet *q=(p); q->w0=WORD; q->w1=1; \\\n} while(0)\nvoid original(Packet *p) { PUSH(p++); }\n'
+    (tmp_path/'game.c').write_text(original)
+    source, header = prep.prepare(prep.Reader(cfg),cfg,prep.mappings(cfg['mappings'])[0],{'original':'f'},'')
+    assert 'PUSH(p++)' in source and source.count('p++')==1
+    assert '#define PUSH(p) do { \\\n' in header and '#define WORD 0x1234' in header
+    assert 'Packet *q=(p); q->w0=WORD; q->w1=1;' in header
+
+
+def test_declarations_does_not_strip_graphics_macro_braces():
+    text = '#define COMMAND(p) { Packet *q=(p); q->word=1; }\nvoid real(void) { execute(); }\n'
+    declarations = prep.declarations(text)
+    assert '#define COMMAND(p) { Packet *q=(p); q->word=1; }' in declarations
+    assert 'execute();' not in declarations

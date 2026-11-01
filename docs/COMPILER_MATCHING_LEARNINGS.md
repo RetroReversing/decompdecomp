@@ -766,6 +766,24 @@ advisory tie-breaker. The iterative beam's allowance of two source shapes with i
 output applies at each depth rather than being consumed across the whole search. Width, depth,
 compile/time budgets, exact-output evidence and normal linked-byte acceptance remain mandatory.
 
+### Same-width zero-test reuse and pointer-return staging
+
+Recent same-settings KMC GCC 2.7.2 captures (`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`) motivated two bounded
+hypotheses: reuse an unused signed/unsigned 32-bit local only for a copied pre-decrement value's zero test;
+and stage a nested no-argument call only with an actual pointer-return prototype and an unused pointer local.
+The latter capture also moved declarations, so staging alone is not claimed to be the sole cause.
+Synthetic pinned KMC `-O2` controls verify generated function bytes. These controls are not new game matches.
+Macro calls and qualified code are excluded from staging; no pointer return type is inferred.
+
+Source-assisted aggregate-parameter, whole-struct snapshot and graphics-macro findings remain reference
+context evidence. Preserve real source/header pairs and macro single-evaluation shapes; do not synthesize
+aggregate layouts or flatten side-effecting macro invocations into presumed equivalent stores.
+
+Private isolated replay of the zero-test capture recovered its recorded successful compiler output using
+`word_zero_test_reuse`. The pointer-call capture was not recovered by staging alone within the sampled
+budget and remains unresolved. Both results are replay evidence against recorded controls, not new ROM
+matches or claims that the complete historical edit has been automated.
+
 ### Prepared context may need flags before it improves
 
 A source-assisted MIPS/IDO session found original typed candidates that were worse under the working

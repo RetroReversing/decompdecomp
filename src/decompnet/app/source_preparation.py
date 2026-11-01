@@ -180,7 +180,7 @@ def rename(text, aliases):
 
 def declarations(text):
     """Remove function bodies without collapsing their original line breaks. This is deliberately conservative."""
-    clean, out, start, depth, at = csource._blank(text), [], None, 0, 0
+    clean, out, start, depth, at = csource._code_only(text), [], None, 0, 0
     for i, char in enumerate(clean):
         if char == '{':
             if depth == 0 and clean[:i].rstrip().endswith(')'):
@@ -228,17 +228,16 @@ def prepare(reader, cfg, mapping, aliases, fallback):
     header += '\n' + referenced(original, body, header)
     from .source_context import compatibility, helpers, prototypes
     reader.advisories.extend(compatibility(original, body, header))
+    from .source_match_context import aggregate_hints
+    reader.advisories.extend(aggregate_hints(body, symbol, header))
     helper_context=helpers(reader, cfg, body, header, macros)
     header += helper_context
+    from .source_match_context import macro_context
+    header += macro_context(original, body+helper_context, header)
     header += prototypes(original, body, header, symbol)
     selected = []
-    used=set(re.findall(_IDENT,source+helper_context))
-    # Follow only macros reached by this candidate, rather than pulling every header global in.
-    for _ in range(8):
-        before=len(used)
-        for macro in re.finditer(r'^\s*#\s*define\s+('+_IDENT+r')\b([^\n]*)',header,re.M):
-            if macro[1] in used:used.update(re.findall(_IDENT,macro[2]))
-        if len(used)==before:break
+    from .source_match_context import dependencies
+    used = dependencies(source+helper_context, header)
     for name, file in source_definitions.mappings(cfg.get('definitions', '')):
         if name not in used and aliases.get(name,name) not in used:
             continue

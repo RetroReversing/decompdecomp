@@ -36,6 +36,7 @@ from . import (
     local_widening_repairs,
     local_width_repairs,
     masked_reuse_repairs,
+    match_followup_repairs,
     mmio_repairs,
     near_match_repairs,
     near_repairs,
@@ -98,6 +99,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
         proposals.append(text)
         labels[text]=family
     for family, text in call_lifetime_repairs.variants(source, name, header):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in match_followup_repairs.variants(source, name, header):
         proposals.append(text)
         labels[text] = family
     for family, text in captured_lifetimes.variants(source, name):

@@ -885,3 +885,19 @@ existing categories are retained and suggestions save only through the review co
 hints also recognise captured cast/bitwise, dead unsigned shift/store, and explicit floating-cast lifetime
 repairs. These bounded hypotheses run in shared draft, local and deep search, with the ordinary destination
 judge; volatile code and unsupported forms remain untouched.
+
+### Recent-match follow-ups
+
+Repair examples separate **Build activity** from isolated source-edit cards. Build captures are grouped by
+project/unit, captured settings/context and one-minute window; each card opens the latest representative.
+This is a display grouping, not proof that records came from one build. Individual records remain stored
+and exportable.
+
+Shared local/draft/deep repair search can try an unused same-width integer local for a copied-value zero
+test, or stage an explicitly declared pointer-returning call through an unused pointer local. These remain
+bounded source hypotheses and must pass the ordinary destination judge.
+
+Reference preparation retains reachable same-file and multiline macro definitions verbatim, including their
+dependencies. It does not replace original graphics-style macro invocations with guessed expansions, and
+conflicting definitions ask for the correct source/header pair. Reference aggregate parameters and complete
+save/restore snapshots produce ABI/layout diagnostics; no aggregate type or size is invented.
