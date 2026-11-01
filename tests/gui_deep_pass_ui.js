@@ -8,7 +8,7 @@ function element(id) {
       get innerHTML() { return html; }, set innerHTML(value) {
         html = value; sorts = Array.from(value.matchAll(/data-deep-sort="([^"]+)"/g), m => ({dataset:{deepSort:m[1]}})); tables = Array.from(value.matchAll(/class="compiler-table"/g), () => ({scrollTop:0, scrollLeft:0}));
       },
-      querySelectorAll(selector) { return selector === ".compiler-table" ? tables : selector === "[data-deep-sort]" ? sorts : []; },
+      querySelector:()=>null, querySelectorAll(selector) { return selector === ".compiler-table" ? tables : selector === "[data-deep-sort]" ? sorts : []; },
       replaceChildren() { this.innerHTML = ""; this.textContent = ""; },
       append() {},
     });
@@ -24,6 +24,7 @@ const ctx = {renderDeepActivity:()=>{}, $:element, S:{slug:"game-a"}, esc:String
     errors:0,completed:0,improvements:[{function:"one",starting_score:10,starting_percent_text:"90%",new_score:5,new_percent_text:"95%"}]}),
 };
 vm.createContext(ctx);
+vm.runInContext(fs.readFileSync("src/decompnet/app/static/js/rewrite-performance.js","utf8"),ctx);
 const source = fs.readFileSync("src/decompnet/app/static/js/steering.js", "utf8");
 vm.runInContext(source.slice(source.indexOf("let deepSweepFollowing"), source.indexOf('$("deepSweepStart").onclick')), ctx);
 (async()=>{
