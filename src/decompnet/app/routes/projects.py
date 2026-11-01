@@ -264,6 +264,9 @@ def register(app: App) -> None:
         if data.get('action') == 'reviews':
             from ..prepared_evidence import listing
             return {'reviews': listing(net, proj)}
+        if data.get('action') == 'recheck-exact':
+            from ..prepared_evidence import recheck_exact
+            return {'job': jobs.start('prepared-bundles', lambda log: recheck_exact(net,proj,log,data.get('limit',20)))}
         if data.get('action') == 'try-pair':
             from ..prepared_evidence import try_pair
             return {'job': jobs.start('prepared-pair', lambda log: try_pair(net, proj, str(data.get('function','')),

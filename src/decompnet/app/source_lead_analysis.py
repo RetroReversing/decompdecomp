@@ -94,14 +94,17 @@ def record(net, proj, fn, source, header, score, rows, lead=None, elapsed_ms=0, 
     comparison=compare(rows,proj['arch'],source,fn['name'])
     from .source_next_steps import recommendations
     comparison['next_steps']=recommendations(source,dict(fn).get('best_source') or '',comparison)
-    from .source_storage import object_hints, scope_hints
-    comparison['next_steps']+=scope_hints(dict(fn).get('best_source') or '',source,header,fn['name'])+object_hints(rows,header)
+    from .source_storage import object_hints, scope_hints, typed_object_hints
+    comparison['next_steps']+=scope_hints(dict(fn).get('best_source') or '',source,header,fn['name'])+object_hints(rows,header)+typed_object_hints(rows,source,header)
     if proj['arch']=='mips':
         from .source_storage import wide_argument_hints
         comparison['next_steps']+=wide_argument_hints(fn['asm'] or '',header)
     if proj['arch']=='mips':
         from ..arch.mips_runtime import incoming_arguments
         comparison['entry']=incoming_arguments(fn['asm'] or '')
+    if hasattr(net,'reader'):
+        from .switch_tables import hints, read
+        comparison['next_steps']+=hints(source,fn['name'],read(net,proj,fn),header)
     baseline=fn['best_score'];improved=score is not None and (baseline is None or score<baseline)
     item={'scope':scope,'family':family,'profile':settings,'lead':lead,'score':score,'baseline':baseline,
           'exact':score==0,'improved':improved,'error':error[:2000], 'elapsed_ms':max(0,int(elapsed_ms)),

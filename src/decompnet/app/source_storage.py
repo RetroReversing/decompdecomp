@@ -76,3 +76,17 @@ def wide_argument_hints(asm, header):
                 (len(params)==2 and params[1] in narrow and registers==('$a2','$a3'))):
             result.append(f"{pair['function']} is declared {declaration}, but the target loads adjacent words into {registers[0]}/{registers[1]} at its call. Check a 64-bit or aggregate argument and original ABI/prototype before body permutation; no width was inferred or changed.")
     return list(dict.fromkeys(result))[:4]
+
+
+def typed_object_hints(rows, source, header):
+    """Different symbolic high bases around raw byte access are an object-identity review lead."""
+    clean=_blank(source+'\n'+header)
+    if not re.search(r'\b(?:char|[su]8)\s*\*|\bextern\s+(?:unsigned\s+|signed\s+)?char\b[^;]*\[',clean):return []
+    target=set();candidate=set()
+    for row in rows or []:
+        if not isinstance(row,(list,tuple)) or len(row)!=3:continue
+        for text,names in ((row[1],target),(row[2],candidate)):
+            names.update(re.findall(r'%hi\((D_[0-9A-Fa-f]{8})\)',str(text)))
+    pairs=[(a,b) for a in sorted(target-candidate) for b in sorted(candidate-target)
+           if 0<abs(int(a[2:],16)-int(b[2:],16))<=0x20000]
+    return [f'Object identity: target uses {a}, candidate uses {b} around raw byte access. Check an authorized typed view of the original object and its field offsets; equivalent address arithmetic can change compiler base construction. No type or layout was invented.' for a,b in pairs[:3]]

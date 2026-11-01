@@ -1,5 +1,11 @@
 # Roadmap
 
+Implemented: reached reference include-tree macros in explicit source contexts, bounded initializer-helper
+expansion in preparation and shared local repairs, advisory folded object-base and retail switch-table
+case/group comparisons, and explicit bounded batch rechecking of historical exact bundles. Table evidence
+is MIPS ROM-only; equivalent readers for other architectures and imported build-owned table data remain
+planned. Typed-layout synthesis and missing-case-body synthesis are not implemented.
+
 Implemented: original object storage preservation, advisory local-static scope and extern-load
 diagnostics, narrow-prototype/paired-word MIPS call evidence, and resumable per-profile saved-draft
 preflight. The prototype reader is MIPS-only; equivalent evidence for other architectures is planned.

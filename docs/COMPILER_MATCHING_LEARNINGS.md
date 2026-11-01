@@ -1163,3 +1163,18 @@ unknown globals/helper definitions and unsupported preprocessing remain explicit
 A repeated unchanged pass used zero additional preprocessing or destination compiles after
 input-scoped caching. Synthetic tests cover donor modes, failed-trial renewal, cancellation,
 claims, donor rotation, include bounds and exact destination acceptance separately from this replay.
+
+
+### Turn source-context findings into bounded app hypotheses
+
+The preceding ten-function live batch motivates shared initializer-helper expansion and preservation of
+reached macros from an explicitly mapped include tree. Expansion accepts only a candidate-owned static
+void helper with one pointer argument and straight-line field assignments. Side-effecting arguments,
+control flow, unknown macro expressions and volatile declarations are excluded. Synthetic positive and
+negative tests cover this candidate generation separately from the earlier manual matches.
+
+Typed-object notes now flag changed symbolic high bases near raw byte access. Bounded MIPS retail table
+reads recognize address-based labels as well as jump-table labels, and surface missing nonmodal arms or
+different entry points for grouped source cases. A modal address is only a default hypothesis. Neither
+diagnostic invents a record layout or case body. Historical exact bundles can be explicitly batch-approved;
+each still requires fresh compilation, original ROM-data verification and the unchanged atomic publish gate.

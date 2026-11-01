@@ -126,6 +126,18 @@ Saved-draft compiler preflight now resumes each completed profile across later b
 including after a stop. Improved source or changed judge inputs starts a fresh search. Exact results
 still pass the normal compiler-change gate; partial results never change settings automatically.
 
+Mapped source preparation preserves reached SDK macros from the mapped file's authorized include tree,
+even with an explicit private header. Conflicting macro definitions require review. Small candidate-owned
+pointer initialization helpers can be expanded as bounded, separately judged hypotheses; calls with side
+effects, control flow, unknown macros and volatile arguments are excluded. Typed-object/base-folding notes
+and bounded retail switch-table comparisons highlight context or revision differences without inventing layouts
+or missing case bodies. MIPS tables accept both named jump-table and address-based symbols.
+
+In **Local source preparation → Prepared profile evidence**, **Fresh check & apply up to 20 exact bundles**
+rechecks one saved exact source/header/profile bundle per function. Each is independently recompiled and
+ROM-data verified before publication. Busy or stale failures are listed and leave other functions eligible.
+Imported projects keep their build-owned headers and profile workflow.
+
 ## Changing a ROM project's compiler
 
 Changing the game's compiler or an address range checks every affected matched function before saving.

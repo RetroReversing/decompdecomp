@@ -148,3 +148,27 @@ def try_pair(net, proj, function, source, header, log, settings=None):
         return {'matched':exact,'score':score,'function':function}
     finally:
         net.permuter._let_go(agent,fn)
+
+
+def recheck_exact(net, proj, log, limit=20):
+    """Explicit batch approval: one historical exact bundle per function, each freshly judged."""
+    if type(limit) is not int or not 1<=limit<=20:
+        raise NetworkError('Recheck between 1 and 20 exact bundles at a time.')
+    selected=[];seen=set()
+    for item in listing(net,proj):
+        if item['reviewable'] and item['function'] not in seen:
+            selected.append(item);seen.add(item['function'])
+        if len(selected)>=limit:break
+    result={'tested':0,'matched':0,'errors':[]}
+    for item in selected:
+        log(f"Rechecking {item['function']} ({result['tested']+1}/{len(selected)})")
+        try:
+            outcome=apply(net,net.project_row(proj['slug']),item['id'],log,refresh=True)
+            result['matched']+=bool(outcome.get('matched'))
+        except NetworkError as error:
+            message=item['function']+': '+str(error)
+            result['errors'].append(message);log(message)
+        result['tested']+=1
+        if hasattr(log,'progress'):log.progress({'phase':'Rechecking exact bundles','finished':result['tested'],'total':len(selected)})
+    log(f"Rechecked {result['tested']} bundles: {result['matched']} matched, {len(result['errors'])} skipped or failed.")
+    return result
