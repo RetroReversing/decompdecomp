@@ -17,6 +17,8 @@ function setupRepairReplay(dialog, scope) {
   }, {once:true});
   async function run(id) {
     if (busy) return;
+    const tools = get('[data-tools]'), panel = get('[data-replay-panel]');
+    if (tools) tools.open = true; if (panel) { panel.open = true; panel.scrollIntoView?.({block:'nearest', behavior:'smooth'}); }
     busy = true; lastReport = null; get('[data-replay-save]').hidden = true;
     const finish = beginWork(host, 'Testing automatic repairs against captured output', [start, get('[data-replay-trials]'), get('[data-replay-seconds]'), get('[data-replay-minimize]'), get('[data-replay-diagnostics]')]);
     results.textContent = ''; summary.textContent = 'Local compiler tests · no AI tokens · no game source is applied.';
