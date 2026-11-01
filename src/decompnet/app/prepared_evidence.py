@@ -1,6 +1,7 @@
 """Private source/header/profile evidence: recompile first, publish one exact bundle atomically."""
 import hashlib
 import json
+import time
 
 from ..network import NetworkError
 from . import source_preparation as prep
@@ -12,7 +13,7 @@ def digest(net, proj, fn):
 
 
 def listing(net, proj):
-    rows=net.store.all("SELECT r.signature,r.feedback,f.name,f.status FROM reuse_trials r JOIN functions f ON f.id=r.function_id WHERE f.project_id=? AND r.signature LIKE 'local-source-%' ORDER BY r.rowid DESC LIMIT 20",proj['id'])
+    rows=net.store.all("SELECT r.signature,r.feedback,f.name,f.status FROM reuse_trials r JOIN functions f ON f.id=r.function_id WHERE f.project_id=? AND r.signature LIKE 'local-source-%' ORDER BY CASE WHEN r.outcome='0' THEN 0 ELSE 1 END,r.rowid DESC LIMIT 80",proj['id'])
     result=[]
     for row in rows:
         item=json.loads(row['feedback'] or '{}')
@@ -54,20 +55,25 @@ def publish_profile(net, db, fn, expected, settings, agent):
     return prep.inputs(net,{**dict(proj),'config':json.dumps(cfg)},fn)
 
 
-def apply(net, proj, key, log):
+def apply(net, proj, key, log, refresh=False):
     from ..rom.export import _single_definition
     if not net.is_rom(proj) or net.fork_slug(proj['slug']):
         raise NetworkError('Prepared profile bundles are available for local ROM projects; imported builds own their headers and compiler settings.')
+    if refresh:
+        proj=net.project_row(proj['slug'])
     row=net.store.one('SELECT r.*,f.project_id FROM reuse_trials r JOIN functions f ON f.id=r.function_id WHERE r.signature=? AND f.project_id=?',key,proj['id'])
     if not row:raise NetworkError('This prepared bundle is no longer available. Run preparation again.')
     item=json.loads(row['feedback'] or '{}')
     fn=net.store.one('SELECT * FROM functions WHERE id=?',row['function_id'])
-    if not item.get('exact') or item.get('inputs')!=digest(net,proj,fn) or fn['status']!='open':
+    if (not item.get('exact') or not item.get('inputs') or fn['status']!='open'
+            or not all(k in item for k in ('source','header','toolchain','flags'))
+            or (not refresh and item['inputs']!=digest(net,proj,fn))):
         raise NetworkError('This prepared bundle is stale or not exact. Run preparation again.')
     agent,_=net.local_agent('autopilot')
     if not net.permuter._hold(agent,fn,count_turn=False,seconds=60):
         raise NetworkError('This function is being worked on. Wait until it is released.')
     try:
+        starting_digest=digest(net,proj,fn)
         expected=prep.inputs(net,proj,fn)
         settings={'toolchain':item['toolchain'],'flags':item['flags']}
         private={**dict(proj),'config':json.dumps(scoped_config(proj,fn,settings))}
@@ -78,7 +84,7 @@ def apply(net, proj, key, log):
         candidate,verdict,problems=net._evaluate(fn,proj,result.obj)
         if candidate is None or verdict is not True:
             raise NetworkError('The prepared bundle is no longer byte-identical: '+'; '.join(problems))
-        if digest(net,net.project_row(proj['slug']),net.store.one('SELECT * FROM functions WHERE id=?',fn['id']))!=item['inputs']:
+        if digest(net,net.project_row(proj['slug']),net.store.one('SELECT * FROM functions WHERE id=?',fn['id']))!=starting_digest:
             raise NetworkError('Build inputs changed while rechecking. Run preparation again.')
         net._record(fn,agent,0,item['source'],0,matched=True,via='local-source-review',
                     effective_settings=result.effective_settings,prepared_header=item['header'],
@@ -86,3 +92,57 @@ def apply(net, proj, key, log):
         log('Exact source, private header and function-only compiler profile saved together.')
         return {'matched':True,'function':fn['name']}
     finally:net.permuter._let_go(agent,fn)
+
+
+def try_pair(net, proj, function, source, header, log, settings=None):
+    """Explicit local API candidate: keep body/header separate and rejudge before atomic promotion."""
+    from .. import scoring
+    from ..project import compiler_for
+    from ..rom.export import _single_definition
+    if not net.is_rom(proj) or net.fork_slug(proj['slug']):
+        raise NetworkError('Private source/header pairs require a local ROM project. Imported projects use their build headers.')
+    if not source.strip() or max(len(source.encode()),len(header.encode()))>prep.MAX_HEADER:
+        raise NetworkError('Supply a C body and private header, each at most 1 MB.')
+    fn=net._function(function,proj['slug'])
+    if fn['status']!='open':
+        raise NetworkError('Choose an unmatched function for a prepared source/header pair.')
+    if not settings:
+        settings=compiler_for(json.loads(proj['config']),fn['vram'])
+    if (not isinstance(settings,dict) or settings.get('cmd') or not isinstance(settings.get('toolchain'),str)
+            or not isinstance(settings.get('flags'),list) or not all(isinstance(flag,str) for flag in settings['flags'])):
+        raise NetworkError('Choose an installed compiler and a list of flags for this pair.')
+    settings={k:settings[k] for k in ('toolchain','flags')}
+    agent,_=net.local_agent('autopilot')
+    if not net.permuter._hold(agent,fn,count_turn=False,seconds=60):
+        raise NetworkError('This function is being worked on. Wait until it is released.')
+    try:
+        proj=net.project_row(proj['slug']);fn=net._function(function,proj['slug'])
+        expected=prep.inputs(net,proj,fn);starting_digest=digest(net,proj,fn)
+        private={**dict(proj),'config':json.dumps(scoped_config(proj,fn,settings))}
+        started=time.monotonic()
+        log('Compiling separate source and private header with the selected profile…')
+        result=net._compile(private,header,source,fn)
+        if not result.ok or not _single_definition(result.obj,fn['name']):
+            from .preparation_diagnostics import compile_error
+            raise NetworkError('This source/header pair did not compile as one function: '+compile_error(net,fn,result.log))
+        candidate,verdict,problems=net._evaluate(fn,proj,result.obj)
+        if candidate is None:
+            raise NetworkError('This source/header pair could not be linked: '+'; '.join(problems))
+        diff=scoring.diff(net._target_obj(fn,proj),candidate)
+        exact=verdict is True  # ROM data/link verification is mandatory, not just disassembly score zero.
+        score=0 if exact else max(1,diff.score)
+        if digest(net,net.project_row(proj['slug']),net._function(function,proj['slug']))!=starting_digest:
+            raise NetworkError('Build inputs changed while checking this pair. Submit it again.')
+        from .source_lead_analysis import destination, record
+        record(net,private,fn,source,header,score,diff.rows,{'family':'explicit-source-header-pair'},
+               (time.monotonic()-started)*1000,scope=destination(net,proj,fn))
+        if exact:
+            net._record(fn,agent,0,source,0,matched=True,via='local-source-pair',
+                        effective_settings=result.effective_settings,prepared_header=header,
+                        prepared_inputs=expected,prepared_compiler=settings)
+            log('Exact source, header and function-only profile saved together.')
+        else:
+            log(f'Pair scored {score}; working source, header and flags are unchanged.')
+        return {'matched':exact,'score':score,'function':function}
+    finally:
+        net.permuter._let_go(agent,fn)

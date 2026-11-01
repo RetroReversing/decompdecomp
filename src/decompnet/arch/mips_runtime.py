@@ -113,3 +113,45 @@ def incoming_arguments(asm):
         if not store and not branch:seen.add(regs[-1] if to_float else regs[0])
     return {'integer':sorted(integer),'floating':sorted(floating),'mixed':bool(floating and '$a0' in integer),
             'incoming_stack_slots':sorted(stack_slots)}
+
+
+def temporary_arguments(asm):
+    """Incoming temporary-register reads are leads for same-unit specialization, not ABI rewrites."""
+    defined=set();incoming=set()
+    for line in instructions(asm)[:64]:
+        if line.startswith(('jal ', 'jalr ', 'jr ', 'b ', 'j ')):
+            break
+        match=re.match(r'([a-z][a-z0-9.]*)\s+(.+)',line)
+        if not match:
+            continue
+        op,args=match.groups();regs=re.findall(r'\$[a-z][a-z0-9]*',args)
+        if not regs:
+            continue
+        store=op in {'sw','sd','sh','sb','swc1','sdc1'}
+        reads=regs if store or op.startswith(('b','c.')) else regs[1:]
+        # A plain spill is preservation, whereas reading through a temporary pointer is evidence.
+        if store and len(regs)>1 and regs[-1]=='$sp':
+            reads=[]
+        incoming.update(r for r in reads if re.fullmatch(r'\$t[0-8]',r) and r not in defined)
+        if not store and not op.startswith(('b','c.')):
+            defined.add(regs[0])
+    return sorted(incoming)
+
+
+def specialized_argument_setup(callee, caller, name):
+    """Require callee read-before-write plus caller definitions immediately around its direct call."""
+    incoming=temporary_arguments(callee)
+    if len(incoming)<2:
+        return None
+    code=instructions(caller)
+    for index,line in enumerate(code):
+        if not re.fullmatch(r'jal\s+'+re.escape(name),line):
+            continue
+        before=code[max(0,index-12):index]
+        last=next((i for i in range(len(before)-1,-1,-1) if before[i].startswith(('jal ','jalr ','b ','j '))),-1)
+        window=before[last+1:]+code[index+1:index+2]
+        setup=[text for text in window if any(re.match(r'(?:or|addu|addiu|move|lw|li|lui)\s+'+re.escape(reg)+r',',text) for reg in incoming)]
+        proven=[reg for reg in incoming if any(re.match(r'\w+\s+'+re.escape(reg)+r',',text) for text in setup)]
+        if len(proven)>=2:
+            return {'registers':proven,'setup':setup,'call':line}
+    return None

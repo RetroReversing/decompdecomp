@@ -261,10 +261,14 @@ def register(app: App) -> None:
         if data.get('action') == 'reviews':
             from ..prepared_evidence import listing
             return {'reviews': listing(net, proj)}
-        if data.get('action') == 'apply-review':
+        if data.get('action') == 'try-pair':
+            from ..prepared_evidence import try_pair
+            return {'job': jobs.start('prepared-pair', lambda log: try_pair(net, proj, str(data.get('function','')),
+                    str(data.get('source','')), str(data.get('header','')), log, data.get('settings')))}
+        if data.get('action') in {'apply-review','recheck-review'}:
             from ..prepared_evidence import apply
             key = str(data.get('id', ''))
-            return {'job': jobs.start('prepared-bundle', lambda log: apply(net, proj, key, log))}
+            return {'job': jobs.start('prepared-bundle', lambda log: apply(net, proj, key, log, refresh=data.get('action')=='recheck-review'))}
         if data.get('action') not in (None, 'save', 'run'):
             raise ValueError('Choose save or run for source preparation.')
         if data.get('action') == 'run':

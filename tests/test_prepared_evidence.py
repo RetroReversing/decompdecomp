@@ -100,3 +100,56 @@ def test_review_recompiles_outside_transaction_and_records_exact_bundle(monkeypa
     assert net.store.one('SELECT status FROM functions')['status']=='matched'
     assert net.store.one('SELECT header FROM verified_matches')['header']=='new types'
     assert not net.store.one('SELECT * FROM claims')
+
+
+@pytest.mark.parametrize('verdict',[True,False])
+def test_explicit_pair_keeps_body_separate_and_only_publishes_exact_bundle(monkeypatch,verdict):
+    from types import SimpleNamespace
+
+    from decompnet import scoring
+    from decompnet.app.permute import Permuter
+    from decompnet.rom import export
+    net,proj,fn=prepared_net();net.is_rom=lambda p:True;net.fork_slug=lambda s:None
+    net.project_row=lambda slug:net.store.one('SELECT * FROM projects WHERE id=1')
+    net._function=lambda *args:net.store.one('SELECT * FROM functions WHERE id=1')
+    net.local_agent=lambda name:(Agent(1,'autopilot',None),'');net.permuter=Permuter(net)
+    settings={'toolchain':'ido-5.3','flags':['-O3']}
+    source='#line 700 "original.c"\nint f(void)\n{\n return 1;\n}\n'
+    header='typedef struct {int a;} Item;\n'
+    with net.store.tx() as db:db.execute('DELETE FROM claims')
+    before=proj['config']
+    def compile(p,h,s,f):
+        assert s==source and h==header
+        return SimpleNamespace(ok=True,obj=b'synthetic',effective_settings={'compiler':settings})
+    net._compile=compile;net._evaluate=lambda *args:(object(),verdict,[]);net._target_obj=lambda *args:object()
+    monkeypatch.setattr(export,'_single_definition',lambda *args:True)
+    monkeypatch.setattr(scoring,'diff',lambda *args:SimpleNamespace(score=0,rows=[],bytes_match=True))
+    result=evidence.try_pair(net,proj,'f',source,header,lambda line:None,settings)
+    assert result['matched']==verdict
+    current=net.store.one('SELECT * FROM functions WHERE id=1')
+    if verdict:
+        assert current['matched_source']==source and net._context(1,current['unit'])['header']==header
+    else:
+        assert current['best_source']=='old source' and net.project_row('game')['config']==before
+    assert not net.store.one('SELECT * FROM claims')
+
+
+def test_explicit_refresh_rejudges_complete_stale_evidence_against_current_inputs(monkeypatch):
+    from types import SimpleNamespace
+
+    from decompnet.app.permute import Permuter
+    from decompnet.rom import export
+    net,proj,fn=prepared_net();net.is_rom=lambda p:True;net.fork_slug=lambda s:None
+    net.project_row=lambda slug:net.store.one('SELECT * FROM projects WHERE id=1')
+    net.local_agent=lambda name:(Agent(1,'autopilot',None),'');net.permuter=Permuter(net)
+    settings={'toolchain':'ido-5.3','flags':['-O3']}
+    item={**settings,'source':'int f(void){return 1;}','header':'new types','exact':True,'inputs':'old-build'}
+    with net.store.tx() as db:
+        db.execute('DELETE FROM claims')
+        db.execute('INSERT INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(1,?,?,?,?)',
+                   ('local-source-profile-v2:stale','0','test',json.dumps(item)))
+    net._compile=lambda *args:SimpleNamespace(ok=True,obj=b'synthetic',effective_settings={'compiler':settings})
+    net._evaluate=lambda *args:(object(),True,[])
+    monkeypatch.setattr(export,'_single_definition',lambda *args:True)
+    assert evidence.apply(net,proj,'local-source-profile-v2:stale',lambda line:None,refresh=True)['matched']
+    assert net.store.one('SELECT matched_source FROM functions')['matched_source']==item['source']

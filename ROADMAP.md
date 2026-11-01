@@ -1,5 +1,10 @@
 # Roadmap
 
+Implemented: bounded same-project verified-neighbour context hypotheses, direct separate body/header
+checks, and explicit fresh rechecks of saved exact profile bundles for ROM projects. Imported-project
+context reuse/pair submission needs an adapter for its own build headers; planned. MIPS internal
+temporary-argument caller evidence is advisory; equivalent readers for other architectures are planned.
+
 Implemented: source preparation advances cached private profile searches, retains scoped link failures,
 and explains reference/saved-draft call differences plus explicit helper declaration conflicts.
 SDK version identification and automatic retail-source patching are not implemented.
@@ -120,6 +125,7 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | C++ methods drafted as `Class::method` | ✓ | ✓ | ✓ | ✓ | — | ✓ (RTTI, and classes from the vtables constructors store) | — | — |
 | Twins: free matches from identical code | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Local mapped source preparation | ✓ | ✓ | ✓ | ✓ | body only¹ | body only¹ | body only¹ | body only¹ |
+| Verified neighbour context hypotheses and separate body/header bundles | ✓ ROM | ✓ ROM | ✓ ROM | ✓ ROM | — own build adapter planned | — own build adapter planned | — own build adapter planned | — own build adapter planned |
 | Bounded flag preflight before long search | ✓ ROM | ✓ ROM | ✓ ROM | ✓ ROM | — own build | — own build | — own build | — own build |
 | Existing-record structure-return / typed inline-setter hypotheses | ✓ | ✓ | ✓ | ✓ | ✓ C shapes | ✓ C shapes | ✓ C shapes | by supported C architecture |
 | Separate function and export-layout checks | ✓ MIPS ROM | ✓ MIPS ROM | ✓ MIPS ROM | ✓ MIPS ROM | — own build | — own build | — own build | — own build |
