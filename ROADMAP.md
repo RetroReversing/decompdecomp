@@ -1343,3 +1343,8 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   bounded recent output and eight recent completions. Settings shows stable,
   clickable function cards with phase, rewrite family, match changes, trial budgets
   and improvements; combined diagnostics remain available in a collapsible log.
+- Done: room members can run function-level and project-wide deep passes, taking
+  and renewing host claims with separate identities for concurrent functions.
+  ROM candidates compile locally; improvements use the existing room protocol and
+  exact matches require host confirmation before local acceptance. Imported-room
+  candidates use the host's build/judge. Compiler-profile changes remain host-owned.

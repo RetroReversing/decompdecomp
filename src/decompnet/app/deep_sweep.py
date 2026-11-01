@@ -223,8 +223,6 @@ class Sweeps:
         if isinstance(threads, bool) or not isinstance(threads, int) or not threads >= 0:
             raise NetworkError('Choose a number of threads, or leave it empty for automatic.')
         self.net.project_row(slug)
-        if slug in self.net.links:
-            raise NetworkError('Run the deep pass on the room host’s project.')
         with self.lock:
             previous = self.active.get(slug, {})
             if self.jobs.jobs.get(previous.get('job'), {}).get('state') == 'running':

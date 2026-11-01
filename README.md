@@ -756,6 +756,15 @@ new candidates permanently.
 
 ### Permuter budgets
 
+Room members can run deep passes too. Each active function gets a host claim that
+is renewed during the search and released when the turn stops. ROM-room clients
+compile candidates locally and share improvements; exact matches must also pass
+the host's judge before they are accepted locally. For imported-project rooms,
+the host builds and judges each draft, so this does not offload compilation from
+the host. Compiler-setting changes remain on the host. A disconnected or refusing
+host stops the affected search; its claims can expire normally if release cannot
+reach it. No AI tokens are used by these searches.
+
 For a longer search of one function, open its drawer and expand **Deep permuter · this function**.
 Choose a time limit and maximum candidate compiles, then select **Run deep permuter**.
 The scorecard shows the freshly measured starting score and percentage, the current best, and how many

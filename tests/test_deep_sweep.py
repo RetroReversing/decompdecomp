@@ -422,3 +422,10 @@ def test_rotated_functions_remain_eligible_next_sweep_without_looping_in_this_on
     assert obj.run('game',1,100,Log())['functions_tested']==2
     assert calls==['f0','f1','f0','f1']
     assert net._function('f0','game')['status']=='open'
+
+
+def test_room_client_can_start_a_deep_pass(sweep, monkeypatch):
+    obj, net, *_ = sweep
+    net.links['game'] = object()
+    monkeypatch.setattr(obj.jobs, 'start', lambda *args, **kwargs: 'room-pass')
+    assert obj.start('game', minutes=1, max_variants=10, threads=2)['job'] == 'room-pass'

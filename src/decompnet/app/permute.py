@@ -671,6 +671,9 @@ class Permuter:
             from .experiment_evidence import measured
             return measured(self, agent, proj, fn, source, best, fork)
 
+    def _accept_candidate(self, agent, proj, fn, source, diff):
+        """A deep room search shares/validates a winning candidate before local acceptance."""
+
     def _score_work(self, agent, proj, fn, source: str, best: int, fork: str | None) -> int | None:
         self._trial_outcome = 'unscored'
         if fork:
@@ -702,5 +705,6 @@ class Permuter:
             self.net._agent_outcomes = {}
         self.net._agent_outcomes[agent.id, fn['id']] = {'source': source, 'score': d.score, 'rows': d.rows}
         if d.score < best or (d.bytes_match and fn['status'] != 'matched'):
+            self._accept_candidate(agent, proj, fn, source, d)
             self.net._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match, via="permuter", effective_settings=getattr(result,"effective_settings",None))
         return 0 if d.bytes_match else max(1, d.score)
