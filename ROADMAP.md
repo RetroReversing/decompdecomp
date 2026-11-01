@@ -1192,3 +1192,14 @@ Synthetic execution/search regressions are distinct from newly measured private-
   draft, agent-local and deep-repair families. Pinned-compiler controls verify generated
   shapes; nonadjacent increment motion and automatic narrowing remain unsupported pending
   liveness and range evidence. No new full-game matches are attributed to this rule.
+
+## Typed pointer and paired declaration repairs
+
+Shared draft, agent-local and deep paths extend pointer call staging and word-zero-test reuse,
+add pointer-load inlining and CFG-safe pointer storage reuse, and offer a bounded declaration-order
+cross product without requiring an improving first edit. Distinct plain struct-field stores can
+swap only with memory-independent values. These ordinary C hypotheses reach ROM and imported
+projects through their existing judges; uncertain aliasing/volatility stays with the agent.
+Fixed-context replay distinguishes judge-only revisions from compiler/header changes. Private
+linked replay recovered three already solved pointer/zero-test controls; an existing MMIO family
+recovered a fourth. This is regression evidence, not new progress or measured token savings.

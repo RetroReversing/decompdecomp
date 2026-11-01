@@ -146,3 +146,11 @@ zero and actually using it as the array index. An unused zero assignment is a di
 call site's source shape independently can change allocation elsewhere. Both families are bounded.
 For persistent cases, repair replay's optional GCC phase summaries compare normal and diagnostic output;
 use its edit ablation to reduce accumulated changes under frozen settings before attributing a cause.
+
+For register-only misses, prefer `pointer_call_staging` and `pointer_load_inline` when offered;
+then try the bounded `paired_pointer_declarations` fallback. Replays showed declaration order
+can be incidental to a successful pointer rewrite. `word_zero_test_reuse` can preserve unused
+local declarations and reuse one same-width signed/unsigned local for a zero-only definition
+range, keeping later loop phases intact. Field-store swaps require alias/volatility evidence;
+an indirect RHS load is not automatically safe to move. Historical judge revisions need a
+fresh fixed-context replay, rather than comparing old scores directly.

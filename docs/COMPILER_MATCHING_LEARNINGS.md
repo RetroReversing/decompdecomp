@@ -808,3 +808,34 @@ Synthetic pinned-compiler controls verify generated shapes independently of the
 private investigation. Nonadjacent motion, bucket-address postincrements, automatic
 counter narrowing and frame padding are deliberately not inferred by this rule:
 those need additional liveness/range evidence. Normal budgets and exact judges apply.
+
+### Fixed-context pointer and zero-test replay (1 November 2026)
+
+Five captured near misses were recompiled with their successful capture's exact header and
+`gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2 -g3`, then tested with the unchanged linked-byte
+judge against copied targets. Source/header hashes and target hashes were checked first.
+
+- A 168-instruction routine recovered from score 60 by inlining a cached pointer load into
+  its scalar field reads. The accompanying declaration reorder was not necessary.
+- A 509-instruction routine recovered from score 65 by extracting a nested pointer-returning
+  call into a known local. Declaration reordering was again unnecessary.
+- An 82-instruction loop recovered from score 20 by reusing an unused signed word local for
+  an unsigned value's zero-only test. Keep the old declaration and isolate that definition's
+  live range; later loop definitions/tests can still use the original unsigned local.
+- A 194-instruction routine recovered from score 300 using the existing target-proven MMIO
+  family. Restoring the named MMIO write failed at 300; restoring `return (void)` on the tail
+  copy still matched. The volatile MMIO expression was decisive; removing `return` was not.
+- An adjacent field-store swap recovered another captured control, but its indirect RHS read
+  has no proven alias relationship to the destination. The automatic field-order family leaves
+  this case alone, rather than treating an exact historical edit as a general alias proof.
+
+These are recoveries of previously solved captures, not new game progress. Single pointer
+repairs are prioritised before a bounded declaration-order cross product. Typed pointer reuse
+requires CFG liveness, definite initialization and unescaped storage. Store-order trials require
+known distinct non-volatile struct fields and memory-independent values. Macro captures,
+stringification, uncertain types and external control-flow entries are rejected.
+
+Compiler-output replay can now handle captures differing only in judge revision: it recompiles
+both under one compiler/header and labels the comparison explicitly. Other context changes still
+block replay, and compiler-output recovery never adopts a game match. The linked replays above
+are stronger, separate evidence. No full-image rebuild or live adoption was performed here.

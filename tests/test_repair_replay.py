@@ -104,3 +104,18 @@ def test_analysis_options_require_booleans():
     import pytest
     with pytest.raises(ValueError,match='booleans'):
         replay.replay(case(),minimize='yes')
+
+
+def test_judge_revision_only_change_can_be_recompiled_without_trusting_old_scores(monkeypatch):
+    example=case()
+    example['evidence']['before']['settings']=deepcopy(example['evidence']['before']['settings'])
+    example['evidence']['before']['settings']['scoring_revision']='old'
+    example['evidence']['after']['settings']['scoring_revision']='new'
+    example['evidence']['comparable_settings']=False
+    original=deepcopy(example)
+    monkeypatch.setattr(replay.draft_repairs,'variants',lambda *args,**kwargs:[])
+    report=replay.replay(example,measure=lambda source:{'object':obj(1 if 'return 1' in source else 2)})
+    assert 'skipped' not in report and 'Both sources are recompiled' in report['context_note']
+    assert example==original and 'no linked/objdiff match adoption' in report['verdict']
+    example['evidence']['before']['settings']['compiler']={'toolchain':'different'}
+    assert 'skipped' in replay.replay(example,measure=lambda s:1/0)
