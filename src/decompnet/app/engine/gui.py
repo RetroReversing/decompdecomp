@@ -259,7 +259,8 @@ class GuiMixin:
                        "source_diagnostics": source_hints(source, fn["name"], fn["asm"], proj["arch"], d.rows),
                        "percent": 100.0 if d.bytes_match else min(99.9, int(d.percent * 10) / 10),
                        "problems": problems, "source": source,
-                       "checks": self._candidate_checks(fn, proj, result.obj)}
+                       "checks": self._candidate_checks(fn, proj, result.obj),
+                       "address_rows": self._candidate_addresses(fn, result.obj)}
         if len(self._diffs) > 128:
             self._diffs.pop(next(iter(self._diffs)))
         self._diffs[key] = out

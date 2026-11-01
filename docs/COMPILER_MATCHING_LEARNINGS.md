@@ -946,6 +946,30 @@ remaining repairs and explicit notes. Both API and CLI helpers start fresh sessi
 without deleting claims, accepted matches or attempts. Measure actual provider
 usage and matches per minute before claiming a cost or speed improvement.
 
+### KMC GCC: a flat score can conceal two real address corrections
+
+V-Rally PAL `func_8000F660` already had the right 690-instruction structure. Two
+stores addressed `0x800C7040` and `0x800C6AFC` instead of the ROM's `0x800B7040`
+and `0x800B6AFC`. A compound byte-array expression obscured the second address;
+symbolic HI/LO display labels were insufficient evidence for either one.
+
+An isolated replay using the recorded header and GCC 2.7.2 KMC profile
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3` reproduced score **80**. Each generated single
+correction removed one raw effective-address mismatch but retained score 80.
+The bounded pair passed the unchanged linked-byte judge with score **0**. These
+are replayed historical matches, not additional live-game progress or a token-cost
+benchmark. The standalone repository separately passed its complete cartridge check.
+
+Use raw LUI and signed memory-offset words for effective addresses, respecting
+clobbers, control flow and byte order. Display numeric addresses alongside symbolic
+diff operands; do not change scoring or reinterpret an annotation as the verdict.
+Treat an expression-local absolute literal or proven byte-array addend as a bounded
+hypothesis. Never rename a shared symbol or guess a typed-pointer stride. Try up to
+four singles and six independent pairs even when singles leave similarity unchanged.
+The shared draft/local/deep repair pipeline and cached autopilot address feedback
+can propose these trials; only the ordinary compiler/link judge accepts them.
+Other processors remain unchanged; raw MIPS decoding is not evidence for their ABIs.
+
 ### Sustained progress and comparable efficiency windows
 
 A few tiny score reductions should not extend a paid matching session indefinitely.

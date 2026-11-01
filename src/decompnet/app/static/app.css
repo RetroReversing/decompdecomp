@@ -1287,3 +1287,5 @@ details.more[open] > summary::before { content: "− "; }
 #project[data-loading] > :not(.navigation-loading) { display: none !important; }
 #drawer[data-loading] .drawer-body { display: none !important; }
 #drawer[data-loading] .drawer-head .row > :not([data-close]):not(#fnPrev):not(#fnNext) { visibility: hidden; pointer-events: none; }
+/* Numeric evidence stays separate from symbolic assembly and its score. */
+.raw-address { display: block; color: var(--muted); font: 11px/1.5 var(--mono); }
