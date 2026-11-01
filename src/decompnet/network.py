@@ -829,6 +829,10 @@ class Network:
                               fn["id"], agent.id)["n"] if limit is not None else 0
         return limit, used
 
+    def ensure_agent_active(self, agent):
+        if agent.id in getattr(self, '_revoked_manual_agents', ()):
+            raise NetworkError('This manual MCP connection was revoked. Create a new connection in the app.')
+
     @contextmanager
     def attempt_turn(self, agent: Agent, fn):
         # A CLI can submit parallel tool calls: serialize this worker's candidates so two submissions cannot
@@ -836,6 +840,7 @@ class Network:
         with self.store.lock:
             lock = self._attempt_locks.setdefault((agent.id, fn["id"]), threading.RLock())
         with lock:
+            self.ensure_agent_active(agent)
             self.check_attempt_limit(agent, fn)
             yield
 
@@ -890,6 +895,7 @@ class Network:
         blocked = claim_stalls.blocked(self,proj) if proj is not None and not function else []
         now = time.time()
         with self.store.tx() as db:
+            self.ensure_agent_active(agent)
             self._expire_claims(db)
             held = db.execute("SELECT f.* FROM claims c JOIN functions f ON f.id=c.function_id WHERE c.agent_id=?",
                               (agent.id,)).fetchone()

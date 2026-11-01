@@ -1570,6 +1570,17 @@ remain planned: the initial browser toolchain has no matching build-context adap
   repairs, with guarded terminal switch-tail distribution and advisory repeated-call shortfall clues.
   ROM and imported candidates use their unchanged ordinary judge. Unsupported control/macros stay unchanged.
 
+### Decision and address repair hypotheses
+
+- Done: bounded MIPS halfword arithmetic, single-case switch, shared flag-guard join and
+  selector/address staging through shared drafts and local/iterative/deep search. Pointer
+  liveness, macro/control-flow exclusions and the ordinary exact judge gate candidates.
+- Done: promising ROM candidates prioritize debug-profile alternatives; compact register-only
+  advice and manual-connection claim cleanup shorten investigation overhead.
+- Planned: validate these source families on non-MIPS compiler adapters before enabling them.
+  Imported projects share MIPS source repairs but retain build-owned compiler settings;
+  automatic standalone profile adoption is ROM-only.
+
 - Done: bounded repair combinations retain equal-score deep-search alternatives, scoped cached
   local diff evidence and family paths. The optional iterative phase persists paths and gives
   measured structure gains a limited follow-up burst without dropping pending work. Correct-region

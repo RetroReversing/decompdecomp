@@ -25,6 +25,7 @@ from . import (
     captured_repairs,
     compiler_shape_repairs,
     count_lifetime_repairs,
+    decision_address_repairs,
     entry_point_repairs,
     evidence_repairs,
     expression_repairs,
@@ -91,13 +92,15 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     opening = clean.find('{', start, end)
     if opening < 0:
         return []
+    # The dedicated path preserves directives and never rewrites their bodies.
+    early=decision_address_repairs.variants(source,name,arch,header)
     if '#' in clean[opening:end]:
         def generate(masked):
             inner_labels = {}
             safe_header = macro_repairs.prepare(header)[0] or ''
             choices = variants(masked,name,arch,asm,flags,inner_labels,limit=None,header=safe_header,tables=tables,callees=callees)
             return [(inner_labels[text],text) for text in choices]
-        choices = macro_repairs.variants(source,name,generate,header)
+        choices = early + macro_repairs.variants(source,name,generate,header)
         if labels is not None:labels.update({text:family for family,text in choices})
         return [text for _,text in choices][:limit] if limit is not None else [text for _,text in choices]
     body = clean[opening + 1:end].rstrip()
@@ -107,6 +110,8 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     offset = opening + 1
     proposals = []
     labels = labels if labels is not None else {}
+    for family,text in early:
+        proposals.append(text);labels[text]=family
     for family,text in capture_followup_repairs.variants(source,name,header,callees):
         proposals.append(text)
         labels[text] = family
