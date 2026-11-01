@@ -172,12 +172,13 @@ AUTH_WAIT = 60  # seconds before the first try again, doubling
 _NO_CREDIT = re.compile(r"insufficient[ _](?:balance|credits?|funds|quota)|exceeded your current quota|"
                         r"credit balance is too low|payment required|out of credits?|requires usage credits", re.I)
 # and when it's asked too much at once (HTTP 429): it works again in a while
-THROTTLED = re.compile(r"too many requests|rate[ _-]?limit|concurrency limit|\b429\b|overloaded", re.I)
+THROTTLED = re.compile(r"too many requests|rate[ _-]?limit|concurrency[ _-]?limit|\b429\b|overloaded", re.I)
 # and when a subscription's allowance is used up for now (Claude Code: "usage limit reached", "You've hit your
 # session limit", Codex: "You've hit your usage limit", Antigravity: RESOURCE_EXHAUSTED, OpenCode Go: "quota
 # exceeded"): it resets by itself in hours, so a helper waits for it instead of stopping (a night's run lost most of
 # its helpers that way; Claude Code's "session limit" wording once paused them as five fast failures)
-LIMIT = re.compile(r"(?:usage|session|weekly) limit|(?<!rate )(?<!rate-)(?<!rate_)limit (?:reached|exceeded)|"
+LIMIT = re.compile(r"(?:usage|session|weekly) limit|(?<!rate )(?<!rate-)(?<!rate_)(?<!concurrency )"
+                    r"(?<!concurrency-)(?<!concurrency_)limit (?:reached|exceeded)|"
                     r"hit your (?:(?!rate\b)[\w-]+ )?limit|quota[ _](?:exceeded|exhausted)|resource[ _]exhausted|"
                     r"out of (?:usage|messages)", re.I)
 # When a limit resets, as agents say it. Claude Code: "usage limit reached|1792140000" (seconds since 1970), or
@@ -309,8 +310,26 @@ def detect(quick: bool = False) -> list[dict]:
 
 # ---------------------------------------------------------------------------------- sessions
 
+def _stdin_payload(prompt: str | None) -> str | None:
+    """What to write to a helper's stdin. None means its prompt went in a file (zcode's --attach), so write no
+    prompt text and just close the pipe. On Windows, winhelper.py still needs its \x01 gate before it starts the
+    CLI; that gate is app plumbing, not prompt text, and must arrive even for an empty (or file) prompt."""
+    gate = "\x01" if os.name == "nt" else ""
+    if prompt is None:
+        return gate or None
+    return gate + prompt
+
+
+def _feed_stdin(proc: subprocess.Popen, prompt: str | None) -> None:
+    """Write `_stdin_payload(prompt)` and close the pipe, so the agent sees end of input."""
+    payload = _stdin_payload(prompt)
+    if payload is not None:
+        proc.stdin.write(payload)
+    proc.stdin.close()
+
+
 def _fresh_usage() -> dict:
-    return {"usd": 0.0, "tokens": 0, "turns": 0, "tool_calls": 0} | {k: 0 for k in TOKEN_KINDS}
+    return {"usd": 0.0, "tokens": 0, "turns": 0, "tool_calls": 0, "coverage": "unknown"} | {k: 0 for k in TOKEN_KINDS}
 
 
 @dataclass
@@ -376,6 +395,7 @@ class Session:
                 "todo": self.todo, "until": self.until, "stopped_by": self.stopped_by,
                 "last_message": self.last_message, "runs": self.runs, "restarts": self.restarts, "error": self.error,
                 "started_at": self.started_at, "usd": round(self.usd, 4), "tokens": self.tokens,
+                "current_usage_coverage": self.usage.get("coverage", "unknown"),
                 "feed": [f for f in self.feed if f["seq"] > since]}
 
 
@@ -503,6 +523,8 @@ class Manager:
         with net.store.tx() as db:
             for statement in SCHEMA:
                 db.execute(statement)
+            if "usage_coverage" not in {r[1] for r in db.execute("PRAGMA table_info(helper_sessions)")}:
+                db.execute("ALTER TABLE helper_sessions ADD COLUMN usage_coverage TEXT NOT NULL DEFAULT 'unknown'")
             if "task" not in {r[1] for r in db.execute("PRAGMA table_info(helper_sessions)")}:
                 # Sessions from before it was kept take their helper's task now, while its record is there. Ids are
                 # reused (helpers.id has no AUTOINCREMENT), so the helper must also be the session's project and
@@ -1016,6 +1038,8 @@ class Manager:
         """Add what a session spent to the helper, the session and the project (kept in its config)."""
         if s.record:
             s.record("usage", usage)
+        if usage.get('coverage') in {'partial','complete'}:
+            s.usage['coverage'] = usage['coverage']
         usd = float(usage.get("usd") or 0)
         parts = {k: int(usage.get(k) or 0) for k in TOKEN_KINDS}
         total = sum(parts.values()) or int(usage.get("tokens") or 0)
@@ -1259,6 +1283,7 @@ class Manager:
                     result['session'][key + '_tokens'] = live.usage[key]
                 result['session']['usd'] = live.usage['usd']
                 result['session']['tokens'] = live.usage['tokens']
+                result['session']['usage_coverage'] = live.usage.get('coverage','unknown')
         if result.get('session'):
             from .session_efficiency import for_sessions
             result['efficiency']=for_sessions(self.net,[result['session']]) if result['session']['ended_at'] else []
@@ -1281,6 +1306,8 @@ class Manager:
                        "matches=? WHERE id=?", (time.time(), outcome, u["usd"], u["input"], u["output"],
                                                 u["cache_read"], u["cache_write"], u["tokens"], u["turns"],
                                                 u["tool_calls"], compiles, matches, row))
+        with self.net.store.tx() as db:
+            db.execute('UPDATE helper_sessions SET usage_coverage=? WHERE id=?', (s.usage.get('coverage','unknown'),row))
         from .session_efficiency import finish
         finish(self.net,agent,s.slug,row,began)
         spent = f", ${u['usd']:.2f}" if u["usd"] else f", {u['tokens'] // 1000}k tokens" if u["tokens"] else ""
@@ -1301,6 +1328,8 @@ class Manager:
         facts = tools._project_info(self.net, s.slug, detail=False).split('Next:')[0][:STARTUP_FACTS_CHARS]
         parts = ['App-provided startup context (already fetched; no project_info call needed):', facts]
         if s.options.get('task') != 'readable':
+            # A fresh provider session has no copy of a previous session's brief/C.
+            getattr(self.net, '_claim_packets', {}).pop((agent.id, s.slug), None)
             packet = tools._claim(self.net, agent, s.slug, '', '', count=1)
             if len(packet) > STARTUP_BRIEF_CHARS:
                 packet = packet[:STARTUP_BRIEF_CHARS].rsplit('\n', 1)[0] + '\n[Startup brief abbreviated. Read get_function(section=brief) or get_candidate for omitted evidence before editing.]'
@@ -1353,19 +1382,28 @@ class Manager:
         return templates['initial_rom'].format(title=ov["title"], count=count, budget=network.stall_budget_text(),
                                         compiler_guide=guide)
 
-    def _command(self, s: Session, token: str, workdir: Path) -> tuple[list[str], dict, str]:
-        """The agent's command line, environment and what goes in on stdin (the prompt). Each helper connects only to
-        this app's own MCP server, with its own token."""
+    def _command(self, s: Session, token: str, workdir: Path) -> tuple[list[str], dict, str | None]:
+        """The agent's command line, environment and what goes in on stdin (the prompt; None when its prompt went in
+        a file). Each helper connects only to this app's own MCP server, with its own token."""
         k = agents.get(s.kind)
         exe = _which(k.command)
         if not exe:
             raise RuntimeError(f"{k.name} is not installed")
+        # zcode has no stdin prompt: its session command attaches a file, and this writes the prompt into it. Every
+        # other agent leaves prompt_file at None and keeps getting the prompt on stdin. Written before the command:
+        # a prompt zcode cannot attach fails the session before its settings file exists, and pauses the helper
+        # instead of retrying a prompt only the user can shorten.
+        prompt = self.prompt(s)
+        try:
+            prompt_file = k.prompt_file(workdir, prompt)
+        except ValueError as e:
+            raise Fatal(str(e)) from e
         cmd, more = k.session_command(exe, workdir, self.mcp_url, token, s.model)
         cmd = k.launch_command(agents.cli_argv(cmd))
         # PWD too: opencode 2 works in $PWD, not the folder it starts in, and the app's PWD was the user's home, so
         # Mario Kart 64's helpers worked there without their folder's settings: no tools, and a free shell
         env = dict(os.environ, PWD=str(workdir), **{HELPER_ENV: str(self.home)}, **more)
-        return cmd, env, k.stdin(self.prompt(s))
+        return cmd, env, None if prompt_file is not None else k.stdin(prompt)
 
     def _preflight_tools(self, token: str) -> None:
         """Prove the authenticated MCP exposes the working tools before spending a model turn."""

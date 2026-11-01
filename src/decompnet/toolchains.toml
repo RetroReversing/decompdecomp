@@ -89,6 +89,26 @@ url = "https://github.com/decompals/old-gcc/releases/download/0.17/gcc-2.6.3-psx
 sha256 = "01e6e8c4933414ea3f8d8e3bc766a1f5fafd4fc0110e0b75d1f691bd791989b1"
 platforms = ["linux-x86_64"]
 
+["gcc-2.7.2-cdk-psx"]
+name = "GCC 2.7.2 CDK for PlayStation + maspsx (ASPSX 2.67)"
+platform = "PS1"
+arch = "mipsel"
+license = "GPL-2.0"
+source = "decompals/old-gcc 0.17 (gcc-2.7.2-cdk)"
+description = "The 2.7.2 build from Cygnus' PlayStation Developer's Kit (CDK), the compiler of PSY-Q 4.1 (1997); its assembly goes through maspsx, which does what Sony's assembler ASPSX 2.67 did, then GNU as. It is not the same build as the 2.7.2 PSY-Q compiler: code generation differs."
+requires = ["maspsx", "binutils-mips"]
+cmd = ["/bin/sh", "-c", 'tc=$1 mas=$2 bin=$3 aspsx=$4 src=$5 obj=$6 py=$7; shift 7; g=-G0; for a; do case $a in -G*) g=$a;; esac; done; "$tc/gcc" -B"$tc/" -S "$@" "$src" -o "$obj.s" && "$py" -E -s "$mas/maspsx.py" --force-stdin --expand-div --use-comm-section --aspsx-version=$aspsx $g < "$obj.s" > "$obj.m.s" && "$bin/mips-ps2-decompals-as" -EL -march=r3000 -mtune=r3000 -no-pad-sections -O1 -G0 -o "$obj" "$obj.m.s"', "psyq", "{tc}", "{tc:maspsx}", "{tc:binutils-mips}", "2.67", "{src}", "{obj}", "{python}", "-I{include}", "{flags}"]
+flags = ["-O2", "-G8"]
+[["gcc-2.7.2-cdk-psx".parts]]
+url = "https://github.com/decompals/old-gcc/releases/download/0.17/gcc-2.7.2-cdk.tar.gz"
+sha256 = "42bb0df96db11a9b5d2e23d78bdc962791f40046280d3d360da93fe5eef6f0bb"
+platforms = ["linux-x86_64"]
+# Upstream's macOS archive contains arm64 Mach-O programs, not a universal build.
+[["gcc-2.7.2-cdk-psx".parts]]
+url = "https://github.com/decompals/old-gcc/releases/download/0.17/gcc-2.7.2-cdk-macos.tar.gz"
+sha256 = "43fe3df44badd23d57075adc06ab177d980b1e29f0392a5426e89f652c832d1a"
+platforms = ["macos-arm64"]
+
 ["gcc-2.7.2-psx"]
 intrinsics = "decompnet.consoles.ps1.gte"
 name = "GCC 2.7.2 for PlayStation + maspsx (ASPSX 2.56)"
@@ -1005,6 +1025,32 @@ platforms = ["macos-arm64"]
 url = "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-mingw-w64-x86_64-arm-none-eabi.zip"
 sha256 = "864c0c8815857d68a1bbba2e5e2782255bb922845c71c97636004a3d74f60986"
 platforms = ["windows-x86_64"]  # the Windows zip has bin/, lib/, ... at its top, no folder around them
+
+["ps3dev-gcc"]
+cplusplus = true
+name = "PS3 GCC 7.2 (ps3dev)"
+platform = "PS3"
+arch = "ppc64"
+license = "GPL-3.0"
+source = "ps3dev/ps3toolchain release nightly-2026-09-12 (GCC 7.2.0 and binutils for the PlayStation 3's PPU)"
+description = "The free PPU compiler of the PlayStation 3 homebrew toolchain (about 150 MB): it makes the usual 64-bit PowerPC program, not Sony's 32-bit-pointer one, so it builds the demo game and homebrew, not retail games."
+cc = ["{tc}/ppu/bin/ppu-gcc", "-c"]
+flags = ["-O2", "-mtraceback=no"]
+[["ps3dev-gcc".parts]]
+url = "https://github.com/ps3dev/ps3toolchain/releases/download/nightly-2026-09-12/ps3dev-linux-X64.tar.gz"
+sha256 = "5c1c252b72dfcedb1859618006015c1184b1e1b79e457693fde9f6f0f7807cba"
+subdir = "ps3dev"
+platforms = ["linux-x86_64"]
+[["ps3dev-gcc".parts]]
+url = "https://github.com/ps3dev/ps3toolchain/releases/download/nightly-2026-09-12/ps3dev-macos-ARM64.tar.gz"
+sha256 = "0e5b028fdadfd521405361565f378e56f4e76cae9e728eea16893642250ed2c8"
+subdir = "ps3dev"
+platforms = ["macos-arm64"]
+[["ps3dev-gcc".parts]]
+url = "https://github.com/ps3dev/ps3toolchain/releases/download/nightly-2026-09-12/ps3dev-macos-X64.tar.gz"
+sha256 = "cf6ec90a9d299643e8a087e387c4de27645767094fa11317ad3a02b976ab8071"
+subdir = "ps3dev"
+platforms = ["macos-x86_64"]
 
 [msvc]
 name = "Microsoft Visual C++ 6.0, 7.0 and 7.1 (PC)"

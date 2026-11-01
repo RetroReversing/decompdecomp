@@ -35,7 +35,7 @@ def summarize(records,contexts):
         group['instruction_total']+=workload.get('instructions',0)
         group['sessions']+=1;group['matches']+=r['matches'];group['compiles']+=r['compiles']
         group['seconds']+=max(0,(r['ended_at'] or r['started_at'])-r['started_at'])
-        group['missing_usage_sessions']+=int(r['tool_calls']>0 and not r['tokens'])
+        group['missing_usage_sessions']+=int(r['tool_calls']>0 and (not r['tokens'] or ('usage_coverage' in r.keys() and r['usage_coverage'] == 'partial')))
         for field in FIELDS:
             group[field]+=r[field]
     for group in groups.values():

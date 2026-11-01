@@ -38,5 +38,17 @@ def text(rows):
     report=summarize(rows)
     detail=', '.join(f'{value} {key.replace("_"," ")}' for key,value in report['counts'].items()if value)
     position=report['position_differences']
-    return ('Mismatch categories (advisory): '+(detail or 'no rendered differences')+
+    result = ('Mismatch categories (advisory): '+(detail or 'no rendered differences')+
             (f'; {position} rendered instruction positions differ.' if position is not None else '.'))
+    hint=advice(rows)
+    return result+('\n'+hint if hint else '')
+
+
+def advice(rows):
+    """Suggest a bounded next experiment from rendered evidence, never infer byte equality."""
+    report=summarize(rows);counts=report['counts']
+    if counts['register'] and sum(counts.values())==counts['register']:
+        return (f"Only {counts['register']} rendered register differences remain. Try allocation/address staging "
+                "and existing-load qualification with try_local_repairs; compare debug-flag variants through "
+                "compiler_experiments. These are hypotheses; the exact judge still decides.")
+    return ''

@@ -30,6 +30,8 @@ def brief(net, proj, fn):
     lines = []
     if current:
         rows = [r for r in current['rows'] if len(r)==3 and r[0]!=' ']
+        from ..diff_summary import advice
+        if hint := advice(current['rows']):lines.append(hint)
         clues = allocation_evidence.text(current['rows'],proj['arch'])
         if clues:lines.append(clues)
         lines.append(f"Remaining mismatch: {current['kind'] or 'mixed'}; {len(rows)} displayed differences (advisory).")

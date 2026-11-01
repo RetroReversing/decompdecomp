@@ -56,12 +56,28 @@ def get_candidate(net, agent, slug, function):
     return f'Candidate revision {revision}\n```c\n{source}\n```\n{remaining}' + candidate_line_note(net, agent, slug, net._function(function,slug), source)
 
 
-def stale(net, agent, fn, submitted, source, actual):
+def stale(net, agent, fn, submitted, source, actual, anchor=""):
     old = getattr(net,'_agent_snapshots',{}).get((agent.id,fn['id']),{}).get(submitted)
     change = ''
     if old is not None:
         lines = list(difflib.unified_diff(old.splitlines(),source.splitlines(),fromfile='submitted revision',tofile='current revision',n=1))
         change = '\nCurrent changes (bounded):\n'+'\n'.join(lines[:35])[:2000]
+    before_lines = old.splitlines() if old is not None else []
+    current_lines = source.splitlines()
+    changed = [j for tag, i, end, j, stop in difflib.SequenceMatcher(a=before_lines,b=current_lines).get_opcodes() if tag != 'equal']
+    at = changed[0] if changed else 0
+    if anchor:
+        found = source.find(anchor)
+        if found >= 0:
+            at = source[:found].count('\n')
+        elif old is not None and anchor in old:
+            old_line = old[:old.index(anchor)].count('\n')
+            for tag,i,end,j,stop in difflib.SequenceMatcher(a=before_lines,b=current_lines).get_opcodes():
+                if i <= old_line < end:
+                    at = j + (old_line-i if tag == 'equal' else 0)
+                    break
+    preview = '\n'.join(f'{i+1}: {line}' for i,line in enumerate(current_lines[max(0,at-2):at+7],max(0,at-2)))[:1200]
+    change += '\nCurrent C near the first change (line numbers are labels, not part of the patch anchor):\n'+preview
     key=(agent.id,fn['id'],submitted,actual)
     seen=getattr(net,'_stale_notices',set())
     if key in seen:
@@ -76,6 +92,12 @@ def stale(net, agent, fn, submitted, source, actual):
 
 
 def next_action(net, agent, fn, source, revision):
+    held = net.store.one('SELECT 1 FROM claims WHERE function_id=? AND agent_id=?',fn['id'],agent.id)
+    if not held:
+        return 'Next: this claim ended; claim another eligible function. Do not submit more edits or release it again.'
+    state = net.stall_status(fn['id'],agent.id)
+    if state['compiles'] and state['no_better'] >= state['after']:
+        return 'Next: move-on budget exhausted. Release with concise findings, then claim another function; no further tuning is recommended.'
     for family in ('signedness','declaration_order'):
         targets = agent_targets.valid_targets(source,family)
         if any(available_target(net,fn,source,revision,family,t['old']) for t in targets):
@@ -92,7 +114,7 @@ def patch(net, agent, slug, function, revision, old, new, repair_note='', repair
     with net.attempt_turn(agent, fn):
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
-            raise stale(net,agent,fn,revision,source,actual)
+            raise stale(net,agent,fn,revision,source,actual,old)
         try:
             edited = agent_targets.replace_anchor(source, old, new, occurrence)
         except NetworkError as error:
@@ -152,16 +174,18 @@ def brief(net, text, slug=None, agent=None):
     # available through get_function / get_assembly, rather than repeated on every claim.
     def assembly(m):
         lines = assembly_text(net, slug, agent, m[1]).splitlines()
-        return '```asm\n'+'\n'.join(lines[:24])+('\n… use get_assembly for later lines.' if len(lines)>24 else '')+'\n```'
+        return '```asm\n'+'\n'.join(lines[:12])+('\n… use get_assembly for later lines.' if len(lines)>12 else '')+'\n```'
     text = re.sub(r'```asm\n(.*?)\n```', assembly, text, flags=re.S)
     # Keep compiler facts, declarations, candidate C and user instructions. Supporting evidence is
     # available through get_function without loading it for every claim (ROM and imported projects).
     optional = ('Notes from previous agents on this function', 'Notes', 'Where it lives',
                 'Other games and local SDK signatures', 'Looks like', 'Likely struct layouts')
-    text = re.sub(r'^### ([^\n]+)\n(.*?)(?=^#{2,3} )',
+    text = re.sub(r'^### ([^\n]+)\n(.*?)(?=^#{2,3} |\Z)',
                   lambda m: ('### '+m[1]+'\nSupporting details: get_function(function).\n'
                              if any(m[1].startswith(title) for title in optional) else m[0]),
                   text, flags=re.M | re.S)
+    text = re.sub(r'(^### (?:Source checks|Draft lifetime hints|Prepared-source investigation)[^\n]*\n)(.*?)(?=^#{2,3} |\Z)',
+                  lambda m: m[1] + m[2][:450] + ('\nMore supporting evidence: get_function(section="brief").\n' if len(m[2])>450 else ''), text, flags=re.M|re.S)
     seen_next = set()
     def next_step(m):
         if m[0] in seen_next:
@@ -218,6 +242,12 @@ def brief(net, text, slug=None, agent=None):
                     text += f"{fn['name']}: candidate revision {revision}; use compile_patch directly on the candidate above.\n"
                     line_note = candidate_line_note(net, agent, slug, fn, source)
                     # Startup packets are bounded: keep this short evidence ahead of long assembly/source sections.
+                    from . import agent_evidence
+                    evidence_key = agent_evidence.scope(net,agent,fn)+(hashlib.sha256(source.encode()).hexdigest(),)
+                    evidence = getattr(net,'_baseline_evidence',{}).get(evidence_key)
+                    if evidence and evidence.get('verified') and evidence.get('source') == source and evidence.get('rows'):
+                        focus = scoring.render_rows(evidence['rows'],context=1,max_rows=16,more_hint=False)
+                        text = re.sub(r'```asm\n.*?\n```',lambda m, focus=focus:'Focused target/compiled diff (full target: get_assembly):\n'+focus,text,count=1,flags=re.S)
                     text = f"{fn['name']} · candidate revision {revision}:" + line_note + '\n\n' + text
 
                     from . import local_experiments
@@ -318,7 +348,15 @@ def diff_page(net, agent, slug, function, context=1, start=0, limit=40):
     fn = net._function(function, slug)
     kept = net._last_diffs.get((agent.id, fn['id']))
     if kept is None:
-        raise NetworkError('No diff saved for you. Compile a candidate first.')
+        from . import agent_evidence
+        source, _ = candidate(net,agent,slug,function)
+        key = agent_evidence.scope(net,agent,fn)+(hashlib.sha256(source.encode()).hexdigest(),)
+        baseline = getattr(net,'_baseline_evidence',{}).get(key)
+        if baseline and baseline.get('verified') and baseline.get('source') == source and baseline.get('rows') is not None:
+            net.keep_diff(agent.id,fn['id'],baseline['rows'],baseline.get('legend',scoring.LEGEND))
+            kept = net._last_diffs.get((agent.id,fn['id']))
+        if kept is None:
+            raise NetworkError('No verified diff saved for this candidate/build. Use get_candidate to load baseline evidence, or compile a candidate. No compile run.')
     rows, legend = kept
     start, limit = max(0, int(start)), max(1, min(200, int(limit)))
     page = rows[start:start+limit]
@@ -328,6 +366,10 @@ def diff_page(net, agent, slug, function, context=1, start=0, limit=40):
 
 def feedback(net, agent, slug, function, text, previous):
     fn = net._function(function, slug)
+    if any(marker in text for marker in ('COMPILE ERROR','BUILD ERROR')):
+        from .compile_guidance import hints
+        source, _ = candidate(net,agent,slug,function)
+        text += hints(text,source)
     kept = net._last_diffs.get((agent.id, fn['id']))
     if 'REPEAT:' in text:
         # The cache already avoids compilation. Avoid replaying its entire old tool response too.
@@ -354,11 +396,14 @@ def feedback(net, agent, slug, function, text, previous):
             streaks = net._agent_unchanged = {}
         streaks[key] = streaks.get(key, 0) + 1
         detail = 'Instruction diff unchanged from your previous compile (not merely an equal score).'
-        if streaks[key] >= 3:
+        if streaks[key] >= 2:
             detail += (' Multiple edits produced identical instructions. Change approach: inspect the differing '
                        'region, try a local permutation search, or test independent alternatives with compile_variants; '
                        'avoid repeating edits the compiler optimizes away.')
             current_source, revision = candidate(net,agent,slug,function)
+            history = net.store.all('SELECT h.summary FROM attempt_hints h JOIN attempts a ON a.id=h.attempt_id '
+                                    'WHERE h.function_id=? AND a.agent_id=? ORDER BY h.attempt_id DESC LIMIT 3',fn['id'],agent.id)
+            detail += '\nRecent change history: ' + '; '.join(r['summary'][:180] for r in history if r['summary'])
             detail += '\n'+next_action(net,agent,fn,current_source,revision)
     else:
         getattr(net, '_agent_unchanged', {}).pop((agent.id, fn['id']), None)
@@ -531,7 +576,7 @@ def local_family(net, agent, slug, function, revision, family, old='', declarati
     with net.attempt_turn(agent, fn):
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
-            raise stale(net,agent,fn,revision,source,actual)
+            raise stale(net,agent,fn,revision,source,actual,old)
         if family in ('typed_temporary','branch_orientation','narrowing','source_lines','address_temporary','constant_local','comparison_load','stack_array','loop_induction','parameter_width','value_lifetime','sum_shape','call_result_inline'):
             if old or declaration or occurrence or target not in ('','next'):
                 raise NetworkError('Pattern families use function and revision only; omit target/old/declaration/occurrence.')
@@ -598,7 +643,7 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
     with net.attempt_turn(agent, fn):
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
-            raise stale(net,agent,fn,revision,source,actual)
+            raise stale(net,agent,fn,revision,source,actual,patches[0].get('old','') if isinstance(patches[0],dict) else '')
         checked = None
         if family != 'explicit patches':
             from . import agent_evidence

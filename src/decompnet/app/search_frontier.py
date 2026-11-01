@@ -52,10 +52,11 @@ class Frontier:
                 'frame_distance': permuter_focus.stack_distance(rows),
                 'kind': permuter_focus.classify(rows), 'regions': region_repairs.snapshot(rows),
                 'allocation': allocation_evidence.signature(rows,arch),
+                'damage': region_repairs.damage(region_repairs.snapshot(baseline), region_repairs.snapshot(rows)),
                 'output': hashlib.sha256(repr(rows or source).encode()).hexdigest()}
         pool = [n for n in self.nodes if n['source'] != source]+[node]
         numeric = sorted(pool, key=lambda n: (n['score'], n['fitness'], n['frame_distance']))
-        structural = sorted(pool, key=lambda n: (n['fitness'], n['frame_distance'], n['score']))
+        structural = sorted(pool, key=lambda n: (n['damage'], n['fitness'], n['frame_distance'], n['score']))
         # Preserve distinct failure shapes: a moved load can be a useful sibling of a register miss.
         selected = numeric[:1]
         positioned = [n for n in pool if n['summary']['position_differences'] is not None]

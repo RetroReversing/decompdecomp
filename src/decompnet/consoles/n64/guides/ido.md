@@ -3,6 +3,22 @@
 Usual flags: `-O2 -mips2` (some files `-O1`, `-g`, or `-mips1`). If almost nothing matches, the project
 may need a different version (5.3 vs 7.1) or flags: tell the user, they can switch it in the app.
 
+## Near-match checklist
+
+1. **Confirm context:** check ABI, prototypes, original types and same-unit helpers before broad
+   body permutations. Keep compiler, flags, declarations and symbol addresses fixed for comparisons.
+2. **Too few instructions:** inspect missing logic and shared branch tails. Counts alone do not
+   identify the cause; do not copy KMC GCC lifetime recipes without a separately judged experiment.
+3. **Right structure, wrong registers:** try a focused declaration, first-assignment or temporary
+   lifetime change. Save separate candidates so its effect is distinguishable from a flag change.
+4. **A plateau:** compare frame/spill and call/branch structure, retaining a small useful alternative
+   alongside the lowest-score candidate. Check current-input failed history before repeating work.
+5. **Preserve layout:** retain the original line layout; test formatting separately under the
+   controlled procedure below. The observed layout-sensitive example does not prove that newlines
+   alone changed scheduling, or that KMC GCC shares the behavior.
+
+Keep per-function linked-byte/data acceptance and the complete-image check separate.
+
 Traits
 - Unconditional jumps inside functions are `b label` (`beq $zero, $zero`).
 - Expression structure can change output: `a = b; c = a;` and `c = a = b;` are
@@ -129,3 +145,9 @@ new base symbol. Check the actual SDK macro before declaring a helper function: 
 indexed-block macro may forward an extra data pointer, and a matrix macro may take an
 object's address. Compare loop expansion versus helper inlining only as separately
 judged hypotheses. Retail switch tables can differ from archived source revisions.
+
+A small source helper may return a predicate around another function's result. Preserve its real
+body and range checks rather than declaring the underlying callee Boolean. Mask-word signedness
+can change loop lowering even with the same field width. With only two load-order differences,
+try focused scheduling/declaration hypotheses; with only an extra restore/return suffix, inspect
+adjacent original padding for an unreachable epilogue. Neither finding relaxes byte/data checks.

@@ -46,8 +46,9 @@ STALL_BUDGET = ((32, 3), (64, 4), (128, 6), (256, 8))
 STALL_BUDGET_BIGGEST = 10
 STALL_LOOKBACK = 16  # compiles stall_note reads back: more than the biggest budget
 # The game's own code (an SQL condition on `functions`): not what the project sets aside as library code, middleware
-# or the C runtime (config/<version>/set_aside.json, objdiff.game_measures; while its scope is the game's own code)
-GAME_CODE = "json_extract(meta, '$.set_aside') IS NULL"
+# or the C runtime (config/<version>/set_aside.json, objdiff.game_measures; while its scope is the game's own code).
+# (meta's set_aside, as store.py's triggers copy it: the counts' index holds it)
+GAME_CODE = "aside_mark IS NULL"
 # Set aside, for either reason (an SQL condition on `functions`): no C makes it (status asm: hand-written assembly, a
 # piece of a function, agents' verdict) or it isn't the game's own (GAME_CODE). Every count takes it off the total
 # and off what matched, so a matched library function doesn't count either.
@@ -58,8 +59,8 @@ PROGRESS_COLUMNS = (
     "SUM(CASE WHEN status='matched' AND NOT {a} THEN size ELSE 0 END) AS matched_bytes, SUM({a}) AS set_aside, "
     "SUM(CASE WHEN {a} THEN size ELSE 0 END) AS set_aside_bytes").format(a=SET_ASIDE)
 # The functions still in the game's build: not one a measure found gone (a piece joined to its function, kept for its
-# attempts and notes; ForkEngine.sync marks it), which the map and every count leave out
-IN_BUILD = "json_extract(meta, '$.gone') IS NULL"
+# attempts and notes; ForkEngine.sync marks it), which the map and every count leave out (meta's gone, copied too)
+IN_BUILD = "gone_mark IS NULL"
 BRIEF_NOTES = 8  # the newest notes on a function its brief shows
 REPEATS_KEPT = 4096  # compile results kept in memory for repeat_of
 # events after which earlier compile results don't stand for a repeat (bump_generation): a header, a source file, a
@@ -828,6 +829,10 @@ class Network:
                               fn["id"], agent.id)["n"] if limit is not None else 0
         return limit, used
 
+    def ensure_agent_active(self, agent):
+        if agent.id in getattr(self, '_revoked_manual_agents', ()):
+            raise NetworkError('This manual MCP connection was revoked. Create a new connection in the app.')
+
     @contextmanager
     def attempt_turn(self, agent: Agent, fn):
         # A CLI can submit parallel tool calls: serialize this worker's candidates so two submissions cannot
@@ -835,6 +840,7 @@ class Network:
         with self.store.lock:
             lock = self._attempt_locks.setdefault((agent.id, fn["id"]), threading.RLock())
         with lock:
+            self.ensure_agent_active(agent)
             self.check_attempt_limit(agent, fn)
             yield
 
@@ -889,11 +895,17 @@ class Network:
         blocked = claim_stalls.blocked(self,proj) if proj is not None and not function else []
         now = time.time()
         with self.store.tx() as db:
+            self.ensure_agent_active(agent)
             self._expire_claims(db)
             held = db.execute("SELECT f.* FROM claims c JOIN functions f ON f.id=c.function_id WHERE c.agent_id=?",
                               (agent.id,)).fetchone()
             if batch_from is not None:
                 held = None
+            elif held is not None and function:
+                requested = self._function(function, proj['slug'] if proj else None)
+                if db.execute('SELECT 1 FROM claims WHERE function_id=? AND agent_id=?',
+                              (requested['id'],agent.id)).fetchone():
+                    held = requested  # renew any task in an existing batch, not just its first row
             if held is not None:
                 if function and held["id"] != self._function(function, proj["slug"] if proj else None)["id"]:
                     want = self._function(function, proj["slug"] if proj else None)["name"]
@@ -1551,6 +1563,9 @@ class Network:
                            (source, agent.id, now, source, fn["id"]))
                 db.execute("DELETE FROM claims WHERE function_id=?", (fn["id"],))
                 self._event(db, fn["project_id"], agent.id, "match", fn["name"])
+            db.execute('UPDATE attempts SET score_before=?,score_improved=? WHERE id=?',
+                       (current['best_score'], int(bool(improved or (matched and not stale and current['status'] != 'matched'))), attempt))
+
         if stale:
             raise NetworkError("Compiler settings changed while this candidate was compiling. Your attempt is saved; compile it again with today's settings.")
         if not matched and fn["status"] == "open":

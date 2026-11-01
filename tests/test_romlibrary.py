@@ -18,7 +18,7 @@ def needs(data):
 
 @pytest.mark.parametrize('order', ['z64', 'v64', 'n64'])
 def test_nested_n64_files_match_in_any_byte_order_without_filename_hint(tmp_path, order):
-    rom = b'\x80\x37\x12\x40' + bytes(range(252))
+    rom = b'\x80\x37\x12\x40' + bytes(range(256)) * 1024
     original = rom
     if order == 'v64':
         rom = b''.join(rom[i:i+2][::-1] for i in range(0, len(rom), 2))

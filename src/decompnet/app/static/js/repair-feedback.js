@@ -26,6 +26,7 @@ $("repairExamples").onclick = async () => {
     <div class="repair-form-grid"><label>Trials per example<input data-replay-trials type="number" min="1" max="32" value="12"></label>
     <label>Seconds per example<input data-replay-seconds type="number" min="1" max="120" value="30"></label></div>
     <div class="repair-check-stack"><label><input data-replay-minimize type="checkbox" checked> Find a smaller fix first <span class="muted small">Uses up to half the trials</span></label>
+    <label><input data-replay-combinations type="checkbox"> Benchmark repair combinations <span class="muted small">Up to four edits; shows compiles, time and repair path instead of minimizing</span></label>
     <label><input data-replay-diagnostics type="checkbox"> Include GCC diagnostics <span class="muted small">Two extra local compiles; native GCC only</span></label></div>
     <div class="repair-actions"><button data-replay-start type="button">Run tests</button><button data-replay-save type="button" hidden>Save analysis report</button><button data-replay-stop type="button" hidden>Stop tests</button></div>
     <p data-replay-summary class="muted small" role="status"></p><div data-replay-work></div><pre data-replay-results class="repair-replay-results" hidden tabindex="0" aria-label="Repair replay results"></pre></details>

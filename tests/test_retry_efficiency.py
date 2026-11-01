@@ -154,3 +154,19 @@ def test_imported_original_object_changes_invalidate_trial_history(tmp_path,monk
     fn=net._function('f','game');before=agent_tokens.target_scope(net,fn,'r')
     target.write_bytes(b'changed-original')
     assert agent_tokens.target_scope(net,fn,'r')!=before
+
+
+def test_called_matched_helpers_refresh_repair_evidence_only_for_their_callers(tmp_path):
+    net,_=_game(tmp_path,[('f',10,'open'),('fill',20,'open'),('other',30,'open')])
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET best_source='void f(){fill(0);}' WHERE name='f'")
+    fn=net._function('f','game');proj=net._project('game')
+    before=candidate_scope.key(net,proj,fn)
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET status='matched',matched_source='void other(){}' WHERE name='other'")
+    assert candidate_scope.key(net,proj,fn)==before
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET status='matched',matched_source='void fill(short *p){p[0]=1;p[1]=2;}' WHERE name='fill'")
+    assert candidate_scope.key(net,proj,fn)!=before
+    evidence=local_experiments.draft_repairs.capture_followup_repairs.callee_evidence(net,proj,fn,fn['best_source'])
+    assert 'void fill(' in evidence and 'other' not in evidence

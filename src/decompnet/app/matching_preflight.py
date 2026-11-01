@@ -40,9 +40,14 @@ def _run(net, proj, fn, log, check, max_profiles):
         return {'tested': 0}
     from .profile_hypotheses import neighbours, prioritized
     choices = [list(own['flags'])]
-    for flags in prioritized(proj, fn, own)+neighbours(net, proj, fn, own):
+    # Debug labels can change old GCC assembler scheduling. A near match deserves
+    # these cheap same-toolchain checks before broad optimization exploration.
+    count = dict(fn).get('n_insns') or 0
+    promising = count > 0 and fn['best_score'] is not None and fn['best_score'] <= count * 10
+    debug = net.debug_flag_variants(own['toolchain'], list(own['flags'])) if promising and hasattr(net, 'debug_flag_variants') else []
+    for flags in debug+prioritized(proj, fn, own)+neighbours(net, proj, fn, own):
         if flags not in choices:choices.append(flags)
-    # Optimization hypotheses precede debug variants; do not spend the whole budget on -g forms.
+    # Other candidates retain the existing optimization-first exploration order.
     for flags in net.flag_variants(own['toolchain'], list(own['flags'])):
         if list(flags) not in choices:
             choices.append(list(flags))

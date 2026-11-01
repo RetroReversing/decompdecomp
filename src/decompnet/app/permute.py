@@ -62,7 +62,7 @@ IDLE_LOOKS = 20  # looks in a row with nothing to do (an hour) and it's done unt
 HOLD_SPARE_SECONDS = 120  # a turn's hold on a function lasts this much longer than the turn, in case it runs over
 _EOF = object()
 # decomp-permuter's weights per compiler (its default_weights.toml), by the start of a toolchain's id
-FAMILIES = (("ido", "ido"), ("gcc", "gcc"), ("ee-gcc", "gcc"), ("psp-gcc", "gcc"), ("agbcc", "gcc"),
+FAMILIES = (("ido", "ido"), ("gcc", "gcc"), ("ee-gcc", "gcc"), ("psp-gcc", "gcc"), ("ps3", "gcc"), ("agbcc", "gcc"),
             ("mwc", "mwcc"))
 
 
@@ -296,7 +296,7 @@ class Permuter:
                 log.info('permuter: %s: header unavailable: %s', fn['name'], error)
                 continue
             labels = {}
-            candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels,header=header,limit=None,tables=switch_tables.read(self.net,proj,fn))
+            candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels,header=header,limit=None,tables=switch_tables.read(self.net,proj,fn),callees=draft_repairs.capture_followup_repairs.callee_evidence(self.net,proj,fn,fn['best_source']))
             from . import normalization_repairs, repair_ranking
             normalization_repairs.extend_frame(candidates, labels, fn['best_source'], fn['name'], proj['arch'], repair_ranking.evidence(self.net,fn['id'],agent.id))
             ranked = repair_ranking.order(dict.fromkeys(labels.get(text, 'draft_repair') for text in candidates),repair_ranking.evidence(self.net,fn['id'],agent.id))

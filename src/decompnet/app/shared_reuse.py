@@ -111,7 +111,7 @@ def hints(twins, proj, function, limit=5):
 def transfer(twins, proj, job):
     """ROM or imported donors into imported C, through its unchanged objdiff judge."""
     from .free_candidates import exhausted
-    from .twins import WHY_CHARS, _declared, apply
+    from .twins import WHY_CHARS, _declared, _file_compiler, apply
     net = twins.net
     bounded = job is not None and hasattr(job, 'reuse_limit')
     snapshot = discover(twins, proj, job=job)
@@ -149,6 +149,12 @@ def transfer(twins, proj, job):
             a = net.store.one("SELECT * FROM functions WHERE id=? AND status='matched'", hint['function_id'])
             if a is None:
                 continue
+            if net.fork_slug(other['slug']):
+                _, source_project, _ = net.forks.get(other['slug'])
+                _, target_project, _ = net.forks.get(proj['slug'])
+                if _file_compiler(net.console(other), source_project, a) != \
+                        _file_compiler(net.console(proj), target_project, b):
+                    continue
             pa = twins.prints(other).get(a['id'])
             pb = mine.get(fid)
             if not pa or not pb or pa.key != pb.key:

@@ -87,7 +87,7 @@ class JudgeMixin:
         if name is None:
             return "Nothing left to claim in this room — every open function is matched or someone is on it. 🎉"
         link.sync()
-        fn = self.claim_row(agent, project, name, strategy)
+        fn = self._room_claim_row(agent, project, name, strategy)
         return self._brief(fn, agent, header="CLAIMED")
 
     def claim_many(self, agent: Agent, project: str | None, count: int, strategy: str = "easiest") -> str:

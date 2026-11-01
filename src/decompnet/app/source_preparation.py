@@ -254,7 +254,7 @@ def prepare(reader, cfg, mapping, aliases, fallback):
             continue
         text, _ = source_conditions.select(reader.flatten(reader.root / file), macros, reader.overrides)
         definition = source_definitions.extract(declarations(text), name)
-        selected.append(rename(definition, aliases))
+        selected.append(rename(source_definitions.externalize(definition), aliases))
     if cfg.get('_same_file_definitions'):
         explicit={name for name,_ in source_definitions.mappings(cfg.get('definitions',''))}
         reference_used=used | {name for name,target in aliases.items() if target in used}
@@ -262,7 +262,7 @@ def prepare(reader, cfg, mapping, aliases, fallback):
             # A header's actual definition already supplies layout knowledge; never duplicate it.
             try:source_definitions.extract(declarations(header),name)
             except NetworkError:
-                selected.append(rename(definition,aliases))
+                selected.append(rename(source_definitions.externalize(definition),aliases))
                 reader.advisories.append(f'Trying original mapped-file object {name}; its initializer/layout is unchanged and standalone placement still needs verification.')
     if selected:
         source = '\n'.join(selected) + '\n' + source
@@ -288,6 +288,24 @@ def prepare_variants(reader, cfg, mapping, aliases, fallback):
         add(prepare(reader,{**cfg,'header':str(reader.root/header)},origin,{**aliases,symbol:dest},fallback),origin)
         count+=1
         if count>=2:break
+    from . import source_conditions
+    from .source_predicates import variants as predicate_contexts
+    from .source_signedness import variants as signed_contexts
+    for pair in list(result)[:2]:
+        reference=''
+        try:
+            _,macrovalues=source_conditions.select(pair[1],reader.overrides,reader.overrides)
+            reference,_=source_conditions.select(reader.file(reader.root/mapping[2]),macrovalues,reader.overrides)
+            reference=rename(reference,aliases)
+        except NetworkError as error:
+            reader.advisories.append('Predicate helper context unavailable; retaining the original candidate. '+str(error))
+        hypotheses=[('predicate-helper-context',candidate) for candidate in predicate_contexts(pair[0],mapping[0],pair[1],reference)]
+        hypotheses += [('mask-signedness-context',candidate) for candidate in signed_contexts(*pair)]
+        for family,candidate in hypotheses:
+            if cfg.get('_build_owned') and candidate[1]!=pair[1]:continue
+            if candidate in result:continue
+            add(candidate,mapping)
+            reader.origins[candidate]['family']=family
     from .helper_expansion import variants as expand_helpers
     for pair in list(result)[:2]:
         for _, expanded in expand_helpers(pair[0],mapping[0],pair[1]):
@@ -414,7 +432,7 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                 fallback = net.forks.permuter_header(fork, fn['name']) if fork else net._context(proj['id'], fn['unit'])['header']
                 reader.advisories.clear()
                 log_line(fn['name'] + ': reading and preparing selected source context…')
-                variants = prepare_variants(reader, cfg, mapping, aliases, fallback)
+                variants = prepare_variants(reader, {**cfg,'_build_owned':bool(fork)}, mapping, aliases, fallback)
                 if time.monotonic() >= deadline:
                     log_line(fn['name'] + ': source preparation used this round’s time allowance before compilation. Use a smaller coherent header before retrying.')
                     break
@@ -479,7 +497,7 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                                 retried=True
                                 current_fn=net.store.one('SELECT * FROM functions WHERE id=?',fn['id'])
                                 fallback=net._context(proj['id'],current_fn['unit'])['header']
-                                rebuilt=prepare_variants(reader,cfg,mapping,aliases,fallback)
+                                rebuilt=prepare_variants(reader,{**cfg,'_build_owned':bool(fork)},mapping,aliases,fallback)
                                 variants.append(next((pair for pair in rebuilt if pair[0]==source),rebuilt[0]))
                                 log_line(fn['name'] + ': inputs changed; retrying once against fresh destination state.')
                                 continue

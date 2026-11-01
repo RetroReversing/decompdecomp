@@ -9,7 +9,7 @@ import re
 import secrets
 import time
 
-from ...network import NetworkError
+from ...network import Network, NetworkError
 from ...rom.symbols import Symbol
 
 
@@ -63,6 +63,27 @@ class RoomMixin:
             return self.links.get(self._project(project)["slug"])
         except NetworkError:
             return None
+
+    def _room_claim_row(self, agent, project, name, strategy):
+        """Mirror a host-granted lease, replacing only this worker's stale local room leases.
+
+        Call only after link.claim succeeds. Local expiry and host expiry can differ;
+        asking the host again cannot fix a leftover local lease. Roll back if local
+        validation fails, and never release another worker's or the host's claim.
+        """
+        proj = self._project(project)
+        fn = self._function(name, project)
+        self._yield_autopilot(name, project)  # wait outside the transaction for local draft work
+        with self.store.tx() as db:
+            stale = db.execute('SELECT f.id,f.name FROM claims c JOIN functions f ON f.id=c.function_id '
+                               'WHERE c.agent_id=? AND f.project_id=? AND f.id<>?',
+                               (agent.id,proj['id'],fn['id'])).fetchall()
+            for row in stale:
+                db.execute('DELETE FROM claims WHERE function_id=? AND agent_id=?', (row['id'],agent.id))
+            row = Network.claim_row(self, agent, project, name, strategy)
+            for old in stale:
+                self._event(db,proj['id'],agent.id,'room_claim_resynced',old['name']+' -> '+name)
+            return row
 
     def _remote_agent(self, name: str) -> int:
         label = "@" + name
@@ -160,6 +181,24 @@ class RoomMixin:
         by_vram: dict[int, list] = {}
         for row in local.values():
             by_vram.setdefault(row["vram"], []).append(row)
+
+        def free_name(name: str, vram: int) -> None:
+            """#107: the host's layout is authoritative, so a local function holding `name` at another address is
+            renamed to its address's default name (its code and symbol follow) instead of failing the unique name."""
+            for row in [r for r in local.values() if r["name"] == name and r["vram"] != vram]:
+                new = f"func_{row['vram']:08X}"
+                if any(r["name"] == new for r in local.values()):
+                    new = f"{new}_local"
+                word = re.compile(rf"\b{re.escape(name)}\b")
+                with self.store.tx() as db:
+                    db.execute("UPDATE functions SET name=?, matched_source=?, best_source=? WHERE id=?",
+                               (new, word.sub(new, row["matched_source"]) if row["matched_source"] else None,
+                                word.sub(new, row["best_source"]) if row["best_source"] else None, row["id"]))
+                    db.execute("UPDATE symbols SET name=? WHERE project_id=? AND name=?", (new, pid, name))
+                local[row["id"]] = renamed = {**row, "name": new}
+                by_vram[row["vram"]] = [renamed if i["id"] == row["id"] else i for i in by_vram[row["vram"]]]
+                self._syms.pop(pid, None)
+
         for f in sorted(functions, key=lambda f: f["vram"]):
             at = by_vram.get(f["vram"], [])
             if any(row["name"] == f["name"] for row in at):
@@ -175,6 +214,7 @@ class RoomMixin:
                 head, tail = console.split_function(owner, f["vram"], f["name"])
             except ValueError:
                 continue
+            free_name(f["name"], f["vram"])
             syms = self.symbols(pid)
             syms.add(Symbol(f["name"], f["vram"], tail.size, "func"))
             th, tt = self._make_target(proj, head, syms), self._make_target(proj, tail, syms)
@@ -203,7 +243,9 @@ class RoomMixin:
             if len(at) != 1:
                 # An overlay address names several functions; renaming the address would rename all of them.
                 continue
-            row = at[0]
+            free_name(sym["name"], sym["address"])
+            syms = self.symbols(pid)
+            row = by_vram[sym["address"]][0]
             current, off = syms.name_at(sym["address"])
             if off == 0 and current == sym["name"]:
                 continue

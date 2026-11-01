@@ -191,7 +191,7 @@ def test_live_metrics_count_only_verified_strict_improvements_and_keep_starting_
     search.measuring_baseline = False
     search._score(AGENT, proj, fn, 'match', 20, None)
     assert search.metrics() == {'starting_score':50,'starting_percent':95.0,'best_score':0,
-                                'best_percent':100.0,'improvements':3}
+                                'best_percent':100.0,'improvements':3,'local_search':{}}
     assert search.log.updates[-1]['improvements'] == 3
 
 
@@ -341,6 +341,33 @@ def test_local_detour_can_lead_to_match_without_saving_a_regression(monkeypatch,
     search = deep_permuter.Search(net, 1, 10, Log())
     assert search.local_repairs(AGENT, net.project_row('game'), net.function(), 40, 'fork' if imported else None) == (0, 'exact')
     assert seen == ['detour', 'exact']
+
+
+@pytest.mark.parametrize('imported', [False, True])
+def test_plateau_combinations_and_cached_rows_remain_expandable(monkeypatch, imported):
+    net = setup(monkeypatch, imported)
+    original = net.function()['best_source']
+    monkeypatch.setattr(draft_repairs, 'variants', lambda s,*a,**kw: {original:['plateau'], 'plateau':['exact']}.get(s, []))
+    monkeypatch.setattr(deep_permuter.stack_padding_repairs, 'grow', lambda *a: [])
+    net._last_diffs = {}
+    calls = []
+    def judge(self, agent, proj, fn, source, best, fork):
+        calls.append(source)
+        net._last_diffs[agent.id, fn['id']] = ([('r','move $s0,$a0','move $s1,$a0')], None)
+        if source == 'exact':
+            with net.store.tx() as db:
+                db.execute("UPDATE functions SET best_score=0,best_source='exact',status='matched' WHERE id=?", (fn['id'],))
+            return 0
+        return 40
+    monkeypatch.setattr(Permuter, '_score', judge)
+    search = deep_permuter.Search(net, 1, 10, Log())
+    fork = 'fork' if imported else None
+    assert search.local_repairs(AGENT, net.project_row('game'), net.function(), 40, fork, max_trials=1)[0] == 40
+    # A new search reuses the measured plateau but still explores its untried second edge.
+    search = deep_permuter.Search(net, 1, 10, Log())
+    assert search.local_repairs(AGENT, net.project_row('game'), net.function(), 40, fork)[0] == 0
+    assert calls == ['plateau', 'exact']
+    assert search.local_status['reason'] == 'matched'
 
 
 def test_unproductive_deep_detour_returns_saved_source_and_respects_burst_limit(monkeypatch):
