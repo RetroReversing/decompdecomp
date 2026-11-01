@@ -108,3 +108,13 @@ boolean masks can change scheduling. Try both splitting a call-result temporary 
 a compatible dead result slot; neither is consistently best. The bounded local families also
 combine these changes and can stage field loads in target-observed offset order. Every trial
 uses the ordinary judge; do not change shared prototypes or accept a lower score as a match.
+
+### A few remaining register operands
+
+With `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`, a verified large routine needed separate
+lexical blocks for two draw-pair paths, block-local coordinates, and staged second-call arguments.
+The compiler merged their common tail and recovered the last eight register operands. An inline
+helper instead enlarged the frame and reordered instructions. Try the combined local-block shape
+when a shared tail keeps a converted coordinate in the wrong saved register; preserve every call,
+argument value and side effect. Braces alone are not a general fix. See the matching learning log
+for the measured case and failed alternatives; every candidate still needs the ordinary exact judge.

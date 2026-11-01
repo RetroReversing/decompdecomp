@@ -619,6 +619,41 @@ masks, error values and recovery paths; source identity was not sufficient evide
 The proposed preparation changes in this PR were not installed for the matching batch. These are manually
 verified source/context findings, separate from synthetic feature regressions and later whole-image export checks.
 
+### KMC GCC: local draw-pair lifetimes (1 November 2026)
+
+**Verified case:** an 845-instruction / 3,380-byte rendering routine matched with
+`gcc-2.7.2-kmc`, `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. A standalone ordinary judge
+confirmed equality of every linked byte, then the live app accepted the same source as matched,
+score zero. A subsequent repository sync also reproduced the complete 12,582,912-byte cartridge,
+retaining all earlier selected C. This is a manually verified case, not an automatic repair family.
+Private evidence is retained outside this repository in `func_80076060-matched.json`,
+`func_80076060-matched-warnings.txt` and `live-exact-verification.json`; source SHA256
+`82858b9b4ee8237c496a715f7d82c8f7d48170fec659739043d55e71f8e2bf8a`.
+
+- The final near miss had the correct length, addresses and instruction order, but eight register
+  operands differed. Compiler dumps showed a short-lived constant receiving the saved register
+  wanted by a converted coordinate. The reference allocator ranks quantities using references,
+  size and live length; a source variable's apparent lifetime alone does not describe its lowered temporaries.
+- Replacing a shared draw-pair tail with separate lexical blocks in the two incoming paths,
+  each with its own local coordinate, and explicitly staging the second call's context, handle,
+  coordinate and Y arguments recovered the exact output. The compiler merged their common tail.
+  Both a direct narrow-coordinate form and an explicit high-word form matched. This is evidence
+  for the combined source shape, not a rule that duplicating code or adding braces always helps.
+- An inline-helper alternative recovered the desired registers but enlarged the frame by eight
+  bytes and reordered instructions. Equivalent local blocks avoided those differences. Adding
+  more helper arguments, changing their order or widening Y did not fix that alternative.
+- An earlier controlled step retained an accepted halfword field in a separate local and used
+  it for both calls' flag arguments. This recovered six register operands that constant reuse
+  had changed. Narrowing was performed only after the original full-width comparison accepted
+  the value; narrowing before that comparison would change behaviour.
+- Broad declaration/type changes, constant spellings, equivalent argument arithmetic and
+  repeated identical branches did not recover the last eight operands. The final source passed
+  an uninitialized-value warning check and used neither assembly nor hard register bindings.
+
+Relocation-label discrepancies remained in a symbolic diagnostic even for the exact candidate.
+The unchanged linked-byte verdict and independent byte-buffer comparison established exactness;
+altering target addresses or accepting the diagnostic score would not.
+
 ### Bounded follow-ups from the SDK I/O batch
 
 The ten-function IDO 5.3 `-O1` batch above motivates raw-word-supported I/O profile priorities, MMIO expression
