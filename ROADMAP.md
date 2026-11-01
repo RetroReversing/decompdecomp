@@ -15,42 +15,43 @@ Each feature and the platforms it covers today. A — is a gap: pick one up (the
 start). Keep this table true when a feature ships or reaches another platform. Each column's code is its console's
 folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTING.md, "Consoles").
 
-| Feature | N64 | PS1 | PS2 | PSP | GBA | GameCube · Wii | Windows PC | DS | Public decomps |
-| :-- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| Status | recommended | beta | beta | beta | beta | beta | beta | beta | the project's own |
-| Start from your own copy | ✓ | ✓ | ✓ | ✓ unencrypted or decrypted program and modules (ISO, CSO, CHD) | ✓ ROM | ✓ | ✓ | ✓ | fork by address |
-| Judge | link · compare | link · compare | link · compare | link · compare | link · compare | objdiff | objdiff | objdiff | objdiff |
-| Machine drafts (m2c, Ghidra for x86) | ✓ | ✓ | ✓ | ✓ | ✓ (m2c `gba-gcc-c`) | ✓ | ✓ Ghidra | — | by architecture |
-| Autopilot: free matches from drafts | ✓ | ✓ | ✓ | ✓ | ✓ (demo: 34 matches) | ✓ | ✓ exact drafts of tiny shapes; Ghidra's made compilable | — | — |
-| Drafts follow the header, made in the background; `redraft` | ✓ | ✓ | ✓ | ✓ | ✓ (m2c and `redraft`) | — | ✓ Ghidra's | — | — |
-| C++ methods drafted as `Class::method` | ✓ | ✓ | ✓ | ✓ | — | — | ✓ (RTTI, and classes from the vtables constructors store) | — | — |
-| Twins: free matches from identical code | ✓ | ✓ | ✓ | ✓ | ✓ (ran; no pairs in demo) | ✓ | ✓ | ✓ | ✓ |
-| Permuter on near misses | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ |
-| Hand-written assembly set aside | ✓ | ✓ | ✓ | ✓ | ✓ (`_call_via` helpers, `svc`/`swi` stubs) | ✓ | Visual C++'s exception-handling stubs | BIOS call stubs, pieces of functions | MIPS, PowerPC, ARM's BIOS stubs and pieces of functions |
-| Pieces of functions joined to their function | — | — | — | — | — | — | ✓ (`scratch.merge_pieces`) | ✓ (`recover.merge_pieces`) | — |
-| Agents' verdict "no C makes this" (3 agents of 2 models: set aside, red in the map) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Check again (and before helpers start, once after each update) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Kernel stubs set aside and named | — | set aside (BIOS calls) | ✓ | set aside, named by library and NID | set aside (BIOS calls) | — | ✓ import thunks | — | — |
-| Function-end reports (`report_boundary`) | ✓ | ✓ | ✓ | ✓ | ✓ (2-byte boundaries) | — | ✓ (agents agree, the rebuild checks) | — | — |
-| Compiler ranges and suggestions | ✓ | ✓ | ✓ | ✓ | — | from scratch: per source file (`try_compiler`, Settings); else the project's build | per source file (`try_compiler`, Settings) | per source file (`try_compiler`, Settings) | the project's build |
-| Flag search (`search_flags`) | ✓ | ✓ | ✓ | ✓ | — | the project's build | per source file (/Oy-, /O1, /Ob1) | the project's build | the project's build |
-| Compiler map and the judge's survey | ✓ | ✓ | ✓ | ✓ | — | — | ✓ per source file, Rich header | — | — |
-| Range checks: a range applies after its neighbours confirm it | ✓ | ✓ | ✓ | ✓ | — | — | ✓ over source files | — | — |
-| C++ classes from the code (`get_class`) | ✓ | ✓ | ✓ | ✓ | — | — | ✓ (named by RTTI where the program has it) | — | — |
-| Struct layouts from loads and stores (`guess_struct`) | ✓ | ✓ | ✓ | ✓ | — | — | ✓ | — | — |
-| The game's own debug symbols: names, types, prototypes | — | — | ✓ symbol table, STABS, DWARF 1; the compiler of each object file | ✓ symbol table, DWARF 1 | — | — | ✓ PDB (Visual C++ 6.0's PDB 2.0, MSF 7.00), linker map, COFF symbols | — | — |
-| Twins across your games | ✓ | ✓ | ✓ | ✓ | — | — | ✓ (between PC projects) | — | — |
-| Shared knowledge (two models agree) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Tidy each source file once it's polished (shared types in one header, names, dead declarations) | — | — | — | — | — | ✓ | ✓ | ✓ | ✓ |
-| Polish matched code (still matching) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Real names for the game's symbols (`rename_symbol`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | dtk and ds-decomp projects |
-| Save and restore (`progress/`, Open a saved project) | ✓ | ✓ | ✓ | ✓ | ✓ | the project's git; best attempts saved | the project's git; best attempts saved | the project's git; best attempts saved | the project's git; best attempts saved |
-| Saved README preserves notes, with completion bar and function map | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Reimport: a new split, matched work kept (Settings) | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ (Ghidra again, the newest rules) | — | — |
-| Rebuildable export | ✓ | ✓ | ✓ | ✓ | ✓ | the project | the project (`ninja rebuild`) | the project | the project |
-| Progress bars for foreground jobs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Find a game in a local library by declared SHA-1 | — | — | — | — | — | — | — | — | ✓ N64 and exact-file splat; — dtk, configure and whole-disc PS |
-| Rooms: decompile together | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Feature | N64 | PS1 | PS2 | PS3 | PSP | GBA | GameCube · Wii | Windows PC | Xbox | DS | Public decomps |
+| :-- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| Status | recommended | beta | beta | beta | beta | beta | beta | beta | beta | beta | the project's own |
+| Start from your own copy | ✓ | ✓ | ✓ | ✓ decrypted EBOOT.ELF | ✓ unencrypted or decrypted program and modules (ISO, CSO, CHD) | ✓ ROM | ✓ | ✓ | ✓ default.xbe, .xiso or Redump .iso | ✓ | fork by address |
+| Judge | link · compare | link · compare | link · compare | link · compare | link · compare | link · compare | objdiff | objdiff | objdiff | objdiff | objdiff |
+| Machine drafts (m2c, Ghidra for x86) | ✓ | ✓ | ✓ | — | ✓ | ✓ (m2c `gba-gcc-c`) | ✓ | ✓ Ghidra | ✓ Ghidra | — | by architecture |
+| Autopilot: free matches from drafts | ✓ | ✓ | ✓ | twins only | ✓ | ✓ (demo: 34 matches) | ✓ | ✓ exact drafts of tiny shapes; Ghidra's made compilable | ✓ as PC | — | — |
+| Drafts follow the header, made in the background; `redraft` | ✓ | ✓ | ✓ | — | ✓ | ✓ (m2c and `redraft`) | — | ✓ Ghidra's | ✓ Ghidra's | — | — |
+| C++ methods drafted as `Class::method` | ✓ | ✓ | ✓ | — | ✓ | — | — | ✓ (RTTI, and classes from the vtables constructors store) | ✓ (RTTI, vtables) | — | — |
+| Twins: free matches from identical code | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (ran; no pairs in demo) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Permuter on near misses | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Hand-written assembly set aside | ✓ | ✓ | ✓ | ✓ (`sc` stubs) | ✓ | ✓ (`_call_via` helpers, `svc`/`swi` stubs) | ✓ | Visual C++'s exception-handling stubs | Visual C++'s exception-handling stubs | BIOS call stubs, pieces of functions | MIPS, PowerPC, ARM's BIOS stubs and pieces of functions |
+| Pieces of functions joined to their function | — | — | — | — | — | — | — | ✓ (`scratch.merge_pieces`) | ✓ (`scratch.merge_pieces`) | ✓ (`recover.merge_pieces`) | — |
+| Agents' verdict "no C makes this" (3 agents of 2 models: set aside, red in the map) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Check again (and before helpers start, once after each update) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Kernel stubs set aside and named | — | set aside (BIOS calls) | ✓ | ✓ import stubs (NIDs) and `sc` calls | set aside, named by library and NID | set aside (BIOS calls) | — | ✓ import thunks | ✓ import thunks, named from the kernel export list | — | — |
+| Function-end reports (`report_boundary`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (2-byte boundaries) | — | ✓ (agents agree, the rebuild checks) | ✓ | — | — |
+| Your own compiler (Setup: another build of one it has) | ✓ | ✓ | ✓ | ✓ your SDK | ✓ | ✓ | — | ✓ your Visual C++ | ✓ your XDK | — | the project's own build |
+| Compiler ranges and suggestions | ✓ | ✓ | ✓ | ✓ (ps3dev GCC, your SDK's) | ✓ | — | from scratch: per source file (`try_compiler`, Settings); else the project's build | per source file (`try_compiler`, Settings) | per source file (`try_compiler`, Settings): Visual C++ 7.0 / 7.1, your XDK's own | per source file (`try_compiler`, Settings) | the project's build |
+| Flag search (`search_flags`) | ✓ | ✓ | ✓ | ✓ | ✓ | — | the project's build | per source file (/Oy-, /O1, /Ob1) | per source file | the project's build | the project's build |
+| Compiler map and the judge's survey | ✓ | ✓ | ✓ | — | ✓ | — | — | ✓ per source file, Rich header | the XDK build's compiler (no Rich header: one per game) | — | — |
+| Range checks: a range applies after its neighbours confirm it | ✓ | ✓ | ✓ | — | ✓ | — | — | ✓ over source files | ✓ | — | — |
+| C++ classes from the code (`get_class`) | ✓ | ✓ | ✓ | — | ✓ | — | — | ✓ (named by RTTI where the program has it) | ✓ (RTTI where the program has it) | — | — |
+| Struct layouts from loads and stores (`guess_struct`) | ✓ | ✓ | ✓ | — | ✓ | — | — | ✓ | ✓ | — | — |
+| The game's own debug symbols: names, types, prototypes | — | — | ✓ symbol table, STABS, DWARF 1; the compiler of each object file | names (types and prototypes: —) | ✓ symbol table, DWARF 1 | — | — | ✓ PDB (Visual C++ 6.0's PDB 2.0, MSF 7.00), linker map, COFF symbols | — (an XBE has none) | — | — |
+| Twins across your games | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | ✓ (between PC projects) | ✓ (as PC's; not run on two Xbox games yet) | — | — |
+| Shared knowledge (two models agree) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Tidy each source file once it's polished (shared types in one header, names, dead declarations) | — | — | — | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Polish matched code (still matching) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Real names for the game's symbols (`rename_symbol`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | dtk and ds-decomp projects |
+| Save and restore (`progress/`, Open a saved project) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | the project's git; best attempts saved | the project's git; best attempts saved | the project's git; best attempts saved; the PE view made again from your XBE or disc | the project's git; best attempts saved | the project's git; best attempts saved |
+| Saved README preserves notes, with completion bar and function map | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Reimport: a new split, matched work kept (Settings) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ (Ghidra again, the newest rules) | ✓ | — | — |
+| Rebuildable export | ✓ | ✓ | ✓ | — | ✓ | ✓ | the project | the project (`ninja rebuild`) | the project (`ninja rebuild` writes your default.xbe back, byte for byte) | the project | the project |
+| Progress bars for foreground jobs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Find a game in a local library by declared SHA-1 | — | — | — | — | — | — | — | — | — | — | ✓ N64 and exact-file splat; — dtk, configure and whole-disc PS |
+| Rooms: decompile together | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 Where to start on a gap:
 - **Local game library for public decomps**: dtk and configure projects do not expose a game-file SHA-1 in
@@ -60,6 +61,7 @@ Where to start on a gap:
   mode, not on a ROM; the readers are the part to write (CodeWarrior's vtable pointer is often not at offset 0). x86
   has its reader (`arch/x86_fields.py`): PC classes and struct layouts come from it (`Console.classes`,
   `Console.structs`); a PowerPC reader would give GameCube and Wii the same through those parts.
+- **Xbox** shares the Windows PC column's code (`consoles/xbox/` only makes the program); a gap there is usually a PC gap.
 - **Windows PC**: autopilot's Ghidra drafts compile, but rarely match beyond the tiny shapes exact drafts cover:
   Ghidra drafts a delinked object without its callees' prototypes, so a method call loses `this` and a callee's
   arguments are guessed (a draft fed the project's headers, through a Ghidra script that applies them, is the next
@@ -94,6 +96,16 @@ Where to start on a gap:
   weren't tried); what's missing is opening a save's best attempts in a new copy of the project.
 
 ## Recently done
+
+- **Your own compiler on every ROM console.** N64, PS1, PS2, PSP and GBA games can be built with your own copy of
+  a compiler they use, a build no pack has (an EE-GCC, a CodeWarrior PS2, an SNC, a PSP GCC, a KMC GCC, an IDO, an
+  agbcc): Setup, Compilers & tools, "Your own PS2 compiler" (one per console, in its group), given the folder it's
+  in, laid out as the pack's is (`kits/owncompiler.py`). It runs exactly as the pack does (the pack's command, wibo,
+  the PS1's maspsx and assembler) from your folder, which is never copied; its compiler id starts with the pack's, so each console's
+  flags treat it as that compiler. Checked on the N64, PS1, PS2 and GBA demos (a copy of each one's pack imported,
+  matched and refused wrong C) and, per pack, byte for byte against the pack's own object (`tests/test_kits.py`);
+  PSP's packs weren't on the machine it was checked on. GameCube, Wii and DS: see "Your own compiler for
+  GameCube, Wii and DS".
 
 - **Visual C++ 2017 for Windows PC, through wine.** The `msvc2015` pack (proprietary, installed after the user
   accepts it, 220 MB): Visual C++ 2017's last toolset (14.16, cl 19.16.27027.1) and the Windows 10 SDK it was used
@@ -376,9 +388,9 @@ Where to start on a gap:
   set-aside code out. **Check again** (About this project) looks at a project with what the running version knows;
   it also runs before helpers start, once after each update.
 - **PlayStation (PS1) games from your own copy** (beta): a disc image (BIN, ISO or CHD; SYSTEM.CNF says which
-  program it boots) or its PS-X EXE, with the disc's overlays. Functions are built as PSY-Q games were: GCC 2.6.3,
-  2.7.2 or 2.8.1, then maspsx, which does what Sony's assembler ASPSX did, then GNU as; the import tries the three on
-  the game's code. BIOS call stubs and GTE code are set aside as assembly. The demo game matches function by function
+  program it boots) or its PS-X EXE, with the disc's overlays. Functions are built as PSY-Q games were: GCC 2.5.7,
+  2.6.0, 2.6.3, 2.7.2 (or its CDK build), 2.8.0, 2.8.1, EGCS 2.91.66 or GCC 2.95.2, then maspsx, which does what
+  Sony's assembler ASPSX did, then GNU as; the import tries them on the game's code. BIOS call stubs and GTE code are set aside as assembly. The demo game matches function by function
   and rebuilds byte for byte; no real game is tested from start to end yet. A disc whose boot program is a loader
   gives the program it loads (`exe.loaded_program`), and where splat's guess at the code misses the entry point (a
   loader that is mostly a picture: 1 function found), .text is where the code's returns and frames are (137).
@@ -476,7 +488,8 @@ Where to start on a gap:
   installer creates a Finder app in `~/Applications`. Intel and Apple Silicon CI exercise portable regressions
   and the hidden native window. KMC GCC/binutils require Rosetta on Apple Silicon; unavailable Linux-only
   compilers remain unavailable. PS1 GCC 2.6.3 builds natively from pinned source on Intel and Apple Silicon Macs
-  with Xcode Command Line Tools; GCC 2.7.2 and 2.8.1 use pinned native Apple Silicon builds with maspsx. The
+  with Xcode Command Line Tools; GCC 2.7.2, 2.7.2 CDK and 2.8.1 use pinned native Apple Silicon builds with maspsx;
+  the other PS1 GCCs and EGCS 2.91.66 need Linux, or Windows through WSL 2. The
   assembler helper uses the app's Python rather than Apple's older system Python. Mac workers use per-thread QoS
   so they don't lower the whole app's priority.
 - **Linux packages**: a `.deb`, an `.rpm` and an AppImage with their own Python, built for each release.
@@ -514,6 +527,51 @@ Where to start on a gap:
 
 ## Next
 
+### Your own compiler for GameCube, Wii and DS
+
+Their projects (dtk-template, ds-decomp) take CodeWarrior by version from the community's compilers archive, which
+holds every build known, so no game has needed one of its own yet. When one does: the project's build gets a
+compilers folder of the user's beside the archive's (dtk-template's configure.py reads one), and the console lists
+its versions (`Console.kit_compilers`), as Windows PC does for Visual C++ through `--own`.
+
+### PlayStation 3 from your own copy
+
+ROM mode, as the PS2 and PSP: you give decompdecomp the game's program decrypted (EBOOT.ELF: a SELF is refused, it
+never decrypts anything), it splits it (the module descriptor's functions first, then calls and prologues), and the
+judge links each candidate at its address and compares what each instruction refers to (`arch/ppc64.py`: TOC slots,
+function descriptors, the call-site TOC restore). Its imports are named from their NIDs and its kernel calls from
+their numbers (PSL1GHT's lists, MIT), and their stubs set aside. It builds with the free ps3dev GCC (the demo) or your
+own SDK's compiler (the `ps3sdk` kit: the game's `.comment` stamp picks the copy). Every feature of the table ran on
+its demo (`projects/demo-ps3`), and a decrypted retail game (22,482 functions, SDK 2.5.0) imported whole: its module
+descriptor (Sony's 8-byte pairs), its import stubs (all 194 named), its nameless sections and its SDK read as they
+are, and its functions matched through the judge with Sony's GCC rebuilt from its GPL source (SDK 2.5.0, the
+game's own), a getter of a global among them: that game reached its globals through GCC's minimal TOC (r30), which
+the import reads off the code and builds with (`-mminimal-toc`), and its linker didn't narrow any TOC load. What's left:
+
+- **The period compiler without an SDK.** `packaging/ps3-gcc/` rebuilds Sony's `ppu-lv2-gcc` (SDK 1.9.0, 2.5.0, 2.7.0) from
+  the GPL parts of its published source; its `toolchains.toml` entries wait for it to be published.
+- **Drafts.** m2c has no PPC64 target: a ROM-mode Ghidra draft (as PC's) would give PS3 drafts, autopilot's draft
+  phase and `redraft`.
+- **The processor's readers.** `arch/ppc64.py` has no field accesses (`guess_struct`), class reader (`get_class`),
+  piece rule or compiler map yet; the unstripped program's DWARF types and prototypes aren't read either.
+- **Later:** the rebuildable export, PRX modules, SPU programs.
+
+### Xbox: what's next
+
+The original Xbox is a beta PROJECT-mode console: decompdecomp reads your default.xbe (or an .xiso / Redump .iso),
+makes it a Windows program at the same addresses, and from there it is the PC path (Ghidra, COFF objects, objdiff,
+`ninja rebuild`, which writes your default.xbe back byte for byte). With your own XDK set up in Setup (a kit:
+`kits/`), its library code in .text is set aside and a game of an early XDK builds with that XDK's own Visual C++.
+Three retail games imported and rebuilt byte for byte (thousands of functions each). All three were built with
+link-time code generation (/GL, /LTCG), as most Xbox games were: the import tells it from the program (or the import
+dialog says), units build in harness mode (`tools/ltcg.py`: the unit, a driver calling its functions as the game's
+call sites do, and stand-ins, linked /LTCG by the compiler's own linker through wine), briefs show each function's
+convention, `standins_for` writes a starting harness, and a register-convention function of a retail game matched
+through its driver.
+Briefs also say when a function is a member function (its `this` in any register) and of which struct, and an
+attempt whose function got another convention than the original's says which registers differ. What's next is real
+games: a whole one rebuilt from C, then the console's status can say recommended.
+
 ### Game Boy Advance from your own copy
 
 ROM mode, as 1.0.2 had it: luvdis (MIT) finds the functions, agbcc (pret's GCC 2.95 rebuild) compiles the C, the
@@ -541,8 +599,10 @@ blank).
 
 PC projects build with Visual C++ 6.0 to 2010 (phases B and C are done: Recently done). The import already tells a
 newer game apart (its build, /GL, 64-bit, DRM); what's left, one phase at a time. Visual C++ 2017's compilers are
-installed (`msvc2015`, Recently done) and can be chosen per file, but games built with 2017 and newer are still
-refused at import.
+installed (`msvc2015`, Recently done) and can be chosen per file. A game built with a Visual C++ no pack has (2012,
+2013, 2015, 2019, 2022, or another build of a packed version) builds with your own copy of it: the `visualcpp` kit
+(`kits/`), set up in Setup from your Visual Studio's VC folder, matched to the game's Rich header by build (2015 and
+newer through wine). Without a copy, games built with 2017 and newer are still refused at import.
 
 - **What 2005-2010 still lacks.** The newer exception-handling tables (`__CxxFrameHandler3`) need the stub rules
   tested again (a game rebuilt with 2010 tools: 6,583 stubs found; a 2005 game built without C++ exceptions: none).
