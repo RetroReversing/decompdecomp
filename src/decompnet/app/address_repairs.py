@@ -21,7 +21,12 @@ def variants(source, report, target, big, known_symbols):
     from .global_addresses import alias_variant, normalize
     from .layout_repairs import variants as layout_variants
     from .pointer_steps import variants as step_variants
+    from .raw_address_repairs import variants as raw_variants
     from .similar_matches import INTEGER, TOKENS, literal_variants
+
+    # Raw target words remain useful even when cached symbolic feedback is misleading.
+    # Put bounded expression-local singles/pairs before label-based guesses.
+    raw = [text for _, text in raw_variants(source, target['name'], 'mips', target['asm'])] if {'name','asm'} <= set(target.keys()) else []
     report = normalize(report)
     votes = defaultdict(set)
     halves = defaultdict(set)
@@ -77,4 +82,4 @@ def variants(source, report, target, big, known_symbols):
     steps = step_variants(source, report, target, big)
     for variant in list(result):
         steps.extend(step_variants(variant, report, target, big))
-    return list(dict.fromkeys(result + steps + layouts))[:8]
+    return list(dict.fromkeys(raw + result + steps + layouts))[:8]

@@ -377,11 +377,15 @@ function renderDiff(d) {
     diagnostic.textContent = hint; probs.append(diagnostic);
   }
   const html = [];
+  const addressRows = new Map((d.address_rows || []).map((a) => [a.row, a]));
+  const rowIndices = new Map(rows.map((r, i) => [r, i]));
+  const addressNote = (value) => value == null ? "" : `<small class="raw-address">address 0x${value.toString(16).toUpperCase().padStart(8, "0")}</small>`;
   let t = 0, run = [];
   const rowHtml = (r) => {
     const cls = MARK[r[0]] || "repl";
+    const address = addressRows.get(rowIndices.get(r));
     if (r[1]) t++;
-    return `<div class="dr ${cls}"${r[0] !== " " ? ` title="${MARK_TEXT[r[0]] || ""}"` : ""}><span class="dn">${r[1] ? t : ""}</span><code>${insnHtml(r[1], r[2], cls)}</code><span class="dm">${r[0] === " " ? "" : esc(r[0])}</span><code>${insnHtml(r[2], r[1], cls)}</code></div>`;
+    return `<div class="dr ${cls}"${r[0] !== " " ? ` title="${MARK_TEXT[r[0]] || ""}"` : ""}><span class="dn">${r[1] ? t : ""}</span><code>${insnHtml(r[1], r[2], cls)}${addressNote(address?.target)}</code><span class="dm">${r[0] === " " ? "" : esc(r[0])}</span><code>${insnHtml(r[2], r[1], cls)}${addressNote(address?.candidate)}</code></div>`;
   };
   const flush = (end) => {
     if (run.length > 10 && end !== "all") {

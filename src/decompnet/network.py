@@ -1292,6 +1292,8 @@ class Network:
                             ": an encoding the listing doesn't show (branch form, an immediate, a relocation)."))
         if checks.get("link"):
             head += "\n" + checks["link"]["message"]
+        if checks.get("address_mismatches"):
+            head += "\n" + checks["message"]
         warn = f"\ncompiler output:\n{result.log.strip()}" if result.log.strip() else ""
         if problems:
             warn += "\nwhen linking your code at the function's address:\n" + "\n".join(f"- {p}" for p in problems)

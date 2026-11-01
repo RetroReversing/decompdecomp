@@ -69,3 +69,30 @@ def test_linked_byte_verdict_takes_precedence_over_symbolic_annotations():
     assert 'Linked bytes verified identical' in diagnostics.text({'linked_bytes':{'exact':True}})
     assert 'do not repair' in diagnostics.text({'linked_bytes':{'exact':True}})
     assert diagnostics.text({'linked_bytes':{'exact':False}}) == ''
+
+
+def test_raw_numeric_address_feedback_does_not_change_the_verdict(monkeypatch):
+    from types import SimpleNamespace
+
+    from decompnet.elfobj import FunctionObj
+    a=bytes.fromhex('3c01800bac227040');b=bytes.fromhex('3c01800cac227040')
+    target=FunctionObj('f','mips',True,a,[])
+    candidate=FunctionObj('f','mips',True,b,[])
+    monkeypatch.setattr('decompnet.rom.match.link',lambda *args:LinkResult(candidate,False,[],{},False,b))
+    class Net(JudgeMixin):
+        def is_rom(self, proj):return True
+        def _rom_target(self, fn):return SimpleNamespace(code=a)
+        def _target_obj(self, fn, proj):return target
+        def symbols(self, pid):return None
+        def reader(self, proj, fn):return None
+    net=Net();fn={'id':1,'name':'f'};proj={'id':1,'arch':'mips','big_endian':True}
+    _, exact, _=net._evaluate(fn,proj,b'not ELF')
+    assert exact is False
+    checks=net._candidate_checks(fn,proj,b'not ELF')
+    assert checks['address_mismatches']==[{'row':1,'target':0x800b7040,'candidate':0x800c7040}]
+    assert '0x800B7040, yours 0x800C7040' in checks['message']
+    assert net._candidate_addresses(fn,b'not ELF')==checks['address_mismatches']
+    monkeypatch.setattr('decompnet.rom.match.link',lambda *args:LinkResult(candidate,False,['unknown symbol'],{},False,b))
+    net._evaluate(fn,proj,b'unresolved')
+    assert not net._candidate_addresses(fn,b'unresolved')
+    assert 'address_mismatches' not in net._candidate_checks(fn,proj,b'unresolved')
