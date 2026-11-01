@@ -585,3 +585,21 @@ same-file prototypes; it warns about incompatible typedefs, missing macro-like c
 Original selected object initializers are retained verbatim. A bounded stale-input retry recomputes destination
 state and never bypasses claim or promotion guards. Synthetic tests verify these mechanisms independently of
 the private manual batch; they are not a claim that the new code automatically recovered those ten functions.
+
+### SDK I/O context at IDO 5.3 -O1 (31 October 2026)
+
+The next private source-assisted batch recovered ten SDK I/O, controller and pack routines / 4,928 bytes through
+the live API's ordinary linked judge. All use IDO 5.3
+`-O1 -mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul`. Several started with `-O2` drafts; changing optimization
+alone did not match them. Original declarations, aggregate alignment, explicit register locals, numeric volatile
+MMIO macros and target-supported retail control-flow changes were also required.
+
+In a controlled buffer-submission candidate, an address-of-symbol MMIO form emitted an extra address instruction;
+a direct scalar-symbol alternative selected a different base register. Original numeric volatile MMIO accesses
+matched. Equivalent symbolic diff spellings must not override the linked verdict, and an address must be proven
+from the target before any such candidate is tried. Two byte-aligned controller response decoders matched their
+original record-copy shapes with distinct target buffers. A reference disk revision also had different polling
+masks, error values and recovery paths; source identity was not sufficient evidence for those details.
+
+The proposed preparation changes in this PR were not installed for the matching batch. These are manually
+verified source/context findings, separate from synthetic feature regressions and later whole-image export checks.
