@@ -1378,3 +1378,5 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   timing/outcome data stays unavailable, and partial timing is labelled. CSV export
   includes every family in the selected order, detailed measured outcomes, timing
   coverage, and project/platform/version/build metadata without source or ROM data.
+
+- Done: deep-pass activity cards default to active only, retain expandable output when sorted, and show measured elapsed duration for active and completed functions.
