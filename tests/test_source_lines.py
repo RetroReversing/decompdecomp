@@ -19,7 +19,7 @@ def test_associations_use_candidate_offsets_not_target_gaps_and_red_wins():
         {'row':0,'marker':'r','target':rows[0][1],'compiled':rows[0][2]},
         {'row':2,'marker':'>','target':'','compiled':rows[2][2]}]}]
     text = source_lines.render(info, 'first\nsecond')
-    assert 'C line 1: first' in text and 'lw v1' in text and 'target-only' in text
+    assert '| 1 | `first` | Register |' in text and 'lw v1' in text and 'target-only' in text
     assert 'causes' in text
 
 
@@ -131,5 +131,20 @@ def test_project_fragment_lines_translate_to_candidate_declarations():
     fragment = 'int f(){\nreturn 1;\n}'
     candidate = 'extern int x;\n\n' + fragment
     info = {'available':True,'lines':[{'line':2,'instructions':[{'marker':'i','target':'add','compiled':'sub'}]}], 'unmapped':0}
-    assert 'C line 4: return 1;' in source_lines.render_candidate(info, fragment, candidate)
+    assert '| 4 | `return 1;` | Operand |' in source_lines.render_candidate(info, fragment, candidate)
     assert 'no line locations inferred' in source_lines.render_candidate(info,fragment,'different C')
+
+
+def test_markdown_feedback_preserves_code_cells_omissions_and_compaction():
+    ins={'marker':'r','target':'addiu $fp, $sp, 0x28','compiled':'addiu $s7, $sp, 0x28'}
+    info={'available':True,'lines':[{'line':1,'instructions':[ins,ins,ins]},
+                                  {'line':2,'instructions':[ins]}],'unmapped':17}
+    text=source_lines.render(info,'x = a | b; /* `hint` */\nreturn x;',limit=1)
+    assert '| Line | C | Change | Expected | Current |' in text
+    assert r'a \| b' in text and '`` x = a' in text
+    assert '| Register |' in text and '| ↳ |' in text
+    assert 'Mapped lines omitted: 1.' in text and 'Additional instruction rows omitted: 1.' in text
+    assert 'Unmapped differences: 17' in text
+    assert source_lines.feedback_note('score 20'+text+'\nBudget: 2 left')==text
+    missing=source_lines.render({'available':True,'lines':[{'line':1,'instructions':[{'marker':'>','target':'','compiled':'nop'}]}],'unmapped':0},'return;')
+    assert '| Extra | — | `nop` |' in missing

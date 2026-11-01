@@ -237,7 +237,7 @@ class JudgeMixin:
         return said
 
     def release_function(self, agent: Agent, function: str, notes: str, project: str | None = None,
-                         needs: str = "", not_c: bool = False) -> str:
+                         needs: str = "", not_c: bool = False, move_on: bool = False) -> str:
         """release_function as agents call it (the app's own releases and a room host's go straight to release).
         On a demo fork and a large x86 game, agents released functions seconds after claiming them, untried,
         for reasons a compile would have shown were none (12,565 releases, median 5 s after the claim): so a release
@@ -247,10 +247,12 @@ class JudgeMixin:
         A release without a compile doesn't count against the session's claims, and says so. `not_c`: the agent's
         verdict that no C makes it (Network.release), which isn't pushed back: it's a finding, not giving up, and
         it counts only once agents of two models agree."""
+        if move_on and not notes.strip():
+            raise NetworkError("Explain what you tried and why you need to move on.")
         fn = self._function(function, project)
         need = self._prerequisite(agent, fn, needs, project) if needs.strip() else None
         progress = self.claim_progress(agent, fn)
-        if not not_c and need is None and progress is not None and \
+        if not move_on and not not_c and need is None and progress is not None and \
                 (push := self._push_back(agent, fn, progress, project)):
             return push
         said = self.release(agent, function, notes, project, not_c)

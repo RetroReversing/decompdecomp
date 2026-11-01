@@ -7,6 +7,7 @@ class Element {
   set value(value) { this._value = String(value); }
   get value() { return this._value; }
   get options() { return this.children; }
+  get firstElementChild() { return this.children[0]; }
   querySelector(selector) { return this.parts[selector] ||= new Element(selector); }
   replaceChildren() { this.children = []; this.textContent = ''; }
   showModal() { this.open = true; }
@@ -24,6 +25,11 @@ const context = { S: {logFor: '7', slug: 'demo'}, document: {body, createElement
     requests.push(url); const q = new URL(url, 'http://test').searchParams;
     const id = Number(q.get('session')) || 60, before = Number(q.get('before'));
     const sessions = Array.from({length: 30}, (_, i) => row((before ? 30 : 60) - i));
+    if(id===10) return {sessions,session:row(id),more:false,events:[
+      {id:1,kind:'usage',text:'{"output":124,"coverage":"partial"}'},
+      {id:2,kind:'text',text:'Working'},
+      {id:3,kind:'usage',text:'{"output":3,"coverage":"partial"}'}
+    ].map(e=>({...e,created_at:1}))};
     if(id===8) return {sessions,session:row(id),more:false,events:[
       {id:1,kind:'connection_check_tools',text:JSON.stringify([{name:'project_info',inputSchema:{}}])},
       {id:2,kind:'connection_check_tool_request',text:JSON.stringify({name:'project_info',call_id:'probe',arguments:{detail:false}})},
@@ -140,5 +146,16 @@ vm.runInContext(source.slice(source.indexOf('$("helperTranscript").onclick =')),
   select.value='9'; await select.onchange();
   assert.match(events.children[0].className,/transcript-score-improvement/);
   assert.match(events.children[0].children[0].children[0].textContent,/1040 → 660 · reduced by 380/);
+  select.value='10';await select.onchange();
+  assert.equal(events.children.length,2);
+  const accounting=events.children[0];
+  assert.equal(accounting.children.length,3);
+  assert(accounting.firstElementChild.textContent.includes('app only'));
+  assert(accounting.firstElementChild.textContent.includes('2 updates'));
+  assert(!accounting.open);
+  const mapped=context.transcriptMarkdown('| Line | C | Expected | Current |\n| --- | --- | --- | --- |\n| 29 | `` x = a \\| b; /* `hint` */ `` | — | `move $s4, $zero` |');
+  assert(mapped.includes('<code>x = a | b; /* `hint` */</code>'));
+  assert.equal((mapped.match(/<td>/g)||[]).length,4);
+  assert(mapped.includes('<code>move $s4, $zero</code>'));
   console.log('Transcript full-text rendering, usage, paging and old-session selection passed');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

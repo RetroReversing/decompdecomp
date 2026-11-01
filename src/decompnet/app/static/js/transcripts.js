@@ -3,7 +3,7 @@ function transcriptMarkdown(text) {
   const escape = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
   const inline = text => {
     const codes = [];
-    let safe = escape(text).replace(/`([^`]+)`/g, (_, code) => { codes.push(`<code>${code}</code>`); return `\u0000${codes.length - 1}\u0000`; });
+    let safe = escape(text).replace(/(`+)(.*?)\1(?!`)/g, (_, fence, code) => { if (code.startsWith(" ") && code.endsWith(" ")) code = code.slice(1, -1); codes.push(`<code>${code}</code>`); return `\u0000${codes.length - 1}\u0000`; });
     safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\*([^*]+)\*/g, '<em>$1</em>');
     return safe.replace(/\u0000(\d+)\u0000/g, (_, index) => codes[Number(index)] || "");
@@ -39,7 +39,16 @@ function transcriptMarkdown(text) {
       blocks.push(`<${tag}>${items.join("")}</${tag}>`); continue;
     }
     if (line.includes('|') && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[i + 1])) {
-      const cells = row => row.trim().replace(/^\||\|$/g, '').split('|');
+      const cells = row => {
+        const parts = [''];
+        for (const char of row.trim().replace(/^\||\|$/g, '')) {
+          const last = parts.length - 1;
+          if (char === '|' && parts[last].endsWith('\\')) parts[last] = parts[last].slice(0, -1) + '|';
+          else if (char === '|') parts.push('');
+          else parts[last] += char;
+        }
+        return parts;
+      };
       const head = cells(line).map(c => `<th>${inline(c.trim())}</th>`).join(''); i += 2;
       const rows = [];
       while (i < lines.length && lines[i].includes('|') && lines[i].trim()) rows.push(`<tr>${cells(lines[i++]).map(c => `<td>${inline(c.trim())}</td>`).join('')}</tr>`);
@@ -103,9 +112,10 @@ $("helperTranscript").onclick = async () => {
   const refresh = dialog.querySelector("[data-refresh]");
   let session = 0, after = 0, oldest = 0, eventCount = 0, loading = 0, generation = 0, timer;
   const pendingTools = new Map();
+  let usageGroup = null, usageUpdates = 0;
   const endpoint = () => `/api/transcript?slug=${encodeURIComponent(slug)}&helper=${encodeURIComponent(helper)}`;
   function showEvents(result, reset) {
-    if (reset) { events.replaceChildren(); after = 0; eventCount = 0; pendingTools.clear(); }
+    if (reset) { events.replaceChildren(); after = 0; eventCount = 0; pendingTools.clear(); usageGroup = null; usageUpdates = 0; }
     if (!eventCount && result.events.length) events.textContent = '';
     for (const entry of result.events) {
       const checking = entry.kind.startsWith("connection_check_");
@@ -114,7 +124,7 @@ $("helperTranscript").onclick = async () => {
       const details = document.createElement("details"), summary = document.createElement("summary");
       const labels = {prompt: "Initial prompt", instructions: "App instructions", tool_definitions: "Tool definitions",
         tool_request: "Tool request", tool_response: "Tool response", api_request: "API request (actual context)",
-        handoff: "Session handoff", text: "Agent reply", think: "Exposed reasoning", usage: "Reported usage"};
+        handoff: "Session handoff", text: "Agent reply", think: "Exposed reasoning", usage: "Usage update (not sent to model)"};
       details.className = `transcript-event${kind === "error" ? " transcript-event-error" : ""}`;
       details.open = kind === "error" || (kind === "text" && entry.text.length <= 2000);
       const label = document.createElement("span"), time = document.createElement("time"), size = document.createElement("span");
@@ -185,7 +195,16 @@ $("helperTranscript").onclick = async () => {
           size.textContent = '';
         } catch { /* Preserve raw evidence if a historical record is malformed. */ }
       }
-      if (!parent) events.append(details);
+      if (kind === 'usage') {
+        if (!usageGroup) {
+          usageGroup = document.createElement('details');
+          usageGroup.className = 'transcript-event transcript-accounting';
+          usageGroup.append(document.createElement('summary'));
+          events.append(usageGroup);
+        }
+        usageGroup.firstElementChild.textContent = `Usage accounting (app only) · ${++usageUpdates} updates`;
+        usageGroup.append(details);
+      } else if (!parent) events.append(details);
       after = entry.id; eventCount++;
     }
     dialog.querySelector("[data-event-count]").textContent = `${eventCount} events loaded`;
