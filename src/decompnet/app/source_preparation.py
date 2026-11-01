@@ -245,6 +245,13 @@ def prepare(reader, cfg, mapping, aliases, fallback):
         text, _ = source_conditions.select(reader.flatten(reader.root / file), macros, reader.overrides)
         definition = source_definitions.extract(declarations(text), name)
         selected.append(rename(definition, aliases))
+    if cfg.get('_same_file_definitions'):
+        explicit={name for name,_ in source_definitions.mappings(cfg.get('definitions',''))}
+        reference_used=used | {name for name,target in aliases.items() if target in used}
+        for name,definition in source_definitions.related(declarations(original),reference_used-explicit-{symbol}):
+            # A header's actual definition already supplies layout knowledge; never duplicate it.
+            try:source_definitions.extract(declarations(header),name)
+            except NetworkError:selected.append(rename(definition,aliases))
     if selected:
         source = '\n'.join(selected) + '\n' + source
     return source, rename(header, aliases)
@@ -252,7 +259,9 @@ def prepare(reader, cfg, mapping, aliases, fallback):
 
 def prepare_variants(reader, cfg, mapping, aliases, fallback):
     """Prefer authorized definitions, then try the extern-only context under the same budget."""
-    result = [prepare(reader, cfg, mapping, aliases, fallback)]
+    result = [prepare(reader, {**cfg, '_same_file_definitions': True}, mapping, aliases, fallback)]
+    plain_selected = prepare(reader, cfg, mapping, aliases, fallback)
+    if plain_selected not in result:result.append(plain_selected)
     if cfg.get('definitions'):
         plain = prepare(reader, {**cfg, 'definitions': ''}, mapping, aliases, fallback)
         if plain not in result:result.append(plain)

@@ -108,9 +108,16 @@ def _run(net, proj, fn, log, check, max_profiles):
             else:
                 if not result.get('cached'):
                     agent, _ = net.local_agent('autopilot')
-                    net.suggest(agent, proj['slug'], 'Compiler preflight found a rejudged improvement.',
-                                compiler=best['toolchain'], flags=' '.join(best['flags']), function=fn['name'],
-                                ranges=f"0x{fn['vram']:X}-0x{fn['vram']+fn['size']:X}", source=best.get('source', fn['best_source']))
+                    try:
+                        net.suggest(agent, proj['slug'], 'Compiler preflight found a rejudged improvement.',
+                                    compiler=best['toolchain'], flags=' '.join(best['flags']), function=fn['name'],
+                                    ranges=f"0x{fn['vram']:X}-0x{fn['vram']+fn['size']:X}", source=best.get('source', fn['best_source']))
+                    except NetworkError as error:
+                        # A partial/stale hypothesis may fail the exact suggestion gate. It must not
+                        # abort source search or apply settings without the normal revalidation.
+                        if not str(error).startswith('not suggested:'):raise
+                        result['suggestion_rejected'] = str(error)
+                        log('Compiler preflight kept the working settings and will continue source search: '+str(error))
                 log('Compiler preflight found a better source/profile hypothesis: '+' '.join(best['flags'])+
                     '. Partial results need review; exact results also respect automatic compiler settings.')
     return result

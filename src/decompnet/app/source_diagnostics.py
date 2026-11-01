@@ -26,7 +26,7 @@ def hints(source, name, asm='', arch='', rows=None):
     if arch == 'mips':
         from .sdk_io_repairs import hints as io_hints
         result.extend(io_hints(source,asm,rows))
-        from ..arch.mips_runtime import helper, specialized_calls
+        from ..arch.mips_runtime import entry_context, helper, specialized_calls
         loads = {}
         for row in rows or []:
             if len(row)!=3 or row[0] not in {'>','i','|','o'}:continue
@@ -42,6 +42,18 @@ def hints(source, name, asm='', arch='', rows=None):
         if kind := helper(asm):
             result.append('Target instructions suggest an O32 64-bit runtime helper ('+kind+'). '
                           'Check 64-bit argument/return widths and bounded MIPS III -32 -O1 profiles before mutating 32-bit drafts.')
+        saved,mixed_float=entry_context(asm)
+        if saved or mixed_float:
+            result.append('Entry-context lead: '+(', '.join(sorted(saved))+' is read before a local definition. ' if saved else '')+
+                          ('Incoming $f12 and an $a0-based pointer are both used. ' if mixed_float else '')+
+                          'Inspect callers, function boundaries and original static-helper context before ordinary-ABI permutation. '
+                          'This is advisory; no signature or boundary was changed.')
+        if rows and any(row[0]!=' ' for row in rows) and all(row[0]==' ' or (row[0]=='<' and row[1].strip()=='nop') for row in rows):
+            result.append('Only target-only NOPs remain. Check unreachable code, source line/debug context and boundaries; '
+                          'do not insert padding instructions or change the target to force a match.')
+        if rows and any(row[0]=='r' for row in rows) and not any(row[0] in {'s','|','>','<'} for row in rows):
+            result.append('Register-only differences can come from original record/pointer types and loop structure. '
+                          'Prepare the original declarations and control flow before a broad permutation pass; do not invent fields.')
         if specialized_calls(asm):
             result.append('A caller-saved temporary appears live across a call. Whole-unit/static-helper clobber analysis '
                           'may use a specialized calling convention. Check argument registers and helper context; '

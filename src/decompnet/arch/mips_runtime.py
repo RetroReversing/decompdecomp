@@ -61,3 +61,24 @@ def candidate(asm, name):
     if kind=='double_to_unsigned64':
         return 'unsigned long long '+name+'(double value)\n{\n return (unsigned long long)value;\n}\n'
     return None
+
+
+def entry_context(asm):
+    """Conservative read-before-write leads, not a calling-convention verdict."""
+    defined=set();saved=set();floating=False;pointer=False
+    for line in instructions(asm)[:48]:
+        if line.startswith(('jal ','jalr ','jr ')):break
+        match=re.match(r'(\w+(?:\.\w+)?)\s+(.+)',line)
+        if not match:continue
+        op,args=match.groups();regs=re.findall(r'\$[a-z][a-z0-9]*',args)
+        if not regs:continue
+        store=op in {'sw','sd','sh','sb','swc1','sdc1'}
+        branch=op.startswith('b')
+        reads=regs if store or branch else regs[1:]
+        # Saving a caller's saved register is normal; using it as an address is evidence.
+        if store and len(regs)>1 and regs[-1]=='$sp':reads=[]
+        saved.update(r for r in reads if re.fullmatch(r'\$s[0-7]',r) and r not in defined)
+        floating |= '$f12' in reads and '$f12' not in defined
+        pointer |= '$a0' in reads and '$a0' not in defined and '(' in args
+        if not store and not branch:defined.add(regs[0])
+    return saved, floating and pointer

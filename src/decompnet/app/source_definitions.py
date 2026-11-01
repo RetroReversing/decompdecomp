@@ -43,3 +43,14 @@ def extract(text, name):
         found.append(f'#line {line_number} \"reference-definitions.c\"\n'+original)
     if len(found)!=1:raise NetworkError(f'Expected one object definition for {name!r}; supply a prepared definition subset.')
     return found[0]
+
+
+def related(text, used):
+    """Unambiguous definitions in the explicitly mapped file; no search outside that file."""
+    found=[]
+    for name in sorted(used)[:64]:
+        try:code=extract(text,name)
+        except NetworkError:continue
+        found.append((name,code))
+        if len(found)>=8:break
+    return found
