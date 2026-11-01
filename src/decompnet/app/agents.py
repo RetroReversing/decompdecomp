@@ -1309,6 +1309,8 @@ class Manager:
         facts = tools._project_info(self.net, s.slug, detail=False).split('Next:')[0][:STARTUP_FACTS_CHARS]
         parts = ['App-provided startup context (already fetched; no project_info call needed):', facts]
         if s.options.get('task') != 'readable':
+            # A fresh provider session has no copy of a previous session's brief/C.
+            getattr(self.net, '_claim_packets', {}).pop((agent.id, s.slug), None)
             packet = tools._claim(self.net, agent, s.slug, '', '', count=1)
             if len(packet) > STARTUP_BRIEF_CHARS:
                 packet = packet[:STARTUP_BRIEF_CHARS].rsplit('\n', 1)[0] + '\n[Startup brief abbreviated. Read get_function(section=brief) or get_candidate for omitted evidence before editing.]'

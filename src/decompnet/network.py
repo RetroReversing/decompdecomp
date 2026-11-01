@@ -894,6 +894,11 @@ class Network:
                               (agent.id,)).fetchone()
             if batch_from is not None:
                 held = None
+            elif held is not None and function:
+                requested = self._function(function, proj['slug'] if proj else None)
+                if db.execute('SELECT 1 FROM claims WHERE function_id=? AND agent_id=?',
+                              (requested['id'],agent.id)).fetchone():
+                    held = requested  # renew any task in an existing batch, not just its first row
             if held is not None:
                 if function and held["id"] != self._function(function, proj["slug"] if proj else None)["id"]:
                     want = self._function(function, proj["slug"] if proj else None)["name"]

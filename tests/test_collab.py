@@ -776,3 +776,20 @@ def test_deep_room_search_claims_and_host_confirms_demo_match(built, tmp_path): 
         search._let_go(runner, fn)
     assert not guest.store.one('SELECT 1 FROM claims')
     assert not host.store.one('SELECT 1 FROM claims')
+
+
+def test_restart_recovers_when_host_and_client_hold_different_leases(room):
+    host,slug,guest,gslug,*_=room
+    names=[r['name'] for r in host.store.all("SELECT name FROM functions WHERE project_id=? AND status='open' AND id NOT IN (SELECT function_id FROM claims) ORDER BY id LIMIT 2",host._project(slug)['id'])]
+    assert len(names)==2
+    agent,_=guest.local_agent('restart-recovery')
+    guest.claim_row(agent,gslug,names[0])  # leftover client lease from a previous session
+    link=guest.links[gslug]
+    # A newer host lease (e.g. after its old lease expired) must win on the client.
+    granted=link._req('POST','/collab/claim',{'agent':agent.name,'function':names[1],'strategy':'easiest'})
+    assert granted['function']==names[1]
+    assert names[1] in guest.claim(agent,gslug)
+    held=guest.store.all('SELECT f.name FROM claims c JOIN functions f ON f.id=c.function_id WHERE c.agent_id=?',agent.id)
+    assert [r['name'] for r in held]==[names[1]]
+    assert names[1] in guest.claim(agent,gslug)  # no zero-tool restart loop
+    guest.release(agent,names[1],'Recovery regression finished.',gslug)
