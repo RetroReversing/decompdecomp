@@ -410,3 +410,10 @@ def test_manual_mcp_setup_shows_server_tools_and_copyable_configuration():
         pytest.skip('needs node')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_manual_mcp.js'))], check=True,
                    capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_parallel_deep_activity_keeps_cards_logs_and_expansion_scoped():
+    if NODE is None:
+        pytest.skip('needs node')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_deep_activity.js'))], check=True,
+                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)

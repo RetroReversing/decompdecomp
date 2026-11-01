@@ -16,7 +16,7 @@ function element(id) {
   return elements.get(id);
 }
 let follower, finished = 0;
-const ctx = {$:element, S:{slug:"game-a"}, esc:String, openFn(){},
+const ctx = {renderDeepActivity:()=>{}, $:element, S:{slug:"game-a"}, esc:String, openFn(){},
   document:{createElement:()=>({})},
   beginWork:()=>()=>finished++, showJobError:()=>{},
   followJob:(job, log, callback, active)=>new Promise(resolve=>{follower={job,callback,active,resolve};}),
