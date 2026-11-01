@@ -32,7 +32,12 @@ def diagnose(rows, arch=None):
         from .stack_layout import diagnose as stack
         frame = stack(arch,rows)
     slots = sorted({(r['target'],r['candidate']) for r in (frame or {}).get('local_operands',[]) if r['delta']})
-    return {'register_map':swaps, 'scheduling':scheduling,
+    calls=lambda side:Counter(m[1] for r in rows for m in [re.match(r'(?:jal|callq?|bl)\s+(\S+)',r[side])] if m)
+    target_calls,candidate_calls=calls(1),calls(2)
+    target_count=sum(bool(r[1]) for r in rows);candidate_count=sum(bool(r[2]) for r in rows)
+    merging=bool(target_count and .8*target_count<=candidate_count<target_count and
+                 any(n>=3 and candidate_calls[c]<n for c,n in target_calls.items()))
+    return {'target_instructions':target_count,'candidate_instructions':candidate_count,'possible_tail_merging':merging,'register_map':swaps, 'scheduling':scheduling,
             'target_frame':(frame or {}).get('target_frame'), 'candidate_frame':(frame or {}).get('candidate_frame'),
             'spill_offsets':slots, 'differences':len(changed)}
 
@@ -46,6 +51,8 @@ def signature(rows, arch=None):
 def text(rows, arch=None):
     d = diagnose(rows,arch)
     hints = []
+    if d['possible_tail_merging']:
+        hints.append(f"{d['candidate_instructions']} candidate / {d['target_instructions']} target instructions with fewer repeated calls; inspect tail merging or missing logic, then try selective branch pointer lifetimes")
     if d['register_map']:
         hints.append('consistent register substitution '+', '.join(a+'→'+b for a,b in d['register_map'][:6])+
                      '; try lifetime/split-reuse repairs before broad flag search')

@@ -1341,3 +1341,26 @@ so neither was discarded. Both diagnostic builds preserved their ordinary output
 assignments stayed unchanged, while lifetime and scheduling dumps differed. This supports investigating
 initialization order without claiming a newly discovered allocation cause. No source was applied and
 this replay does not count as another matched function.
+
+### Automating selective branch pointer lifetimes
+
+The shared `branch_pointer_lifetimes` family now tries individual pointer splits and bounded combinations,
+retaining the all-shared parent in the existing frontier. A conservative CFG-backed transform can first
+copy a void terminal suffix into terminal switch leaves: no fallthrough, default required, all incoming
+suffix paths covered, no loops/gotos, and no nested declarations that could shadow copied names. Pointer
+reads must be definitely initialized, storage unescaped, scopes disjoint and volatile/C++ shapes excluded.
+Simple statement macros can be expanded with bounded side-effect-free arguments; strings, control macros
+and opaque captures are left alone. No calls/evaluations are invented or removed by scope changes.
+
+`branch_pointer_declarations` interleaves same-type uninitialized declaration swaps across the retained
+mixed-lifetime hypotheses. The cap is 66 proposals total, shared across parents; ordinary trial/time budgets
+and source/build caches remain in force. Existing numeric/structural frontier retention and input-scoped
+negative trial history handle plateaus and repeated failures. A shorter stream with fewer repeated calls
+is now an advisory hint to inspect tail merging **or missing logic**, not an equivalence or identity verdict.
+
+Frozen private replay under the original KMC profile recovered the recorded successful 666-instruction
+compiler output. The three lifetime candidates scored 12530 (only result pointer split), 40 (only name
+pointer split) and 2660 (both split). The 17th generated proposal, including declaration order, reproduced
+exact function fingerprint and all allocated code/data/relocation output of the previously verified control.
+Four of 66 proposals recovered that control in the complete regression run. This is an existing-match replay,
+not four new matches and not a success-rate estimate. No live source or game data was changed or published.

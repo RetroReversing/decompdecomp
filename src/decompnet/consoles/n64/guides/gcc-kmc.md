@@ -192,3 +192,10 @@ scheduler phases. Compare `lreg`/`greg` assignments and lifetimes with `sched`/`
 both diagnostic builds preserve ordinary output. Pseudo numbering changes are not causal proof. New
 captures can run bounded ablation automatically; use the retained edit set as a hypothesis for a local
 family, keeping the original exact source until a separate ordinary judge accepts any replacement.
+
+When repeated branch bodies compile too short, inspect unwanted tail merging or missing logic. Try
+`branch_pointer_lifetimes`: keeping a result pointer shared while splitting name pointers can outperform
+both all-shared and all-local forms. `branch_pointer_declarations` follows these bounded combinations with
+plain declaration swaps; one private replay recovered the existing exact output on proposal 17. The shared
+frontier and failed-trial cache retain alternate shapes and avoid repeating unchanged proposals. Candidates
+still require the ordinary judge; matching one compiler output does not prove original source spelling.

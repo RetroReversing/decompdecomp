@@ -89,3 +89,8 @@ Use its smaller retained edit set to propose a reusable repair, then test that r
 Different phase dumps, empty conflict sets or deleted pseudos are leads, not proof of causality.
 Learned exact sequences are scoped by compiler profile and mismatch shape. Consult per-family efficiency
 with its denominators: trial-minute rates use summed compiler-trial elapsed time, not actual CPU minutes.
+
+For shorter repeated-call branches, `branch_pointer_lifetimes` tests conservative shared/local pointer
+combinations and terminal-tail distribution, with `branch_pointer_declarations` as a bounded follow-up.
+Do not split every variable automatically: preserve mixed-lifetime alternatives and compare instruction
+structure before chasing register swaps. These families share existing input caches and compile budgets.
