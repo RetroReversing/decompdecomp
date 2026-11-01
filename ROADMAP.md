@@ -1589,3 +1589,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
   elapsed time, first recovery and family path. Deep activity and iterative notes report bounded
   exhaustion/budgets and failed or pruned work. Imported standalone replay still requires a copied
   build adapter; live imported deep search uses its existing normal judge.
+
+- Done: the update dialog source-download section uses the normal vertical content layout rather than the compact progress-bar class, so instructions and destination controls remain fully visible.

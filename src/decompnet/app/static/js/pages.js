@@ -384,7 +384,7 @@ function offerUpdate() {
 async function sourceCheckoutPanel(body) {
   const panel = document.createElement("details");
   panel.open = !updateInfo.can_apply;
-  panel.innerHTML = `<summary>Get the latest Git version</summary><div class="stack">
+  panel.innerHTML = `<summary>Get the latest Git version</summary><div class="stack-col">
     <p>Download the source from your configured update repository into a new folder.</p>
     <p class="small">You need <a class="link" href="https://git-scm.com/downloads" target="_blank" rel="noopener">Git</a> to download it and <a class="link" href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank" rel="noopener">uv</a> to run it. Install these first if needed.</p>
     <p class="small" data-source-repo></p>
