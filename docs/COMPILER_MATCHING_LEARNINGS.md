@@ -1341,3 +1341,27 @@ so neither was discarded. Both diagnostic builds preserved their ordinary output
 assignments stayed unchanged, while lifetime and scheduling dumps differed. This supports investigating
 initialization order without claiming a newly discovered allocation cause. No source was applied and
 this replay does not count as another matched function.
+
+### Shared result pointer, branch-local name pointers, then declaration order
+
+A further private 666-instruction / 2,664-byte MIPS function reached exact linked bytes through
+the running app, retaining KMC GCC 2.7.2 `-G0 -mips3 -mgp32 -mfp32 -O2 -g3` throughout.
+Its initial score was 5455 (91.8%); the candidate had 632 instructions. Splitting both a result
+pointer and a name pointer into eleven branch-local scopes improved score to 2660 (96.0%),
+660 instructions. Retaining the shared result pointer while making only name pointers branch-local
+reached score 40 (99.9%) with all 666 instructions. Only eight register positions differed.
+Swapping two plain local integer declarations recovered the final temporary-register substitution
+and exact score 0. The linked-byte and instruction checks were true; no data/address problems,
+and export layout was ready. A full image rebuild was not part of this function-level experiment.
+
+Controlled failures: splitting only the result pointer and keeping the name pointer shared worsened
+the candidate to score 12530 / 597 instructions. Explicit returns versus fallthrough after the
+branch-local blocks made no difference to the tested score. Moving the final two temporaries'
+load order, or adding `register` to either local, retained score 40 rather than fixing it.
+
+Interpretation: splitting every local is not a general allocator repair. Selectively combining
+shared and branch-local lifetimes can prevent unwanted tail merging and restore register allocation.
+A mixed-lifetime candidate should survive alongside the all-shared and all-split alternatives;
+then bounded declaration-order repairs can finish it. These are generating-source hypotheses,
+not proof of original variable spelling or source layout. This result is manual live-API matching,
+not a claim that the automatic repair families found all intermediate steps.
