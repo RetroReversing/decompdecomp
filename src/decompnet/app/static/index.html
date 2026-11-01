@@ -589,8 +589,8 @@
   </section>
   <details class="panel settings-disclosure"><summary class="panel-head"><h2>Agent tools &amp; usage</h2></summary><div class="pad"><p class="small muted">Disable optional tools to reduce agent context. Global switches apply to every agent; per-agent tools can disable additional tools. Required core tools stay enabled. New tool lists take effect at the next session or MCP reconnect; cached calls to disabled tools are rejected immediately.</p><button id="agentToolsRefresh" class="ghost small-btn" type="button">Refresh tools &amp; counts</button><p id="agentToolCoverage" class="small muted"></p><div id="agentToolCatalog"></div><pre id="agentToolLog" hidden></pre></div></details>
   <section class="panel" id="pairPanel" hidden><header class="panel-head"><h2>Access requests</h2></header><div class="pad" id="pairBox"></div></section>
-  <section class="panel manual-mcp" aria-labelledby="mcpHeading">
-    <header class="panel-head"><h2 id="mcpHeading">Connect another AI tool with MCP</h2></header>
+  <details class="panel manual-mcp settings-disclosure" aria-labelledby="mcpHeading">
+    <summary class="panel-head"><h2 id="mcpHeading">Connect another AI tool with MCP</h2></summary>
     <div class="pad">
       <p>Use the local MCP server with an AI tool that supports Streamable HTTP and bearer authentication. Keep decompdecomp running on this computer.</p>
       <div id="mcpStatus" role="status"></div>
@@ -601,7 +601,7 @@
       <details><summary>Available tools <span id="mcpToolCount"></span></summary><div id="mcpTools"></div></details>
       <details><summary>Your manual connections</summary><div id="mcpConnections"></div></details>
     </div>
-  </section>
+  </details>
   <div class="cols ag-cols">
     <section class="panel"><header class="panel-head"><h2>Models with an API key</h2></header><div class="pad" id="apiBox"></div></section>
   </div>
