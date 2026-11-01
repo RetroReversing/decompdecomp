@@ -1427,3 +1427,34 @@ structure-gain tests separately exercise actual multi-edge continuation, cache r
 Keep successful and failed frozen cases as private benchmark inputs, compare first recovery
 trial and wall time under fixed context, and preserve data/relocation checks. Do not train exact
 repair recipes or adopt game progress from a frozen-output replay alone.
+
+### Unresolved near-miss cohort and search throughput
+
+A frozen private N64 GCC cohort selected eight open functions (at least 20 instructions),
+ordered by lowest saved score per instruction. Saved scores were 10, 15, 15, 33, 30, 15,
+10 and 25. Each received 16 candidate trials and a 20-second soft deadline, using its
+actual stored compiler profile/header and the ordinary linked-byte judge in a copied
+build root. Source, symbols, ROM and database stayed outside the repository.
+
+The initial pass used 128 candidate compiles plus eight baseline compiles, approximately
+32.04 elapsed trial seconds / 27.86 compiler seconds. Reserving bounded plateau-combination
+probes then used the same compile count, approximately 29.44 elapsed trial seconds /
+24.31 compiler seconds. Neither pass found an exact match or a lower score. These small
+sequential timings are not evidence of a speedup; there is no demonstrated matching gain.
+The harness omits richer donor/address pools and automatic profile search, so this measures
+the shared targeted-source beam, not all autopilot capabilities. Baselines remained unresolved.
+
+The shared beam now reserves one immediate combination probe for each of two distinct
+flat-score families, retaining the existing wave. Optional frozen benchmarks can collect
+several exact alternatives, retaining intermediate parents even when the last wave item
+is exact; live autopilot still stops at its first verified exact result. Numeric and
+structural alternatives remain bounded by the existing width/depth and attempt budgets.
+
+Iterative trial caching now includes the full candidate/build scope (header, target,
+relocations, symbols, compiler flags and referenced helper evidence), excluding old partial
+cache keys. Unscored reports are audited but not persistently cached because resource/tool
+failures are not reliably distinguished from syntax errors. Measured uncached iterative
+trials train the existing adaptive policy; exact-zero reports require an explicit exact
+verdict there. Smoothed exact throughput influences priorities within the same profile and
+mismatch kind while original queue interleaving preserves exploration. Durations are summed
+trial elapsed time, not CPU time or whole-run wall time.
