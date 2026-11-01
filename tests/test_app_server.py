@@ -1578,3 +1578,14 @@ def test_update_source_selection_is_guarded_and_does_not_install(app, monkeypatc
     assert response.status_code == 200
     assert response.json()['current']['repo'] == 'another/fork'
     assert requests == [(data['repo'], 'main')]
+
+
+def test_metrics_export_route_uses_private_project_guard_and_returns_saved_path(app, monkeypatch):
+    from decompnet.app import metrics_export
+    client, net, _ = app
+    calls = []
+    monkeypatch.setattr(metrics_export, 'save', lambda slug, csv: calls.append((slug, csv)) or {'path': '/Downloads/metrics.csv'})
+    response = client.post('/api/permuter/pass', json={'slug':'example','action':'export-metrics','csv':'metrics'}, headers={'X-Decomp':'1'})
+    assert response.status_code == 200 and response.json()['path'] == '/Downloads/metrics.csv'
+    assert calls == [('example', 'metrics')]
+    assert client.post('/api/permuter/pass', json={'slug':'example','action':'export-metrics','csv':'metrics'}).status_code == 403

@@ -21,16 +21,17 @@ const csv=ctx.rewritePerformanceCsv([{...old,family:'comma,"quote"\nnext'}, {...
  {project:'example',platform:'macos-arm64',game_platform:'n64',version:'test',build:'abc123',exported_at:'2026-11-01T00:00:00Z'});
 process.stdout.write(csv);
 
-let exported, downloaded, revoked;
+let exported, request, failExport=false;
+const output={};
 const button={};
-const host={dataset:{},querySelector:()=>button,querySelectorAll(){return this.sorts || [];}};
+const host={dataset:{},querySelector:selector=>selector==='[data-export-status]'?output:button,querySelectorAll(){return this.sorts || [];}};
 Object.defineProperty(host,'innerHTML',{get(){return this.html || '';},set(value){
  this.html=value;this.sorts=[...value.matchAll(/data-performance-sort="([^"]+)"/g)].map(m=>({dataset:{performanceSort:m[1]}}));
 }});
 const ui=vm.createContext({$:()=>host,S:{slug:'game',st:{version:'1',build:'abc',platform:'linux-x86_64'},ov:{platform:'n64'}},
- esc:value=>String(value).replaceAll('<','&lt;'),Blob:class{constructor(parts){exported=parts.join('');}},
- URL:{createObjectURL:()=> 'blob:export',revokeObjectURL:url=>{revoked=url;}},
- document:{createElement:()=>({click(){downloaded=this.download;}})},setTimeout:fn=>fn()});
+ esc:value=>String(value).replaceAll('<','&lt;'),
+ beginWork:()=>()=>{},toast:()=>{},api:async(path,options)=>{request={path,...options};exported=options.body.csv;if(failExport)throw new Error('Downloads is not writable');return {path:'/test/Downloads/metrics.csv'};}});
+
 vm.runInContext(fs.readFileSync('src/decompnet/app/static/js/rewrite-performance.js','utf8'),ui);
 ui.renderDeepSweepResults=status=>ui.renderRewritePerformance(status);
 const status={recipes:[{family:'a',tested:2,improvements:1},{family:'b',tested:10,improvements:0}]};
@@ -38,7 +39,14 @@ ui.renderRewritePerformance(status);
 const sort=host.querySelectorAll().find(b=>b.dataset.performanceSort==='tested');sort.onclick();
 assert.equal(host.dataset.performanceSort,'tested');assert.equal(host.dataset.performanceDirection,'desc');
 ui.renderRewritePerformance(status);assert.equal(host.dataset.performanceSort,'tested');
-button.onclick();assert.equal(downloaded,'game-rewrite-metrics.csv');assert.equal(revoked,'blob:export');
+async function checkExport(){
+await button.onclick();assert.equal(request.path,'/api/permuter/pass');assert.equal(request.body.action,'export-metrics');
+assert.match(output.textContent,/Saved CSV:.*metrics.csv/);
+ui.renderRewritePerformance(status);assert.match(output.textContent,/Saved CSV/);
+failExport=true;await button.onclick();assert.match(output.textContent,/Downloads is not writable/);
 assert.match(exported,/"linux-x86_64"/);assert.match(exported,/"abc"/);
 assert.doesNotMatch(host.innerHTML,/Trial outcomes and time|Rewrite results/);
 assert.match(host.innerHTML,/class="table-sort"/);
+
+}
+checkExport().catch(error=>{console.error(error);process.exitCode=1;});
