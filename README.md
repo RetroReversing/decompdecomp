@@ -1067,3 +1067,16 @@ be reconstructed. Zero means zero recorded uses, not proof that a tool was never
 The same expandable tool descriptions and parameter cards appear in transcripts and manual MCP setup.
 
 Browser workers receive the host's supported KMC flag variations with each function task. Switching a browser variation is local until submission. The host accepts only a variation offered by that task, recompiles it independently, and publishes a function-only profile/source bundle only after an exact ROM-byte verdict and a final authorization/freshness check. Other compiler families still require browser WASM toolchains.
+
+### C lines behind assembly differences
+
+In a function’s **Edit** tab, red lines are associated with differing, extra or moved
+compiled instructions; yellow lines have operand differences. Click a marked line
+number to see the target and compiled instructions. Editing the source clears these
+marks until another comparison. Agent compile responses include bounded C-line evidence too.
+
+These are compiler debug locations from the exact compiled object. Optimization can
+associate several statements with one location, so the marks are advisory. No compiler
+flags are changed to manufacture a map. Missing target-only instructions have no
+compiled C location. ELF DWARF 1/2+ and ECOFF are supported; absent, ambiguous or
+unsupported information is labelled unavailable, including COFF/CodeView for now.

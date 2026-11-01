@@ -101,6 +101,7 @@ async function openFn(name) {
     document.querySelectorAll("#fnCompilerTest .workbar").forEach(bar => bar.remove());
     $("tryBtn").disabled = false;
     $("fnEdit").value = "";
+    setEditorSourceMapping(null);
     $("fnAsm").replaceChildren();
     $("drawer").setAttribute("data-loading", "");
     $("drawer").setAttribute("aria-busy", "true");
@@ -128,7 +129,7 @@ function showFnTab(tab) {
   document.querySelectorAll("[data-ftab]").forEach((b) => b.classList.toggle("on", b.dataset.ftab === tab));
   $("fnDiffView").hidden = tab !== "diff";
   $("fnCodeView").hidden = tab !== "code";
-  if (tab === "diff") loadDiff();
+  if (tab === "diff" || tab === "code") loadDiff();
 }
 document.querySelectorAll("[data-ftab]").forEach((b) => { b.onclick = () => { S.ftab = b.dataset.ftab; showFnTab(S.ftab); }; });
 document.querySelectorAll("#diffWhich [data-which]").forEach((b) => {
@@ -303,11 +304,12 @@ function setEditor(source, d) {
 }
 function paintEditor() {
   const ta = $("fnEdit");
-  $("fnSrc").innerHTML = highlightC(ta.value) + "\n";
+  $("fnSrc").innerHTML = sourceLineMarkup(ta.value) + "\n";
+  paintSourceGutter();
   $("fnSrc").scrollTop = ta.scrollTop; $("fnSrc").scrollLeft = ta.scrollLeft;
 }
 $("fnEdit").addEventListener("input", () => { S.editDirty = true; paintEditor(); });
-$("fnEdit").addEventListener("scroll", () => { $("fnSrc").scrollTop = $("fnEdit").scrollTop; $("fnSrc").scrollLeft = $("fnEdit").scrollLeft; });
+$("fnEdit").addEventListener("scroll", () => { $("fnSrc").scrollTop = $("fnEdit").scrollTop; $("fnSrc").scrollLeft = $("fnEdit").scrollLeft; paintSourceGutter(); });
 $("fnEdit").addEventListener("keydown", (e) => {
   const ta = e.target;
   if (e.key === "Tab" && !e.shiftKey) {
@@ -413,6 +415,8 @@ function insnHtml(text, other, cls) {
   return `<span class="op">${esc(m[1])}</span>${m[2] ? " " : ""}${ops}`;
 }
 function renderDiff(d) {
+  if (!S.editDirty && typeof d.source === "string") setEditor(d.source, S.fnDetail);
+  setEditorSourceMapping(d);
   const sum = $("diffSum"), box = $("diff"), probs = $("diffProblems");
   probs.innerHTML = "";
   if (!d.rows) {

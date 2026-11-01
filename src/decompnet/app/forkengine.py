@@ -2955,6 +2955,9 @@ class ForkEngine:
                 return {"text": f"❌ REJECTED and undone: {unit.source} is linked into the game, and with your change "
                                 f"the game no longer builds byte for byte:\n{_tail(ok[1])}", "score": None,
                         "matched": False}
+            from ..source_lines import render as render_source_lines
+            mapped, mapped_source = self._source_mismatches(fp, unit, fn, d.rows)
+            line_note = render_source_lines(mapped, mapped_source)
             pct = d.match_percent if d.match_percent is not None else 0.0
             score = max(1, len(d.literals)) if d.literals else scaled(pct, fn["n_insns"])
             matched = d.matched
@@ -2979,7 +2982,7 @@ class ForkEngine:
                 stall = self.net.stall_note(fn["id"], agent.id)
                 text = remembered(f"{percent_text(pct)} match (score {score}), worse than the best so far (score "
                                   f"{best}), so {unit.source} keeps what it had; your attempt is recorded.\n"
-                                  f"{d.render()}", score)
+                                  f"{d.render()}{line_note}", score)
                 return {"text": text + stall, "score": score, "matched": False, "percent": pct}
             self._keep_scores(proj, unit, after, d.unit_scores)
             self._hold(fn, code if d.literals else None)
@@ -3013,7 +3016,7 @@ class ForkEngine:
         if d.literals:
             text = f"score {score} (0 = identical). {d.literals_note()}{missing}"
         else:
-            text = f"{percent_text(pct)} match (score {score}; 0 = identical).\n{d.render()}{missing}"
+            text = f"{percent_text(pct)} match (score {score}; 0 = identical).\n{d.render()}{line_note}{missing}"
         return {"text": remembered(text, score) + stall, "score": score, "matched": False}
 
     def try_compiler(self, agent: Agent, slug: str, function: str, compiler: str, flags: str = "",
@@ -4024,6 +4027,25 @@ class ForkEngine:
                 self._keep_scores(proj, u, text, after[u.name])
                 self._apply_scores(proj, u.name, after[u.name], text=text)
 
+    def _source_mismatches(self, fp, unit, fn, rows):
+        from ..source_lines import annotate, mismatches
+        source = ''
+        try:
+            path = fp.root / unit.source
+            text = path.read_text(encoding='utf-8', errors='replace')
+            _, span = self._find(text, self._names(self._meta(fn), fn))
+            if span:
+                source = text[span[0]:span[1]]
+                # The object may predate an edit made outside the app. Never put
+                # old line locations on a different source snapshot.
+                if unit.base and unit.base.stat().st_mtime_ns >= path.stat().st_mtime_ns:
+                    return mismatches(unit.base.read_bytes(), self._meta(fn).get('symbol') or fn['name'],
+                                      rows, source, filename=str(unit.source),
+                                      first_line=text[:span[0]].count('\n') + 1), source
+        except (OSError, TypeError):
+            pass
+        return annotate(rows, [], [], source), source
+
     def function_diff(self, slug: str, name: str) -> dict:
         """objdiff's diff of the function as it is in the source tree now."""
         proj, fp, cfg = self.get(slug)
@@ -4038,7 +4060,9 @@ class ForkEngine:
         problems = [f"a loaded constant differs: {m.describe()}" for m in d.literals]
         problems += [f"refers to `{mine}` where the original refers to `{orig}`" for orig, mine in d.renamed]
         from ..diff_summary import text as summary_text
-        return {"kind": "matched" if fn["status"] == "matched" else "latest", "rows": [list(r) for r in d.rows],
+        mapped, source = self._source_mismatches(fp, fp.unit(fn["unit"]), fn, d.rows)
+        return {"source_map":mapped, "source":source,
+                "kind": "matched" if fn["status"] == "matched" else "latest", "rows": [list(r) for r in d.rows],
                 "mismatch_summary": summary_text(d.rows),
                 "score": None, "percent": _floor_pct(d.match_percent, d.matched), "problems": problems}
 

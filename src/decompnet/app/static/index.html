@@ -725,9 +725,11 @@
         <div>
           <p class="col-title"><span id="fnSrcKind">C</span><button class="link-btn" id="copySrc" type="button">Copy</button></p>
           <div class="editor" id="editor">
+            <div class="source-gutter" id="fnGutter" aria-label="Source line differences"></div>
             <pre class="code c" id="fnSrc" aria-hidden="true"></pre>
             <textarea id="fnEdit" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="The function's C"></textarea>
           </div>
+          <p class="small muted" id="fnSourceMapNote" aria-live="polite"></p>
           <div class="edit-bar">
             <button class="primary small-btn" id="tryBtn" type="button">Compile and compare</button>
             <span class="muted small" id="tryHint">Ctrl+Enter · edit it yourself: you're judged like an agent</span>
@@ -778,6 +780,7 @@
 <script src="/assets/js/deep-progress.js"></script>
 <script src="/assets/js/deep-activity.js"></script>
 <script src="/assets/js/rewrite-performance.js"></script>
+<script src="/assets/js/source-mismatches.js"></script>
 <script src="/assets/js/function.js"></script>
 <script src="/assets/js/compiler-progress.js"></script>
 <script src="/assets/js/compiler-groups.js"></script>

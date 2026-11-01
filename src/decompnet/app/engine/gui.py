@@ -253,9 +253,12 @@ class GuiMixin:
                 if verdict is not None:
                     d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
                 from ...diff_summary import text as summary_text
+                from ...source_lines import mismatches as source_mismatches
                 from ..source_diagnostics import hints as source_hints
                 from ..stack_layout import text as stack_text
                 out = {"rows": [list(r) for r in d.rows], "score": d.score,
+                       "source_map": source_mismatches(result.obj, fn["name"], d.rows, source,
+                                                       filename="func.cpp" if result.language == "c++" else "func.c"),
                        "stack_diagnostic": stack_text(proj['arch'],d.rows),
                        "mismatch_summary": summary_text(d.rows),
                        "source_diagnostics": source_hints(source, fn["name"], fn["asm"], proj["arch"], d.rows),

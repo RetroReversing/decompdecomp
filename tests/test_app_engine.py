@@ -99,6 +99,8 @@ def test_wrong_code_gets_a_diff_and_link_notes(net):
     # the GUI's diff: the same judge, row by row, with the link problems
     d = net.function_diff("demo-quest-64", "func_80000A0C")
     assert "Mismatch categories (advisory)" in d["mismatch_summary"]
+    assert "source_map" in d and isinstance(d["source_map"]["lines"], list)
+    assert "C-line mapping" in out or "Compiled C lines associated with differences" in out
     assert d["kind"] == "latest" and d["score"] > 0 and any(r[0] != " " for r in d["rows"])
     assert any("mystery" in p for p in d["problems"])
     assert net.function_diff("demo-quest-64", "func_80000A0C") == d  # cached
