@@ -417,10 +417,6 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                     state = (st.started_at, fresh['config'], build_state(fresh)) if fork else inputs(net, fresh, fn)
                     digest = hashlib.sha256(repr((state, source, header, cfg)).encode()).hexdigest()
                     cache_key = 'local-source-v5:' + digest
-                    if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], cache_key):
-                        if not fork:
-                            private_profiles(net, fresh, fn, source, header, st, report, log_line, budget, deadline, reader.origins.get((source,header)))
-                        continue
                     lead=reader.origins.get((source,header),{'symbol':mapping[1],'file':mapping[2],'family':'original-context'})
                     if not fork:
                         from ..project import compiler_for
@@ -428,6 +424,10 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                         if rejected(net,fn,destination(net,fresh,fn),source,header,lead,compiler_for(json.loads(fresh['config']),fn['vram'])):
                             log_line(fn['name']+': retained rejected source lead; unchanged trial skipped.')
                             continue
+                    if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], cache_key):
+                        if not fork:
+                            private_profiles(net, fresh, fn, source, header, st, report, log_line, budget, deadline, reader.origins.get((source,header)))
+                        continue
                     report['tested'] += 1
                     st.add(variants=1, repairs=1)
                     log_line(f'Preparing {fn["name"]} ({report["tested"]}/{budget})')
