@@ -1040,3 +1040,40 @@ Repeated source/header concatenation also exposed whitespace-heavy preparation o
 preprocessor patterns must use horizontal whitespace, not `\s*` that can rescan thousands of empty
 lines. Padded-source regressions retain original source layout. Preparation now explains when its
 round ends before compilation rather than silently reporting zero attempts.
+
+### Structured loops and existing record fields under KMC GCC 2.7.2
+
+A 773-instruction N64 function matched with `gcc-2.7.2-kmc` and
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. Compiler settings stayed fixed. A private,
+fixed-context replay measured two independently generated changes:
+
+- Recovering a single-entry conditional back edge as `do/while`, while retaining
+  nested switch exits and existing outgoing gotos, improved score **5950 → 4770**.
+  Later manual work could remove explicit caller-save scaffolding after structured
+  loop recovery; that combined observation is not a separate automated ablation.
+- Computing a signed word directly into an existing same-type record member, removing
+  its later scalar-to-member copy and forwarding the member into subsequent arithmetic,
+  recovered the final **15 → 0**, with an ordinary linked exact verdict. Of two generated
+  member-forwarding candidates, the other stayed at 15. No record or padding was invented.
+
+Earlier experiments with declaration order, `register` and caller-save switches were
+mostly neutral; different compiler/CPU options did not recover the match. Source shape
+and liveness deserve targeted trials before broad flag searches for register-only misses.
+
+New bounded hypotheses also split one explicitly narrowed definition from a later wide
+index lifetime, and sink a zero initialization into the other arm of a definitely assigning
+branch. These have synthetic execution and rejection controls; no new game match is
+claimed for them. Width changes exclude unsigned-word arithmetic, `sizeof`, escaped locals,
+updates and ambiguous control boundaries. Loop recovery rejects external entries and breaks
+or continues whose target would change. All proposals use the normal judge.
+
+Random rewrites can reduce score while changing meaning: nesting formerly independent
+compound updates changes the values added by outer assignments. Newly introduced multi-update
+expressions are filtered, and pre-random-search checkpoints remain separately available in
+candidate-quality evidence. They are explicitly quality-unverified; neither this filter nor
+similarity proves C equivalence. Exact match acceptance is unchanged.
+
+A save audit also found that an imported best draft could become matched after the initial
+publish while its file remained under `best/`. Promotion now publishes `src/` and its manifest
+before acknowledging dirty writes, checks for concurrent edits, and retains an edited
+counterpart for the next import. Save/no-op/restart and concurrent-edit regressions cover this.

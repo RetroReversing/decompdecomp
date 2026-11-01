@@ -38,7 +38,15 @@ def view(source, name):
 def locals_for(part):
     """Ordinary, unescaped scalar declarations; leave shadows and qualified objects to the compiler."""
     found = []
+    records = []
+    for record in re.finditer(r'\b(?:struct|union)(?:\s+'+IDENT+r')?\s*{',part.body):
+        start=part.opening+1+record.end()-1
+        end=close(part.clean,start,'{','}')
+        if end:
+            records.append((start,end))
     for decl in DECL.finditer(part.clean, part.opening+1, part.end):
+        if any(start < decl.start() < end for start,end in records):
+            continue
         prefix = part.clean[part.opening+1:decl.start()].rstrip()
         if prefix and prefix[-1] not in ';{}':
             continue

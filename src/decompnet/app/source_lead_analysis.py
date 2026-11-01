@@ -17,9 +17,9 @@ def destination(net, proj, fn):
     if getattr(net,'fork_slug',lambda slug:None)(proj['slug']):
         from ..candidate_scope import key
         return key(net,proj,fn)
-    context=net._context(proj['id'],fn['unit'])
+    context=net._context(proj['id'],fn['unit']) or {'header':''}
     symbols=[tuple(r) for r in net.store.all('SELECT name,address,size,kind FROM symbols WHERE project_id=? ORDER BY name',proj['id'])]
-    return hashlib.sha256(repr((compiler_for(cfg,fn['vram']),cfg.get('gp'),proj['arch'],
+    return hashlib.sha256(repr((compiler_for(cfg,fn['vram']) if cfg.get('compiler') else {},cfg.get('gp'),proj['arch'],
                                fn['target'],fn['relocs'],fn['size'],fn['vram'],context['header'],symbols,build_state(proj))).encode()).hexdigest()
 
 

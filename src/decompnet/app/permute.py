@@ -430,10 +430,12 @@ class Permuter:
         st.add(tried=1)
         st.holding(fn["name"], True)
         fork = self.net.fork_slug(proj["slug"])
+        from . import random_safety
         rng = random.Random(f"{fn['id']}-{fn['permuted']}")
         gen = None
         header = ''
         try:
+            random_safety.checkpoint(self.net,fn)
             if available():
                 # (as m2c reads it: what's only for C++ made pycparser refuse GTA San Andreas's whole header)
                 header = seeds.c_only(self.net.forks.permuter_header(fork, fn["name"]) if fork else
@@ -520,6 +522,8 @@ class Permuter:
                 for cand in batch:
                     if cand is None or time.monotonic() >= deadline or st.stop.is_set():
                         break
+                    if random_safety.unsafe_update(fn['best_source'], cand):
+                        continue  # do not promote a newly nested compound-update chain
                     lineage = getattr(cand, 'lineage', None)
                     cand = m2cfix.static_helpers(cand)  # (a global helper would not link: m2cfix.py)
                     st.add(variants=1)

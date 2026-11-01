@@ -889,6 +889,8 @@ class Progress:
                 previous = projected
                 pending = {name: text for name, text in rendered.items()
                            if name not in changed and previous.files.get(name) != _hash(text)
+                           and not (name.startswith("src/") and "best/"+name[4:] in changed)
+                           and not (name.startswith("best/") and "src/"+name[5:] in changed)
                            and name != "README.md"}
                 pending.update(initial_pending)
                 if before is None:
@@ -1043,6 +1045,26 @@ class Progress:
             applied_dirty = self._dirty(pid)
             applied_tokens = [r["token"] for r in self._dirty_files(pid)]
             rendered, _ = saves._render(net, slug)
+            # The import judge may promote best/ C to a match after the pre-judge publish.
+            # Publish that promotion before acknowledging its dirty tokens, otherwise a no-op
+            # next save can permanently leave matched metadata pointing at a missing src/ file.
+            promoted = {name: text for name, text in rendered.items()
+                        if name.startswith("src/") and name not in disk
+                        and "best/"+name[4:] in disk
+                        and saves._source_text(disk["best/"+name[4:]]) == text}
+            if promoted:
+                obsolete = {"best/"+name[4:]: disk["best/"+name[4:]] for name in promoted}
+                promoted[saves.MANIFEST] = rendered[saves.MANIFEST]
+                if not saves._publish(folder, promoted, obsolete, expected=disk,
+                                      chosen=bool(cfg.get("progress_folder"))):
+                    return False  # an editor wrote meanwhile; leave dirty tokens for the retry
+                disk = _read(folder)
+                saves._remember_revision(net, slug, json.loads(rendered[saves.MANIFEST]))
+                proj = net._project(slug)
+                self.published[slug].update(promoted.keys() | obsolete.keys())
+                self.results[slug] = self.results[slug] | {
+                    "matched": sum(name.startswith("src/") for name in rendered),
+                    "best": sum(name.startswith("best/") for name in rendered)}
             self.projected[slug] = rendered
             self.disk[slug] = disk
             self._remember(pid, disk, rendered, _config_key(proj, net.cfg(proj)),

@@ -108,22 +108,8 @@ def singles(source, name):
                 continue
             replacement = '{ '+arrays[array]+' *__repair_address; __repair_address = '+old+'; '+call.replace(old,'__repair_address')+' __repair_address = 0; }'
             result.append(('stack_address_temporary',edit(source,[(part.opening+1+hit.start(),part.opening+1+hit.end(),replacement)])))
-    # Convert one isolated backwards conditional edge to a do loop. Its entry and latch test
-    # remain identical; reject all other jumps and loop control that would change meaning.
-    for label in re.finditer(rf'\b({IDENT})\s*:(?!:)',part.body):
-        key = label[1]
-        latch = re.search(rf'\bif\s*\(([^;{{}}]+)\)\s*{{\s*goto\s+{re.escape(key)}\s*;\s*}}',part.body[label.end():])
-        if re.search(r'\b(?:case|default)\b',part.body):
-            continue
-        if not latch or len(re.findall(rf'\b{re.escape(key)}\b',part.body)) != 2:
-            continue
-        start = label.end()
-        end = start+latch.start()
-        inner = part.body[start:end]
-        if inner.count('{') != inner.count('}') or re.search(r'\b(?:goto|continue|break|case|default)\b|(?<!:):(?!:)',inner):
-            continue
-        a,b = part.opening+1+label.start(),part.opening+1+start+latch.end()
-        result.append(('structured_backedge',edit(source,[(a,b,'do {'+source[part.opening+1+start:part.opening+1+end]+'} while ('+latch[1]+');')])))
+    from .structured_loop_repairs import variants as structured_loops
+    result.extend(structured_loops(source,name))
     # Swap only adjacent assignments of unescaped equal-type locals and pure scalar operands.
     scalar = rf'{IDENT}(?:\s*[+*]\s*(?:{IDENT}|{NUMBER}))?'
     pair = rf'(?<=[;{{}}])\s*({IDENT})\s*=\s*({scalar});\s*({IDENT})\s*=\s*({scalar});'

@@ -154,3 +154,16 @@ local declarations and reuse one same-width signed/unsigned local for a zero-onl
 range, keeping later loop phases intact. Field-store swaps require alias/volatility evidence;
 an indirect RHS load is not automatically safe to move. Historical judge revisions need a
 fresh fixed-context replay, rather than comparing old scores directly.
+
+For a register-only near miss, `record_value_forwarding` can compute a scalar directly
+into an existing, same-type unescaped record member and forward its value to later uses.
+One fixed-profile replay recovered a final score 15 → exact; no padding or layout was invented.
+`structured_backedge` now supports nested switches and internal/outgoing gotos while rejecting
+outside entries and changed break/continue destinations. A replay improved 5950 → 4770.
+Natural loops can change allocation and caller-save choices even when their CFG matches goto C.
+
+`narrow_definition_lifetime` keeps an explicit halfword cast in a separate short-lived local,
+without narrowing a later wide index that reused the old variable. `sink_zero_initialization`
+tries the zero in an else arm only when the other arm definitely assigns first. Both are bounded
+hypotheses, not advice to change every declaration or initialization. Random candidates remain
+exploratory; quality evidence retains pre-search checkpoints separately from the lowest score.

@@ -99,3 +99,11 @@ def test_unbraced_labeled_arms_give_no_liveness_advice(arm):
     source='int f(int flag) { int y; int width; int centre; centre=width & 65535; '+arm+' return y; }'
     assert local_flow.analyze(source,'f') is None
     assert not masked_reuse_repairs.variants(source,'f')
+
+
+def test_inline_record_members_are_not_function_scalar_locals():
+    from decompnet.app.local_flow import analyze
+    source='int f(int a){struct {int member; int other;} rec; int value; value=a;rec.member=value;return rec.member;}'
+    flow=analyze(source,'f')
+    assert flow is not None
+    assert flow.names=={'value'}

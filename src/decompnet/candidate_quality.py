@@ -93,6 +93,8 @@ def view(net,fn):
             for row in rows:
                 out += [f'Historical compiled alternative {row["id"]}, score {row["score"]}; quality unverified:',
                         '```c\n'+row['source'][:3000]+'\n```']
+    from .app.random_safety import view as checkpoints
+    out += checkpoints(net,fn)
     return '\n\n'.join(out)
 
 
