@@ -20,7 +20,7 @@ const row = (id) => ({id, started_at: id, model: 'test', kind: 'codex', outcome:
 const source = fs.readFileSync(path.join(__dirname, '../src/decompnet/app/static/js/transcripts.js'), 'utf8');
 const context = { S: {logFor: '7', slug: 'demo'}, document: {body, createElement: (tag) => new Element(tag)},
   $: () => button, clock: (n) => String(n), beginWork: () => () => {}, esc: (s) => s, toast: (s) => { throw Error(s); },
-  copyText: async text => { copied = text; return true; }, money: () => '$0', api: async (url) => {
+  copyText: async text => { copied = await text; return true; }, money: () => '$0', api: async (url) => {
     requests.push(url); const q = new URL(url, 'http://test').searchParams;
     const id = Number(q.get('session')) || 60, before = Number(q.get('before'));
     const sessions = Array.from({length: 30}, (_, i) => row((before ? 30 : 60) - i));
@@ -81,6 +81,12 @@ vm.runInContext(source.slice(source.indexOf('$("helperTranscript").onclick =')),
   assert.equal(copied, long);
   assert.equal(events.children[0].children[2].textContent, 'Copied');
   assert(dialog.querySelector('[data-usage]').textContent.includes('380 cache read'));
+  await dialog.querySelector('[data-copy-session]').onclick();
+  assert(requests.at(-1).includes('session=60&whole=1'));
+  assert(copied.includes(long));
+  assert(copied.includes('Session transcript · demo · agent 7'));
+  assert.match(dialog.querySelector('[data-export-status]').textContent, /Whole session copied/);
+
   await dialog.querySelector('[data-more]').onclick();
   assert.equal(events.children.length, 2);
   assert(requests.at(-1).includes('after=1'));

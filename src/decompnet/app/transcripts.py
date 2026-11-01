@@ -36,7 +36,7 @@ class Transcripts:
             db.execute('INSERT INTO helper_messages(session_id,created_at,kind,text) VALUES(?,?,?,?)',
                        (session, time.time(), kind, text))
 
-    def read(self, slug, helper, session=0, after=0, before=0):
+    def read(self, slug, helper, session=0, after=0, before=0, whole=False):
         sessions = self.store.all('SELECT * FROM helper_sessions WHERE project=? AND helper_id=? AND '
                                   '(?=0 OR id<?) ORDER BY id DESC LIMIT 30', slug, helper, before, before)
         if not session:
@@ -45,10 +45,10 @@ class Transcripts:
                              session, slug, helper)
         if session and row is None:
             raise NetworkError('This session does not belong to this project and helper.')
-        events = self.store.all('SELECT * FROM helper_messages WHERE session_id=? AND id>? ORDER BY id LIMIT 26',
+        events = self.store.all('SELECT * FROM helper_messages WHERE session_id=? AND id>? ORDER BY id' + ('' if whole else ' LIMIT 26'),
                                session, max(0, after)) if row else []
         return {'sessions': [dict(r) for r in sessions], 'session': dict(row) if row else None,
-                'events': [dict(r) for r in events[:25]], 'more': len(events) > 25}
+                'events': [dict(r) for r in (events if whole else events[:25])], 'more': not whole and len(events) > 25}
 
     def export(self, slug, helper):
         """Save every recorded session without the dialog's session/event page limits."""

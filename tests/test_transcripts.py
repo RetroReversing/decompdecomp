@@ -123,3 +123,17 @@ def test_export_all_sessions_and_events_without_paging_or_other_agents(setup, tm
     assert json.loads(Path(other['path']).read_text())['sessions'] == []
     assert manager.transcripts.export('demo', 2)['sessions'] == 0
     assert manager.transcripts.export('demo', 1)['path'] != result['path']
+
+
+def test_whole_session_includes_unloaded_events_and_checks_ownership(setup):
+    net, manager, session, row = setup
+    for index in range(60):
+        session.record('text', f'message {index}')
+    result = manager.transcript('demo', 1, row, whole=True)
+    assert len(result['events']) == 60 and not result['more']
+    assert result['events'][-1]['text'] == 'message 59'
+    assert len(manager.transcript('demo', 1, row)['events']) == 25
+    with pytest.raises(NetworkError):
+        manager.transcript('demo', 2, row, whole=True)
+    with pytest.raises(NetworkError):
+        manager.transcript('other', 1, row, whole=True)

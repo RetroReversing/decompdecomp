@@ -93,7 +93,7 @@ $("helperTranscript").onclick = async () => {
   dialog.className = "transcript-dialog session-transcript";
   dialog.innerHTML = `<header class="transcript-header"><div><span class="transcript-eyebrow">Agent activity</span><h2>Session transcript</h2><p class="small muted">Prompts, replies and tool exchanges from this helper.</p></div><button data-close type="button" class="ghost" aria-label="Close session transcript">Close</button></header>
     <div class="transcript-toolbar"><label>Session<select aria-label="Session"></select></label><div class="row">
-    <button data-export type="button" class="ghost small-btn">Export all transcripts (JSON)</button><button data-older type="button" class="ghost small-btn">Older sessions</button><button data-refresh type="button" class="ghost small-btn">Refresh</button></div></div>
+    <button data-copy-session type="button" class="ghost small-btn">Copy whole session</button><button data-export type="button" class="ghost small-btn">Export all transcripts (JSON)</button><button data-older type="button" class="ghost small-btn">Older sessions</button><button data-refresh type="button" class="ghost small-btn">Refresh</button></div></div>
     <p data-export-status class="small muted" role="status"></p><div class="transcript-usage"><span class="transcript-eyebrow">Reported usage</span><p data-usage></p></div>
     <div class="transcript-timeline"><div class="transcript-timeline-heading"><h3>Timeline</h3><span data-event-count class="small muted"></span></div><div data-events></div><button data-more type="button" class="ghost" hidden>Load more messages</button></div>
     <details class="transcript-coverage"><summary>What this transcript includes</summary><p class="small muted">App prompts, exposed replies and full app tool exchanges recorded while transcripts were enabled. CLI internal system prompts, hidden reasoning, shell output and context compaction are not captured. API requests include the context actually sent. Credentials are redacted. Earlier sessions cannot be reconstructed.</p></details>`;
@@ -201,6 +201,20 @@ $("helperTranscript").onclick = async () => {
     } catch (error) { toast(esc(error.message), "err"); }
     finally { finish(); }
   }
+  dialog.querySelector('[data-copy-session]').onclick = async () => {
+    const button = dialog.querySelector('[data-copy-session]'), status = dialog.querySelector('[data-export-status]');
+    if (!session) { status.textContent = 'No recorded session to copy.'; return; }
+    const selected = session;
+    const finish = beginWork(status, 'Copying whole session', [button]);
+    try {
+      // Start the clipboard write during the click; WebKit accepts the fetched text as a promise.
+      const text = api(endpoint() + `&session=${selected}&whole=1`).then(result =>
+        `Session transcript · ${slug} · agent ${helper}\n${JSON.stringify(result.session, null, 2)}\n\n` +
+        result.events.map(entry => `--- ${new Date(entry.created_at * 1000).toISOString()} · ${entry.kind} ---\n${entry.text}`).join('\n\n'));
+      status.textContent = await copyText(text) ? 'Whole session copied to clipboard.' : 'Copy failed. Try again or export all transcripts.';
+    } catch (error) { status.textContent = error.message; }
+    finally { finish(); }
+  };
   dialog.querySelector('[data-export]').onclick = async () => {
     const button = dialog.querySelector('[data-export]'), status = dialog.querySelector('[data-export-status]');
     const finish = beginWork(status, 'Exporting all recorded sessions', [button]);

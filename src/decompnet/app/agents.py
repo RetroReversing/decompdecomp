@@ -1247,8 +1247,8 @@ class Manager:
                 session.record(kind, value)
                 break
 
-    def transcript(self, slug, helper, session=0, after=0, before=0):
-        result = self.transcripts.read(slug, helper, session, after, before)
+    def transcript(self, slug, helper, session=0, after=0, before=0, whole=False):
+        result = self.transcripts.read(slug, helper, session, after, before, whole=whole)
         for live in list(self.sessions.values()):
             if result['session'] and live.session_id == result['session']['id'] and live.record:
                 for key in TOKEN_KINDS:

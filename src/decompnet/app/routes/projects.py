@@ -68,7 +68,7 @@ def register(app: App) -> None:
         if request.method == 'POST':
             return manager.transcripts.export(slug, int(data.get('helper', 0)))
         return manager.transcript(slug, int(q.get('helper', 0)), int(q.get('session', 0)),
-                                  int(q.get('after', 0)), int(q.get('before', 0)))
+                                  int(q.get('after', 0)), int(q.get('before', 0)), whole=q.get('whole') == '1')
 
     def p_compiler_cleanup(slug, request, data):
         limit = int(data.get("rare_limit", 3))

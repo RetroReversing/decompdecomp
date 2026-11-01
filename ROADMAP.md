@@ -1,6 +1,6 @@
 # Roadmap
 
-Implemented: export all recorded sessions and full events for one project agent as JSON to Downloads,
+Implemented: copy a complete selected session (including unloaded messages) to the clipboard; export all recorded sessions and full events for one project agent as JSON to Downloads,
 independent of transcript dialog pagination. Unrecorded CLI internals cannot be reconstructed.
 
 Implemented: reached reference include-tree macros in explicit source contexts, bounded initializer-helper
