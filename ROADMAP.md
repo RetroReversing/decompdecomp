@@ -1,5 +1,9 @@
 # Roadmap
 
+Implemented: session transcripts auto-refresh incrementally with a pause toggle, preserve expanded entries,
+and follow the bottom only when already there. New judge-recorded improvements appear as score timeline
+markers; historical attempts without saved improvement evidence are not inferred from agent prose.
+
 Implemented: startup claim packets and get_candidate include bounded C-line mismatch evidence for the exact
 candidate/build; compact compile feedback retains it. Uses cached baseline builds and unchanged compiler flags.
 Missing/unsupported line tables remain explicitly unavailable; mappings are advisory associations, not causes.

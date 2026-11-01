@@ -22,6 +22,7 @@ class Transcripts:
                        'id INTEGER PRIMARY KEY, session_id INTEGER NOT NULL, created_at REAL NOT NULL, '
                        'kind TEXT NOT NULL, text TEXT NOT NULL)')
             db.execute('CREATE INDEX IF NOT EXISTS idx_helper_messages_session ON helper_messages(session_id,id)')
+            db.execute('CREATE TABLE IF NOT EXISTS helper_score_events(session_id INTEGER,attempt_id INTEGER, PRIMARY KEY(session_id,attempt_id))')
 
     def append(self, session, kind, value, secrets=()):
         text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, indent=2)
@@ -35,6 +36,18 @@ class Transcripts:
         with self.store.tx() as db:
             db.execute('INSERT INTO helper_messages(session_id,created_at,kind,text) VALUES(?,?,?,?)',
                        (session, time.time(), kind, text))
+            if kind == 'tool_response':
+                changes = db.execute('SELECT t.id,t.score_before,t.score,t.created_at,f.name FROM attempts t '
+                                     'JOIN functions f ON f.id=t.function_id JOIN projects p ON p.id=f.project_id '
+                                     'JOIN agents a ON a.id=t.agent_id JOIN helper_sessions s ON s.agent=a.name AND s.project=p.slug '
+                                     'WHERE s.id=? AND t.created_at>=s.started_at AND t.score_improved=1 '
+                                     'AND NOT EXISTS(SELECT 1 FROM helper_score_events e WHERE e.session_id=s.id AND e.attempt_id=t.id) '
+                                     'ORDER BY t.id', (session,)).fetchall()
+                for change in changes:
+                    db.execute('INSERT INTO helper_score_events VALUES(?,?)', (session, change['id']))
+                    db.execute('INSERT INTO helper_messages(session_id,created_at,kind,text) VALUES(?,?,?,?)',
+                               (session, change['created_at'], 'score_improvement', json.dumps(dict(change))))
+
 
     def read(self, slug, helper, session=0, after=0, before=0, whole=False):
         sessions = self.store.all('SELECT * FROM helper_sessions WHERE project=? AND helper_id=? AND '

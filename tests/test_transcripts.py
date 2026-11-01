@@ -221,3 +221,36 @@ def test_notes_recorded_together_without_session_history_merge_without_invented_
     assert len(grouped) == 1 and len(grouped[0]['ids']) == 2
     assert grouped[0]['text'] == 'First note\n\nSecond note'
     assert grouped[0]['session_id'] is None and grouped[0]['score_before'] is None
+
+
+def test_transcript_records_saved_score_improvements_once_for_own_session(setup):
+    import time
+    net, manager, session, sid = setup
+    agent = net.authenticate(net.register_agent('helper', 'test'))
+    pid = net._project('demo')['id']
+    with net.store.tx() as db:
+        fid = db.execute('INSERT INTO functions(project_id,name) VALUES(?,?)', (pid, 'target')).lastrowid
+        for before, score, improved, aid in [(1040,660,1,agent.id),(660,800,0,agent.id),(660,600,1,999)]:
+            db.execute('INSERT INTO attempts(function_id,agent_id,score,score_before,score_improved,created_at) VALUES(?,?,?,?,?,?)',
+                       (fid, aid, score, before, improved, time.time()))
+    session.record('tool_response', {'name':'compile_patch','content':'done'})
+    session.record('tool_response', {'name':'get_candidate','content':'read'})
+    changes = [json.loads(e['text']) for e in manager.transcript('demo',1,sid,whole=True)['events'] if e['kind']=='score_improvement']
+    assert len(changes) == 1
+    assert changes[0]['name'] == 'target'
+    assert (changes[0]['score_before'], changes[0]['score']) == (1040,660)
+
+
+def test_judge_persists_only_real_best_score_improvements(setup, monkeypatch):
+    net, manager, session, sid = setup
+    agent = net.authenticate(net.register_agent('helper', 'test'))
+    pid = net._project('demo')['id']
+    with net.store.tx() as db:
+        fid = db.execute('INSERT INTO functions(project_id,name,best_score) VALUES(?,?,?)', (pid,'target',1040)).lastrowid
+    monkeypatch.setattr(net, 'on_improvement', lambda *args: None)
+    monkeypatch.setattr(net, 'check_attempt_limit', lambda *args: None)
+    for score in [660,800,None,500]:
+        fn = net._function('target','demo')
+        net._record(fn,agent,score,'int target(){return 1;}',0)
+    rows = net.store.all('SELECT score_before,score_improved FROM attempts WHERE function_id=? ORDER BY id',fid)
+    assert [tuple(row) for row in rows] == [(1040,1),(660,0),(660,0),(660,1)]

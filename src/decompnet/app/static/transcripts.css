@@ -193,3 +193,6 @@
 .repair-dialog [data-close] { flex-shrink:0; }
 .repair-card[open] .repair-card-preview { display:none; }
 .repair-card[open] > summary::before, .repair-concerns .repair-card[open] > summary::before { content:'▾ Hide details'; }
+
+.session-transcript .transcript-score-improvement { border-left: 4px solid var(--green, #219653); }
+.transcript-score-improvement .transcript-event-label { color: var(--green, #219653); }

@@ -1551,6 +1551,9 @@ class Network:
                            (source, agent.id, now, source, fn["id"]))
                 db.execute("DELETE FROM claims WHERE function_id=?", (fn["id"],))
                 self._event(db, fn["project_id"], agent.id, "match", fn["name"])
+            db.execute('UPDATE attempts SET score_before=?,score_improved=? WHERE id=?',
+                       (current['best_score'], int(bool(improved or (matched and not stale and current['status'] != 'matched'))), attempt))
+
         if stale:
             raise NetworkError("Compiler settings changed while this candidate was compiling. Your attempt is saved; compile it again with today's settings.")
         if not matched and fn["status"] == "open":
