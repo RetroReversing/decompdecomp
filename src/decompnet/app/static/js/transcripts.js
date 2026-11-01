@@ -103,9 +103,10 @@ $("helperTranscript").onclick = async () => {
   const refresh = dialog.querySelector("[data-refresh]");
   let session = 0, after = 0, oldest = 0, eventCount = 0, loading = 0, generation = 0, timer;
   const pendingTools = new Map();
+  let usageGroup = null, usageUpdates = 0;
   const endpoint = () => `/api/transcript?slug=${encodeURIComponent(slug)}&helper=${encodeURIComponent(helper)}`;
   function showEvents(result, reset) {
-    if (reset) { events.replaceChildren(); after = 0; eventCount = 0; pendingTools.clear(); }
+    if (reset) { events.replaceChildren(); after = 0; eventCount = 0; pendingTools.clear(); usageGroup = null; usageUpdates = 0; }
     if (!eventCount && result.events.length) events.textContent = '';
     for (const entry of result.events) {
       const checking = entry.kind.startsWith("connection_check_");
@@ -114,7 +115,7 @@ $("helperTranscript").onclick = async () => {
       const details = document.createElement("details"), summary = document.createElement("summary");
       const labels = {prompt: "Initial prompt", instructions: "App instructions", tool_definitions: "Tool definitions",
         tool_request: "Tool request", tool_response: "Tool response", api_request: "API request (actual context)",
-        handoff: "Session handoff", text: "Agent reply", think: "Exposed reasoning", usage: "Reported usage"};
+        handoff: "Session handoff", text: "Agent reply", think: "Exposed reasoning", usage: "Usage update (not sent to model)"};
       details.className = `transcript-event${kind === "error" ? " transcript-event-error" : ""}`;
       details.open = kind === "error" || (kind === "text" && entry.text.length <= 2000);
       const label = document.createElement("span"), time = document.createElement("time"), size = document.createElement("span");
@@ -185,7 +186,16 @@ $("helperTranscript").onclick = async () => {
           size.textContent = '';
         } catch { /* Preserve raw evidence if a historical record is malformed. */ }
       }
-      if (!parent) events.append(details);
+      if (kind === 'usage') {
+        if (!usageGroup) {
+          usageGroup = document.createElement('details');
+          usageGroup.className = 'transcript-event transcript-accounting';
+          usageGroup.append(document.createElement('summary'));
+          events.append(usageGroup);
+        }
+        usageGroup.firstElementChild.textContent = `Usage accounting (app only) · ${++usageUpdates} updates`;
+        usageGroup.append(details);
+      } else if (!parent) events.append(details);
       after = entry.id; eventCount++;
     }
     dialog.querySelector("[data-event-count]").textContent = `${eventCount} events loaded`;

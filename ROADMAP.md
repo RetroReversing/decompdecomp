@@ -1613,3 +1613,10 @@ remain planned: the initial browser toolchain has no matching build-context adap
   policy helpers remain usable by existing supported local/deep paths.
 
 - Done: saved-file verification uses a small reserved header spinner instead of a transient page banner. Details, progress and pause/resume are available on demand without shifting project content; reduced-motion and paused states are respected.
+
+### Agent transcript efficiency follow-ups
+
+- Done: feedback distinguishes recovery from beating the saved best; agents can explicitly select saved-best or last-compiling C for continuation without a compile, source-file change or verdict.
+- Done: claim exploration budgets start from the inherited pre-attempt best, so recovery from a worse rewrite does not perpetually renew the allowance. Missing historical baselines retain the legacy counter.
+- Done: explicit reasoned move-on releases bypass the one-time negotiation; compile responses explain the policy. Session function counts are upper limits in default prompts.
+- Done: compiler advice identifies bounded candidate-local C89 declaration suspects and offers explicit recovery. Raw provider usage accounting is grouped in a collapsed app-only transcript section; source events and usage totals remain intact.

@@ -49,11 +49,35 @@ def candidate_line_note(net, agent, slug, fn, source):
     return note or '\nC-line mapping unavailable for this candidate/build; no line locations inferred.'
 
 
-def get_candidate(net, agent, slug, function):
+def get_candidate(net, agent, slug, function, base='current'):
+    if base not in ('current', 'saved_best', 'last_compiling'):
+        raise NetworkError('Choose base=current, saved_best or last_compiling.')
+    note = ''
+    if base != 'current':
+        fn = net._function(function,slug)
+        claim = net.store.one('SELECT claimed_at FROM claims WHERE function_id=? AND agent_id=?',fn['id'],agent.id)
+        if not claim or fn['status'] != 'open':
+            raise NetworkError('Hold an open function before selecting a recovery candidate.')
+        latest = net.store.one('SELECT id,created_at FROM attempts WHERE function_id=? AND agent_id=? ORDER BY id DESC LIMIT 1',fn['id'],agent.id)
+        if base == 'saved_best':
+            selected = fn['best_source']
+        else:
+            row = net.store.one('SELECT source FROM attempts WHERE function_id=? AND agent_id=? AND score IS NOT NULL ORDER BY id DESC LIMIT 1',fn['id'],agent.id)
+            selected = row['source'] if row else None
+        if not selected:
+            raise NetworkError('No source is available for that recovery base; current candidate retained.')
+        stamp = (latest['id'] if latest and latest['created_at'] >= claim['claimed_at'] else None,
+                 claim['claimed_at'],target_scope(net,fn,''))
+        if not hasattr(net,'_agent_selected'):net._agent_selected = {}
+        net._agent_selected[agent.id,fn['id']] = {'stamp':stamp,'source':selected}
+        while len(net._agent_selected)>64:
+            del net._agent_selected[next(iter(net._agent_selected))]
+        note = f'Selected {base} for continuation; historical score is not reverified. No compile, file write or match was performed.\n'
     source, revision = candidate(net, agent, slug, function)
     from . import local_experiments
     remaining = local_experiments.summary(net,agent,slug,net._function(function,slug),source,revision)
-    return f'Candidate revision {revision}\n```c\n{source}\n```\n{remaining}' + candidate_line_note(net, agent, slug, net._function(function,slug), source)
+    mapping = candidate_line_note(net, agent, slug, net._function(function,slug), source) if base == 'current' else '\nC-line mapping will refresh after this candidate is compiled; no historical line locations inferred.'
+    return note + f'Candidate revision {revision}\n```c\n{source}\n```\n{remaining}' + mapping
 
 
 def stale(net, agent, fn, submitted, source, actual, anchor=""):
@@ -365,6 +389,14 @@ def diff_page(net, agent, slug, function, context=1, start=0, limit=40):
 
 
 def feedback(net, agent, slug, function, text, previous):
+    fn_best = net._function(function,slug)['best_score']
+    measured = re.search(r'(?:^score |\(score )(\d+)',text)
+    if measured and fn_best is not None and int(measured[1]) > fn_best:
+        text = text.replace(': keep it.', '; this recovers from your previous attempt.')
+        if 'points worse' not in text:
+            first,sep,tail = text.partition('\n')
+            text = first + f'\nSaved best {fn_best}; current candidate is {int(measured[1])-fn_best} points worse. Use get_candidate(base="saved_best") to restore it. Recovery above the inherited best does not reset the move-on budget.' + sep + tail
+
     fn = net._function(function, slug)
     if any(marker in text for marker in ('COMPILE ERROR','BUILD ERROR')):
         from .compile_guidance import hints

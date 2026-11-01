@@ -175,9 +175,9 @@ class NetworkError(Exception):
 
 
 
-def _no_better(scores: list[int | None]) -> int:
+def _no_better(scores: list[int | None], baseline: int | None = None) -> int:
     """How many of the last compiles in a row (oldest first in `scores`) didn't beat the best before them."""
-    best, since = None, 0
+    best, since = baseline, 0
     for s in scores:
         if s is not None and (best is None or s < best):
             best, since = s, 0
@@ -358,7 +358,8 @@ def move_on_brief(fn, after=None) -> str:
     after = after if custom else stall_budget(fn["n_insns"] or 0)
     basis = "your worker setting" if custom else "this function’s size"
     return (f"move on after {after} compiles in a row without a better score ({basis}; "
-            f"each compile_and_diff result shows the count)")
+            f"each compile_and_diff result shows the count). Recovery above the inherited best does not reset it. "
+            'To leave earlier with a reason, use release_function(move_on=true, notes="what you tried and why").')
 
 
 def normalized_source(source: str) -> str:
@@ -1363,7 +1364,7 @@ class Network:
             best = self.store.one("SELECT best_score FROM functions WHERE id=?", fn["id"])["best_score"]
             head = (f"score {d.score} ({scoring.percent_text(d.percent)} match) — best so far {best}. "
                     f"Target {len([r for r in d.rows if r[1]])} insns, yours {len([r for r in d.rows if r[2]])}.")
-            head += self._what_changed(d, last["score"] if last else None)
+            head += self._what_changed(d, last["score"] if last else None, best)
             if d.rows and all(m == " " for m, _, _ in d.rows):
                 head += ("\nNOT A MATCH YET: every instruction reads the same, but the bytes differ"
                          + (" because of the linking notes at the end: fix those." if problems else
@@ -1386,7 +1387,7 @@ class Network:
         return {"text": text + self.stall_note(fn["id"], agent.id), "score": d.score, "matched": False, "checks": checks}
 
     @staticmethod
-    def _what_changed(d: scoring.DiffResult, last: int | None) -> str:
+    def _what_changed(d: scoring.DiffResult, last: int | None, best: int | None = None) -> str:
         """What the agent's last change did, and where the first difference is now: one small change per compile
         works best, and an agent that sees which way the score moved knows whether to keep or undo it."""
         said = ""
@@ -1394,6 +1395,11 @@ class Network:
             said = ("\nYour last change: no effect on the score." if d.score == last else
                     f"\nYour last change made it better ({last} → {d.score}): keep it." if d.score < last else
                     f"\nYour last change made it worse ({last} → {d.score}): undo it, or it fixed one thing and broke another.")
+        if best is not None and d.score > best:
+            said = said.replace(': keep it.', '; this recovers from your previous attempt.')
+            said += (f"\nSaved best is {best}; this candidate is still {d.score - best} points worse. "
+                     'Use get_candidate(base="saved_best") to restore that starting point, or continue a bounded exploration. '
+                     'Recovery above the inherited best does not reset the move-on budget.')
         same, total, row = scoring.first_mismatch(d.rows)
         if row is not None:
             mark, target, yours = row
@@ -1430,17 +1436,19 @@ class Network:
         custom = self.agent_stall_budget(row, agent_id=agent_id) if row else None
         after = custom if custom is not None else stall_budget((row["n_insns"] if row else 0) or 0)
         claim = self.store.one("SELECT claimed_at FROM claims WHERE function_id=? AND agent_id=?", function_id, agent_id)
+        baseline = None
         if claim is not None:
             start = claim["claimed_at"] or 0
-            rows = self.store.all("SELECT score FROM attempts WHERE function_id=? AND agent_id=? AND created_at >= ? "
+            rows = self.store.all("SELECT score,score_before FROM attempts WHERE function_id=? AND agent_id=? AND created_at >= ? "
                                   "ORDER BY id", function_id, agent_id, start)
             scores = [r["score"] for r in rows]
+            baseline = rows[0]["score_before"] if rows else None
         else:
             start = None
             rows = self.store.all(f"SELECT score FROM attempts WHERE function_id=? AND agent_id=? ORDER BY id DESC "
                                   f"LIMIT {max(STALL_LOOKBACK, after + 1)}", function_id, agent_id)
             scores = [r["score"] for r in reversed(rows)]
-        return {"claimed_at": start, "compiles": len(scores), "no_better": _no_better(scores), "after": after,
+        return {"claimed_at": start, "compiles": len(scores), "no_better": _no_better(scores, baseline), "after": after, "inherited_best": baseline,
                 "best": min((s for s in scores if s is not None), default=None)}
 
     def stall_note(self, function_id: int, agent_id: int) -> str:

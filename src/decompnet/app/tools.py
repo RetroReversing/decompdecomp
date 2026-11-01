@@ -79,9 +79,7 @@ You are a decompilation agent in decompdecomp, working on {title}. Other agents 
 functions of the same game at the same time; the tools keep you from colliding.
 
 Your job: turn functions of this game into C that compiles to *exactly* the original machine code.
-Use only the decomp tools. Do {count} claims you compiled (a batch is one; one you released without compiling it
-doesn't count), then stop. Don't stop early because the functions look hard: what's left is hard, and a claim that
-gets its full compile budget is how they match. Nobody answers during a session: never stop to offer more claims "on
+Use only the decomp tools. Work on up to {count} compiled claims (a batch is one). This is a maximum, not a quota. Stop earlier when the session turn/context allowance is nearly used; leave precise notes for unfinished work. Do not apologise for missing the maximum. Nobody answers during a session: never stop to offer more claims "on
 request", just take them. (claim_function's count is something else: how many small neighbours may come along in
 one claim; one function back is normal.)
 
@@ -157,9 +155,7 @@ You are a decompilation agent in decompdecomp, continuing {title}: {what}. Other
 other functions of the same project at the same time; the tools keep you from colliding.
 
 Your job: write functions in the project's own source files so they compile to *exactly* the original
-machine code, judged by objdiff. Use only the decomp tools. Do {count} claims you compiled (a batch is one; one you
-released without compiling it doesn't count), then stop. Don't stop early because the functions look hard: what's
-left is hard, and a claim that gets its full compile budget is how they match. Nobody answers during a session: never
+machine code, judged by objdiff. Use only the decomp tools. Work on up to {count} compiled claims (a batch is one). This is a maximum, not a quota. Stop earlier when the session turn/context allowance is nearly used; leave precise notes for unfinished work. Do not apologise for missing the maximum. Nobody answers during a session: never
 stop to offer more claims "on request", just take them. (claim_function's count is something else: how many small
 neighbours may come along in one claim; one function back is normal.)
 
@@ -438,8 +434,8 @@ HANDLERS: dict[str, Callable[..., str]] = {
     "last_diff": agent_tokens.diff_page,
     "report_candidate_issue": lambda net, agent, slug, function, revision, issue, reason, alternative_revision="":
         candidate_quality.report(net,agent,slug,function,revision,issue,reason,alternative_revision),
-    "release_function": lambda net, agent, slug, function, notes, needs="", not_c=False:
-        agent_tokens.brief(net,net.release_function(agent, function, notes, slug, needs or "", bool(not_c)),slug,agent),
+    "release_function": lambda net, agent, slug, function, notes, needs="", not_c=False, move_on=False:
+        agent_tokens.brief(net,net.release_function(agent, function, notes, slug, needs or "", bool(not_c), bool(move_on)),slug,agent),
     "get_context": lambda net, agent, slug, function="": net.get_context(slug, function or None),
     "edit_context": lambda net, agent, slug, old, new, message, function="":
         net.edit_context(agent, slug, old, new, message, function or None),
@@ -659,9 +655,9 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
                          repair_category=repair_category, repair_automation=repair_automation)
 
     @tool
-    async def get_candidate(ctx: Context, function: str) -> str:
-        """Read your current candidate C/revision and bounded advisory C-line mismatch locations, when compiler debug information is available. No full assembly listing or historical notes."""
-        return await run(ctx, 'get_candidate', function=function)
+    async def get_candidate(ctx: Context, function: str, base: str = "current") -> str:
+        """Read your current candidate C/revision and bounded advisory C-line mismatch locations, when compiler debug information is available. Use base="saved_best" to explicitly restore saved best C, or base="last_compiling" to recover your last scored C after compiler errors. Selection changes only your continuation; historical scores require rejudging. No full assembly listing or historical notes."""
+        return await run(ctx, 'get_candidate', function=function, base=base)
 
     @tool
     async def compile_patch(ctx: Context, function: str, revision: str, old: str, new: str, repair_note: str = '',
@@ -737,7 +733,7 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
                          reason=reason, alternative_revision=alternative_revision)
 
     @tool
-    async def release_function(ctx: Context, function: str, notes: str, needs: str = "", not_c: bool = False) -> str:
+    async def release_function(ctx: Context, function: str, notes: str, needs: str = "", not_c: bool = False, move_on: bool = False) -> str:
         """Give up a function you're stuck on, once compile_and_diff says to move on. Notes are required: what you
         tried, what is left. Your best attempt is kept for the next agent. Released before that (fewer compiles than
         the move-on rule), it answers once with what to try instead; call it again to release anyway.
@@ -747,10 +743,11 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
             notes: what you tried, what is left
             needs: optional: a direct callee recorded in the original assembly that blocks this function. Paused
                 candidates cannot be selected this way. Explain indirect/inline/header concerns in notes instead.
+            move_on: explicitly release now with precise notes explaining why further exploration is unproductive. Skips the one-time release pushback; does not mark a match or no-C verdict.
             not_c: true when you're sure no C makes its code at all (hand-written assembly), saying why in notes:
                 once agents of two models agree, it's set aside and no one is handed it again.
         """
-        return await run(ctx, "release_function", function=function, notes=notes, needs=needs, not_c=not_c)
+        return await run(ctx, "release_function", function=function, notes=notes, needs=needs, not_c=not_c, move_on=move_on)
 
     @tool
     async def get_context(ctx: Context, function: str = "") -> str:

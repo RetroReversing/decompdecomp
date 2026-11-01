@@ -409,7 +409,7 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
     bo = lambda desc: {"type": "boolean", "description": desc}
     defs = {
         "project_info": ("Game, compiler and progress; detail=true includes all facts and suggestions.", s(detail=bo("full details"))),
-        "get_candidate": ("Read candidate C and its revision, without assembly or notes.", s(function=st("function", True))),
+        "get_candidate": ("Read candidate C and its revision, without assembly or notes.", s(function=st("function", True), base=st("current (default), saved_best or last_compiling; explicitly selects continuation without judging"))),
         "compile_patch": ("Compile one exact-text replacement against a candidate revision using the normal judge.",
                           s(function=st("function", True), revision=st("revision from get_candidate or compile feedback", True),
                             old=st("text occurring exactly once", True), new=st("replacement", True),
@@ -458,6 +458,7 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
                              "on (before that it answers once with what to try; call again to release anyway).",
                              s(function=st("function", True), notes=st("what you tried, what is left", True),
                                not_c=bo("true when you're sure no C makes its code (hand-written assembly); say why in notes"),
+                               move_on=bo("Explicitly release now with precise notes explaining why; bypasses the one-time pushback"),
                                needs=st("Optional direct callee in original assembly; obeys pauses and allows one pivot per unchanged input. Explain inline/header concerns in notes."))),
         "get_context": ("The shared header included in every compile.", s()),
         "edit_context": ("Replace `old` (exactly once) with `new` in the shared header, or append when old is empty.",
