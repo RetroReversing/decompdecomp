@@ -69,7 +69,8 @@ def advance(state, evaluate, variants, stopped, *, arch=None):
                     state['seen'].append(source)
                     state['pending'].append(dict(source=source, depth=parent['depth'] + 1,
                                                  ceiling=min(parent['ceiling'], parent['score']),
-                                                 region_baseline=parent.get('regions'), baseline_rows=parent['report'].get('rows')))
+                                                 region_baseline=parent.get('regions'), baseline_rows=parent['report'].get('rows'),
+                                                 parent_source=parent['source']))
     return False
 
 
@@ -109,7 +110,7 @@ def targeted_variants(source, report, fn, arch, flags, header='', tables=()):
 
 def run(twins, slug, job):
     """Use a separate phase budget and resume after the last visited function."""
-    from . import address_repairs, free_candidates, similar_matches
+    from . import address_repairs, expression_recipes, free_candidates, repair_sequences, similar_matches
 
     net = twins.net
     proj = net.project_row(slug)
@@ -142,7 +143,8 @@ def run(twins, slug, job):
             return
         header = net._context(proj['id'], fn['unit'])['header']
         settings = compiler_for(cfg, fn['vram'])
-        context = similar_matches.trial_key('', header, settings, fn, ['beam-v6', symbols, rules])
+        recipe_profile=repair_sequences.profile(net,proj,fn)
+        context = similar_matches.trial_key('', header, settings, fn, ['beam-v6', symbols, rules, expression_recipes.signature(net,recipe_profile)])
         saved = net.store.one('SELECT context,state FROM repair_frontiers WHERE function_id=?', fn['id'])
         state = json.loads(saved['state']) if saved and saved['context'] == context else None
         if state is None or fn['best_source'] not in state['seen']:
@@ -170,6 +172,8 @@ def run(twins, slug, job):
                 report = net.try_quietly(agent, proj, fn, source)
             except NetworkError:
                 return None
+            if report.get('matched') and state['pending'] and state['pending'][0].get('parent_source'):
+                expression_recipes.learn(net,recipe_profile,state['pending'][0]['parent_source'],source)
             outcome = 'match' if report.get('matched') else 'miss'
             reason = 'iterative local repair; ' + ('byte match' if outcome == 'match' else f"score {report.get('score')}")
             with net.store.tx() as db:
@@ -187,7 +191,8 @@ def run(twins, slug, job):
             from . import switch_tables
             targeted = targeted_variants(source, report, fn, proj['arch'], settings.get('flags', []), header, switch_tables.read(net,proj,fn))
             # Interleave pools so address proposals cannot starve targeted families (or vice versa).
-            pools = [guided[:4], targeted[:8], similar_matches.repair_variants(source, report)[:4]]
+            learned = expression_recipes.variants(net, recipe_profile, source)
+            pools = [guided[:4], targeted[:8], similar_matches.repair_variants(source, report)[:4], learned[:2]]
             return list(dict.fromkeys(item for group in zip_longest(*pools)
                                       for item in group if item is not None))
 

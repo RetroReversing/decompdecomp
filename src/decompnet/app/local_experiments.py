@@ -18,6 +18,7 @@ from . import (
     captured_repairs,
     draft_repairs,
     evidence_repairs,
+    expression_recipes,
     expression_repairs,
     integer_lifetime_repairs,
     lifetime_repairs,
@@ -31,6 +32,7 @@ from . import (
     register_repairs,
     register_reuse_repairs,
     repair_ranking,
+    repair_sequences,
     stack_layout,
     stack_padding_repairs,
     store_address_repairs,
@@ -38,7 +40,7 @@ from . import (
 )
 
 EXPERIMENTAL = ('experimental_bitfield_frame',)
-FAMILIES = ('address_association', 'call_initialization', *EXPERIMENTAL, 'masked_value_reuse', 'cfg_integer_lifetimes', 'table_slot_lifetime', 'unsigned_assignment_reuse', 'guard_forward_jump', 'constant_register_reuse', 'copy_register_reuse', 'last_shift_reuse', 'signedness','declaration_order','typed_temporary','branch_orientation','narrowing','source_lines',
+FAMILIES = ('learned_expression', 'address_association', 'call_initialization', *EXPERIMENTAL, 'masked_value_reuse', 'cfg_integer_lifetimes', 'table_slot_lifetime', 'unsigned_assignment_reuse', 'guard_forward_jump', 'constant_register_reuse', 'copy_register_reuse', 'last_shift_reuse', 'signedness','declaration_order','typed_temporary','branch_orientation','narrowing','source_lines',
             'address_temporary','constant_local','comparison_load','stack_array','loop_induction',
             'parameter_width','value_lifetime','sum_shape','call_result_inline','comparison_reuse','integer_address_order','mmio_address','call_arity','struct_byte_offset','switch_call','paired_load_order','array_index_width','split_scalar_lifetime','pointer_before_store','store_address_lifetime','stack_padding','local_width','pointer_cast_inline',
             'local_widening','callee_parameter_width','callee_return_width','split_integer_lifetime','merge_integer_lifetimes','branch_call','goto_leaf','switch_layout') + draft_repairs.AGENT_FAMILIES
@@ -84,6 +86,7 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6, *, se
             if not hasattr(net, '_agent_outcomes'):
                 net._agent_outcomes={}
             net._agent_outcomes[agent.id,fn['id']]=checked
+        recipe_profile=repair_sequences.profile(net,net._project(slug),fn)
         policy_profile=adaptive_repairs.profile(net,net._project(slug),fn)
         from .permuter_focus import classify
         focus=classify((baseline or {}).get('rows') or [])
@@ -103,6 +106,10 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6, *, se
             with net.store.tx() as db:
                 db.execute('INSERT OR IGNORE INTO agent_family_targets VALUES(?,?,?,?)',
                            (fn['id'],scope,'local:'+family,hashlib.sha256(candidate.encode()).hexdigest()))
+        current=net._function(function,slug)
+        if (current['status']=='matched' and current['best_source'] in [candidate for _,candidate in selected]
+                and recipe_profile==repair_sequences.profile(net,net._project(slug),fn)):
+            expression_recipes.learn(net,recipe_profile,source,current['best_source'])
         return 'Local families: '+', '.join(f'{i}: {f}' for i,(f,_) in enumerate(selected,1))+'\n'+result
 
 
@@ -111,6 +118,8 @@ def available(net, agent, slug, fn, source, revision, requested):
     flags=compiler_for(cfg,fn['vram']).get('flags',[]) if not net.fork_slug(slug) else []
     debug=any(re.fullmatch(r'-g[1-3]?',flag) for flag in flags)
     pools={family:[] for family in requested}
+    if 'learned_expression' in pools:
+        pools['learned_expression']=expression_recipes.variants(net,repair_sequences.profile(net,proj,fn),source)
     for family in ('signedness','declaration_order'):
         if family not in pools:
             continue
