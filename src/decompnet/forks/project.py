@@ -221,6 +221,86 @@ class ForkProject:
                 return p
         return None
 
+    def _splat_version_configs(self) -> dict[str, Path]:
+        """Only infer editions from the YAML template the project's Makefile actually uses."""
+        makefile = self.root / "Makefile"
+        if not makefile.is_file():
+            return {}
+        make = makefile.read_text(errors="replace", encoding="utf-8")
+        basename = re.search(r"^BASENAME\s*[:?]?=\s*([A-Za-z0-9_-]+)\s*$", make, re.M)
+        if not basename:
+            return {}
+        suffix = "$(BASENAME).$(VERSION).yaml"
+        nested = "config/$(VERSION)/" + suffix
+        if nested in make:
+            paths = self.root.glob("config/*/" + basename[1] + ".*.yaml")
+        elif suffix in make:
+            paths = self.root.glob(basename[1] + ".*.yaml")
+        else:
+            return {}
+        configs = {}
+        for path in sorted(paths):
+            version = path.name[len(basename[1]) + 1:-5]
+            if (re.fullmatch(r"[A-Za-z0-9._-]+", version) and
+                    (nested not in make or path.parent.name == version) and
+                    self.root.resolve() in path.resolve().parents):
+                configs[version] = path
+        return configs
+
+    def splat_baseroms(self) -> dict[str, str]:
+        """Original ROM hashes for direct versioned splits and generated decompressed images.
+
+        Direct configs supply the original hash. For generated images the Makefile names the input/output
+        and the README supplies original hashes; a decompressed-image hash is never a cartridge hash.
+        """
+        makefile = self.root / "Makefile"
+        if not makefile.is_file():
+            return {}
+        make = makefile.read_text(errors="replace", encoding="utf-8")
+        # Direct versioned splits must select the same edition for placement and Make.
+        # Require the build's explicit template, not just similarly named YAML files.
+        configs = self._splat_version_configs()
+        if configs:
+            import yaml
+
+            originals = {}
+            for version, path in configs.items():
+                try:
+                    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError, yaml.YAMLError):
+                    continue
+                if not isinstance(config, dict) or not isinstance(config.get("options"), dict):
+                    continue
+                options = config["options"]
+                digest = config.get("sha1", options.get("sha1"))
+                base = path.parent / str(options.get("base_path", "."))
+                if (options.get("target_path") == f"baserom.{version}.z64"
+                        and base.resolve() == self.root.resolve()
+                        and isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{40}", digest)):
+                    originals[version] = digest.lower()
+            if originals:
+                return originals
+        if not (re.search(r"^BASEROM\s*[:?+]?=\s*baserom\.\$\(VERSION\)\.z64\s*$", make, re.M) and
+                re.search(r"^DECOMPRESSED_BASEROM\s*[:?+]?=\s*decompressed\.\$\(VERSION\)\.z64\s*$", make, re.M)):
+            return {}
+        readme = self.root / "README.md"
+        if not readme.is_file():
+            return {}
+        text = readme.read_text(errors="replace", encoding="utf-8")
+        configured = {p.name.removeprefix("decompressed.").removesuffix(".yaml")
+                      for p in self.root.glob("decompressed.*.yaml")}
+        return {version: digest.lower() for version, digest in re.findall(
+            r"`?baserom\.([A-Za-z0-9._-]+)\.z64`?\s*:\s*`?([0-9a-fA-F]{40})\b", text)
+                if version in configured}
+
+    def splat_default_version(self) -> str | None:
+        versions = self.splat_baseroms()
+        if not versions:
+            return None
+        make = (self.root / "Makefile").read_text(errors="replace", encoding="utf-8")
+        match = re.search(r"^VERSION\s*[:?]?=\s*([A-Za-z0-9._-]+)", make, re.M)
+        return match.group(1) if match and match.group(1) in versions else next(iter(versions))
+
     def _inside(self, rel: str) -> str | None:
         """`rel` as a clean path inside the project, or None if it points outside or is a template."""
         if not rel or "__" in rel or "$" in rel or "{" in rel:
@@ -254,6 +334,14 @@ class ForkProject:
                         "sha1": None, "auto": True, "help": "The build checks the game against the project's hashes."}
             return manual
         if kind == "splat":
+            originals = self.splat_baseroms()
+            if originals:
+                selected = version if version in originals else self.splat_default_version()
+                return {"what": f"your original game ROM (baserom.{selected}.z64)",
+                        "path": f"baserom.{selected}.z64", "sha1": originals[selected], "auto": True,
+                        "rom_versions": [{"version": v, "sha1": digest} for v, digest in originals.items()],
+                        "help": "Supply an original cartridge ROM in .z64, .v64 or .n64 byte order. "
+                                "Its normalized SHA-1 selects the build version."}
             y = self._splat_yaml().read_text(errors="replace", encoding="utf-8")
             target = re.search(r"^\s*target_path:\s*['\"]?([^'\"\n#]+)", y, re.M)
             base = re.search(r"^\s*base_path:\s*['\"]?([^'\"\n#]+)", y, re.M)
@@ -356,8 +444,9 @@ class ForkProject:
             return [[sys.executable, "configure.py"], [_tool("ninja") or "ninja"]]
         if kind == "splat":
             make = (self.root / "Makefile").read_text(errors="replace", encoding="utf-8")
-            steps = [["make", t] for t in ("setup", "extract") if re.search(rf"^{t}\s*:", make, re.M)][:1]
-            return steps + [["make", f"-j{os.cpu_count() or 4}"]]
+            chosen = [f"VERSION={version}"] if version and self.splat_baseroms() else []
+            steps = [["make", *chosen, t] for t in ("setup", "extract") if re.search(rf"^{t}\s*:", make, re.M)][:1]
+            return steps + [["make", *chosen, f"-j{os.cpu_count() or 4}"]]
         if kind == "objdiff":
             cfg = self.objdiff_config()
             return [[cfg.get("custom_make") or "make", *cfg.get("custom_args", [])]]
