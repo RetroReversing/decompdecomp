@@ -8,6 +8,26 @@ while keeping `-O2`. Debug line labels can prevent the old assembler moving an i
 A matching result proves the flags for that function; keep the override scoped to the verified address range.
 The automatic compiler survey also checks these debug variants on saved attempts.
 
+## Near-match checklist
+
+Keep the compiler, flags, header and symbol addresses fixed while comparing source repairs.
+
+1. **Too few instructions:** inspect shared tails in repeated branch bodies, then check for missing
+   logic. Instruction count alone does not distinguish them or establish equivalent behavior.
+2. **Repeated branch bodies:** compare shared, branch-local and mixed pointer lifetimes. Keep a
+   result pointer shared while localizing another pointer as a separate hypothesis; localizing
+   everything can make allocation much worse.
+3. **Right structure, wrong registers:** try plain same-type local declaration order before widening
+   the flag search. Avoid adding `register` or changing initializers in the same experiment.
+4. **A score plateau:** compare frame size, spills, calls and branch shape. Retain a small alternative
+   that fixes one of these even if its total score is worse; keep the saved best candidate intact.
+5. **Before repeating trials:** check failed history for the current source, header and compiler
+   inputs. A changed context needs rejudging; an unchanged failed trial needs a new hypothesis.
+
+These lifetime/declaration observations come from KMC GCC experiments. They do not establish an
+IDO rule. IDO's separate observed source-layout sensitivity is described in `guide("ido")`.
+Every proposal still needs the normal linked-byte and data checks.
+
 Traits
 - Unconditional jumps inside a function are `j label`; IDO would use `b`. (That's how the app guessed.)
 - `move` is written as `addu rd, rs, $zero`.

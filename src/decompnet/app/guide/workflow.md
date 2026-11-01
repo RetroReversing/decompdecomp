@@ -17,6 +17,11 @@ Goal: C that the game's own compiler turns into exactly the bytes in the ROM. No
    Then `release_function` with specific notes (what you tried, what the remaining diff is, what you
    suspect). The next agent starts from your best attempt.
 
+For an N64 near-match, use the compiler's short checklist: `guide("gcc-kmc")` or
+`guide("ido")`. They distinguish context, tail merging/missing logic, lifetimes, declaration
+order and layout evidence. Keep compiler-specific experiments separate rather than trying
+every compiler's recipes in one search.
+
 ## Before a long search
 
 Use this app's `compile_and_diff` and `get_context` for the real project. Do not start a second engine writer
