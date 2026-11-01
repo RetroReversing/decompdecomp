@@ -493,11 +493,13 @@ def tool_names(fork: bool, console=None) -> list[str]:
     return [n for n in HANDLERS if n not in skip]
 
 
-def project_tools(net: RomNetwork, slug: str | None) -> list[str]:
+def project_tools(net: RomNetwork, slug: str | None, agent=None, include_disabled=False) -> list[str]:
     """tool_names for a project (None: no project yet)."""
     fork = bool(slug and net.fork_slug(slug))
     cfg = net.cfg(net._project(slug)) if fork else {}
-    return tool_names(fork, consoles.of(cfg) if cfg.get("origin") == "scratch" else None)
+    from .tool_policy import visible
+    names = tool_names(fork, consoles.of(cfg) if cfg.get("origin") == "scratch" else None)
+    return names if include_disabled else visible(net, slug, names, agent)
 
 
 def _named(net: RomNetwork, agent: Agent, slug: str, args: dict) -> dict:
@@ -521,6 +523,8 @@ def _invoke(net: RomNetwork, agent: Agent, slug: str, name: str, args: dict) -> 
 
 
 def _dispatch(net,agent,slug,name,args):
+    from .tool_policy import record
+    record(net, agent, slug, name)
     from . import session_budget
     from .agent_local_pass import after_tool
     budget=session_budget.current(net,agent,slug)
@@ -566,6 +570,8 @@ ALWAYS_LOAD = agents.TOOL_META
 
 def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]], observe=None) -> MCPServer:
     """MCP server for CLI agents. `agent_of` maps a request to (agent, project slug)."""
+    from .tool_policy import ensure
+    ensure(net)
     mcp = MCPServer(name="decomp", title="decompdecomp", instructions=INSTRUCTIONS, version=__version__)
 
     async def run(ctx: Context, name: str, **args) -> str:

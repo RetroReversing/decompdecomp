@@ -172,7 +172,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         slug = project_for(agent.id)
         if not slug:
             return ListToolsResult(tools=[])
-        keep = set(tools.project_tools(net, slug))
+        keep = set(tools.project_tools(net, slug, agent))
         selected = [t for t in everything if t.name in keep]
         manager.record_agent(agent, slug, 'tool_definitions', [t.model_dump(mode='json') for t in selected])
         return ListToolsResult(tools=selected)

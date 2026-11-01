@@ -243,7 +243,7 @@ function renderSessions(sessions) {
     return `${head}<div class="session${rowTint(s.agent)}" data-state="${esc(s.state)}"><div class="session-top"><span class="dot ${dot}"></span><b title="${esc(s.agent)}">${esc(s.label)}</b>
         ${live ? `<button class="ghost" data-stop="${id}" type="button">Stop</button>` : `<button class="ghost" data-again="${id}" type="button">Start again</button>`}
         <details class="agent-menu" data-agent-menu="${id}" ${agentMenusOpen.has(s.id) ? 'open' : ''}><summary aria-label="Actions for ${esc(s.label)}" title="Agent actions">⋮</summary><div class="agent-menu-items">
-          <button data-rename="${id}" type="button">Rename</button><button data-queue="${id}" type="button">Work settings</button>
+          <button data-rename="${id}" type="button">Rename</button><button data-queue="${id}" type="button">Work settings</button><button data-agent-tools="${id}" type="button">Tools</button>
           <button data-log="${id}" type="button" aria-pressed="${S.logFor === s.id}">${S.logFor === s.id ? 'Back to everything' : 'What it said and did'}</button>
           <button data-reset-metrics="${id}" type="button" class="agent-menu-reset">Reset metrics</button>
           ${live ? '' : `<button data-remove="${id}" type="button">Remove agent</button>`}</div></details></div>
@@ -286,6 +286,7 @@ function renderSessions(sessions) {
       poll(false);
     };
   });
+  box.querySelectorAll('[data-agent-tools]').forEach(button => { button.onclick = () => showAgentTools(sessions.find(s => s.id === button.dataset.agentTools)); });
   box.querySelectorAll("[data-queue]").forEach((b) => { b.onclick = () => {
     const s = sessions.find((x) => x.id === b.dataset.queue);
     const panel = dialog(`Work selection · ${s.label}`, `${s.task === "readable" ? assemblySetting(s.selection) : selectionFields(s.selection)}<label class="field"><span>Functions per session</span><input data-session-size type="number" min="1" max="20" value="${s.per_session || 8}"></label><p class="muted small">Session size changes apply at the next session. The current function stays with its agent.</p><button class="primary" data-save-selection>Save</button><button class="ghost" data-cancel-selection>Cancel</button>`);

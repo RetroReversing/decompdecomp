@@ -761,6 +761,9 @@ class Network:
         else:
             below = None
         result = {"strategy": strategy, "match_below": below}
+        if "disabled_tools" in policy:
+            from .app.tool_policy import validate
+            result["disabled_tools"] = validate(policy["disabled_tools"])
         if 'assembly_metadata' in policy:
             if type(policy['assembly_metadata']) is not bool:
                 raise NetworkError('Assembly byte and address columns must be true or false.')
