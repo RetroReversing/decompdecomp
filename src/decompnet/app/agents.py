@@ -1287,6 +1287,9 @@ class Manager:
         s.push("info", f"session {s.runs} done: {u['tool_calls']} tool calls, {compiles} compiles, {matches} "
                        f"matched{spent}")
         self._save(s)
+        from .. import agent_notes
+        with self.net.store.tx() as db:
+            agent_notes.finish(db, row)
         s.record = None
 
     def prepare_session(self, s: Session, agent=None, *, token=None) -> None:

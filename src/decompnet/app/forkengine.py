@@ -24,7 +24,7 @@ from collections import defaultdict
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
-from .. import arch, classes, consoles, similarity, structs, toolchains
+from .. import agent_notes, arch, classes, consoles, similarity, structs, toolchains
 from ..forks import compiler_info, csource, datadiff, drafts, dtksplits, ghidra, objdiff
 from ..forks.objdiff import ObjdiffError
 from ..forks.project import EDITABLE, GAME, PROGRAM, SCOPES, STATE, ForkError, ForkProject
@@ -4083,12 +4083,12 @@ class ForkEngine:
             current = text[span[0]:span[1]] if span else None
         attempts = self.net.store.all("SELECT t.score, t.created_at, a.name AS agent FROM attempts t LEFT JOIN agents a "
                                       "ON a.id=t.agent_id WHERE t.function_id=? ORDER BY t.id", fn["id"])
-        notes = self.net.store.all("SELECT n.text, n.created_at, a.name AS agent FROM notes n LEFT JOIN agents a "
-                                   "ON a.id=n.agent_id WHERE n.function_id=? ORDER BY n.id DESC LIMIT 10", fn["id"])
+        notes = self.net.store.all("SELECT n.*, a.name AS agent FROM notes n LEFT JOIN agents a "
+                                   "ON a.id=n.agent_id WHERE n.function_id=? ORDER BY n.id DESC", fn["id"])
         return {"name": fn["name"], "vram": fn["vram"] or 0, "rom_offset": 0, "size": fn["size"], "insns": fn["n_insns"],
                 "status": fn["status"], "best": fn["best_score"], "asm": asm, "unit": fn["unit"], **set_aside(fn),
                 "source": current or fn["best_source"], "source_kind": "matched" if fn["status"] == "matched" else
                 ("latest" if current else "best" if fn["best_source"] else None),
                 "match_percent": pct, "scores": [{"score": a["score"], "t": a["created_at"], "agent": a["agent"]} for a in attempts],
-                "notes": [dict(n) for n in notes], "calls": [], "called_by": [],
+                "notes": agent_notes.grouped(self.net.store, notes, fn["project_id"])[:10], "calls": [], "called_by": [],
                 "cross_game_hints": self.net.twins.suggestions(slug, fn["name"])}

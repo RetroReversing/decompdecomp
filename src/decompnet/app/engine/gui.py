@@ -11,7 +11,7 @@ import re
 import time
 from pathlib import Path
 
-from ... import compilermap, consoles, scoring, toolchains
+from ... import agent_notes, compilermap, consoles, scoring, toolchains
 from ...network import IN_BUILD, PROGRESS_COLUMNS, Network, set_aside
 from ...project import compiler_for
 
@@ -287,10 +287,10 @@ class GuiMixin:
         latest = self.store.one("SELECT source, score FROM attempts WHERE function_id=? AND source IS NOT NULL "
                                 "ORDER BY id DESC LIMIT 1", fn["id"])
         from ...search_notes import useful
-        notes = self.store.all("SELECT n.text, n.created_at, a.name AS agent FROM notes n LEFT JOIN agents a "
-                               f"ON a.id=n.agent_id WHERE n.function_id=? "
-                               f"AND n.text != 'Deep permutation turn ended; improvements shared.' "
-                               f"ORDER BY n.created_at DESC,n.id DESC LIMIT {FUNCTION_NOTES}", fn["id"])
+        notes = self.store.all("SELECT n.*, a.name AS agent FROM notes n LEFT JOIN agents a "
+                               "ON a.id=n.agent_id WHERE n.function_id=? "
+                               "AND n.text != 'Deep permutation turn ended; improvements shared.' "
+                               "ORDER BY n.created_at DESC,n.id DESC", fn["id"])
         x = self.xrefs(proj)
         syms = self.symbols(proj["id"])
         if not (fn["matched_source"] or fn["best_source"] or latest) and fn["status"] == "open":
@@ -309,7 +309,7 @@ class GuiMixin:
             "source_kind": "matched" if fn["matched_source"] else "best" if fn["best_source"] else
                            "latest" if latest else "draft" if fn["seed"] else None,
             "scores": [{"score": a["score"], "t": a["created_at"], "agent": a["agent"]} for a in attempts],
-            "notes": [dict(n) for n in useful(notes)],
+            "notes": agent_notes.grouped(self.store, useful(notes), proj["id"])[:FUNCTION_NOTES],
             "calls": [syms.label(a) for a in sorted(x["calls"].get(fn["vram"], ()))],
             "called_by": [syms.label(a) for a in sorted(x["called_by"].get(fn["vram"], ()))],
             "cross_game_hints": self.twins.suggestions(slug, fn["name"]) if fn["status"] == "open" else [],

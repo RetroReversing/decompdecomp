@@ -155,6 +155,9 @@ CREATE TABLE IF NOT EXISTS compiler_tests(
 
 # Columns added after the first release; applied in place to existing databases.
 MIGRATIONS = [
+    ("notes", "session_id", "INTEGER"),
+    ("notes", "score_before", "INTEGER"),
+    ("notes", "score_after", "INTEGER"),
     ("reuse_trials", "feedback", "TEXT NOT NULL DEFAULT '{}'"),
     ("agents", "trusted", "INTEGER NOT NULL DEFAULT 0"),      # operator-vetted (CLI) vs. self-registered
     ("agents", "origin", "TEXT"),                              # cli | web
@@ -301,6 +304,7 @@ class Store:
         # a note the host sends is saved only when this function doesn't have it already: that look-up read every
         # note saved so far (3 ms each at 7,000 notes, so 60,000 incoming notes took over three minutes; now 0.01)
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_lookup ON notes(project_id, function_id)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(function_id,agent_id,session_id)")
         # a function's events of one kind (polishing's tries on it: app/readable.py), without reading a game's whole feed
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_events_detail ON events(project_id, kind, detail)")
         # the progress the GUI asks for every second (totals, the map's "anything new?"), answered from this narrow
