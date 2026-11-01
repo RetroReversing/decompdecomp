@@ -1235,3 +1235,20 @@ for review; joint context/profile approval and automatic promotion remain future
 - Done: CLI and API conversations rotate after 80 tools or 160,000 tool-response
   characters, once active tools finish. Structured handoffs retain candidate
   revisions, remaining experiments, history and notes; claims and source survive.
+
+### Prepared-source investigation evidence
+
+Local preparation now retains ranked compiled call/field/control evidence, source identities (including
+coherent alternative files), explicit rejected-lead reasons and a compiled target/candidate difference
+view. Ranking never assigns canonical names or changes source branches automatically. Unchanged rejected
+ROM trials are skipped; changed source/header/profile/target/build inputs renew evidence.
+
+MIPS incoming-register diagnostics recognize floating aliases and mixed `f12`/`a0` entry usage, show
+available caller setup in agent briefs and distinguish incoming stack slots from C parameter counts.
+Other processors need equivalent ABI adapters; imported builds currently expose measured scores/family
+results without compiled structural differences. Their original build still owns compiler/header settings.
+
+Repeated prepared register-only misses receive targeted lifetime/type/helper-context guidance. Local family
+results exclude cached repeats, separate compiler profiles and retain denominators; after 32 trials a family
+can influence preparation order with original-order exploration retained. These observations are not causal
+model/compiler rankings, and no family or unmatched function is automatically excluded.
