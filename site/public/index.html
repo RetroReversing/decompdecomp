@@ -258,7 +258,7 @@ jr      $ra
       <p class="cmd"><code id="cmd-macos">curl -fsSL https://decomp.ndelic.com/install.sh | bash -s -- --source branch:main</code><button type="button" class="copy" data-copy-from="cmd-macos">Copy</button></p>
       <p class="step-note">macOS 12+ on Intel and Apple Silicon: installs the current source and a Finder app in ~/Applications. Apple Silicon needs Rosetta for the Intel N64 KMC compiler and binutils. PS1/PS2 period compilers need Linux; macOS has no menu bar tray icon yet.</p>
       <p class="step-note">There's also a downloadable macOS app on the <a href="https://github.com/RetroReversing/decompdecomp/releases/latest">latest release</a>: download macos_arm64 for Apple Silicon or macos_x86_64 for Intel, unzip it, move decompdecomp.app to Applications, and open it from Finder. It isn't signed, so macOS may ask you to approve its first launch in Privacy &amp; Security.</p>
-      <p class="step-note">The update dialog also offers a Git source download into a new folder, with Git/uv setup links and commands to run a separate development copy. It follows your configured update repository and branch.</p>
+      <p class="step-note">The update dialog also offers a Git source download into a new folder: use Browse to choose its parent folder, then download. It includes Git/uv setup links and commands to run a separate development copy. It follows your configured update repository and branch.</p>
       <p class="step-note">RetroReversing fork builds show their version and source commit in the app sidebar and startup log. Include both when reporting an issue; clients need a fresh app package to receive new client-side features.</p>
     </div>
     <div class="step">

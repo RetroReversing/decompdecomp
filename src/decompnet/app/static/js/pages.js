@@ -361,19 +361,26 @@ function offerUpdate() {
   if (!u) return;
   const c = u.current || {};
   const notes = (u.notes || []).map((n) => `<li>${esc(n)}</li>`).join("");
-  const body = dialog("A new decompdecomp is ready", `<p>${c.channel === "branch"
-      ? `New on the <b>${esc(c.branch)}</b> branch: <code>${esc((u.latest.commit || "").slice(0, 7))}</code> (you have <code>${esc((c.commit || "?").slice(0, 7))}</code>).`
-      : `decompdecomp <b>${esc(u.latest.version)}</b> is out. You have ${esc(c.version)}.`}</p>
-    ${notes ? `<ul class="up-notes">${notes}</ul>` : ""}
-    ${u.link ? `<p class="small"><a class="link" href="${esc(u.link)}" target="_blank" rel="noopener">Every change</a></p>` : ""}
-    <p class="muted small">${u.can_apply ? "One click: decompdecomp installs it and restarts by itself, and this tab follows along. Helper agents pause for a moment and carry on." : esc(u.why_not)}</p>
-    <div class="row"><button class="primary" id="upGo" type="button" ${u.can_apply ? "" : "disabled"}>Update now</button><button class="ghost" id="upLater" type="button">Later</button></div>`);
+  const currentBuild = S.st?.build || c.commit || '';
+  const releases = `https://github.com/${c.repo || 'RetroReversing/decompdecomp'}/releases`;
+  const body = dialog("A new decompdecomp is ready", `<div class="update-builds">
+      <div><span class="small muted">Installed</span><strong>${esc(c.version || S.st?.version || 'Current app')}</strong>${currentBuild ? `<code>${esc(currentBuild.slice(0, 12))}</code>` : ''}</div>
+      <span class="update-arrow" aria-hidden="true">→</span>
+      <div><span class="small muted">Available ${c.channel === 'branch' ? `on ${esc(c.branch)}` : 'release'}</span><strong>${esc(u.latest.version || (c.channel === 'branch' ? 'Latest source' : 'Latest release'))}</strong>${u.latest.commit ? `<code>${esc(u.latest.commit.slice(0, 12))}</code>` : ''}</div>
+    </div>
+    ${notes || u.link ? `<details class="update-changes"><summary>What changed</summary>${notes ? `<ul class="up-notes">${notes}</ul>` : ''}${u.link ? `<a class="link" href="${esc(u.link)}" target="_blank" rel="noopener">View all changes on GitHub ↗</a>` : ''}</details>` : ''}
+    <section class="update-option"><div><h3>${u.can_apply ? 'Update this app' : 'Download the app'}</h3>
+    <p class="small muted">${u.can_apply ? 'Installs the update and restarts the app. Helper agents resume afterwards.' : 'Get a ready-to-run app from GitHub Releases. For newer code from the main branch, use the source download below.'}</p></div>
+    ${u.can_apply ? '<button class="primary" id="upGo" type="button">Update now</button>' : `<a class="ghost" href="${esc(releases)}" target="_blank" rel="noopener">Open releases ↗</a>`}</section>
+    ${!u.can_apply && u.why_not ? `<details class="update-help"><summary>Why automatic updates are unavailable</summary><p class="small muted">${esc(u.why_not)}</p></details>` : ''}
+    <div class="update-footer"><button class="ghost" id="upLater" type="button">Later</button></div>`);
   sourceCheckoutPanel(body);
   body.querySelector("#upLater").onclick = () => {
     try { localStorage.setItem(UPDATE_SKIP, updateTarget(u)); } catch { /* storage off */ }
     closeAll();
   };
-  body.querySelector("#upGo").onclick = async (e) => {
+  const updateButton = body.querySelector("#upGo");
+  if (updateButton) updateButton.onclick = async (e) => {
     const log = document.createElement("pre");
     log.className = "joblog"; body.append(log);
     const finish = beginWork(log, "Starting update", [e.target], "Update started.");
@@ -384,26 +391,37 @@ function offerUpdate() {
 async function sourceCheckoutPanel(body) {
   const panel = document.createElement("details");
   panel.open = !updateInfo.can_apply;
-  panel.innerHTML = `<summary>Get the latest Git version</summary><div class="stack-col">
-    <p>Download the source from your configured update repository into a new folder.</p>
-    <p class="small">You need <a class="link" href="https://git-scm.com/downloads" target="_blank" rel="noopener">Git</a> to download it and <a class="link" href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank" rel="noopener">uv</a> to run it. Install these first if needed.</p>
-    <p class="small" data-source-repo></p>
-    <label>New checkout folder (full path)<input data-source-path type="text" spellcheck="false"></label>
-    <div class="row"><button type="button" data-source-go>Download Git version</button></div>
-    <p role="status" aria-live="polite" data-source-status></p>
-    <div data-source-next hidden><p>Open Terminal (PowerShell on Windows), then run:</p><pre class="joblog" data-source-commands></pre>
-    <button type="button" class="ghost" data-source-copy>Copy commands</button>
-    <p class="small">This opens decompdecomp dev with separate projects in ~/Decomp-dev. Your packaged app and its projects stay as they are. To refresh this checkout later, run <code>git pull --ff-only</code> from its folder, then run the commands above again.</p></div>
-    <details><summary>Download manually</summary><ol><li>Open the repository link above and select the branch shown.</li><li>Click Code, copy its HTTPS Git URL, then run <code data-source-manual></code> in Terminal or PowerShell, replacing <code>NEW_FOLDER</code> with the full destination path in quotes.</li><li>Enter the new folder, run <code>uv sync --python 3.12</code>, then <code>uv run decomp</code>.</li></ol></details>
-    </div>`;
-  body.append(panel);
+  panel.className = 'update-source';
+  panel.innerHTML = `<summary><span>Get the latest Git version</span><span class="chip-s">Source checkout</span></summary><div class="update-source-body">
+    <p class="small muted">Download the newest source into its own folder, then run it with uv.</p>
+    <div class="update-repository" data-source-repo></div>
+    <div class="field"><label for="sourceCheckoutPath">Destination folder</label>
+      <div class="update-path"><input id="sourceCheckoutPath" class="mono" data-source-path type="text" spellcheck="false" aria-describedby="sourceCheckoutHelp"><button class="ghost" type="button" data-source-browse>Browse…</button></div>
+      <span class="small muted" id="sourceCheckoutHelp">Browse selects a parent folder; a new checkout folder is created inside it. Existing folders are never overwritten.</span>
+    </div>
+    <div class="row"><button class="primary" type="button" data-source-go>Download source</button></div>
+    <p class="update-status small" role="status" aria-live="polite" data-source-status></p>
+    <div class="update-next" data-source-next hidden><h4>Run your checkout</h4><p class="small muted">Open Terminal (PowerShell on Windows) and run:</p><pre class="joblog" data-source-commands></pre>
+      <button type="button" class="ghost small-btn" data-source-copy>Copy commands</button>
+      <p class="small muted">Opens a separate development app using ~/Decomp-dev. To refresh it later, run <code>git pull --ff-only</code> in this folder, then run these commands again.</p></div>
+    <details class="update-help"><summary>Requirements & manual setup</summary><div class="update-help-body">
+      <p class="small">Install <a class="link" href="https://git-scm.com/downloads" target="_blank" rel="noopener">Git</a> to download source and <a class="link" href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank" rel="noopener">uv</a> to run it.</p>
+      <ol class="small"><li>To download manually, run the command below in Terminal or PowerShell. Replace <code>NEW_FOLDER</code> with your destination path in quotes.</li></ol>
+      <pre class="joblog" data-source-manual></pre>
+      <p class="small">Then enter that folder, run <code>uv sync --python 3.12</code>, and <code>uv run decomp</code>.</p>
+    </div></details>
+  </div>`;
+  const footer = body.querySelector?.('.update-footer');
+  if (footer) body.insertBefore(panel, footer); else body.append(panel);
   const get = (selector) => panel.querySelector(selector);
-  const go = get("[data-source-go]"), path = get("[data-source-path]"), status = get("[data-source-status]");
+  const go = get("[data-source-go]"), path = get("[data-source-path]"), status = get("[data-source-status]"), browse = get("[data-source-browse]");
   const render = (info) => {
     const job = info.job || {};
     const busy = job.state === "cloning";
-    go.disabled = busy; path.disabled = busy;
-    status.textContent = busy ? "Downloading source… You can close this dialog and return later." : job.state === "done" ? `Downloaded to ${job.path}` : job.error || "Choose a new folder; existing folders are never overwritten.";
+    go.disabled = busy; path.disabled = busy; browse.disabled = busy;
+    status.textContent = busy ? "Downloading source… You can close this dialog and return later." : job.state === "done" ? `Downloaded to ${job.path}` : job.error || "";
+    status.hidden = !status.textContent;
+    status.classList.toggle("error", job.state === "error");
     get("[data-source-next]").hidden = job.state !== "done";
     get("[data-source-commands]").textContent = job.commands || "";
     if (job.path) path.value = job.path;
@@ -417,12 +435,25 @@ async function sourceCheckoutPanel(body) {
       if (info.job.state !== "cloning") return;
     }
   };
+  browse.onclick = async () => {
+    browse.disabled = true;
+    try {
+      const selected = await api('/api/pick', {method:'POST',body:{kind:'folder',title:'Choose the parent folder for the source checkout'}});
+      if (selected.path) {
+        const name = path.value.split(/[\\/]/).filter(Boolean).pop() || 'decompdecomp-source';
+        const separator = selected.path.includes('\\') ? '\\' : '/';
+        path.value = selected.path.replace(/[\\/]+$/, '') + separator + name;
+        status.textContent = ''; status.hidden = true;
+      }
+    } catch (err) { status.hidden = false; status.textContent = err.message; status.classList.add('error'); }
+    finally { browse.disabled = false; }
+  };
   go.onclick = async () => {
-    go.disabled = true;
+    go.disabled = true; path.disabled = true; browse.disabled = true;
     try {
       render(await api("/api/update/checkout", {method: "POST", body: {path: path.value}}));
       await poll();
-    } catch (err) { status.textContent = err.message; go.disabled = false; path.disabled = false; }
+    } catch (err) { status.hidden = false; status.textContent = err.message; status.classList.add("error"); go.disabled = false; path.disabled = false; browse.disabled = false; }
   };
   get("[data-source-copy]").onclick = async (event) => {
     event.target.textContent = await copyText(get("[data-source-commands]").textContent) ? "Copied" : "Copy failed — try again";
@@ -433,9 +464,9 @@ async function sourceCheckoutPanel(body) {
     get("[data-source-manual]").textContent = info.clone_command;
     get("[data-source-repo]").innerHTML = `<a class="link" href="https://github.com/${esc(info.repo)}" target="_blank" rel="noopener">${esc(info.repo)}</a> · branch <code>${esc(info.branch)}</code>`;
     render(info);
-    if (!info.git_available && info.job.state === "idle") status.textContent = "Install Git and restart the app to use the download button, or follow the manual steps below.";
+    if (!info.git_available && info.job.state === "idle") { status.hidden = false; status.textContent = "Git wasn’t found. See Requirements & manual setup below, then restart the app after installing Git."; }
     if (info.job.state === "cloning") await poll();
-  } catch (err) { status.textContent = err.message; }
+  } catch (err) { status.hidden = false; status.textContent = err.message; status.classList.add("error"); }
 }
 /* Settings: get decompdecomp from a branch, or from releases again (updates.switch_to). It installs and restarts
    like an update, and updates follow the new source from then on. */
