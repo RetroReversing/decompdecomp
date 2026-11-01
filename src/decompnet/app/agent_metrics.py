@@ -15,7 +15,7 @@ def results(net, slug, sessions):
         'MIN(CASE WHEN t.compiled THEN t.score END) OVER (PARTITION BY t.function_id ORDER BY t.id '
         'ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS previous '
         'FROM attempts t JOIN functions f ON f.id=t.function_id WHERE f.project_id=?) '
-        'SELECT a.name AS agent, COUNT(*) AS compiles, '
+        'SELECT a.name AS agent, COUNT(*) AS compiles, COUNT(DISTINCT h.function_id) AS worked, '
         "COUNT(DISTINCT CASE WHEN h.score=0 AND h.compiled AND h.status='matched' "
         'AND h.matched_agent_id=h.agent_id THEN h.function_id END) AS matched, '
         'COUNT(DISTINCT CASE WHEN h.compiled AND h.score>=0 AND '
@@ -28,7 +28,7 @@ def results(net, slug, sessions):
     board = {r['agent']: dict(r) for r in rows}
     for s in sessions:
         baseline = s.options.get('_metrics', {})
-        row = board.setdefault(s.agent_name, {'matched': 0, 'improved': 0, 'compiles': 0, 'last_improvement': None})
+        row = board.setdefault(s.agent_name, {'matched': 0, 'improved': 0, 'worked': 0, 'compiles': 0, 'last_improvement': None})
         row['polished'] = net.store.one(
             "SELECT COUNT(DISTINCT e.detail) AS n FROM events e JOIN agents a ON a.id=e.agent_id "
             "WHERE e.project_id=? AND a.name=? AND e.kind='readable' AND e.id>?",
