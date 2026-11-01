@@ -52,12 +52,25 @@ def recommendations(source, saved, comparison):
             result.append('Reference versus saved draft calls: reference-only ' + (', '.join(added[:12]) or 'none') +
                           '; saved-only ' + (', '.join(absent[:12]) or 'none') +
                           '. Possible SDK/retail revision difference; preserve the better draft and inspect target calls before replaying older source.')
+    if saved:
+        def tests(text):
+            return set(' '.join(m[0].split()) for m in re.finditer(r'\b'+IDENT+r'(?:\s*(?:->|\.)\s*'+IDENT+r')*\s*(?:==|!=|<=|>=|<|>)\s*-?(?:0[xX][0-9a-fA-F]+|\d+)\b',_blank(text)))
+        reference_tests,saved_tests=tests(source),tests(saved)
+        if reference_tests!=saved_tests:
+            result.append('Source revision review: reference-only comparisons '+(', '.join(sorted(reference_tests-saved_tests)[:6]) or 'none')+
+                          '; saved-only '+(', '.join(sorted(saved_tests-reference_tests)[:6]) or 'none')+
+                          '. Check these constants and branch conditions against retail instructions; source differences alone do not authorize a patch.')
     missing = comparison.get('missing_calls', {})
     extra = comparison.get('extra_calls', {})
     target = comparison.get('target', {})
     candidate = comparison.get('candidate', {})
     if missing or extra or target.get('branches') != candidate.get('branches') or target.get('exits') != candidate.get('exits'):
         result.append('Compiled call/control mismatch: inspect missing/extra calls and branch/exit rows. Separate a version change from inlining, compiler flags or ABI effects before proposing a source edit. No branches were patched.')
+    target_constants=set(map(tuple,target.get('immediates',[])));candidate_constants=set(map(tuple,candidate.get('immediates',[])))
+    if target_constants!=candidate_constants:
+        result.append('Compiled immediate differences: target-only '+str(sorted(target_constants-candidate_constants)[:8])+
+                      '; candidate-only '+str(sorted(candidate_constants-target_constants)[:8])+
+                      '. Relate these instructions to retail comparisons/call arguments before changing archived source; immediates alone do not identify semantics.')
     if comparison.get('register_only'):
         result.append('Register-only miss: check explicit helper return and argument types (especially float zero arguments), original declaration order/lifetimes and caller context before broad expression permutation.')
     return result

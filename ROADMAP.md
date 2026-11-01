@@ -1,5 +1,11 @@
 # Roadmap
 
+Implemented: private original range-predicate helpers and bounded mask-signedness context trials in
+mapped ROM preparation; focused two-load repair ranking; MIPS candidate-only epilogue boundary
+warnings; concrete comparison/immediate revision leads; current-source/build-scoped unsuccessful
+probe summaries. Shared diagnostics/ranking reach applicable imported builds. Private predicate/field
+header context requires imported-build adapters; cross-architecture epilogue readers remain planned.
+
 Implemented: session transcripts auto-refresh incrementally with a pause toggle, preserve expanded entries,
 and follow the bottom only when already there. New judge-recorded improvements appear as score timeline
 markers; historical attempts without saved improvement evidence are not inferred from agent prose.
