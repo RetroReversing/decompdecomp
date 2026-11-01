@@ -62,7 +62,7 @@ def register(app):
                 result = await app.call(bridge.listing, session, body.get('search', ''))
             elif action == 'task':
                 fid = body.get('functionId')
-                if isinstance(fid, bool) or not isinstance(fid, int):
+                if isinstance(fid, bool) or not isinstance(fid, int) or not 0 < fid < 2**63:
                     raise ValueError('Choose a numeric function ID from the paired project.')
                 result = await app.call(bridge.task, key, session, fid)
             elif action == 'submit':

@@ -162,6 +162,8 @@ class Bridge:
         snapshot = self.snapshot(proj, fn)
         with self.lock:
             self.prune()
+            if self.sessions.get(key) is not session:
+                raise PermissionError('Browser access expired or was revoked. Pair again.')
             # One pending task per capability; fetching a replacement invalidates the previous task.
             self.tasks = {k:v for k,v in self.tasks.items() if v['session'] != key}
             self.tasks[task_id] = {'session':key, 'expires':time.time()+300, 'fid':fn['id'], 'snapshot':snapshot, 'packet':packet}
