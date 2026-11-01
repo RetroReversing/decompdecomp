@@ -39,6 +39,8 @@ def test_records_deduplicate_rejections_and_context_scoped_register_misses():
     analysis.reject(net,proj,item['id'],'Call and field evidence contradict this identity.')
     assert any(r.get('rejected') for r in analysis.listing(net,proj)['leads'])
     with pytest.raises(NetworkError):analysis.reject(net,proj,item['id'],'')
+    with net.store.tx() as db:db.execute("UPDATE functions SET best_source='better seed' WHERE id=1")
+    assert '3 distinct prepared' not in analysis.brief(net,proj,net.store.one('SELECT * FROM functions WHERE id=1'))
     with net.store.tx() as db:db.execute("UPDATE context_versions SET header='changed'")
     assert '3 distinct prepared' not in analysis.brief(net,proj,fn)
 

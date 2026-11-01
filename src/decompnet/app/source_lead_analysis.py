@@ -98,6 +98,7 @@ def record(net, proj, fn, source, header, score, rows, lead=None, elapsed_ms=0, 
     baseline=fn['best_score'];improved=score is not None and (baseline is None or score<baseline)
     item={'scope':scope,'family':family,'profile':settings,'lead':lead,'score':score,'baseline':baseline,
           'exact':score==0,'improved':improved,'error':error[:2000], 'elapsed_ms':max(0,int(elapsed_ms)),
+          'baseline_source_sha256':hashlib.sha256((fn['best_source'] or '').encode()).hexdigest(),
           'source_sha256':hashlib.sha256(source.encode()).hexdigest(),'header_sha256':hashlib.sha256(header.encode()).hexdigest(),
           'comparison':comparison}
     with net.store.tx() as db:
@@ -157,7 +158,8 @@ def brief(net, proj, fn):
     misses=[]
     for row in net.store.all('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature LIKE ? ORDER BY rowid DESC LIMIT 80',fn['id'],PREFIX+'%'):
         item=json.loads(row['feedback'])
-        if item['scope']==scope and item['comparison']['register_only'] and not item['improved']:misses.append(item)
+        if (item['scope']==scope and item.get('baseline_source_sha256')==hashlib.sha256((fn['best_source'] or '').encode()).hexdigest()
+                and item['comparison']['register_only'] and not item['improved']):misses.append(item)
     if len(misses)>=3:
         lines.append(f'{len(misses)} distinct prepared source/context/profile probes retained register-only misses for these inputs. Try declaration lifetimes, original record/prototype context or helper calling convention before equivalent expression rewrites. All mutation families remain available.')
     return '\n'.join(lines)
