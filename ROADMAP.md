@@ -1371,6 +1371,9 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   before/after scores plus score reduction. Local macOS builds can deliver a
   verified .app directly with --app-only instead of making an archive.
 
+- Done: deep-pass sortable headings use the neutral Functions-table typography
+  and ascending/descending arrows, with the active column highlighted in ink.
+
 ### Same-name verified source reuse
 
 - Done: a shared bounded Autopilot/cascade phase tries meaningful same-name matched C across
@@ -1386,3 +1389,4 @@ model/compiler rankings, and no family or unmatched function is automatically ex
 - Planned: preprocessing adapters for drivers without a supported `-c` → `-E` mode, automatically
   supplying foreign static helpers/initialized data, and preparing assembly-only imported units from
   name-only leads. Those cases remain visible skips or need explicit existing source-preparation setup.
+

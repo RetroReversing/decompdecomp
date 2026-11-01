@@ -51,6 +51,8 @@ vm.runInContext(source.slice(source.indexOf("let deepSweepFollowing"), source.in
   ctx.renderDeepSweepResults(status); assert.deepEqual(order(),["a","c","b"]);
   sort("function"); assert.deepEqual(order(),["a","b","c"]);
   assert.match(element("deepSweepResults").innerHTML,/Score difference/);
+  assert.match(element("deepSweepResults").innerHTML,/class="table-sort"/);
+  assert.doesNotMatch(element("deepSweepResults").innerHTML,/class="link-btn"[^>]*data-deep-sort/);
   assert.ok(element("deepSweepResults").innerHTML.indexOf("Starting score") < element("deepSweepResults").innerHTML.indexOf("New score"));
   oldFollower.callback([], {progress:{workers:[{},{}],functions_tested:156,matches:0}});
   assert.equal(element("deepSweepActive").textContent,"2");
