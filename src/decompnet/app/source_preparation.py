@@ -394,7 +394,7 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                 log_line(fn['name'] + ': reading and preparing selected source context…')
                 variants = prepare_variants(reader, cfg, mapping, aliases, fallback)
                 if time.monotonic() >= deadline:
-                    log_line(fn['name'] + ': source preparation used this round’s time allowance before compilation. Use a smaller coherent header or run a longer preparation round.')
+                    log_line(fn['name'] + ': source preparation used this round’s time allowance before compilation. Use a smaller coherent header before retrying.')
                     break
                 if not fork and hasattr(net, 'reader'):
                     from .named_array_context import variants as named_arrays
