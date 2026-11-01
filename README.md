@@ -959,3 +959,15 @@ Reference preparation retains reachable same-file and multiline macro definition
 dependencies. It does not replace original graphics-style macro invocations with guessed expansions, and
 conflicting definitions ask for the correct source/header pair. Reference aggregate parameters and complete
 save/restore snapshots produce ABI/layout diagnostics; no aggregate type or size is invented.
+
+### Choose a fork for app updates
+
+In **Settings → About → Update from a GitHub fork**, enter the public GitHub
+repository URL and branch, then select **Save update source**. The app checks the
+source before saving it; invalid or unreachable forks leave the old source intact.
+Explicitly choosing `main` follows that branch's commits. Saving does not install
+code or restart the app. **Check now** reviews the available update; if automatic
+updates are enabled, future checks may install from the chosen fork automatically.
+Only select a fork you trust, since updating runs its code. Packaged editions keep
+their existing platform update restrictions. This changes the app's update source,
+not any imported game's repository.

@@ -312,3 +312,45 @@ def test_settings_switch_between_releases_and_a_branch(monkeypatch):
         if t.name == "update":
             t.join(10)
     assert installed == ["release"]
+
+
+@pytest.mark.parametrize('value', ['RetroReversing/decompdecomp', 'https://github.com/RetroReversing/decompdecomp.git'])
+def test_configuring_a_fork_tracks_explicit_main_and_installs_from_that_repo(monkeypatch, value):
+    seen = []
+    def branch(target):
+        seen.append(target.copy())
+        return {'available': True, 'latest': {'commit': 'a'*40},
+                'spec': f"decompnet @ https://github.com/{target['repo']}/archive/" + 'a'*40 + '.tar.gz'}
+    monkeypatch.setattr(updates, '_check_branch', branch)
+    source = updates.configure_source(value, 'main')
+    assert source['repo'] == 'RetroReversing/decompdecomp'
+    assert updates.installed()['channel'] == 'branch'
+    assert updates.installed()['branch'] == 'main'
+    assert updates.installed()['track_branch'] is True
+    assert 'RetroReversing/decompdecomp/archive/' in updates.check()['spec']
+    assert seen[-1]['repo'] == source['repo']
+
+
+@pytest.mark.parametrize('value', ['https://example.com/a/b', 'https://user:secret@github.com/a/b',
+                                  'https://github.com/a/b/tree/main', 'a/b?token=secret', '../repo'])
+def test_fork_update_source_rejects_invalid_urls_without_changing_source(value):
+    previous = updates.installed()
+    with pytest.raises(ValueError, match='GitHub repository URL'):
+        updates.configure_source(value)
+    assert updates.installed() == previous
+
+
+def test_unreachable_fork_does_not_replace_working_update_source(monkeypatch):
+    previous = updates.installed()
+    monkeypatch.setattr(updates, '_check_branch', lambda _: (_ for _ in ()).throw(OSError('offline')))
+    with pytest.raises(ValueError, match='not changed'):
+        updates.configure_source('another/fork', 'main')
+    assert updates.installed() == previous
+
+
+def test_source_cannot_change_during_installation(monkeypatch):
+    updater = updates.Updater(lambda: None, 0, '')
+    updater.job['state'] = 'installing'
+    monkeypatch.setattr(updates, 'configure_source', lambda *args: pytest.fail('Must not change source'))
+    with pytest.raises(ValueError, match='current update'):
+        updater.set_source('another/fork', 'main')

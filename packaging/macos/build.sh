@@ -22,6 +22,8 @@ ditto "$(dirname "$(dirname "$PYTHON")")" "$CONTENTS/Runtime"
 "$CONTENTS/Runtime/bin/python3.12" -c 'import sys; assert sys.prefix.endswith("Runtime") and sys.prefix == sys.base_prefix'
 uv pip install --break-system-packages --python "$CONTENTS/Runtime/bin/python3.12" "$WORK"/wheel/*.whl >/dev/null
 
+"$CONTENTS/Runtime/bin/python3.12" "$ROOT/packaging/stamp_build.py" "$ROOT"
+
 cat > "$CONTENTS/MacOS/decompdecomp" <<'LAUNCH'
 #!/bin/sh
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

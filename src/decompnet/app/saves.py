@@ -913,6 +913,7 @@ class Autosave:
     def __init__(self, net):
         self.net = net
         self.stop = threading.Event()
+        self.retry_after = {}
 
     def start(self) -> None:
         threading.Thread(target=self._loop, daemon=True, name="autosave").start()
@@ -925,10 +926,32 @@ class Autosave:
     def run_once(self) -> list[str]:
         """Synchronize every ROM project, including file changes that have no database event."""
         saved = []
-        for row in self.net.store.all("SELECT slug FROM projects"):
+        for row in self.net.store.all("SELECT slug,root,config FROM projects"):
+            if time.monotonic() < self.retry_after.get(row['slug'], 0):
+                continue
             try:
                 if self.net.progress.sync(row["slug"], force=True):
                     saved.append(row["slug"])
-            except Exception:  # never stands between the user and their work
-                log.exception("saving %s failed", row["slug"])
+                self.retry_after.pop(row['slug'], None)
+            except Exception as error:  # keep other projects saving; do not flood logs every second
+                self.retry_after[row['slug']] = time.monotonic() + 30
+                try:
+                    cfg = json.loads(row['config'])
+                    folder = cfg.get('progress_folder') or str(Path(row['root']) / SAVE_FOLDER)
+                except (ValueError, TypeError, AttributeError):
+                    folder = str(Path(row['root']) / SAVE_FOLDER)
+                if isinstance(error, PermissionError):
+                    action = "Check write permission for this folder and its files."
+                elif isinstance(error, FileNotFoundError):
+                    action = "Check that the project folder exists and its disk is connected."
+                elif isinstance(error, OSError) and error.errno == 28:
+                    action = "Free disk space on the drive containing this folder."
+                elif 'locked' in str(error).lower():
+                    action = "Close other programs using this project database; retry after they finish."
+                else:
+                    action = "Resolve any reported progress-file conflict or invalid file; include the complete traceback when reporting this error."
+                from . import build_info
+                log.exception("Progress sync failed for %s at %s: %s: %s. %s Retrying in 30 seconds. "
+                              "Do not delete or overwrite progress files. Build: %s",
+                              row['slug'], folder, type(error).__name__, str(error), action, build_info.label())
         return saved

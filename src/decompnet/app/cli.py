@@ -164,7 +164,8 @@ def run(args) -> int:
     internal = home / ".decomp"
     internal.mkdir(parents=True, exist_ok=True)
     log = file_log(internal / "logs" / "decomp.log")  # from the first line on: whatever stops the app is in it
-    log.info("%s %s starting (%s)", edition.NAME, __import__("decompnet").__version__, sys.executable)
+    from . import build_info
+    log.info("%s %s starting (%s)", edition.NAME, build_info.label(), sys.executable)
     state_file = internal / "server.json"
     restarted = _restart_state()
     prev = None if restarted else replace_older(state_file)

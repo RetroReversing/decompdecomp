@@ -1308,3 +1308,5 @@ details.more[open] > summary::before { content: "− "; }
 .deep-worker-metrics { font-size:13px; font-weight:600; }
 
 .deep-worker [data-latest] { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+
+#navVersion { min-width:0; overflow-wrap:anywhere; line-height:1.5; }

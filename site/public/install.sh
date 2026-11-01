@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# RetroReversing fork installer — 1.0.8-alpha.2
 # decompdecomp installer for Linux and macOS (Intel and Apple Silicon).
 #
 #   curl -fsSL https://raw.githubusercontent.com/RetroReversing/decompdecomp/main/site/public/install.sh | bash -s -- --source branch:main
