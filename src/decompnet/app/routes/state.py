@@ -17,7 +17,7 @@ from ... import __version__, consoles, hostenv, linuxvm, toolchains
 from ...agents.api import API_PRESETS
 from ...forks.project import SCOPES
 from ...network import NetworkError
-from .. import cleanup, edition, picker, saves, updates
+from .. import build_info, cleanup, edition, picker, saves, updates
 from ..engine import COMPILERS, TOOLS
 from ..support import MAX_DISC, job_error, static_file
 from . import App
@@ -44,7 +44,7 @@ def register(app: App) -> None:
         for t in tcs:
             t["use"] = COMPILERS.get(t["id"]) or TOOLS[t["id"]]
             t["name"] = consoles.compiler_name(t["id"]) if t["id"] in COMPILERS else t["name"]
-        return {"version": __version__, "build": build_id, "install": updates.installed(), "dev": edition.DEV,
+        return {"version": __version__, "fork": build_info.FORK, "build": build_id, "install": updates.installed(), "dev": edition.DEV,
                 "platform": toolchains.current_platform(), "system": system_name(), "home": hostenv.shown_path(home.parent),
                 "log_file": hostenv.shown_path(home / "logs" / "decomp.log"),
                 "linux_vm": ({'ready': linuxvm.status()[0], 'why': linuxvm.status()[1]} if linuxvm.wanted() else None),

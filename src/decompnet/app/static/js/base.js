@@ -276,7 +276,7 @@ function installName(st) {
   const i = st.install || {};
   return st.dev ? "a development copy" : i.channel === "branch" ? `the ${i.branch} branch @ ${(i.commit || "?").slice(0, 7)}` : "";
 }
-const versionLine = (st) => `decompdecomp ${st.version || "?"}${st.build ? ` (${st.build})` : ""}${installName(st) ? `, from ${installName(st)}` : ""}`
+const versionLine = (st) => `decompdecomp ${st.version || "?"}${st.fork ? ` · ${st.fork}` : ""}${st.build ? ` (${st.build})` : ""}${installName(st) ? `, from ${installName(st)}` : ""}`
   + ` · ${st.platform || navigator.platform}${st.system ? ` · ${st.system}` : ""}`;
 function bugReport(lines, log = "") {
   const st = S.st || {};
@@ -295,7 +295,7 @@ async function copyText(text) {
 }
 
 async function loadState() {
-  S.st = await api("/api/state"); $("navVersion").textContent = `v${S.st.version}`;
+  S.st = await api("/api/state"); $("navVersion").textContent = `v${S.st.version} · ${S.st.fork || "RetroReversing fork"} · ${S.st.build || "build unknown"}`;
   const i = S.st.install || {}, branch = !S.st.dev && i.channel === "branch";
   $("navBranch").hidden = !branch;
   if (branch) {

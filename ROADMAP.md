@@ -1348,3 +1348,10 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   ROM candidates compile locally; improvements use the existing room protocol and
   exact matches require host confirmation before local acceptance. Imported-room
   candidates use the host's build/judge. Compiler-profile changes remain host-owned.
+
+- Done: RetroReversing fork builds show version and source commit in the sidebar,
+  settings, bug-report text and startup logs. macOS/Linux/Windows packages embed
+  their source identity and reject packaging uncommitted tracked changes.
+- Done: autosave diagnostics put the actual exception, progress path, repair advice
+  and fork build on the first log line, retaining the full traceback. Failed
+  projects back off for 30 seconds while other projects continue synchronizing.

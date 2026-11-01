@@ -201,3 +201,6 @@ linting). In short:
 ## RetroReversing contribution workflow
 
 Always submit decompdecomp changes on a feature or fix branch through a pull request; do not commit directly to main.
+
+When a change requires clients to update, build a fresh shareable client ZIP after testing.
+State its platform, architecture, version and source commit; do not reuse an older archive.
