@@ -9,36 +9,72 @@ import re
 from .. import m2cfix, seeds
 from ..forks.csource import _blank, find
 from . import (
+    address_association_repairs,
+    allocator_shape_repairs,
     branch_layout_repairs,
     branch_locals,
+    buffer_address_repairs,
+    call_initialization_repairs,
+    call_lifetime_repairs,
     callee_prototype_repairs,
+    captured_control_repairs,
+    captured_lifetimes,
     captured_repairs,
+    compiler_shape_repairs,
+    entry_point_repairs,
     evidence_repairs,
     expression_repairs,
+    field_order_repairs,
+    float_intermediate_repairs,
+    formatter_repairs,
+    global_store_repairs,
+    increment_expression_repairs,
+    inferred_layout_repairs,
+    inline_scheduling_repairs,
     integer_lifetime_repairs,
     lifetime_repairs,
     load_pair_repairs,
     local_widening_repairs,
     local_width_repairs,
+    masked_reuse_repairs,
+    match_followup_repairs,
+    match_shape_repairs,
     mmio_repairs,
+    near_match_repairs,
     near_repairs,
+    normalization_repairs,
+    observed_repairs,
+    operand_order_repairs,
     pattern_repairs,
     pointer_cast_repairs,
+    pointer_pair_repairs,
+    raw_address_repairs,
     register_repairs,
     register_reuse_repairs,
     scheduling_repairs,
+    sdk_io_repairs,
+    sdk_shape_repairs,
     stack_padding_repairs,
     stack_repairs,
     storage_scope_repairs,
     store_address_repairs,
+    structure_return_repairs,
+    switch_tables,
+    target_local_repairs,
+    zero_test_repairs,
 )
+
+AGENT_FAMILIES = raw_address_repairs.FAMILIES + zero_test_repairs.FAMILIES + pointer_pair_repairs.FAMILIES + field_order_repairs.FAMILIES + match_shape_repairs.FAMILIES + increment_expression_repairs.FAMILIES + allocator_shape_repairs.FAMILIES + buffer_address_repairs.FAMILIES + normalization_repairs.FAMILIES + call_lifetime_repairs.FAMILIES + sdk_io_repairs.FAMILIES + target_local_repairs.FAMILIES + formatter_repairs.FAMILIES + ('target_switch_order',) + inline_scheduling_repairs.FAMILIES + ('runtime_scalar_signature', 'shared_return_tail', 'direct_compound_store', 'redundant_loop_guard', 'float_argument_bits', 'arithmetic_operand_order', 'call_forwarded_arguments', 'small_copy', 'typed_record_address', 'one_shot_scope', 'one_shot_unwrap',
+                  'pointer_block_scope', 'array_address_share', 'combined_integer_lifetimes', 'inferred_record_layout',
+                  'float_product_intermediate','pointer_chase_reuse','independent_assignment_order',
+                  'terminal_early_return','member_store_replay','scalar_global_address','split_mask_stores')
 
 LIMIT = 20
 _IDENT = r'[A-Za-z_]\w*'
 _MEMBER = rf'{_IDENT}(?:\s*(?:->|\.)\s*{_IDENT})*'
 
 
-def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=None, *, limit=LIMIT, header='') -> list[str]:
+def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=None, *, limit=LIMIT, header='', tables=()) -> list[str]:
     span = find(source, name)
     if span is None:
         return []
@@ -54,21 +90,71 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     offset = opening + 1
     proposals = []
     labels = labels if labels is not None else {}
+    for family, text in raw_address_repairs.variants(source, name, arch, asm, header) + buffer_address_repairs.variants(source, name, arch, asm, header) + sdk_io_repairs.variants(source, name, arch, asm, header) + target_local_repairs.variants(source, name, arch, asm, header) + formatter_repairs.variants(source, name) + switch_tables.variants(source, name, tables):
+        proposals.append(text)
+        labels[text] = family
+    if arch == 'mips':
+        for text in entry_point_repairs.variants(source, name, asm):
+            proposals.append(text)
+            labels[text] = 'interior_entry_symbol'
+    for family, text in operand_order_repairs.variants(source, name, header):
+        proposals.append(text)
+        labels[text] = family
+    for family,text in global_store_repairs.variants(source,name,header):
+        proposals.append(text)
+        labels[text]=family
+    for family, text in pointer_pair_repairs.variants(source, name, header) + field_order_repairs.variants(source, name, header) + zero_test_repairs.variants(source, name, arch, header):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in call_lifetime_repairs.variants(source, name, header):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in match_shape_repairs.variants(source, name, header) + match_followup_repairs.variants(source, name, header):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in captured_lifetimes.variants(source, name):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in increment_expression_repairs.variants(source, name):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in captured_control_repairs.variants(source,name):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in float_intermediate_repairs.variants(source, name):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in structure_return_repairs.variants(source, name, header) + sdk_shape_repairs.variants(source, name, header):
+        proposals.append(text)
+        labels[text] = family
     for family, text in (stack_repairs.variants(source, name) if arch in {"mips", "ppc", "x86", "arm", "thumb"} else []):
         proposals.append(text)
         labels[text] = family
     for family, text in register_repairs.variants(source, name, arch):
         proposals.append(text)
         labels[text] = family
+    for family, text in inferred_layout_repairs.variants(source, name, arch):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in compiler_shape_repairs.variants(source, name, arch, flags, header):
+        proposals.append(text)
+        labels[text] = family
     for family, text in evidence_repairs.variants(source, name, header):
         proposals.append(text)
         labels[text] = family
-    for family, text in register_reuse_repairs.variants(source, name):
+    for family, text in (address_association_repairs.variants(source, name) + call_initialization_repairs.variants(source, name)
+                         + masked_reuse_repairs.variants(source, name) + register_reuse_repairs.variants(source, name)):
         proposals.append(text)
         labels[text] = family
     for text in mmio_repairs.variants(source, name, arch):
         proposals.append(text)
         labels[text] = 'mmio_address'
+    for family, text in observed_repairs.variants(source, name):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in near_match_repairs.variants(source, name, asm):
+        proposals.append(text)
+        labels[text] = family
     for family, text in captured_repairs.variants(source, name):
         proposals.append(text)
         labels[text] = family
@@ -94,6 +180,16 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
         for family, text in module.variants(source, name):
             proposals.append(text)
             labels[text] = family
+    # Two disjoint lifetime merges can be useful together even when either allocation is worse.
+    # Keep the bundle tiny; each merge retains the existing conservative liveness boundaries.
+    merges = [text for family, text in integer_lifetime_repairs.variants(source, name)
+              if family == 'merge_integer_lifetimes']
+    for first in merges[:2]:
+        second = next((text for family, text in integer_lifetime_repairs.variants(first, name)
+                       if family == 'merge_integer_lifetimes' and text != source), None)
+        if second:
+            proposals.append(second)
+            labels[second] = 'combined_integer_lifetimes'
     for text in pointer_cast_repairs.variants(source, name, arch):
         proposals.append(text)
         labels[text] = 'pointer_cast_inline'
@@ -105,6 +201,16 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
         if refined and refined != plain:
             proposals.append(seeds.M2C_MACROS + refined)
             labels[proposals[-1]] = 'm2c_refinement'
+    if arch == "mips":
+        for family, text in inline_scheduling_repairs.variants(source, name):
+            proposals.append(text)
+            labels[text] = family
+    for family, text in allocator_shape_repairs.variants(source, name, header):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in normalization_repairs.variants(source, name, header):
+        proposals.append(text)
+        labels[text] = family
     for family, text in scheduling_repairs.variants(source, name):
         proposals.append(text)
         labels[text] = family
@@ -173,6 +279,8 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     groups = {}
     from .repair_preflight import invalid_call
     for text in dict.fromkeys(proposals):
+        if text == source:
+            continue
         if invalid_call(text, name):
             continue
         groups.setdefault(labels[text],[]).append(text)

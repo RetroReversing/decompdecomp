@@ -17,6 +17,10 @@ def assembler_input(text: str) -> str:
     # SN's assembler predates GNU's ELF metadata directives. Function extent is
     # recovered by the ELF reader from adjacent symbols after conversion.
     text = re.sub(r"^\s*\.(?:version|type|size)\b[^\n]*", "", text, flags=re.M)
+    # PsyQ's object format encodes section names, not ELF flags. Its pinned converter recognizes
+    # .rdata as read-only data; GNU GCC emits the equivalent .rodata for jump tables/constants.
+    text = re.sub(r'(?m)^(\s*\.section\s+)["\']?\.rodata["\']?(?=\s|,|$)', r'\1.rdata', text)
+    text = re.sub(r'(?m)^\s*\.rodata\s*$', '.rdata', text)
     return text.replace("\r\n", "\n").replace("\n", "\r\n")
 
 

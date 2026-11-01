@@ -16,8 +16,10 @@ vm.runInContext(read("compiler-progress"), ctx);
 ctx.renderCompilerProgress(null);
 assert.equal(fields.get("[data-best]").textContent, "—");
 ctx.renderCompilerProgress({ function: "<synthetic>", tested: 80, combinations: 196, before: 99.72, best: 99.94,
-  completed: 3, improved: 2, exact: 1, profile: ["Example GCC", ["-O2", "-g3"]] });
+  completed: 3, total: 10, remaining: 7, deferred: 2, improved: 2, exact: 1, profile: ["Example GCC", ["-O2", "-g3"]] });
 assert.equal(fields.get("[data-current]").textContent, "<synthetic>");
+assert.equal(fields.get("[data-queue]").textContent, "3 of 10 functions done · 7 left · 2 queued for another run");
+assert.equal(fields.get("[data-queue-bar]").value, 3);
 assert.equal(fields.get("[data-best]").textContent, "99.94%");
 assert.equal(fields.get("[data-bar]").value, 80);
 assert.equal(fields.get("[data-bar]").max, 196);
@@ -48,6 +50,7 @@ ctx.S.slug = "demo";
 
 ctx.renderCompilerProgress(null, { tried: 4, skipped: 2, improvements: [{}, {}], confirmed: 1 });
 assert.equal(fields.get("[data-current]").textContent, "Comparison finished");
+assert.equal(box.dataset.finished, "true");
 assert.equal(fields.get("[data-completed]").textContent, 4);
 assert.ok(fields.get("[data-profile]").textContent.includes("Nothing has been applied"));
 ctx.renderCompilerProgress(null);
@@ -109,6 +112,29 @@ async function checkResultActions() {
   ctx.renderCompilerImprovements('demo', rows, 'exact');
   assert.ok(list.html.includes('Applied and rechecked'));
   assert.ok(!list.html.includes('data-apply-improvement="0"'));
+  const batchStatus = {};
+  list.querySelector = () => batchStatus;
+  list.querySelectorAll = () => [];
+  const batchCalls = [];
+  let active = 0;
+  ctx.api = async (url, options) => {
+    assert.equal(active++, 0); // Apply sequentially, never compile the whole batch concurrently.
+    batchCalls.push(options.body.function);
+    await Promise.resolve(); active--;
+    if (options.body.function === 'rejected') throw new Error('Source changed; no improvement');
+  };
+  const batchRows = [...rows,
+    {function:'rejected', improved:true, profile:['Example GCC',['-O3']]},
+    {function:'better', improved:true, profile:['Example GCC',['-O1']]}];
+  ctx.renderCompilerImprovements('demo', batchRows, 'improved');
+  assert.ok(list.html.includes('Apply all · 2'));
+  await list.onclick({target:{closest:selector => selector === '[data-apply-all]' ? {} : null}});
+  assert.deepEqual(batchCalls, ['rejected','better']); // Already applied and non-improving rows skipped.
+  assert.match(batchStatus.textContent, /1 applied and rechecked; 1 could not be applied/);
+  assert.match(batchStatus.textContent, /Source changed/);
+  assert.ok(box._compilerApplied.has('better'));
+  assert.ok(!box._compilerApplied.has('rejected'));
+
 }
 checkResultActions().catch((error) => { console.error(error); process.exitCode = 1; });
 
@@ -158,3 +184,18 @@ async function checkStopButton() {
   assert.equal(get('compilerProgress[data-current]').textContent, 'Comparison stopped');
 }
 checkStopButton().catch((error) => { console.error(error); process.exitCode = 1; });
+
+// Scope and button text must agree with the actual comparison options.
+const scopeFields = new Map(['compilerFlagsOnly','compilerRetest','compilerTestScope','testInstalledCompilers'].map(id => [id, {}]));
+const scopeContext = {$: id => scopeFields.get(id)};
+vm.createContext(scopeContext);
+const scopeSource = read('steering');
+vm.runInContext(scopeSource.slice(scopeSource.indexOf('function updateCompilerTestScope'), scopeSource.indexOf('$("testInstalledCompilers").onclick')), scopeContext);
+scopeContext.updateCompilerTestScope();
+assert.match(scopeFields.get('compilerTestScope').textContent, /All installed compilers/);
+scopeFields.get('compilerFlagsOnly').checked = true;
+scopeFields.get('compilerRetest').checked = true;
+scopeContext.updateCompilerTestScope();
+assert.match(scopeFields.get('compilerTestScope').textContent, /Current compiler only/);
+assert.match(scopeFields.get('compilerTestScope').textContent, /including completed attempts/);
+assert.equal(scopeFields.get('testInstalledCompilers').textContent, 'Retest compiler settings');

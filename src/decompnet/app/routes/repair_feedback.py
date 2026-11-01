@@ -8,6 +8,47 @@ from .. import repair_investigations
 def register(app):
     feedback = app.net.repair_feedback
 
+    @app.mcp.custom_route('/api/repair-examples/replay', methods=['POST'])
+    async def replay_examples(request):
+        if bad := app.guard(request, write=True):
+            return bad
+        from .. import repair_replay_jobs
+        try:
+            data=await app.body(request)
+            slug='' if data.get('all') else str(data.get('slug') or '')
+            if not slug and not data.get('all'):
+                raise NetworkError('Choose a project or explicitly select all projects.')
+            trials,seconds=data.get('trials',12),data.get('seconds',30)
+            if any(isinstance(v,bool) or not isinstance(v,int) or not 1<=v<=maximum for v,maximum in ((trials,32),(seconds,120))):
+                raise NetworkError('Choose 1–32 trials and 1–120 seconds per example.')
+            minimize,diagnostics=data.get('minimize',False),data.get('diagnostics',False)
+            if not isinstance(minimize,bool) or not isinstance(diagnostics,bool):
+                raise NetworkError('Analysis switches must be booleans.')
+            category,status=str(data.get('category') or ''),str(data.get('status') or '')
+            comparable=bool(data.get('comparable',True))
+            if data.get('id') is not None:
+                case_id=data['id']
+                if isinstance(case_id,bool) or not isinstance(case_id,int):raise NetworkError('Choose an example number.')
+                feedback.detail(slug,case_id,include_source=False)
+                ids=[case_id]
+            else:
+                ids, seen = [], set()
+                for row in feedback.listing(slug,category,status,comparable=comparable)['examples']:
+                    key = (row['slug'],row['function'])
+                    if key not in seen:
+                        ids.append(row['id']); seen.add(key)
+                    if len(ids) == 20:
+                        break
+            if not ids:raise NetworkError('No examples match these filters.')
+            with app.jobs._lock:
+                if any(j['kind']=='repair-replay' and j['state']=='running' for j in app.jobs.jobs.values()):
+                    raise NetworkError('A repair replay is already running. Stop it or wait before starting another.')
+                job=app.jobs.start('repair-replay',lambda log:repair_replay_jobs.run(feedback,slug,ids,trials,seconds,log,minimize=minimize,diagnostics=diagnostics),
+                                   cancel_message='Repair replay stopped. No game progress or review states changed.')
+            return JSONResponse({'job':job})
+        except (NetworkError,ValueError,KeyError,TypeError) as error:
+            return app.fail(error)
+
     @app.mcp.custom_route('/api/repair-examples/quality', methods=['GET', 'POST'])
     async def quality(request):
         if bad := app.guard(request, write=request.method == 'POST'):
@@ -82,6 +123,19 @@ def register(app):
                 return JSONResponse(await app.call(feedback.detail, slug, int(q['id'])))
             return JSONResponse(await app.call(feedback.listing, slug, q.get('category', ''), q.get('status', ''),
                                                int(q.get('before', 0)), q.get('comparable') == '1'))
+        except (NetworkError, ValueError, KeyError) as error:
+            return app.fail(error)
+
+    @app.mcp.custom_route('/api/repair-examples/classify', methods=['GET', 'POST'])
+    async def classify_examples(request):
+        if bad := app.guard(request, write=request.method == 'POST'):
+            return bad
+        try:
+            data = await app.body(request) if request.method == 'POST' else request.query_params
+            slug = str(data.get('slug', ''))
+            if not slug:
+                raise NetworkError('Choose a project to classify its new examples.')
+            return JSONResponse(await app.call(feedback.classify_new, slug, request.method == 'POST'))
         except (NetworkError, ValueError, KeyError) as error:
             return app.fail(error)
 

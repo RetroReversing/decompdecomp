@@ -2,7 +2,7 @@
 import hashlib
 import json
 
-from .. import scoring
+from .. import scoring, toolchains
 from ..forks.project import ForkError
 from ..network import NetworkError
 
@@ -22,7 +22,7 @@ def baseline(net,agent,slug,fn,source):
         return None
 
 
-def _baseline(net,agent,slug,fn,source):
+def _baseline(net,agent,slug,fn,source,diagnostic=False):
     if not hasattr(net,'fork_slug'):
         return None
     key=scope(net,agent,fn)+(hashlib.sha256(source.encode()).hexdigest(),)
@@ -30,6 +30,21 @@ def _baseline(net,agent,slug,fn,source):
     net._baseline_evidence=cache
     if key in cache:
         return cache[key]
+    failures=getattr(net, '_baseline_failures', {})
+    net._baseline_failures=failures
+    if diagnostic and key in failures:
+        latest=net.store.one('SELECT MAX(id) AS id FROM attempts WHERE function_id=?',fn['id'])['id'] or 0
+        if latest <= failures[key].get('after_attempt',0):
+            return failures[key]
+        del failures[key]  # an explicit compile may have fixed an external build/resource problem
+    def failed(message):
+        result={'score':None, 'source':source, 'rows':None, 'error':str(message)[:1000],
+                'after_attempt':net.store.one('SELECT MAX(id) AS id FROM attempts WHERE function_id=?',fn['id'])['id'] or 0}
+        restored_key=scope(net,agent,fn)+(hashlib.sha256(source.encode()).hexdigest(),)
+        failures[restored_key]=result
+        while len(failures)>64:
+            del failures[next(iter(failures))]
+        return result if diagnostic else None
     proj=net._project(slug)
     # Core coordination-only projects need not have a local judge/compiler.
     if not net.fork_slug(slug) and not json.loads(proj['config']).get('compiler'):
@@ -38,11 +53,11 @@ def _baseline(net,agent,slug,fn,source):
         try:
             _, fp, _ = net.forks.get(slug)
             fp.unit(fn['unit'])
-        except ForkError:
-            return None
+        except ForkError as error:
+            return failed(str(error))
         result=net.forks._attempt(agent,slug,fn['name'],source,keep=False,diagnostic=True)
         if result.get('score') is None:
-            return None
+            return failed(result.get('error') or result.get('diff') or result.get('message') or result.get('text') or 'The project baseline could not be built/scored.')
         measured={'score':result['score'],'rows':result.get('rows'),'source':source,'verified':True,'exact':result['matched']}
     else:
         context=net._context(proj['id'],fn['unit'])
@@ -50,10 +65,10 @@ def _baseline(net,agent,slug,fn,source):
             return None
         compiled=net._compile(proj,context['header'],source,fn)
         if not compiled.ok:
-            return None
-        candidate,exact,_=net._evaluate(fn,proj,compiled.obj)
+            return failed(compiled.log or "The baseline does not compile.")
+        candidate,exact,problems=net._evaluate(fn,proj,compiled.obj)
         if candidate is None:
-            return None
+            return failed("The baseline could not be linked/scored. " + "; ".join(problems or []))
         diff=scoring.diff(net._target_obj(fn,proj),candidate)
         measured={'score':0 if exact else max(1,diff.score),'rows':diff.rows,'source':source,'verified':True,'exact':bool(exact),'legend':scoring.LEGEND}
     # Imported diagnostic restoration can advance the compile generation. Cache against the
@@ -70,10 +85,30 @@ def _baseline(net,agent,slug,fn,source):
     return measured
 
 
+def preflight(net,agent,slug,fn,source):
+    """One scoped baseline check before machine-generated variants; failures do not consume a claim try."""
+    try:
+        return _baseline(net,agent,slug,fn,source,diagnostic=True)
+    except (toolchains.ToolchainError,ForkError,NetworkError,OSError) as error:
+        return {'score':None, 'rows':None, 'source':source, 'error':str(error)[:1000]}
+    except (ValueError,KeyError):
+        # Coordination-only projects may not expose a local judge. No verdict is inferred.
+        return None
+
+
+def blocked_message(report, revision):
+    return ('Baseline blocked; no variants submitted. Fix the candidate declarations/build inputs or redraft first.\n'
+            + report['error'] + f'\nCandidate revision {revision}. This failure is cached until inputs change.')
+
+
 def track(net,agent,slug,fn):
     measured=getattr(net,'_agent_outcomes',{}).get((agent.id,fn['id']))
     if not measured or measured.get('rows') is None or measured.get('score') is None:
         return None
+    from .progress_rate import track as progress_rate
+    moved=progress_rate(net,agent,slug,fn)
+    if moved:
+        return moved
     key=scope(net,agent,fn)
     states=getattr(net,'_unchanged_output',{})
     net._unchanged_output=states

@@ -120,7 +120,6 @@ class AutopilotMixin:
                                 f"{drafts} of {state['tried']} functions matched from machine drafts")
 
     def on_improvement(self, proj, function_id: int) -> None:
-        # Imported automatic cascades remain unavailable; manual free passes cover both modes.
         if proj is not None:
             self.cascades.notify(proj, function_id)
 
@@ -129,6 +128,8 @@ class AutopilotMixin:
         those twins itself.)"""
         if proj is None:
             return
+        from .. import repair_mappings
+        repair_mappings.harvest(self.twins, proj, function_id)
         self.twins.index_function(proj, function_id)
         self.cascades.notify(proj, function_id)
         if agent is not None and agent.name == "autopilot" and self.twins._full_running(proj["slug"]):
@@ -233,8 +234,9 @@ class AutopilotMixin:
                     if refined and refined != local:
                         yield 'local_context_refined', f"{note}{seeds.M2C_MACROS}\n{refined}\n"
 
+            from ..compiler_shape_repairs import machine_draft_copies
             outcomes, seen = [], set()
-            for family, source in chain(candidates, local_candidates()):
+            for family, source in machine_draft_copies(chain(candidates, local_candidates()), fn['name'], ctx['header']):
                 if source in seen:
                     continue
                 seen.add(source)

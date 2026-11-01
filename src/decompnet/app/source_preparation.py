@@ -72,11 +72,30 @@ def symbol_aliases(text):
     return result
 
 
+def contexts(text):
+    """Explicit coherent source/header alternatives, never cross-product SDK revisions."""
+    result=[]
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith('#'):continue
+        parts=line.split('|')
+        if len(parts)!=2 or not parts[1].strip():
+            raise NetworkError('Use destination = source_symbol @ relative/file.c | relative/header.h for each context alternative.')
+        items=mappings(parts[0])
+        if len(items)!=1:raise NetworkError('Each context alternative needs one function mapping.')
+        result.append((*items[0],parts[1].strip()))
+        if len(result)>16:raise NetworkError('Select at most 16 coherent source/header alternatives.')
+    return result
+
+
 def configure(net, proj, data):
-    cfg = {key: str(data.get(key, '')).strip() for key in ('root', 'header', 'include_roots', 'mappings', 'overrides', 'aliases')}
+    cfg = {key: str(data.get(key, '')).strip() for key in ('root', 'header', 'include_roots', 'mappings', 'overrides', 'aliases', 'definitions', 'contexts', 'helpers')}
     cfg['enabled'] = bool(data.get('enabled'))
     if any(len(value) > 128_000 for value in cfg.values() if isinstance(value, str)):
         raise NetworkError('Source preparation settings are too large; choose a smaller mapping.')
+    from . import source_definitions
+    source_definitions.mappings(cfg['definitions'])
+    source_definitions.mappings(cfg['helpers'])
+    contexts(cfg['contexts'])
     mappings(cfg['mappings'])
     overrides(cfg['overrides'])
     symbol_aliases(cfg['aliases'])
@@ -84,6 +103,13 @@ def configure(net, proj, data):
         reader = Reader(cfg)
         for _, _, file in mappings(cfg['mappings']):
             reader.file(reader.root / file)
+        for _, file in source_definitions.mappings(cfg['definitions']):
+            reader.file(reader.root / file)
+        for _, file in source_definitions.mappings(cfg['helpers']):
+            reader.file(reader.root / file)
+        for _, _, file, header in contexts(cfg['contexts']):
+            reader.file(reader.root / file)
+            reader.file(reader.root / header)
         if cfg['header']:
             reader.file(Path(cfg['header']).expanduser())
     with net.store.tx() as db:
@@ -103,6 +129,7 @@ class Reader:
             raise NetworkError('The reference folder and each include root must be existing folders.')
         self.overrides = overrides(cfg.get('overrides', ''))
         self.cache, self.bytes = {}, 0
+        self.advisories = []
 
     def file(self, path):
         path = path.resolve()
@@ -153,7 +180,7 @@ def rename(text, aliases):
 
 def declarations(text):
     """Remove function bodies without collapsing their original line breaks. This is deliberately conservative."""
-    clean, out, start, depth, at = csource._blank(text), [], None, 0, 0
+    clean, out, start, depth, at = csource._code_only(text), [], None, 0, 0
     for i, char in enumerate(clean):
         if char == '{':
             if depth == 0 and clean[:i].rstrip().endswith(')'):
@@ -171,6 +198,17 @@ def prepare(reader, cfg, mapping, aliases, fallback):
     destination, symbol, file = mapping
     path = reader.root / file
     original = reader.file(path)
+    from . import source_conditions, source_definitions
+    initial = reader.overrides
+    if cfg.get('header'):
+        header, macros = source_conditions.select(reader.flatten(Path(cfg['header']).expanduser()), initial, reader.overrides)
+    elif '#include' in original:
+        flattened, macros = source_conditions.select(reader.flatten(path.resolve()), initial, reader.overrides)
+        header = declarations(flattened)
+    else:
+        header = fallback
+        _, macros = source_conditions.select(fallback, initial, reader.overrides)
+    original, _ = source_conditions.select(original, macros, reader.overrides)
     span = csource.find(original, symbol)
     if not span or csource.is_stub(original[span[0]:span[1]]):
         raise NetworkError(f'No C definition of {symbol!r} in its mapped file. Check the mapping.')
@@ -186,20 +224,71 @@ def prepare(reader, cfg, mapping, aliases, fallback):
         for match in reversed(list(re.finditer(r'\bstatic\b', clean[:name_at]))):
             body = body[:match.start()] + ' ' * len(match[0]) + body[match.end():]
     source = f'#line {original[:span[0]].count(chr(10)) + 1} "reference.c"\n' + rename(body, aliases)
-    if cfg.get('header'):
-        header = reader.flatten(Path(cfg['header']).expanduser())
-    elif '#include' in original[:span[0]]:
-        header = declarations(reader.flatten(path.resolve()))
-    else:
-        header = fallback
+    from .source_type_context import referenced
+    header += '\n' + referenced(original, body, header)
+    from .source_context import compatibility, helpers, prototypes
+    reader.advisories.extend(compatibility(original, body, header))
+    from .source_next_steps import prototype_hints
+    reader.advisories.extend(prototype_hints(original, body, header))
+    from .source_match_context import aggregate_hints
+    reader.advisories.extend(aggregate_hints(body, symbol, header))
+    helper_context=helpers(reader, cfg, body, header, macros)
+    header += helper_context
+    from .source_match_context import macro_context
+    header += macro_context(original, body+helper_context, header)
+    header += prototypes(original, body, header, symbol)
+    selected = []
+    from .source_match_context import dependencies
+    used = dependencies(source+helper_context, header)
+    for name, file in source_definitions.mappings(cfg.get('definitions', '')):
+        if name not in used and aliases.get(name,name) not in used:
+            continue
+        text, _ = source_conditions.select(reader.flatten(reader.root / file), macros, reader.overrides)
+        definition = source_definitions.extract(declarations(text), name)
+        selected.append(rename(definition, aliases))
+    if cfg.get('_same_file_definitions'):
+        explicit={name for name,_ in source_definitions.mappings(cfg.get('definitions',''))}
+        reference_used=used | {name for name,target in aliases.items() if target in used}
+        for name,definition in source_definitions.related(declarations(original),reference_used-explicit-{symbol}):
+            # A header's actual definition already supplies layout knowledge; never duplicate it.
+            try:source_definitions.extract(declarations(header),name)
+            except NetworkError:
+                selected.append(rename(definition,aliases))
+                reader.advisories.append(f'Trying original mapped-file object {name}; its initializer/layout is unchanged and standalone placement still needs verification.')
+    if selected:
+        source = '\n'.join(selected) + '\n' + source
     return source, rename(header, aliases)
+
+
+def prepare_variants(reader, cfg, mapping, aliases, fallback):
+    """Prefer authorized definitions, keeping the exact source identity for each coherent context."""
+    result=[]
+    reader.origins={}
+    def add(pair, origin):
+        if pair not in result:result.append(pair)
+        item={'symbol':origin[1],'file':origin[2]}
+        existing=reader.origins.setdefault(pair,{**item,'family':'original-context','alternatives':[]})
+        if item not in existing['alternatives']:existing['alternatives'].append(item)
+    add(prepare(reader,{**cfg,'_same_file_definitions':True},mapping,aliases,fallback),mapping)
+    add(prepare(reader,cfg,mapping,aliases,fallback),mapping)
+    if cfg.get('definitions'):add(prepare(reader,{**cfg,'definitions':''},mapping,aliases,fallback),mapping)
+    count=0
+    for dest,symbol,file,header in contexts(cfg.get('contexts','')):
+        if dest!=mapping[0]:continue
+        origin=(dest,symbol,file)
+        add(prepare(reader,{**cfg,'header':str(reader.root/header)},origin,{**aliases,symbol:dest},fallback),origin)
+        count+=1
+        if count>=2:break
+    return result
 
 
 def inputs(net, proj, fn):
     """The destination state that a private-header compile was judged against, checked again before promotion."""
     ctx = net._context(proj['id'], fn['unit'])
     symbols = [tuple(r) for r in net.store.all('SELECT name,address,size,kind FROM symbols WHERE project_id=? ORDER BY name', proj['id'])]
-    return (proj['config'], fn['unit'], fn['target'], fn['relocs'], fn['vram'], fn['best_source'], ctx['version'], symbols)
+    from .permuter_inputs import build_state
+    return (proj['config'], fn['unit'], fn['target'], fn['relocs'], fn['vram'], fn['best_source'], ctx['version'], symbols,
+            fn['size'],fn['name'],proj['root'],build_state(proj))
 
 
 def promote_context(net, db, fn, expected, header, agent):
@@ -219,24 +308,44 @@ def promote_context(net, db, fn, expected, header, agent):
     return version
 
 
-def attempt(permuter, proj, fn, source, header, agent, fork):
+def attempt(permuter, proj, fn, source, header, agent, fork, diagnostic=None, lead=None):
     net = permuter.net
     if fork:
         # The existing build must supply its own compatible types. Never edit its build setup or headers.
-        return net.forks.attempt(agent, fork, fn['name'], source, keep=False, quiet=fn['best_score']).get('score')
+        started=time.monotonic()
+        score=net.forks.attempt(agent, fork, fn['name'], source, keep=False, quiet=fn['best_score']).get('score')
+        if hasattr(net,'store'):
+            from .source_lead_analysis import record
+            record(net,proj,fn,source,net.forks.permuter_header(fork,fn['name']),score,[],lead,(time.monotonic()-started)*1000)
+        return score
+    from .source_lead_analysis import destination, record
+    started=time.monotonic();scope=destination(net,proj,fn)
     expected = inputs(net, proj, fn)
     result = net._compile(proj, header, source, fn)
     if not result.ok:
-        raise NetworkError('Prepared C did not compile: ' + str(result.log)[-1200:])
+        from .preparation_diagnostics import compile_error
+        record(net,proj,fn,source,header,None,[],lead,(time.monotonic()-started)*1000,error=result.log,scope=scope)
+        raise NetworkError('Prepared C did not compile: ' + compile_error(net, fn, result.log))
+    from .source_context import compiler_hints
+    for hint in compiler_hints(result.log):
+        log.warning('source preparation %s: %s', fn['name'], hint)
+        if diagnostic:diagnostic(fn['name'] + ': ' + hint)
     from ..rom.export import _single_definition
     if net.is_rom(proj) and not _single_definition(result.obj, fn['name']):
+        record(net,proj,fn,source,header,None,[],lead,(time.monotonic()-started)*1000,error='Extra emitted function bodies',scope=scope)
         raise NetworkError('Prepared declarations emitted extra function bodies. Supply a declarations-only header.')
     candidate, verdict, problems = net._evaluate(fn, proj, result.obj)
     if candidate is None:
+        record(net,proj,fn,source,header,None,[],lead,(time.monotonic()-started)*1000,error='; '.join(problems),scope=scope)
         raise NetworkError('Prepared C could not be linked: ' + '; '.join(problems)[:1200])
     diff = scoring.diff(net._target_obj(fn, proj), candidate)
     if verdict is not None:
         diff = scoring.DiffResult(0 if verdict else max(1, diff.score), diff.max_score, diff.rows, verdict)
+    record(net,proj,fn,source,header,0 if diff.bytes_match else max(1,diff.score),diff.rows,lead,
+           (time.monotonic()-started)*1000,scope=scope)
+    if diagnostic and dict(proj).get('arch')=='mips':
+        from .sdk_io_repairs import hints
+        for hint in hints(source,dict(fn).get('asm',''),diff.rows):diagnostic(fn['name']+': '+hint)
     score = 0 if diff.bytes_match else max(1, diff.score)
     if fn['best_score'] is None or score < fn['best_score']:
         net._record(fn, agent, score, source, 0, matched=diff.bytes_match, via='local-source',
@@ -246,7 +355,7 @@ def attempt(permuter, proj, fn, source, header, agent, fork):
     return score
 
 
-def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20):
+def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, only=None):
     """A bounded, cached preparation round before ordinary deterministic/random permutations."""
     net = permuter.net
     cfg = settings(net, proj)
@@ -265,6 +374,8 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20):
         fork = net.fork_slug(proj['slug'])
         deadline = time.monotonic() + seconds
         for mapping in mapped:
+            if only is not None and mapping[0] not in only:
+                continue
             if st.stop.is_set() or report['tested'] >= budget or time.monotonic() >= deadline:
                 break
             fn = net.store.one("SELECT * FROM functions WHERE project_id=? AND name=? AND status='open'", proj['id'], mapping[0])
@@ -272,35 +383,96 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20):
                 continue
             st.holding(fn['name'], True)
             cache_key = None
+            improved_source = False
             try:
                 fresh = net.project_row(proj['slug'])
                 fn = net.store.one('SELECT * FROM functions WHERE id=?', fn['id'])
                 if fn['status'] != 'open':
                     continue
                 fallback = net.forks.permuter_header(fork, fn['name']) if fork else net._context(proj['id'], fn['unit'])['header']
-                source, header = prepare(reader, cfg, mapping, aliases, fallback)
-                # Imported build files can change independently: retry on a new explicit pass/session.
-                from .permuter_inputs import build_state
-                state = (st.started_at, fresh['config'], build_state(fresh)) if fork else inputs(net, fresh, fn)
-                digest = hashlib.sha256(repr((state, source, header, cfg)).encode()).hexdigest()
-                cache_key = 'local-source-v1:' + digest
-                if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], cache_key):
-                    continue
-                report['tested'] += 1
-                st.add(variants=1, repairs=1)
-                log_line(f'Preparing {fn["name"]} ({report["tested"]}/{budget})')
-                with repair_trial({'kind': 'local source preparation', 'source_sha256': hashlib.sha256(source.encode()).hexdigest(),
-                                   'header_sha256': hashlib.sha256(header.encode()).hexdigest()}):
-                    score = attempt(permuter, fresh, fn, source, header, agent, fork)
-                if score is not None and (fn['best_score'] is None or score < fn['best_score']):
-                    report['improved'] += 1
-                    st.add(improved=1)
-                    if score == 0:
-                        report['matched'] += 1
-                        st.add(matched=1)
-                with net.store.tx() as db:
-                    db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
-                               (fn['id'], cache_key, str(score), 'local source preparation'))
+                reader.advisories.clear()
+                log_line(fn['name'] + ': reading and preparing selected source context…')
+                variants = prepare_variants(reader, cfg, mapping, aliases, fallback)
+                if time.monotonic() >= deadline:
+                    log_line(fn['name'] + ': source preparation used this round’s time allowance before compilation. Use a smaller coherent header before retrying.')
+                    break
+                if not fork and hasattr(net, 'reader'):
+                    from .named_array_context import variants as named_arrays
+                    for body, context in list(variants):
+                        extra=named_arrays(body,fn['name'],context,net.reader(fresh,fn),net.symbols(proj['id']).resolve,
+                                           'big' if json.loads(fresh['config']).get('big_endian',True) else 'little')
+                        for pair in extra:reader.origins[pair]={**reader.origins[(body,context)],'family':'named-array'}
+                        variants.extend(extra)
+                    from .source_lead_analysis import rank_pairs
+                    variants=rank_pairs(net,fresh,fn,variants,{p:m['family'] for p,m in reader.origins.items()})
+                for hint in dict.fromkeys(reader.advisories):log_line(fn['name'] + ': ' + hint)
+                retried = False
+                for source, header in variants:
+                    from .source_context import context_hints
+                    for hint in context_hints(source, header):log_line(fn['name'] + ': ' + hint)
+                    if st.stop.is_set() or report['tested'] >= budget or time.monotonic() >= deadline:
+                        break
+                    fresh = net.project_row(proj['slug'])
+                    fn = net.store.one('SELECT * FROM functions WHERE id=?', fn['id'])
+                    if fn['status'] != 'open':
+                        break
+                    # Imported build files can change independently: retry on a new explicit pass/session.
+                    from .permuter_inputs import build_state
+                    state = (st.started_at, fresh['config'], build_state(fresh)) if fork else inputs(net, fresh, fn)
+                    digest = hashlib.sha256(repr((state, source, header, cfg)).encode()).hexdigest()
+                    cache_key = 'local-source-v5:' + digest
+                    lead=reader.origins.get((source,header),{'symbol':mapping[1],'file':mapping[2],'family':'original-context'})
+                    if not fork:
+                        from ..project import compiler_for
+                        from .source_lead_analysis import destination, rejected
+                        if rejected(net,fn,destination(net,fresh,fn),source,header,lead,compiler_for(json.loads(fresh['config']),fn['vram'])):
+                            log_line(fn['name']+': retained rejected source lead; unchanged trial skipped.')
+                            continue
+                    if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], cache_key):
+                        if not fork:
+                            private_profiles(net, fresh, fn, source, header, st, report, log_line, budget, deadline, reader.origins.get((source,header)))
+                        continue
+                    report['tested'] += 1
+                    st.add(variants=1, repairs=1)
+                    log_line(f'Preparing {fn["name"]} ({report["tested"]}/{budget})')
+                    with repair_trial({'kind': 'local source preparation', 'source_sha256': hashlib.sha256(source.encode()).hexdigest(),
+                                       'header_sha256': hashlib.sha256(header.encode()).hexdigest()}):
+                        try:
+                            score = attempt(permuter, fresh, fn, source, header, agent, fork, log_line, lead)
+                        except NetworkError as exc:
+                            if (str(exc).startswith('The function, header or build inputs changed') and not fork
+                                    and not retried and not st.stop.is_set() and time.monotonic()<deadline
+                                    and report['tested']<budget):
+                                retried=True
+                                current_fn=net.store.one('SELECT * FROM functions WHERE id=?',fn['id'])
+                                fallback=net._context(proj['id'],current_fn['unit'])['header']
+                                rebuilt=prepare_variants(reader,cfg,mapping,aliases,fallback)
+                                variants.append(next((pair for pair in rebuilt if pair[0]==source),rebuilt[0]))
+                                log_line(fn['name'] + ': inputs changed; retrying once against fresh destination state.')
+                                continue
+                            report['errors'].append(f'{fn["name"]}: {exc}')
+                            log_line(report['errors'][-1])
+                            if not str(exc).startswith(('The function, header or build inputs changed', 'The function claim changed')):
+                                with net.store.tx() as db:
+                                    db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
+                                               (fn['id'], cache_key, 'error', str(exc)[:1200]))
+                                    db.execute('UPDATE reuse_trials SET feedback=? WHERE function_id=? AND signature=?',
+                                               (json.dumps(trial_feedback(fresh,fn,source,header,error=str(exc))),fn['id'],cache_key))
+                            continue
+                    if score is not None and (fn['best_score'] is None or score < fn['best_score']):
+                        improved_source = True
+                        report['improved'] += 1
+                        st.add(improved=1)
+                        if score == 0:
+                            report['matched'] += 1
+                            st.add(matched=1)
+                    if not fork and score is not None and fn['best_score'] is not None and score >= fn['best_score']:
+                        private_profiles(net, fresh, fn, source, header, st, report, log_line, budget, deadline, lead)
+                    with net.store.tx() as db:
+                        db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
+                                   (fn['id'], cache_key, str(score), 'local source preparation'))
+                        db.execute('UPDATE reuse_trials SET feedback=? WHERE function_id=? AND signature=?',
+                                   (json.dumps(trial_feedback(fresh,fn,source,header,score)),fn['id'],cache_key))
             except (NetworkError, OSError, ValueError) as exc:
                 message = f'{fn["name"]}: {exc}'
                 report['errors'].append(message)
@@ -313,9 +485,105 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20):
             finally:
                 st.holding(fn['name'], False)
                 permuter._let_go(agent, fn)
+            if improved_source and not fork and hasattr(net, '_comparison_digest'):
+                followup(net, proj, fn, st, report, log_line, budget, deadline)
     except (NetworkError, OSError, ValueError) as exc:
         report['errors'].append(str(exc))
         log_line(str(exc))
     for message in report['errors']:
         log.info('permuter preparation: %s', message)
     return report
+
+
+def followup(net, proj, fn, st, report, log_line, budget, deadline):
+    """New prepared context deserves bounded flags before another source mutation; no claim is held here."""
+    from .matching_preflight import run as profiles
+    remaining=budget-report['tested']
+    if remaining<=0 or st.stop.is_set() or time.monotonic()>=deadline:return
+    fresh=net.project_row(proj['slug'])
+    current=net._function(fn['name'],proj['slug'])
+    if current['status']!='open':return
+    before=current['best_score']
+    result=profiles(net,fresh,current,log_line,
+                    lambda:not st.stop.is_set() and time.monotonic()<deadline,
+                    max_profiles=min(2,remaining))
+    report['tested']+=result['tested'];st.add(variants=result['tested'])
+    after=net._function(fn['name'],proj['slug'])
+    if before is not None and after['best_score'] is not None and after['best_score']<before:
+        report['improved']+=1;st.add(improved=1)
+        if after['status']=='matched':report['matched']+=1;st.add(matched=1)
+
+
+def private_profiles(net, proj, fn, source, header, st, report, log_line, budget, deadline, lead=None):
+    """Probe unpromoted context too; retain evidence without bypassing profile/context approval gates."""
+    from .. import toolchains
+    from ..project import compiler_for
+    from ..rom.export import _single_definition
+    from .profile_hypotheses import prioritized
+    if not hasattr(net, 'is_rom') or not net.is_rom(proj):return
+    cfg=json.loads(proj['config'])
+    own=compiler_for(cfg,fn['vram'])
+    if own.get('cmd') or not own.get('toolchain') or toolchains.installed(own['toolchain']) is None:return
+    expected=inputs(net,proj,fn)
+    choices=[]
+    for flags in prioritized(proj,fn,own)+net.flag_variants(own['toolchain'],list(own['flags'])):
+        if list(flags)!=list(own['flags']) and list(flags) not in choices:choices.append(list(flags))
+    from .source_next_steps import untested_profiles
+    def signature(flags):
+        return 'local-source-profile-v2:'+hashlib.sha256(repr((expected,source,header,own['toolchain'],flags)).encode()).hexdigest()
+    choices=untested_profiles(choices,own['flags'],signature,
+        lambda key:net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?',fn['id'],key))
+    for flags in choices:
+        if st.stop.is_set() or report['tested']>=budget or time.monotonic()>=deadline:return
+        key=signature(flags)
+        if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?',fn['id'],key):continue
+        private={**dict(proj),'config':json.dumps({**cfg,'compiler':{**own,'flags':flags},'compiler_ranges':[]})}
+        from .source_lead_analysis import destination, record
+        scope=destination(net,proj,fn);started=time.monotonic()
+        report['tested']+=1;st.add(variants=1)
+        result=net._compile(private,header,source,fn)
+        if not result.ok or not _single_definition(result.obj,fn['name']):
+            record(net,private,fn,source,header,None,[],{**(lead or {}),'family':'compiler-profile'},
+                   (time.monotonic()-started)*1000,error=str(result.log),scope=scope)
+            feedback={'toolchain':own['toolchain'],'flags':flags,'score':None,'exact':False,
+                      'category':'compile_or_extra_body','diagnostic':str(result.log)[:2000]}
+            with net.store.tx() as db:
+                db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
+                           (fn['id'],key,'failed','private-context compile failure',json.dumps(feedback)))
+            continue
+        candidate,verdict,problems=net._evaluate(fn,proj,result.obj)
+        if candidate is None:
+            record(net,private,fn,source,header,None,[],{**(lead or {}),'family':'compiler-profile'},
+                   (time.monotonic()-started)*1000,error='; '.join(problems),scope=scope)
+            with net.store.tx() as db:
+                db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
+                           (fn['id'],key,'failed','private-context link failure',json.dumps({'category':'link_error','diagnostic':'; '.join(problems),'exact':False})))
+            continue
+        diff=scoring.diff(net._target_obj(fn,proj),candidate)
+        exact=bool(verdict if verdict is not None else diff.bytes_match)
+        score=0 if exact else max(1,diff.score)
+        current=net.store.one('SELECT * FROM functions WHERE id=?',fn['id'])
+        if inputs(net,net.project_row(proj['slug']),current)!=expected:return
+        record(net,private,fn,source,header,score,diff.rows,{**(lead or {}),'family':'compiler-profile'},
+               (time.monotonic()-started)*1000,scope=scope)
+        evidence={'toolchain':own['toolchain'],'flags':flags,'source':source,'header':header,
+                  'score':score,'exact':exact,'problems':problems,'review_required':True}
+        from .prepared_evidence import digest
+        evidence['inputs']=digest(net,proj,fn)
+        evidence['category']='exact' if exact else ('data' if diff.bytes_match else 'instructions')
+        with net.store.tx() as db:
+            db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
+                       (fn['id'],key,str(score),'private-context compiler probe; review required',json.dumps(evidence)))
+        log_line(f"{fn['name']}: prepared context with {' '.join(flags)} scored {score}; private source/header/profile evidence saved for review. Working settings unchanged.")
+        if exact:return
+
+
+def trial_feedback(proj, fn, source, header, score=None, error=''):
+    """Precise local evidence so unchanged source/context/profile misses are not rediscovered."""
+    from ..project import compiler_for
+    own=compiler_for(json.loads(proj['config']),fn['vram'])
+    return {'source_sha256':hashlib.sha256(source.encode()).hexdigest(),
+            'header_sha256':hashlib.sha256(header.encode()).hexdigest(),
+            'toolchain':own.get('toolchain'),'flags':own.get('flags',[]),'score':score,
+            'category':('compile_or_link_error' if error else 'exact' if score==0 else 'scored_miss'),
+            'diagnostic':error[:2000],'exact':score==0}

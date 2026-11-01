@@ -28,7 +28,8 @@ def view(source, name):
     if not span:
         return None
     clean = _blank(source)
-    opening = clean.find('{', *span)
+    definition = re.search(r'\b'+re.escape(name)+r'\s*\([^{};]*\)\s*{',clean[span[0]:span[1]])
+    opening = span[0]+definition.end()-1 if definition else -1
     if opening < 0 or '#' in clean[opening:span[1]] or re.search(r'::|\b(?:class|template|namespace)\b', clean):
         return None
     return View(source, clean, opening, span[1])

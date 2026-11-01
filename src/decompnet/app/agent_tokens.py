@@ -157,6 +157,7 @@ def brief(net, text, slug=None, agent=None):
         return m[0]
     text = re.sub(r'(^### Declarations it uses[^\n]*\n)(```c\n.*?\n```)',shared,text,flags=re.M|re.S)
     # A batch can contain more than one claimed function. Resolve each stored name from its brief header.
+    preflight_deadline = time.monotonic() + 5  # checked between builds; active compilers retain their own watchdog timeout
     for name in re.findall(r'^## CLAIMED: (.+?)(?:  \([^\n]*\))?$', text, re.M):
         if slug and name.startswith(slug + '/'):
             name = name[len(slug)+1:]
@@ -169,6 +170,27 @@ def brief(net, text, slug=None, agent=None):
                 source, revision = candidate(net, agent, slug, fn['name'])
                 # Only attach a revision when the exact candidate is present in the claim.
                 if source and source.strip() in text:
+                    from . import declaration_recovery
+                    # Only inherited candidates, once per claim/build scope; ordinary edits keep their normal judge.
+                    if time.monotonic() < preflight_deadline and fn['best_source'] and not net.store.one(
+                            'SELECT 1 FROM attempts a JOIN claims c ON c.function_id=a.function_id '
+                            'WHERE a.function_id=? AND a.agent_id=? AND a.created_at>=c.claimed_at', fn['id'], agent.id):
+                        prepared, report = declaration_recovery.preflight(net, agent, slug, fn, source)
+                        if prepared != source:
+                            text = text.replace(source, prepared, 1)
+                            latest = net.store.one('SELECT id,created_at FROM attempts WHERE function_id=? AND agent_id=? ORDER BY id DESC LIMIT 1', fn['id'], agent.id)
+                            claim = net.store.one('SELECT claimed_at FROM claims WHERE function_id=? AND agent_id=?', fn['id'], agent.id)
+                            stamp = (latest['id'] if latest and claim and latest['created_at'] >= claim['claimed_at'] else None,
+                                     claim['claimed_at'] if claim else None, target_scope(net,fn,''))
+                            if not hasattr(net, '_agent_selected'):
+                                net._agent_selected = {}
+                            net._agent_selected[agent.id,fn['id']] = {'stamp':stamp, 'source':prepared}
+                            while len(net._agent_selected) > 64:
+                                del net._agent_selected[next(iter(net._agent_selected))]
+                            source, revision = candidate(net, agent, slug, fn['name'])
+                            text += '\nKnown declarations restored and diagnostic build verified; candidate-local only. Submit through the normal judge to save any match.\n'
+                        elif report and report.get('score') is None:
+                            text += '\nInherited candidate preflight blocked; fix declarations/build before experiments:\n'+report.get('error', '')[:800]+'\n'
                     text += agent_targets.suggestions(source)
                     text += f"{fn['name']}: candidate revision {revision}; use compile_patch directly on the candidate above.\n"
                     from . import local_experiments
@@ -178,8 +200,52 @@ def brief(net, text, slug=None, agent=None):
     return text
 
 
+def claim_packet(net, agent, slug, text):
+    """Normal claiming/renewal already happened; suppress only a packet this agent received unchanged."""
+    # Claim all requested leases, but hydrate just the first task. The rest are a
+    # compact queue; get_function(section="brief") loads any queued task on demand.
+    blocks = list(re.finditer(r'^## CLAIMED: (.+?)(?:  \([^\n]*\))?$',text,re.M))
+    if len(blocks)>1:
+        queue = [m[1] for m in blocks[1:]]
+        text = re.sub(r'(?m)^Write all of them[^\n]*',
+                      'Start with the detailed function below; load queued function briefs when ready. Batch judging is still available.',
+                      text[:blocks[1].start()])+'\nQueued claims (leases retained; details on demand):\n'+'\n'.join(
+            '- '+name for name in queue)+'\nUse get_function(function, section="brief") when starting each queued function.\n'
+    rendered = brief(net, text, slug, agent)
+    if not re.search(r'^## CLAIMED', rendered, re.M):
+        return rendered
+    normalized = re.sub(r'lease expires in [^\n]*', 'lease renewed', rendered)
+    stamp = hashlib.sha256(normalized.encode()).hexdigest()
+    sent = getattr(net, '_claim_packets', {})
+    net._claim_packets = sent
+    key = (agent.id, slug)
+    previous = sent.get(key)
+    # A new lease is a new task even if the same source is selected later.
+    leases = tuple(tuple(r) for r in net.store.all(
+        'SELECT c.function_id,c.claimed_at FROM claims c JOIN functions f ON f.id=c.function_id '
+        'WHERE c.agent_id=? AND f.project_id=(SELECT id FROM projects WHERE slug=?) ORDER BY c.function_id', agent.id, slug))
+    sent[key] = (stamp, leases)
+    while len(sent) > 64:
+        del sent[next(iter(sent))]
+    if previous == (stamp, leases) and leases:
+        names = re.findall(r'^## CLAIMED: (.+?)(?:  \([^\n]*\))?$', rendered, re.M)
+        revisions = re.findall(r'candidate revision [0-9a-f]+', rendered)
+        return ('You still hold the unchanged claim: ' + ', '.join(names) + '. No new functions were claimed.\n'
+                + '; '.join(dict.fromkeys(revisions))
+                + '\nUse the candidate already supplied, compile_patch or try_local_repairs. '
+                  'get_candidate recovers C; get_function(section="brief") refreshes supporting details.')
+    return rendered
+
+
 def assembly(net, slug, function, start=0, limit=60, focus="", agent=None):
     fn = net._function(function, slug)
+    automatic = not focus and start == 0
+    if focus == 'page':
+        focus = ''
+        automatic = False
+    if automatic:
+        kept=net._last_diffs.get((agent.id,fn['id'])) if agent else None
+        focus='mismatch' if kept and any(r[0]!=' ' and r[1].strip() for r in kept[0]) else 'body'
     if net.fork_slug(slug):
         _, fp, _ = net.forks.get(slug)
         unit = fp.unit(fn['unit'])
@@ -209,6 +275,8 @@ def assembly(net, slug, function, start=0, limit=60, focus="", agent=None):
             if len(focus)>160:
                 raise NetworkError('Use a symbol or short assembly anchor for focus.')
             hits=[i for i,line in enumerate(lines) if re.search(r'(?<![\w])'+re.escape(focus)+r'(?![\w])',line)]
+        if not hits and automatic:
+            hits=[min(20,max(0,len(lines)-1))]
         if not hits:
             return 'No target region located for this focus. Use paged get_assembly or compile a candidate before focus="mismatch".'
         start=max(0,hits[0]-8);limit=min(40,max(1,int(limit)))
@@ -248,6 +316,8 @@ def feedback(net, agent, slug, function, text, previous):
     if 'markers:' not in text:
         return text
     head = text.split('markers:', 1)[0]
+    from .efficiency_feedback import mismatch
+    head += mismatch(rows)+'\n'
     positions = [text.index(marker) for marker in ('\ncompiler output:', '\nwhen linking your code') if marker in text]
     warn = text[min(positions):] if positions else ''
     if previous == rows:
@@ -277,7 +347,15 @@ def function_view(net, agent, slug, function, section='all'):
         from . import agent_evidence
         return agent_evidence.warnings(net,agent,net._function(function,slug))
     if section == 'brief':
-        return brief(net,net.get_function(function,slug,agent),slug,agent)
+        text=brief(net,net.get_function(function,slug,agent),slug,agent)
+        fn=net._function(function,slug)
+        if net.store.one('SELECT 1 FROM claims WHERE function_id=? AND agent_id=?',fn['id'],agent.id):
+            source,revision=candidate(net,agent,slug,function)
+            if source and source.strip() not in text:
+                text+='\nCurrent continuation:\n'+get_candidate(net,agent,slug,function)
+            elif 'candidate revision '+revision not in text.lower():
+                text+=f'\nCandidate revision {revision}; use compile_patch on the supplied candidate.\n'
+        return text
     if section == 'draft':
         fn=net._function(function,slug)
         return 'Stored machine draft (not the current candidate):\n```c\n'+(fn['seed'] or '')+'\n```' if fn['seed'] else 'No stored machine draft. Use section=candidate for existing C.'
@@ -398,8 +476,8 @@ def target_tried(net, fn, revision, family, old):
 
 def compiled_before(net,fn,source,scope=None):
     scope=scope if scope is not None else target_scope(net,fn,'')
-    return net.store.one('SELECT 1 FROM agent_family_targets WHERE function_id=? AND scope=? AND family=? AND target_hash=?',
-                         fn['id'],scope,'compiled-miss',hashlib.sha256(source.encode()).hexdigest()) is not None
+    return net.store.one("SELECT 1 FROM agent_family_targets WHERE function_id=? AND scope=? AND family IN ('compiled-miss','compiled-error') AND target_hash=?",
+                         fn['id'],scope,hashlib.sha256(source.encode()).hexdigest()) is not None
 
 
 def available_target(net,fn,source,revision,family,old):
@@ -483,7 +561,7 @@ def local_family(net, agent, slug, function, revision, family, old='', declarati
         return (f'Selected declaration {declaration}.\n' if declaration else '') + result
 
 
-def variants(net, agent, slug, function, revision, patches, family="explicit patches"):
+def variants(net, agent, slug, function, revision, patches, family="explicit patches", *, seconds=60, provenance_kind='agent batch', variant_families=None):
     """Independent alternatives against one snapshot, never a cumulative patch chain."""
     from .tools import _compile
     if not isinstance(patches, list) or not 1 <= len(patches) <= 6:
@@ -493,6 +571,14 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
             raise stale(net,agent,fn,revision,source,actual)
+        checked = None
+        if family != 'explicit patches':
+            from . import agent_evidence
+            checked = agent_evidence.preflight(net,agent,slug,fn,source)
+            if checked and checked.get('error'):
+                return agent_evidence.blocked_message(checked, actual)
+            if checked and checked.get('exact'):
+                return _compile(net,agent,slug,function,source)
         candidates = []
         for p in patches:
             if not isinstance(p,dict):
@@ -509,7 +595,7 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
         groups = {}
         scores = []
         choices = []
-        baseline = getattr(net, '_agent_outcomes', {}).get((agent.id, fn['id']))
+        baseline = checked or getattr(net, '_agent_outcomes', {}).get((agent.id, fn['id']))
         if baseline and baseline['source'] != source:
             baseline = None
         if baseline is None:
@@ -534,11 +620,14 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
         durable_scope=target_scope(net,fn,'')
         began = time.monotonic()
         for i, src in enumerate(candidates, 1):
-            if last is not None and time.monotonic() - began >= 60:
-                results.append('Stopped before the next trial: 60-second batch budget reached. Resume with the current revision.')
+            if last is not None and time.monotonic() - began >= seconds:
+                results.append(f'Stopped before the next trial: {seconds:g}-second batch budget reached. Resume with the current revision.')
                 break
+            started=time.monotonic()
             try:
-                with trial({'kind':'agent batch','family':family,'variant':i,'base_revision':revision}):
+                with trial({'kind':provenance_kind,'family':variant_families[i-1] if variant_families else family,'variant':i,
+                            'base_revision':revision,'base_source_sha256':hashlib.sha256(source.encode()).hexdigest(),
+                            'source_sha256':hashlib.sha256(src.encode()).hexdigest()}):
                     result = _compile(net, agent, slug, function, src)
             except NetworkError as e:
                 results.append(f'{i}: stopped: {e}')
@@ -546,12 +635,14 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             last = i
             measured = getattr(net, '_agent_outcomes', {}).get((agent.id, fn['id']))
             measured = measured if measured and measured['source'] == src else None
-            observations.append({'score':measured['score'],'rows':measured['rows']} if measured else None)
+            observations.append({'score':measured['score'],'rows':measured['rows'],
+                                 'cached':'REPEAT:' in result, 'elapsed_ms':round((time.monotonic()-started)*1000)} if measured else None)
             score = measured['score'] if measured else None
-            if family != 'explicit patches' and score is not None and score > 0:
+            compile_error = score is None and '❌ COMPILE ERROR' in result
+            if family != 'explicit patches' and ((score is not None and score > 0) or compile_error):
                 with net.store.tx() as db:
                     db.execute('INSERT OR IGNORE INTO agent_family_targets VALUES(?,?,?,?)',
-                               (fn['id'],durable_scope,'compiled-miss',hashlib.sha256(src.encode()).hexdigest()))
+                               (fn['id'],durable_scope,'compiled-error' if compile_error else 'compiled-miss',hashlib.sha256(src.encode()).hexdigest()))
             rows = measured['rows'] if measured else None
             if score is not None:
                 scores.append(score)
@@ -583,6 +674,9 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
                 if 'Max tries reached' in result or 'Unchanged-output limit reached' in result:
                     summary += '; '+('Unchanged-output limit reached' if 'Unchanged-output limit reached' in result else 'Max tries reached')
                 groups[key] = ([i], summary)
+            if 'Low-progress handoff' in result:
+                results.append('Low-progress handoff; no further variants submitted.')
+                break
             if 'Max tries reached' in result or 'Unchanged-output limit reached' in result:
                 results.append(('Unchanged-output limit reached' if 'Unchanged-output limit reached' in result else 'Max tries reached')+'; no further variants submitted.')
             if net._function(function, slug)['status'] != 'open' or 'Max tries reached' in result or 'Unchanged-output limit reached' in result:
@@ -600,7 +694,8 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             db.execute('INSERT INTO agent_variant_runs(function_id,family,revision,trials,best_score,created_at) VALUES(?,?,?,?,?,?)',
                        (fn['id'],family,revision,last or 0,min(scores) if scores else None,time.time()))
         selected_index = None
-        if last is not None and choices and net._function(function,slug)['status']=='open':
+        if (last is not None and choices and net._function(function,slug)['status']=='open'
+                and net.store.one('SELECT 1 FROM claims WHERE function_id=? AND agent_id=?',fn['id'],agent.id)):
             # Stable min keeps the baseline on ties. This selects an agent continuation, never a new
             # judge verdict, attempt, file write or match. The next compile still uses the normal judge.
             _,selected,measurement,selected_index = min(choices,key=lambda choice:choice[0])
@@ -630,4 +725,9 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
         current_index = next((i for i, src in enumerate(candidates, 1) if src == current_source), None)
         results.append(f'Current candidate revision {current}; last submitted variant {last}; current source variant {current_index or "retained candidate"}. '
                        'Patch this continuation. last_diff follows it when available; get_candidate recovers C.')
+        from .efficiency_feedback import continuation, mismatch
+        results.append(continuation(net,agent,slug,function,applied=[current_index] if current_index and current_source!=source else [],base=revision))
+        kept=net._last_diffs.get((agent.id,fn['id']))
+        if kept:
+            results.append(mismatch(kept[0]))
         return '\n'.join(results)

@@ -103,3 +103,162 @@ def test_range_check_does_not_block_unrelated_function_progress(net, monkeypatch
     net.set_compiler_ranges('demo', [[0x80001000, 0x80001010]], 'ido-5.3', ['-O3'])
     assert net._function('f84', 'demo')['best_source'] == 'unrelated new code'
     assert len(net.cfg(net.project_row('demo'))['compiler_ranges']) == 1
+
+
+@pytest.fixture
+def cleanup_net(net, monkeypatch):
+    from decompnet.app import compiler_cleanup
+    cfg = net.cfg(net.project_row('demo'))
+    cfg['compiler_ranges'] = [{'start': 0x80001000, 'end': 0x80001020, 'toolchain': 'ido-5.3', 'flags': ['-O1']}]
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=? WHERE slug=?', (json.dumps(cfg), 'demo'))
+    monkeypatch.setattr(compiler_cleanup.toolchains, 'installed', lambda tc: object())
+    return net
+
+
+def test_cleanup_only_moves_exact_matches_and_preserves_sources(cleanup_net, monkeypatch):
+    from decompnet.app import compiler_cleanup
+    from decompnet.project import compiler_for
+    n = cleanup_net
+    before = [tuple(r) for r in n.store.all('SELECT name,status,matched_source FROM functions ORDER BY id')]
+    monkeypatch.setattr(n, '_judge_with', lambda proj, fn, tc, flags, source: (fn['name'] == 'f0', None, ''))
+    checked = []
+    def regression(proj, header, only, **kwargs):
+        checked.extend(fn['name'] for fn in only)
+        assert compiler_for(n.cfg(proj), only[0]['vram'])['flags'] == ['-O2']
+        return []
+    monkeypatch.setattr(n, 'regression_test', regression)
+    out = compiler_cleanup.cleanup(n, 'demo', log=lambda _: None)
+    assert [r['function'] for r in out['changed']] == ['f0']
+    assert checked == ['f0']
+    cfg = n.cfg(n.project_row('demo'))
+    assert compiler_for(cfg, 0x80001000)['flags'] == ['-O2']
+    assert compiler_for(cfg, 0x80001010)['flags'] == ['-O1']
+    assert before == [tuple(r) for r in n.store.all('SELECT name,status,matched_source FROM functions ORDER BY id')]
+
+
+def test_cleanup_final_guard_rejects_regression(cleanup_net, monkeypatch):
+    from decompnet.app import compiler_cleanup
+    n = cleanup_net
+    before = n.project_row('demo')['config']
+    monkeypatch.setattr(n, '_judge_with', lambda *args: (True, None, ''))
+    monkeypatch.setattr(n, 'regression_test', lambda *args, **kwargs: [('f0', 'mismatch')])
+    with pytest.raises(NetworkError, match="wouldn't match"):
+        compiler_cleanup.cleanup(n, 'demo', log=lambda _: None)
+    assert n.project_row('demo')['config'] == before
+
+
+def test_cleanup_cancellation_does_not_apply_partial_results(cleanup_net, monkeypatch):
+    from decompnet.app import compiler_cleanup
+    n = cleanup_net
+    before = n.project_row('demo')['config']
+    tested = []
+    def judge(*args):
+        tested.append(True)
+        return True, None, ''
+    monkeypatch.setattr(n, '_judge_with', judge)
+    class Log:
+        def __call__(self, message):
+            pass
+        def check_cancel(self):
+            if tested:
+                raise RuntimeError('cancelled')
+    with pytest.raises(RuntimeError, match='cancelled'):
+        compiler_cleanup.cleanup(n, 'demo', log=Log())
+    assert n.project_row('demo')['config'] == before
+
+
+def test_cleanup_removes_redundant_default_ranges_without_rejudging(net, monkeypatch):
+    from decompnet.app import compiler_cleanup
+    cfg = net.cfg(net.project_row('demo'))
+    cfg['compiler_ranges'] = [{'start': 0x80001000, 'end': 0x80001010, 'toolchain': 'ido-5.3', 'flags': ['-O2']}]
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=? WHERE slug=?', (json.dumps(cfg), 'demo'))
+    monkeypatch.setattr(compiler_cleanup.toolchains, 'installed', lambda tc: object())
+    monkeypatch.setattr(net, 'regression_test', lambda *a, **kw: pytest.fail('unchanged effective settings need no rejudge'))
+    out = compiler_cleanup.cleanup(net, 'demo', log=lambda _: None)
+    assert out['changed'] == [] and out['ranges_before'] == 1 and out['ranges_after'] == 0
+    assert net.cfg(net.project_row('demo'))['compiler_ranges'] == []
+
+
+def test_cleanup_skips_shared_overlay_addresses(cleanup_net, monkeypatch):
+    from decompnet.app import compiler_cleanup
+    n = cleanup_net
+    with n.store.tx() as db:
+        db.execute("UPDATE functions SET vram=? WHERE name='f1'", (0x80001000,))
+    before = n.project_row('demo')['config']
+    monkeypatch.setattr(n, '_judge_with', lambda *args: pytest.fail('shared overlay profiles need separate proof'))
+    out = compiler_cleanup.cleanup(n, 'demo', log=lambda _: None)
+    assert out['skipped'] == 2 and out['changed'] == []
+    assert n.project_row('demo')['config'] == before
+
+
+def test_matched_function_cannot_apply_partial_profile_even_with_override(net, monkeypatch):
+    before = net.project_row('demo')['config']
+    monkeypatch.setattr(net, '_judge_with', lambda *a: (False, SimpleNamespace(score=1), ''))
+    with pytest.raises(NetworkError, match='byte for byte'):
+        net.apply_function_compiler('demo', 'f0', 'ido-5.3', ['-O1'], allow_non_improving=True)
+    assert net.project_row('demo')['config'] == before
+    assert net._function('f0', 'demo')['status'] == 'matched'
+
+
+def test_matched_function_can_return_to_verified_default_without_reopening(cleanup_net, monkeypatch):
+    n = cleanup_net
+    before = n._function('f0', 'demo')['matched_source']
+    monkeypatch.setattr(n, '_judge_with', lambda *a: (True, SimpleNamespace(score=0), ''))
+    monkeypatch.setattr(n, 'regression_test', lambda *a, **k: [])
+    n.apply_function_compiler('demo', 'f0', 'ido-5.3', ['-O2'])
+    fn = n._function('f0', 'demo')
+    assert fn['status'] == 'matched' and fn['matched_source'] == before
+    from decompnet.project import compiler_for
+    cfg = n.cfg(n.project_row('demo'))
+    assert compiler_for(cfg, fn['vram'])['flags'] == ['-O2']
+    assert compiler_for(cfg, 0x80001010)['flags'] == ['-O1']
+
+
+def test_selected_profile_checks_all_matches_against_only_default(cleanup_net, monkeypatch):
+    from decompnet.app import compiler_cleanup
+    from decompnet.project import compiler_for
+    n = cleanup_net
+    cfg = n.cfg(n.project_row('demo'))
+    cfg['compiler_ranges'].append({'start': 0x80001020, 'end': 0x80001030, 'toolchain': 'ido-5.3', 'flags': ['-O3']})
+    with n.store.tx() as db:
+        db.execute('UPDATE projects SET config=? WHERE slug=?', (json.dumps(cfg), 'demo'))
+    calls = []
+    def judge(proj, fn, tc, flags, source):
+        calls.append((fn['name'], flags))
+        return fn['name'] == 'f0', SimpleNamespace(score=0), ''
+    monkeypatch.setattr(n, '_judge_with', judge)
+    monkeypatch.setattr(n, 'regression_test', lambda *a, **k: [])
+    out = compiler_cleanup.cleanup(n, 'demo', rare_limit=1, log=lambda _: None,
+                                   source_profile={'toolchain': 'ido-5.3', 'flags': ['-O1']})
+    assert calls == [('f0', ['-O2']), ('f1', ['-O2'])]
+    assert [item['function'] for item in out['changed']] == ['f0']
+    cfg = n.cfg(n.project_row('demo'))
+    assert compiler_for(cfg, 0x80001000)['flags'] == ['-O2']
+    assert compiler_for(cfg, 0x80001010)['flags'] == ['-O1']
+    assert compiler_for(cfg, 0x80001020)['flags'] == ['-O3']
+
+
+def test_selected_default_or_missing_profile_is_rejected(cleanup_net):
+    from decompnet.app import compiler_cleanup
+    for flags in (['-O2'], ['-O9']):
+        with pytest.raises(NetworkError, match='no longer in use'):
+            compiler_cleanup.cleanup(cleanup_net, 'demo', log=lambda _: None,
+                                     source_profile={'toolchain': 'ido-5.3', 'flags': flags})
+
+
+def test_profile_migration_prefers_default_even_when_default_is_less_common(cleanup_net, monkeypatch):
+    from decompnet.app import compiler_cleanup
+    n = cleanup_net
+    cfg = n.cfg(n.project_row('demo'))
+    cfg['compiler_ranges'] = [{'start': 0x80001000, 'end': 0x80001000 + 84 * 16,
+                              'toolchain': 'ido-5.3', 'flags': ['-O1']}]
+    with n.store.tx() as db:
+        db.execute('UPDATE projects SET config=? WHERE slug=?', (json.dumps(cfg), 'demo'))
+    monkeypatch.setattr(n, '_judge_with', lambda *a: (True, SimpleNamespace(score=0), ''))
+    monkeypatch.setattr(n, 'regression_test', lambda *a, **k: [])
+    out = compiler_cleanup.cleanup(n, 'demo', log=lambda _: None,
+                                   source_profile={'toolchain': 'ido-5.3', 'flags': ['-O1']})
+    assert out['tested'] == 84 and len(out['changed']) == 84
+    assert out['profiles_after'] == 1

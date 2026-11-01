@@ -15,7 +15,7 @@ from starlette.responses import JSONResponse, Response
 from ... import consoles, hostenv, toolchains
 from ...forks.project import SCOPES
 from ...network import NetworkError
-from .. import saves
+from .. import compiler_cleanup, saves
 from ..engine import parse_ranges
 from . import App
 
@@ -38,10 +38,10 @@ def register(app: App) -> None:
                         with net.progress.view():
                             return fn(slug, request, data)
                     result = fn(slug, request, data)
-                    if request.method == "POST" and net.store.one("SELECT 1 FROM projects WHERE slug=?", slug):
+                    if request.method == "POST" and request.url.path != "/api/verification" and net.store.one("SELECT 1 FROM projects WHERE slug=?", slug):
                         net.progress.sync(slug, force=True)
                     return result
-                return JSONResponse(await call(perform))
+                return JSONResponse(await ((app.ui_call or call) if request.method == "GET" else call)(perform))
             except (NetworkError, ValueError, toolchains.ToolchainError, OSError) as e:
                 return fail(e)
         return handler
@@ -67,6 +67,13 @@ def register(app: App) -> None:
         q = request.query_params
         return manager.transcript(slug, int(q.get('helper', 0)), int(q.get('session', 0)),
                                   int(q.get('after', 0)), int(q.get('before', 0)))
+
+    def p_compiler_cleanup(slug, request, data):
+        limit = int(data.get("rare_limit", 3))
+        if not 1 <= limit <= 25:
+            raise NetworkError("Choose a rare-profile limit between 1 and 25 functions.")
+        net._rom_only(slug, "compiler profile cleanup")
+        return {"job": jobs.start("compiler-cleanup", lambda log: compiler_cleanup.cleanup(net, slug, limit, log, source_profile=data.get("profile")))}
 
     def p_compiler(slug, request, data):
         if data.get("function"):
@@ -130,9 +137,17 @@ def register(app: App) -> None:
             if net.fork_slug(slug):
                 raise NetworkError("This comparison currently needs a ROM-mode project.")
             return {"job": jobs.start("installed compilers", lambda log: net.run_compiler_comparison(
-                slug, log=log, function=data.get("function", ""), untested_only=data.get("untested_only", True)),
+                slug, log=log, function=data.get("function", ""), untested_only=data.get("untested_only", True), flags_only=bool(data.get("flags_only", False))),
                 cancel_message="Compiler comparison stopped. Completed results are saved.")}
         return net.compiler_answer(slug, check_now=request.method == "POST")
+
+    def p_verification(slug, request, data):
+        if data.get("paused"):
+            net.progress.pause(slug)
+        else:
+            net.progress.resume(slug)
+            jobs.start("saved progress verification", lambda log: net.progress.sync(slug, force=True, logger=log))
+        return {"ok": True}
 
     def p_open(slug, request, data):
         why = hostenv.open_folder(Path(net.project_row(slug)["root"]))
@@ -143,6 +158,9 @@ def register(app: App) -> None:
         proj = net.project_row(slug)
         net.knowledge.forget(slug)
         net.remove_project(slug)
+        from .. import manual_mcp
+        settings.data['manual_mcp'] = [c for c in manual_mcp.connections(settings) if c['slug'] != slug]
+        settings.save()
         if data.get("files"):
             shutil.rmtree(proj["root"], ignore_errors=True)
         if settings.data.get("last_project") == slug:
@@ -154,7 +172,7 @@ def register(app: App) -> None:
         """You, editing a function in the GUI: judged like an agent's attempt (and credited to "you")."""
         agent, _ = net.local_agent("you")
         res = net.attempt(agent, str(data.get("name", "")), str(data.get("source", "")), slug)
-        return {"score": res["score"], "matched": res["matched"], "text": res["text"][-4000:]}
+        return {"score": res["score"], "matched": res["matched"], "text": res["text"][-4000:], "checks": res.get("checks", {})}
 
     def p_release(slug, request, data):
         agent, _ = net.local_agent("you")
@@ -237,6 +255,19 @@ def register(app: App) -> None:
         proj = net.project_row(slug)
         if request.method == "GET":
             return source_preparation.settings(net, proj)
+        if data.get('action') == 'analysis':
+            from ..source_lead_analysis import listing
+            return listing(net, proj)
+        if data.get('action') == 'reject-lead':
+            from ..source_lead_analysis import reject
+            return reject(net,proj,str(data.get('id','')),data.get('reason',''))
+        if data.get('action') == 'reviews':
+            from ..prepared_evidence import listing
+            return {'reviews': listing(net, proj)}
+        if data.get('action') == 'apply-review':
+            from ..prepared_evidence import apply
+            key = str(data.get('id', ''))
+            return {'job': jobs.start('prepared-bundle', lambda log: apply(net, proj, key, log))}
         if data.get('action') not in (None, 'save', 'run'):
             raise ValueError('Choose save or run for source preparation.')
         if data.get('action') == 'run':
@@ -336,7 +367,7 @@ def register(app: App) -> None:
     def p_cross_name(slug, request, data):
         old, new = str(data.get("function") or ""), str(data.get("name") or "")
         hints = net.twins.suggestions(slug, old)
-        if not any(h["name"] == new and h["score"] == 1 and h["kind"] != "similar code; unverified"
+        if not any(h["name"] == new and h["score"] == 1 and "unverified" not in h["kind"]
                    for h in hints):
             raise ValueError("that exact SDK or cross-game name is no longer suggested for this function")
         agent, _ = net.local_agent("you")
@@ -381,7 +412,8 @@ def register(app: App) -> None:
         "/api/function": (lambda s, r, d: net.function_detail(s, r.query_params.get("name", "")), ["GET"]),
         "/api/diff": (lambda s, r, d: net.function_diff(s, r.query_params.get("name", ""),
                                                         r.query_params.get("which", "latest")), ["GET"]),
-        "/api/compiler": (p_compiler, ["POST"]), "/api/export": (p_export, ["POST"]), "/api/open": (p_open, ["POST"]),
+        "/api/compiler": (p_compiler, ["POST"]),
+        "/api/compiler/cleanup": (p_compiler_cleanup, ["POST"]), "/api/export": (p_export, ["POST"]), "/api/open": (p_open, ["POST"]),
         "/api/reimport": (p_reimport, ["POST"]),
         "/api/delete": (p_delete, ["POST"]),
         "/api/try": (p_try, ["POST"]), "/api/release": (p_release, ["POST"]), "/api/reopen": (p_reopen, ["POST"]), "/api/setaside": (p_set_aside, ["POST"]),
@@ -403,6 +435,7 @@ def register(app: App) -> None:
         "/api/agent-results": (lambda s,r,d: net.agent_results(s,r.query_params.get('agent',''),r.query_params.get('kind','matched'),int(r.query_params.get('before',0)),int(r.query_params.get('after',0))), ["GET"]),
         "/api/stats": (lambda s, r, d: net.stats(s), ["GET"]),
         "/api/compilermap": (p_compilermap, ["GET", "POST"]),
+        "/api/verification": (p_verification, ["POST"]),
     }
     for path, (fn, methods) in routes.items():
         mcp.custom_route(path, methods=methods)(with_project(fn))

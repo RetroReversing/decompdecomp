@@ -148,7 +148,7 @@ def raw_relocs(elf: ELFFile, shndx: int, start: int, size: int, code: bytes) -> 
                 at = off - start + delta
                 value = int.from_bytes(code[at:at + length], order) & mask
             raw.append({"off": off - start, "type": rtype, "symidx": rel["r_info_sym"], "rela": rel.is_RELA(),
-                        "value": value, "symtab": symtab})
+                        "value": value, "symtab": symtab, "order": len(raw)})
     raw.sort(key=lambda r: r["off"])
     return raw
 
@@ -336,8 +336,10 @@ class _Linker:
             return  # the ROM has no bytes there (e.g. .bss in the ROM): nothing to compare
         if bytes(mine[:n]) != rom:
             where = self.symbols.label(addr)
+            first=next(i for i,(a,b) in enumerate(zip(mine[:n],rom)) if a!=b)
+            last=max(i for i,(a,b) in enumerate(zip(mine[:n],rom)) if a!=b)
             self.problem(f"your data for {where} differs from the ROM: yours {bytes(mine[:min(n, 24)]).hex(' ')}"
-                         f"{'…' if n > 24 else ''}, ROM {rom[:24].hex(' ')}{'…' if n > 24 else ''}")
+                         f"{'…' if n > 24 else ''}, ROM {rom[:24].hex(' ')}{'…' if n > 24 else ''}; differing range 0x{addr+first:X}-0x{addr+last+1:X} (end exclusive)")
 
     def run(self) -> LinkResult:
         fsym = self.function()
@@ -376,7 +378,7 @@ class _Linker:
         for (dshndx, off), addr in self.local_map.items():
             placements.setdefault(self.elf.get_section(dshndx).name, {})[off] = addr
         return LinkResult(FunctionObj(self.name, "mips", self.target.big_endian, code, relocs), exact, self.problems,
-                          placements)
+                          placements, linked == self.target.code, linked)
 
 
 def link(obj: bytes, name: str, target: RomTarget, symbols: SymbolTable, read: ReadFn) -> LinkResult:

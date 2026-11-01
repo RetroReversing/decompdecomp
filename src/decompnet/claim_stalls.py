@@ -3,7 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 
-VERSION = 'local-repairs-v16'
+VERSION = 'local-repairs-v21'
 RELEASES = 3
 PREFIX = 'agent-stall:'
 
@@ -16,7 +16,7 @@ def common_state(net, proj):
 def repair_rules():
     """Persist across restarts; invalidate when installed repair implementations change."""
     app = Path(__file__).parent / 'app'
-    paths = sorted(set(app.glob('*repairs.py')) | {app / 'local_experiments.py', app / 'loop_liveness.py'})
+    paths = sorted(set(app.glob('*repairs.py')) | {app / 'local_experiments.py', app / 'loop_liveness.py', app / 'local_flow.py', app / 'stack_layout.py', app / 'permuter_focus.py', app / 'search_frontier.py', app / 'repair_sequences.py', app / 'matching_preflight.py'})
     return [(p.name,file_digest(p)) for p in paths]
 
 

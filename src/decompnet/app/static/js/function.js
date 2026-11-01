@@ -1,5 +1,15 @@
 "use strict";  // each script is strict on its own (see base.js)
 /* ------------------------------------------------------------------ inspector */
+// Copy the source assembly, never the highlighted DOM's address column.
+function assemblyForClipboard(text) {
+  return text.split("\n").map(line => line
+    .replace(/^(\s*)\/\*\s*[0-9a-fA-F]+\s+[0-9a-fA-F]+\s+[0-9a-fA-F]+\s*\*\/\s*/, "$1")
+    .replace(/^\s*(?:0x)?[0-9a-fA-F]{8,16}\s+(?=[A-Za-z.])/, "    ")
+  ).join("\n");
+}
+async function copyTargetAssembly(text) {
+  toast(await copyText(assemblyForClipboard(text)) ? "Assembly copied." : "Could not copy assembly. Check clipboard access.");
+}
 function highlightAsm(text) {
   return text.split("\n").map((line) => {
     if (/^\s*(glabel|endlabel)/.test(line)) return `<span class="cm">${esc(line)}</span>`;
@@ -26,7 +36,7 @@ function groupNameHints(hints) {
     if (!group.hints.some((h) => h.game === hint.game && h.kind === hint.kind)) group.hints.push(hint);
   }
   return [...groups.values()].map((g) => ({ ...g,
-    exact: g.hints.filter((h) => h.score === 1 && h.kind !== "similar code; unverified").length,
+    exact: g.hints.filter((h) => h.score === 1 && !h.kind.includes("unverified")).length,
     score: Math.max(...g.hints.map((h) => h.score)),
   })).sort((a, b) => b.exact - a.exact || b.hints.length - a.hints.length || b.score - a.score || a.name.localeCompare(b.name));
 }
@@ -64,6 +74,41 @@ async function openFn(name) {
   const again = S.fn === name && !$("drawer").hidden;
   if (!again) { giveBack(name); S.editDirty = false; $("tryMsg").hidden = true; }
   S.fn = name;
+  if (!again) {
+    S.fnNav = (S.fnNav || 0) + 1;
+    S.fnDetail = null; S.fnLoading = true;
+    compilerComparisonBusy = false; compilerComparisonTarget = null;
+    deepPermuterBusy = false; deepPermuterTarget = null; deepPermuterJob = null;
+    $("fnName").textContent = name;
+    $("fnAddr").textContent = "";
+    $("fnNaming").hidden = true;
+    $("fnStatus").textContent = "";
+    $("fnCompilerMatches").replaceChildren();
+    $("fnApplyCompiler").hidden = true;
+    $("fnCompilerSummary").hidden = true;
+    $("fnCompilerLog").textContent = "";
+    $("fnCompilerLog").hidden = true;
+    $("fnDeepMetrics").hidden = true;
+    $("fnDeepStatus").textContent = "";
+    $("fnDeepLog").textContent = ""; $("fnDeepLog").hidden = true;
+    $("fnDeepNow").textContent = "";
+    $("fnDeepWork").replaceChildren();
+    $("fnDeepRun").disabled = false; $("fnDeepStop").hidden = true;
+    $("fnDeepMinutes").disabled = false; $("fnDeepVariants").disabled = false;
+    for (const id of ["fnCompilerSummary", "fnCompilerLog", "fnDeepLog"]) {
+      const log = $(id); if (log._workStatus) { log._workStatus.remove(); log._workStatus = null; }
+    }
+    document.querySelectorAll("#fnCompilerTest .workbar").forEach(bar => bar.remove());
+    $("tryBtn").disabled = false;
+    $("fnEdit").value = "";
+    $("fnAsm").replaceChildren();
+    $("drawer").setAttribute("data-loading", "");
+    $("drawer").setAttribute("aria-busy", "true");
+    $("functionLoading").hidden = false;
+    $("functionLoadingText").textContent = `Loading ${name}…`;
+    $("functionLoading").querySelector(".workbar").hidden = false;
+    $("functionRetry").hidden = true;
+  }
   showDrawer("drawer");
   if (!again) { S.ftab = null; S.which = "latest"; S.diffKey = null; $("diff").innerHTML = ""; $("diffSum").textContent = ""; }
   drawMap();
@@ -94,16 +139,21 @@ document.querySelectorAll("#diffWhich [data-which]").forEach((b) => {
   };
 });
 
-let fnBusy = false;
-let compilerComparisonBusy = false;
-let deepPermuterBusy = false, deepPermuterJob = null;
+let fnBusy = null, fnRequest = 0;
+function cancelFunctionRead() { fnBusy?.controller?.abort(); fnBusy = null; }
+let compilerComparisonBusy = false, compilerComparisonTarget = null;
+let deepPermuterBusy = false, deepPermuterJob = null, deepPermuterTarget = null;
 async function refreshFn(first) {
-  if (fnBusy || nameChangeBusy || !S.fn) return;
-  fnBusy = true;
+  if ((nameChangeBusy && !first) || !S.fn) return;
+  const slug = S.slug, requested = S.fn, gen = S.gen;
+  const key = `${gen}|${S.fnNav}|${slug}|${requested}`;
+  if (fnBusy?.key === key) return;
+  cancelFunctionRead();
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const request = fnBusy = {key, id: ++fnRequest, controller};
   try {
-    const slug = S.slug, requested = S.fn;
-    const d = await api(`/api/function?slug=${slug}&name=${encodeURIComponent(requested)}`);
-    if (slug !== S.slug || requested !== S.fn || nameChangeBusy) return;
+    const d = await api(`/api/function?slug=${slug}&name=${encodeURIComponent(requested)}`, {signal:controller?.signal});
+    if (gen !== S.gen || slug !== S.slug || requested !== S.fn || fnBusy !== request || (nameChangeBusy && !first)) return;
     // The server follows old-name aliases after a rename (including names inferred by Autopilot).
     S.fn = d.name;
     S.fnDetail = d;
@@ -115,7 +165,7 @@ async function refreshFn(first) {
         $("fnDeepMetrics").hidden = true;
         $("fnDeepStatus").textContent = "";
       }
-      $("fnCompilerRanked").replaceChildren();
+      $("fnCompilerMatches").replaceChildren();
       $("fnApplyCompiler").hidden = true;
       $("fnCompilerSummary").hidden = true;
       $("fnCompilerLog").textContent = "";
@@ -129,10 +179,26 @@ async function refreshFn(first) {
       ? `Name inferred from ${d.naming.source_project} · exact code match`
       : d.renamed ? `Renamed from ${d.naming.original_name}` : d.named ? "Named function" : "Generated name";
     fnBadge(d);
+    const verificationPanel = $("fnVerification");
+    if (verificationPanel) {
+      const bundle = d.verification;
+      verificationPanel.hidden = !bundle;
+      if (bundle) {
+        $("fnVerificationStatus").textContent = `Exact attempt recorded ${new Date(bundle.recorded_at * 1000).toLocaleString()}. ${bundle.changed_inputs.length ? `Inputs changed: ${bundle.changed_inputs.join(", ")}. Recheck before accepting progress.` : "Recorded inputs agree with this project."} ${bundle.note}${bundle.regression ? ` WARNING: the recorded exact source failed recheck at ${new Date(bundle.regression.observed_at * 1000).toLocaleString()}; ${bundle.regression.score == null ? "build/scoring failed" : `score ${bundle.regression.score}`}.` : ""}`;
+        $("fnVerificationDownload").onclick = () => {
+          const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], {type:"application/json"}));
+          const link = document.createElement("a"); link.href = url; link.download = `${d.name}-verification.json`; link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        };
+      }
+    }
+
     $("fnDeepPanel").hidden = !deepPermuterBusy && (d.status !== "open" || d.best == null);
     const pass = d.deep_pass || {};
     $("fnDeepHistory").textContent = pass.completed ? `Deep pass completed · ${pass.minutes} min / ${Number(pass.max_variants).toLocaleString()} variants budget` : pass.stale ? "Previous pass saved; inputs changed, so this function is eligible again." : pass.state === "error" ? `Deep pass needs attention: ${pass.error}` : `Deep pass: ${pass.state || "not tried"}`;
-    $("fnCompilerTest").hidden = S.ov.kind === "fork" || d.status !== "open" || !S.ov.compilers?.length;
+    $("fnCompilerTest").hidden = S.ov.kind === "fork" || !S.ov.compilers?.length;
+    if (S.ov.kind !== "fork" && !compilerComparisonBusy) renderKnownCompilerProfiles(d);
+    $("fnTestCompilers").disabled = !d.source || d.source_kind === "draft";
     if (!compilerComparisonBusy && S.ov.kind !== "fork") {
       const history = d.compiler_test;
       $("fnCompilerHistory").textContent = history
@@ -140,10 +206,10 @@ async function refreshFn(first) {
         : "Not tested yet. Bulk tests in Settings skip functions with completed, up-to-date comparisons.";
       const buttonLabel = history ? "Run compiler test again" : "Test installed compilers & flags";
       $("fnTestCompilers").textContent = buttonLabel;
-      const key = `${slug}:${d.name}:${history?.completed_at || 0}:${history?.stale}`;
-      if (history && $("fnCompilerRanked").dataset.history !== key) {
-        renderFunctionCompilerComparison(history.comparison, slug, d.name);
-        $("fnCompilerRanked").dataset.history = key;
+      const key = `${slug}:${d.name}:${history?.completed_at || 0}:${history?.stale}:${JSON.stringify(d.compiler_profile)}`;
+      if (history && $("fnCompilerMatches").dataset.history !== key) {
+        renderFunctionCompilerComparison({...history.comparison, stale: history.stale}, slug, d.name);
+        $("fnCompilerMatches").dataset.history = key;
       }
     }
 
@@ -185,8 +251,17 @@ async function refreshFn(first) {
       } catch (e) { toast(esc(e.message), "err"); }
     };
     $("fnAsm").innerHTML = highlightAsm(d.asm);
+    $("copyAsm").onclick = () => copyTargetAssembly(d.asm);
     const kinds = { matched: "Matching C", best: "Best attempt so far", latest: S.ov.kind === "fork" ? "In the source now" : "Latest attempt", draft: "Machine draft (m2c)" };
     $("fnSrcKind").textContent = kinds[d.source_kind] || "No C yet";
+    if (d.baseline_status?.state === "historical") {
+      const recheck = document.createElement("button");
+      recheck.className = "small";
+      recheck.textContent = "Historical score · recheck in Diff";
+      recheck.title = d.baseline_status.reasons.join(" ");
+      recheck.onclick = () => showFnTab("diff");
+      $("fnSrcKind").append(" ", recheck);
+    }
     if (!S.editDirty || first) setEditor(d.source || "", d);
     $("copySrc").onclick = () => navigator.clipboard.writeText($("fnEdit").value).then(() => toast("Copied."));
     renderFnChart(d);
@@ -205,9 +280,18 @@ async function refreshFn(first) {
     $("fnNotes").innerHTML = notesOf(true, "Your notes") + notesOf(false, "Notes from agents");
     const tab = S.ftab || (d.status === "matched" || !d.scores.length ? "code" : "diff");
     showFnTab(tab);
+    $("drawer").removeAttribute("data-loading");
+    $("drawer").setAttribute("aria-busy", "false");
+    $("functionLoading").hidden = true; S.fnLoading = false;
   } catch (e) {
-    if (first) toast(esc(e.message), "err");
-  } finally { fnBusy = false; }
+    if (gen !== S.gen || slug !== S.slug || requested !== S.fn || fnBusy !== request) return;
+    if (first) {
+      $("functionLoadingText").textContent = `Could not load ${requested}: ${e.message}`;
+      $("functionLoading").querySelector(".workbar").hidden = true;
+      $("functionRetry").hidden = false;
+      $("functionRetry").onclick = () => refreshFn(true);
+    }
+  } finally { if (fnBusy === request) fnBusy = null; }
 }
 
 /* Editing a function yourself: a highlighted editor over a textarea, judged like an agent's attempt. */
@@ -239,15 +323,23 @@ $("fnEdit").addEventListener("keydown", (e) => {
 $("tryBtn").onclick = () => tryIt();
 
 async function tryIt() {
+  if (!S.fnDetail || S.fnLoading || $("tryBtn").disabled) return;
+  const slug = S.slug, gen = S.gen, nav = S.fnNav;
+  const active = () => slug === S.slug && gen === S.gen && nav === S.fnNav;
   const name = S.fn, source = $("fnEdit").value, msg = $("tryMsg");
   if (!name || !source.trim() || $("tryBtn").disabled) return;
   $("tryBtn").disabled = true;
   msg.hidden = false; msg.className = "try-msg"; msg.textContent = "Compiling…";
   try {
-    const r = await api("/api/try", { method: "POST", body: { slug: S.slug, name, source } });
+    const r = await api("/api/try", { method: "POST", body: { slug, name, source } });
+    if (!active()) {
+      if (!r.matched && (slug !== S.slug || name !== S.fn)) api("/api/release", {method:"POST",body:{slug,name}}).catch(() => {});
+      return;
+    }
     if (r.matched) {
       S.myClaim = null;
       msg.className = "try-msg ok"; msg.textContent = "Byte-identical. Saved as a match, credited to you.";
+      if (r.checks?.export?.message) msg.textContent += "\n" + r.checks.export.message;
       toast(`<code>${esc(name)}</code>&nbsp;matched by you`, "match");
     } else {
       S.myClaim = name;
@@ -260,8 +352,9 @@ async function tryIt() {
     await refreshFn(false);
     if (r.score != null) { S.ftab = "diff"; showFnTab("diff"); }
   } catch (e) {
+    if (!active()) return;
     msg.className = "try-msg bad"; msg.textContent = e.message;
-  } finally { $("tryBtn").disabled = false; }
+  } finally { if (active()) $("tryBtn").disabled = false; }
 }
 /* The function stays yours only while you're on it: give it back when you move on. */
 function giveBack(next) {
@@ -332,12 +425,24 @@ function renderDiff(d) {
   const label = { matched: "Matching C", best: "Best attempt", latest: S.ov.kind === "fork" ? "The source now" : "Latest attempt" }[d.kind] || "Attempt";
   sum.innerHTML = `<b>${label}</b> · ${d.percent === 100 && d.score === 0 ? `<span class="ok">byte-identical</span>` : `${d.percent}%${d.score != null ? ` · score ${d.score}` : ""}`} · ${same} of ${target} instructions identical
     <span class="diff-key"><i class="k arg"></i>operands <i class="k repl"></i>different <i class="k mov"></i>moved</span>`;
+  if (d.stack_diagnostic) {
+    const diagnostic = document.createElement("p"); diagnostic.className = "small muted";
+    diagnostic.textContent = d.stack_diagnostic; probs.append(diagnostic);
+  }
+  for (const hint of d.source_diagnostics || []) {
+    const diagnostic = document.createElement("p"); diagnostic.className = "small muted";
+    diagnostic.textContent = hint; probs.append(diagnostic);
+  }
   const html = [];
+  const addressRows = new Map((d.address_rows || []).map((a) => [a.row, a]));
+  const rowIndices = new Map(rows.map((r, i) => [r, i]));
+  const addressNote = (value) => value == null ? "" : `<small class="raw-address">address 0x${value.toString(16).toUpperCase().padStart(8, "0")}</small>`;
   let t = 0, run = [];
   const rowHtml = (r) => {
     const cls = MARK[r[0]] || "repl";
+    const address = addressRows.get(rowIndices.get(r));
     if (r[1]) t++;
-    return `<div class="dr ${cls}"${r[0] !== " " ? ` title="${MARK_TEXT[r[0]] || ""}"` : ""}><span class="dn">${r[1] ? t : ""}</span><code>${insnHtml(r[1], r[2], cls)}</code><span class="dm">${r[0] === " " ? "" : esc(r[0])}</span><code>${insnHtml(r[2], r[1], cls)}</code></div>`;
+    return `<div class="dr ${cls}"${r[0] !== " " ? ` title="${MARK_TEXT[r[0]] || ""}"` : ""}><span class="dn">${r[1] ? t : ""}</span><code>${insnHtml(r[1], r[2], cls)}${addressNote(address?.target)}</code><span class="dm">${r[0] === " " ? "" : esc(r[0])}</span><code>${insnHtml(r[2], r[1], cls)}${addressNote(address?.candidate)}</code></div>`;
   };
   const flush = (end) => {
     if (run.length > 10 && end !== "all") {
@@ -357,19 +462,20 @@ function renderDiff(d) {
   flush(html.length ? "end" : "all");
   box.innerHTML = `<div class="dh"><span></span><span>Target (your game)</span><span></span><span>${esc(label)}</span></div>` + html.join("");
   box.querySelectorAll(".dfold").forEach((b) => { b.onclick = () => { b.nextElementSibling.hidden = false; b.remove(); }; });
-  probs.innerHTML = (d.problems || []).map((p) => `<li>${esc(p)}</li>`).join("");
+  const advisory = [d.checks?.link?.message, d.checks?.export?.state !== "unmatched" ? d.checks?.export?.message : null].filter(Boolean);
+  probs.innerHTML = [...advisory, ...(d.problems || [])].map((p) => `<li>${esc(p)}</li>`).join("");
 }
 async function loadDiff() {
-  const d0 = S.fnDetail;
+  const d0 = S.fnDetail, slug = S.slug, gen = S.gen, which = S.which, nav = S.fnNav;
   if (!d0) return;
-  const key = `${d0.name}|${S.which}|${d0.scores.length}|${d0.status}`;
+  const key = `${gen}|${nav}|${slug}|${d0.name}|${S.which}|${d0.scores.length}|${d0.status}`;
   if (key === S.diffKey) return;
   S.diffKey = key;
   if (!$("diff").innerHTML) $("diffSum").textContent = "Compiling…";
   try {
-    const d = await api(`/api/diff?slug=${S.slug}&name=${encodeURIComponent(d0.name)}&which=${S.which}`);
-    if (S.fnDetail && S.fnDetail.name === d0.name) renderDiff(d);
-  } catch (e) { $("diffSum").innerHTML = `<span class="bad">${esc(e.message)}</span>`; S.diffKey = null; }
+    const d = await api(`/api/diff?slug=${slug}&name=${encodeURIComponent(d0.name)}&which=${which}`);
+    if (gen === S.gen && slug === S.slug && S.diffKey === key && (S.fnDetail?.name === d0.name && nav === S.fnNav)) renderDiff(d);
+  } catch (e) { if (gen !== S.gen || slug !== S.slug || S.diffKey !== key || (S.fnDetail?.name !== d0.name || nav !== S.fnNav)) return; $("diffSum").innerHTML = `<span class="bad">${esc(e.message)}</span>`; S.diffKey = null; }
 }
 
 function stepFn(delta) {
@@ -491,50 +597,92 @@ function renderProgress() {
 }
 
 
+function renderKnownCompilerProfiles(d) {
+  const defaultProfile = d.default_compiler;
+  const current = d.compiler_profile;
+  const rows = d.compiler_test && !d.compiler_test.stale ? (d.compiler_test.comparison.ranked || []).filter(r => r.exact).map(r => ({...r})) : [];
+  const same = (a, b) => a && b && a.toolchain === b.toolchain && JSON.stringify(a.flags) === JSON.stringify(b.flags);
+  if (d.status === "matched" && current && !rows.some(r => same(r, current))) rows.push({...current, exact:true, percent:100, current:true});
+  if (defaultProfile && !rows.some(r => same(r, defaultProfile))) {
+    const tested = d.compiler_test && !d.compiler_test.stale ? d.compiler_test.comparison.ranked.find(r => same(r, defaultProfile)) : null;
+    rows.push({...defaultProfile, ...(tested || {}), default:true, percent:tested?.percent ?? null, untested:!tested});
+  }
+  rows.forEach(r => { r.default = same(r, defaultProfile); r.selected = same(r, current); });
+  setHtml($("fnCurrentCompiler"), current ? `<p><b>Currently selected:</b> ${esc(current.toolchain)}<code class="compiler-arguments">${esc(current.flags.join(" "))}</code></p>` : "");
+  if (d.compiler_test) {
+    renderFunctionCompilerComparison({...d.compiler_test.comparison, stale:d.compiler_test.stale}, S.slug, d.name);
+  } else {
+    rows.forEach(r => { r.apply_disabled = r.selected || !r.exact; });
+    wireFunctionCompilerTable($("fnCompilerMatches"), rows, S.slug, d.name);
+  }
+}
 function renderFunctionCompilerComparison(c, slug, name) {
-  const summary = $("fnCompilerSummary"), table = $("fnCompilerRanked");
+  const summary = $("fnCompilerSummary"), table = $("fnCompilerMatches");
   $("fnApplyCompiler").hidden = true;
-  setHtml(table, compilerRankedTable(c?.ranked || [], true));
+  const matched = S.fnDetail?.status === "matched";
+  const current = S.fnDetail?.compiler_profile;
+  const ranked = (c?.ranked || []).map(r => {
+    const selected = !!current && r.toolchain === current.toolchain && JSON.stringify(r.flags) === JSON.stringify(current.flags);
+    return {...r, selected, apply_disabled: c?.stale || selected || (matched && !r.exact)};
+  });
+  const same = (a, b) => a && b && a.toolchain === b.toolchain && JSON.stringify(a.flags) === JSON.stringify(b.flags);
+  const defaultProfile = S.fnDetail?.default_compiler;
+  if (matched && current && !ranked.some(r => same(r, current))) ranked.push({...current, exact:true, percent:100, selected:true, apply_disabled:true, default:same(current, defaultProfile)});
+  if (defaultProfile && !ranked.some(r => same(r, defaultProfile))) ranked.push({...defaultProfile, default:true, untested:true, percent:null, apply_disabled:true});
+  wireFunctionCompilerTable(table, ranked, slug, name);
   summary.hidden = false;
   if (!c || c.best == null) summary.textContent = "No usable compiled results. See comparison details for errors.";
   else {
     const before = c.before == null ? "no previous score" : `${c.before.toFixed(2)}%`;
     summary.dataset.improved = String(c.improved);
-    summary.textContent = `${before} → ${c.best.toFixed(2)}% best tested. ${c.tested} combinations tested; ${c.exact_matches} exact matches. Choose any compiled result to apply to this function only.`;
+    summary.textContent = `${c.flags_only ? "Flag variations only. " : ""}${before} → ${c.best.toFixed(2)}% best tested. ${c.tested} combinations tested; ${c.exact_matches} exact matches. ${matched ? "Only an exact match can replace this function’s current settings." : "Choose any compiled result to apply to this function only."}${c.stale ? " These results are outdated; test again before applying." : ""}`;
   }
+}
+function wireFunctionCompilerTable(table, ranked, slug, name) {
+  const summary = $("fnCompilerSummary");
+  setHtml(table, compilerRankedTable(ranked, true));
   table.onclick = async (event) => {
     const button = event.target.closest("button[data-compiler-choice]");
     if (!button || S.slug !== slug || S.fn !== name) return;
-    const row = c.ranked[Number(button.dataset.compilerChoice)];
+    const row = ranked[Number(button.dataset.compilerChoice)];
+    if (!row || row.apply_disabled || row.percent == null) return;
+    const gen = S.gen, nav = S.fnNav;
+    const active = () => gen === S.gen && nav === S.fnNav && S.slug === slug && S.fn === name;
+    const target = compilerComparisonTarget = {};
     const done = beginWork(summary, "Applying selected compiler settings", [...table.querySelectorAll("button")], "Settings applied.");
     compilerComparisonBusy = true;
     try {
       await api("/api/compiler", { method: "POST", body: { slug, function: name, toolchain: row.toolchain, flags: row.flags, allow_non_improving: true } });
+      if (!active()) return;
       await refreshMap(true);
-      summary.textContent = "Applied the selected profile to this function and rechecked its saved C.";
-    } catch (e) { summary.textContent = e.message; }
-    finally { compilerComparisonBusy = false; done(); await refreshFn(false); }
+      if (active()) summary.textContent = "Applied the selected profile to this function and rechecked its saved C.";
+    } catch (e) { if (active()) summary.textContent = e.message; }
+    finally { if (compilerComparisonTarget === target) { compilerComparisonBusy = false; compilerComparisonTarget = null; } if (active()) { done(); await refreshFn(false); } }
   };
 }
 $("fnTestCompilers").onclick = async () => {
   const button = $("fnTestCompilers"), log = $("fnCompilerLog"), summary = $("fnCompilerSummary");
-  const slug = S.slug, name = S.fn;
+  const slug = S.slug, name = S.fn, gen = S.gen, nav = S.fnNav;
+  const active = () => S.gen === gen && S.fnNav === nav && S.slug === slug && S.fn === name && !$("drawer").hidden;
+  const target = compilerComparisonTarget = {};
   log.hidden = false;
   summary.hidden = false;
   compilerComparisonBusy = true;
   const finish = beginWork(summary, `Testing compilers for ${name}`, [button], "Comparison complete.");
   showJobError(log, "");
   try {
-    const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, function: name } });
-    const result = await followJob(job, log);
-    if (S.fn !== name || S.slug !== slug) return;
+    const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, flags_only: $("fnCompilerFlagsOnly").checked, function: name } });
+    const result = await followJob(job, null, lines => { if (active()) log.textContent = lines.join("\n"); });
+    if (!active()) return;
     renderFunctionCompilerComparison(result.comparison, slug, name);
-  } catch (e) { summary.textContent = e.message; showJobError(log, e.message); }
-  finally { compilerComparisonBusy = false; finish(); await refreshFn(false); }
+  } catch (e) { if (active()) { summary.textContent = e.message; showJobError(log, e.message); } }
+  finally { if (compilerComparisonTarget === target) { compilerComparisonBusy = false; compilerComparisonTarget = null; } if (active()) { finish(); await refreshFn(false); } }
 };
 
 $("fnDeepRun").onclick = async () => {
-  const slug = S.slug, name = S.fn;
+  const slug = S.slug, name = S.fn, gen = S.gen, nav = S.fnNav;
+  const active = () => S.gen === gen && S.fnNav === nav && S.slug === slug && S.fn === name && !$("drawer").hidden;
+  const target = deepPermuterTarget = {};
   const log = $("fnDeepLog"), status = $("fnDeepStatus"), stop = $("fnDeepStop");
   const controls = [$("fnDeepRun"), $("fnDeepMinutes"), $("fnDeepVariants")];
   const minutes = Number($("fnDeepMinutes").value), maxVariants = Number($("fnDeepVariants").value);
@@ -551,22 +699,27 @@ $("fnDeepRun").onclick = async () => {
   $("fnDeepWork").append(bar);
   try {
     const { job } = await api("/api/permuter/function", { method: "POST", body: { slug, function: name, minutes, max_variants: maxVariants } });
-    deepPermuterJob = job; stop.disabled = false;
-    const result = await followJob(job, log, (_, state) => {
+    if (active()) { deepPermuterJob = job; stop.disabled = false; }
+    const result = await followJob(job, null, (lines, state) => {
+      if (!active()) return;
+      log.textContent = lines.join("\n");
       const p = state.progress;
       if (p) { renderProgress(p); status.textContent = `${name} · ${p.phase}`; }
     });
+    if (!active()) return;
     renderProgress(result);
     status.textContent = `${name} · ${result.reason} · ${result.tested.toLocaleString()} tested. Improvements saved.`;
     if (S.slug === slug && S.fn === name) { await refreshMap(true); await refreshFn(false); }
   } catch (error) {
+    if (!active()) return;
     if (error.job?.state === "cancelled") {
       status.textContent = `${name} · Stopped. Verified improvements are saved.`;
       log._workStatus.dataset.state = "cancelled"; log._workStatus.textContent = "Stopped";
     }
     else { status.textContent = error.message; $("fnDeepOutput").open = true; showJobError(log, error.message); }
   } finally {
-    deepPermuterBusy = false; deepPermuterJob = null; stop.hidden = true; done();
+    if (deepPermuterTarget === target) { deepPermuterBusy = false; deepPermuterJob = null; deepPermuterTarget = null; }
+    if (active()) { stop.hidden = true; done(); }
   }
 };
 $("fnDeepStop").onclick = async () => {

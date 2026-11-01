@@ -108,31 +108,50 @@ def _process_memory_tree(root_pid: int) -> list[tuple[int, int]]:
     return [(pid, sizes[pid]) for pid in seen if pid in sizes]
 
 
+def compiler_time_limit() -> float:
+    """Absolute wall-time ceiling, including compiler subprocesses that never finish."""
+    try:
+        seconds = float(os.environ.get('DECOMP_COMPILER_TIMEOUT_SECONDS', '300'))
+        return seconds if 0 < seconds < float('inf') else 300
+    except ValueError:
+        return 300
+
+
 class CompilerMemoryWatchdog:
     """Watch native macOS compiler/build trees and stop the whole isolated group on excess RSS."""
-    def __init__(self, proc, limit=None):
+    def __init__(self, proc, limit=None, timeout=None):
         import threading
         self.proc = proc
         self.limit = limit if limit is not None else compiler_memory_limit()
         self.exceeded = False
+        self.timed_out = False
+        self.timeout = timeout
         self._stop = threading.Event()
         self._thread = None
 
     def __enter__(self):
         import sys
         import threading
-        if sys.platform == 'darwin':
+        if sys.platform == 'darwin' or self.timeout is not None:
             self._thread = threading.Thread(target=self._watch, name='compiler-memory-watchdog', daemon=True)
             self._thread.start()
         return self
 
     def _watch(self):
         import signal
-        while not self._stop.wait(0.25) and self.proc.poll() is None:
-            if any(rss > self.limit for _, rss in _process_memory_tree(self.proc.pid)):
-                self.exceeded = True
+        import sys
+        import time
+        started = time.monotonic()
+        while not self._stop.wait(0.25):
+            self.timed_out = self.timeout is not None and time.monotonic() - started >= self.timeout
+            self.exceeded = sys.platform == 'darwin' and any(rss > self.limit for _, rss in _process_memory_tree(self.proc.pid))
+            if self.timed_out or self.exceeded:
                 try:
-                    os.killpg(self.proc.pid, signal.SIGKILL)
+                    if os.name == 'nt':
+                        from .hostenv import stop_process_tree
+                        stop_process_tree(self.proc)
+                    else:
+                        os.killpg(self.proc.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
                 return

@@ -2379,6 +2379,13 @@ class ForkEngine:
         lines += ["", "Send compile_and_diff the complete function definition (same name and signature as the original), "
                       "with any #include \"...\", prototypes or #pragma lines it needs. Structs, globals and helper "
                       "functions go in with edit_file."]
+        if fn['status'] != 'matched':
+            cross = self.net.twins.suggestions(proj['slug'],fn['name'],limit=3)
+            if cross:
+                from .matched_context import reference_lines
+                lines += ['', '### Other games and local SDK signatures (unverified leads)']
+                lines += [f"- {h['name']} in {h['game']} ({h['kind']}, {h['score'] * 100:.0f}% similarity)" for h in cross]
+                lines += reference_lines(cross)
         lines += candidate_quality.brief(self.net,fn)
         return "\n".join(lines)
 
@@ -3329,7 +3336,7 @@ class ForkEngine:
             return f"{len(said)} agents agreed, but joining {first['name']} and {last['name']} was refused: {why}."
         self.net.joined(first["name"], slug)  # (what set it aside was about a piece of it)
         try:
-            self.net.add_note(self.net.local_agent("decompdecomp")[0], slug,
+            self.net.add_note(self.net.attribution_agent("decompdecomp"), slug,
                               f"Agents ({', '.join(sorted(said))}) found this was cut by the analysis, and decompdecomp "
                               f"joined it: {done}. It's the whole function now, whatever older notes say.",
                               first["name"])
@@ -3406,7 +3413,7 @@ class ForkEngine:
             return f"{len(said)} agents agreed, but ending {fn['name']} at {key} was refused: {why}."
         self.net.joined(fn["name"], slug)  # (its code changed: what set it aside was about the whole)
         try:
-            self.net.add_note(self.net.local_agent("decompdecomp")[0], slug,
+            self.net.add_note(self.net.attribution_agent("decompdecomp"), slug,
                               f"Agents ({', '.join(sorted(said))}) found it ran on past its end, and decompdecomp cut "
                               f"it: {done}. It's the whole function now, whatever older notes say.", fn["name"])
         except NetworkError:
@@ -3842,7 +3849,7 @@ class ForkEngine:
     def compiler_answer(self, slug: str) -> dict:
         """The Settings panel's answer (engine.compiler_answer's form): the project's compiler and the files built
         with another, each kept because its matched functions match with it."""
-        _, fp, cfg = self.get(slug)
+        proj, fp, cfg = self.get(slug)
         found = self._file_parts(fp, cfg)
         if found is None:
             raise NetworkError("this project's own build sets its compilers")
@@ -3851,6 +3858,9 @@ class ForkEngine:
         elsewhere = [r for r in files.build(slug).runs if r.differs()]
         survey, state = cfg.get("file_survey") or {}, files.surveys.get(slug) or {}
         checks = cfg.get("file_checks") or []
+        functions = self.net.store.all("SELECT name,vram,status FROM functions WHERE project_id=? AND vram IS NOT NULL", proj["id"])
+        def part_functions(part):
+            return [dict(fn) for fn in functions if part["start"] <= fn["vram"] < part["end"]]
         return {"compiler": consoles.compiler_name(own), "flags": "", "mips": True, "unit": "source file",
                 "elsewhere": [{"start": r.start, "end": r.end, "compiler": consoles.compiler_name(r.label[0]),
                                "functions": r.functions, "confirmed": r.confirmed} for r in elsewhere[:12]],
@@ -3862,6 +3872,9 @@ class ForkEngine:
                 "checks": [{"id": c["id"], "audit": False, "status": c["status"], "said": c.get("said") or "",
                             "ranges": c["spans"], "compiler": consoles.compiler_name(c["toolchain"])} for c in checks],
                 "parts": [{"start": p["start"], "end": p["end"], "compiler": p["name"], "flags": "", "file": p["file"],
+                           "toolchain": p["toolchain"], "family": toolchains.compiler_family(p["toolchain"]) or p["toolchain"],
+                           "function_list": part_functions(p),
+                           "functions": len(part_functions(p)) if p["end"] > p["start"] else None,
                            "check": "confirmed", "said": f"{p['file']}: its matched functions match with it"}
                           for p in parts]}
 
@@ -4032,4 +4045,5 @@ class ForkEngine:
                 "source": current or fn["best_source"], "source_kind": "matched" if fn["status"] == "matched" else
                 ("latest" if current else "best" if fn["best_source"] else None),
                 "match_percent": pct, "scores": [{"score": a["score"], "t": a["created_at"], "agent": a["agent"]} for a in attempts],
-                "notes": [dict(n) for n in notes], "calls": [], "called_by": []}
+                "notes": [dict(n) for n in notes], "calls": [], "called_by": [],
+                "cross_game_hints": self.net.twins.suggestions(slug, fn["name"])}

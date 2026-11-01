@@ -24,6 +24,7 @@ The prompt goes in on stdin, never on the command line: no length limit, and not
 
 from __future__ import annotations
 
+import asyncio
 import collections
 import json
 import logging
@@ -160,14 +161,14 @@ _SIGNED_OUT = re.compile(r"not logged in|run /login|invalid api key|not authenti
 # more times, then the helper asks for a new sign-in.
 AUTH_FAILED = re.compile(r"failed to authenticate|oauth (?:session|token)[^.\n]{0,40}(?:expired|revoked|invalid)|"
                          r"authentication_(?:failed|error)|could not be refreshed|\b401\b[^\n]{0,80}unauthori[sz]ed|"
-                         r"token (?:has )?expired", re.I)
+                         r"token (?:has )?expired|authorization grant[^.\n]{0,40}(?:invalid|revoked|expired)|\binvalid_grant\b", re.I)
 AUTH_RETRIES = 3  # failed sign-ins in a row before the helper pauses and asks for a new one
 AUTH_WAIT = 60  # seconds before the first try again, doubling
 # what a model's provider says when the account has no credit left (DeepSeek: "Insufficient Balance", OpenAI:
 # "insufficient_quota", Anthropic: "credit balance is too low", OpenCode: "quota exceeded"): trying again can't help
 # until it's topped up
 _NO_CREDIT = re.compile(r"insufficient[ _](?:balance|credits?|funds|quota)|exceeded your current quota|"
-                        r"credit balance is too low|payment required|out of credits?", re.I)
+                        r"credit balance is too low|payment required|out of credits?|requires usage credits", re.I)
 # and when it's asked too much at once (HTTP 429): it works again in a while
 THROTTLED = re.compile(r"too many requests|rate[ _-]?limit|concurrency limit|\b429\b|overloaded", re.I)
 # and when a subscription's allowance is used up for now (Claude Code: "usage limit reached", "You've hit your
@@ -196,7 +197,7 @@ def no_credit(said: str) -> str | None:
     """The helper's error when its model's provider says the account is out of credit, else None."""
     if not (m := _NO_CREDIT.search(said)):
         return None
-    return (f"the model's provider says the account is out of credit (“{m.group(0)}”): top it up, then "
+    return (f"the model's provider says the account is out of credit (“{m.group(0)}”): top it up or select another available model, then "
             "start the agents again")
 
 
@@ -333,6 +334,8 @@ class Session:
     seq: int = 0
     record: Callable[[str, object], None] | None = field(default=None, repr=False)  # current session transcript callback
     session_id: int = 0
+    context_budget: object | None = field(default=None, repr=False)
+    rotated: bool = False
     stop: threading.Event = field(default_factory=threading.Event)
     thread: threading.Thread | None = None
     proc: subprocess.Popen | None = None
@@ -361,7 +364,7 @@ class Session:
             log.info("helper %s (%s): %s", self.agent_name, self.slug, text[:500])
 
     def snapshot(self, since: int = 0) -> dict:
-        return {"id": self.id, "kind": self.kind, "kind_name": agents.get(self.kind).name, "label": self.label,
+        return {"id": self.id, "kind": self.kind, "kind_name": agents.get(self.kind).name, "can_login": agents.get(self.kind).supports_login, "label": self.label,
                 "selection": self.options.get("selection") or {},
                 "per_session": self.options.get("per_session", PER_SESSION),
                 "task": self.options.get("task") or "",  # "readable": it polishes matched code
@@ -508,6 +511,10 @@ class Manager:
                            "json_extract(h.options, '$.task') END FROM helpers h "
                            "WHERE h.id=helper_sessions.helper_id AND h.project=helper_sessions.project "
                            "AND h.name=helper_sessions.agent), '')")
+        # A process cannot resume a CLI conversation after the app has exited.
+        with net.store.tx() as db:
+            db.execute("UPDATE helper_sessions SET ended_at=?, outcome='interrupted' WHERE ended_at IS NULL",
+                       (time.time(),))
         self._restore()
         self.refresh_detected()
 
@@ -892,6 +899,8 @@ class Manager:
             baseline = s.options.get('_metrics', {})
             row['metrics'] = board.get(s.agent_name, {})
             row['metrics_since'] = baseline.get('at')
+            from .session_efficiency import for_sessions
+            row['efficiency']=for_sessions(self.net,[r for r in records if r['started_at']>=baseline.get('at',0)])
             row['metrics_after'] = baseline.get('attempt', 0)
             row['lifetime_tokens'] = s.tokens
             for key in ('tokens', 'usd', 'runs', 'restarts'):
@@ -1085,11 +1094,11 @@ class Manager:
                 s.error = f"{type(e).__name__}: {e}"
                 s.push("error", s.error)
                 ok = False
-            if ok and not s.stop.is_set() and self._progress(agent.id) == before:
+            if ok and not s.stop.is_set() and not s.rotated and self._progress(agent.id) == before:
                 s.error = "the session ended without compiling anything (its messages are in its details)"
                 s.push("error", s.error)
                 ok = False
-            self._session_end(s, row, agent, began, "stopped" if s.stop.is_set() else "ok" if ok else
+            self._session_end(s, row, agent, began, "stopped" if s.stop.is_set() else "rotated" if s.rotated else "ok" if ok else
                               "limit" if s.limited else "signin" if s.auth_failed else "failed")
             if s.stop.is_set():
                 break
@@ -1177,7 +1186,15 @@ class Manager:
             row = db.execute("INSERT INTO helper_sessions(helper_id, project, kind, model, agent, started_at, task) "
                               "VALUES(?,?,?,?,?,?,?)", (s.id, s.slug, s.kind, s.model or agents.get(s.kind).config_model() or "",
                                                       s.agent_name, time.time(), s.options.get("task") or "")).lastrowid
+        from .session_efficiency import context
+        snapshot=context(self.net,s.slug,s.options)
+        with self.net.store.tx() as db:
+            db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',('session-efficiency:'+str(row),json.dumps(snapshot)))
         s.session_id = row
+        from .session_budget import start
+        agent_row=self.net.store.one('SELECT id FROM agents WHERE name=?',s.agent_name)
+        s.context_budget=start(self.net,agent_row['id'],s.slug,s.options) if agent_row else None
+        s.rotated=False
         s.record = lambda kind, value: self.transcripts.append(row, kind, value, (s.options.get('api_key'),))
         return row
 
@@ -1195,6 +1212,9 @@ class Manager:
                     result['session'][key + '_tokens'] = live.usage[key]
                 result['session']['usd'] = live.usage['usd']
                 result['session']['tokens'] = live.usage['tokens']
+        if result.get('session'):
+            from .session_efficiency import for_sessions
+            result['efficiency']=for_sessions(self.net,[result['session']]) if result['session']['ended_at'] else []
         return result
 
     def _session_end(self, s: Session, row: int, agent, began: float, outcome: str) -> None:
@@ -1203,6 +1223,10 @@ class Manager:
                                       agent.id, began)["n"]
         matches = self.net.store.one("SELECT COUNT(*) AS n FROM events WHERE agent_id=? AND kind='match' AND "
                                      "created_at>=?", agent.id, began)["n"]
+        from .session_handoffs import capture
+        handoff = capture(self.net, agent, s.slug, began, session=row)
+        if s.record:
+            s.record('handoff', handoff)
         u = s.usage
         with self.net.store.tx() as db:
             db.execute("UPDATE helper_sessions SET ended_at=?, outcome=?, usd=?, input_tokens=?, output_tokens=?, "
@@ -1210,6 +1234,8 @@ class Manager:
                        "matches=? WHERE id=?", (time.time(), outcome, u["usd"], u["input"], u["output"],
                                                 u["cache_read"], u["cache_write"], u["tokens"], u["turns"],
                                                 u["tool_calls"], compiles, matches, row))
+        from .session_efficiency import finish
+        finish(self.net,agent,s.slug,row,began)
         spent = f", ${u['usd']:.2f}" if u["usd"] else f", {u['tokens'] // 1000}k tokens" if u["tokens"] else ""
         s.push("info", f"session {s.runs} done: {u['tool_calls']} tool calls, {compiles} compiles, {matches} "
                        f"matched{spent}")
@@ -1217,7 +1243,8 @@ class Manager:
         s.record = None
 
     def prompt(self, s: Session) -> str:
-        text = self._prompt(s)
+        from .session_handoffs import previous
+        text = self._prompt(s) + previous(self.net, s.id, s.slug)
         # Keep detailed guides on demand; the work prompt already teaches the matching loop.
         ov = self.net.overview(s.slug)  # (only its platform's parts: tools.for_platform)
         text += "\nGuides to load when needed:\n\n" + tools.up_front(
@@ -1269,8 +1296,37 @@ class Manager:
         env = dict(os.environ, PWD=str(workdir), **{HELPER_ENV: str(self.home)}, **more)
         return cmd, env, k.stdin(self.prompt(s))
 
+    def _preflight_tools(self, token: str) -> None:
+        """Prove the authenticated MCP exposes the working tools before spending a model turn."""
+        async def check():
+            from mcp import ClientSession
+            from mcp.client.streamable_http import streamable_http_client
+            from mcp.shared._httpx_utils import create_mcp_http_client
+
+            async with create_mcp_http_client(headers={"Authorization": f"Bearer {token}"}) as http:
+                async with streamable_http_client(self.mcp_url, http_client=http) as streams:
+                    async with ClientSession(*streams[:2]) as client:
+                        await client.initialize()
+                        tools = await client.list_tools()
+                        names = {tool.name for tool in tools.tools}
+                        if not {"project_info", "claim_function", "compile_and_diff", "release_function"} <= names:
+                            raise ValueError("The decomp MCP server did not expose the required tools.")
+                        # tools/list can succeed even when per-call helper/project authentication fails.
+                        result = await client.call_tool('project_info', {'detail': False})
+                        if result.is_error:
+                            raise ValueError('The authenticated project_info call failed.')
+        try:
+            self.net.authenticate(token)
+            asyncio.run(asyncio.wait_for(check(), timeout=15))
+        except Exception as error:
+            raise Fatal("The app's tool connection is unavailable. Restart the helper after checking the app connection. "
+                        "No model request was started.") from error
+
     def _run_cli(self, s: Session, token: str, workdir: Path) -> bool:
         k = agents.get(s.kind)
+        if why := k.validate_model(s.model):
+            raise Fatal(why)
+        self._preflight_tools(token)
         cmd, env, prompt = self._command(s, token, workdir)
         if s.record:
             previous = s.record
@@ -1321,7 +1377,8 @@ class Manager:
                 if (text := k.clean_stderr(line)) and (not errors or errors[-1] != text):
                     errors.append(text)
         threading.Thread(target=feed_prompt, daemon=True).start()
-        threading.Thread(target=drain_err, daemon=True).start()
+        stderr_thread = threading.Thread(target=drain_err, daemon=True)
+        stderr_thread.start()
         saw_tool = False
         said: collections.deque = collections.deque(maxlen=20)
         state: dict = {}
@@ -1349,13 +1406,19 @@ class Manager:
                     last_error = text
                     refused = refused or (text if k.fatal(text) else "")
                 s.push(kind, text)
-            if finished or s.stop.is_set():
+            if s.context_budget and s.context_budget.ready() and not s.stop.is_set():
+                s.rotated=True
+                s.push('info','Starting a fresh session to keep context small; saved work and claims are retained.')
+            if finished or s.stop.is_set() or s.rotated:
                 _terminate(proc)
                 break
         code = proc.wait()
         _close_windows_job(proc.pid)
+        # Fast failures may close stdout before the stderr reader receives the sign-in error.
+        # Bound the wait in case a descendant inherited the pipe.
+        stderr_thread.join(timeout=1)
         s.proc = None
-        if s.stop.is_set():
+        if s.stop.is_set() or s.rotated:
             return True
         everything = " ".join([*said, *errors])
         if refused:
@@ -1365,6 +1428,10 @@ class Manager:
             s.limit_until = limit_reset(everything)
         elif code != 0 and (why := no_credit(everything)):
             raise Fatal(why)  # every agent on this account fails the same way until it's topped up
+        if re.search(r"invalid API token|(?:decomp tools|decomp MCP server)[^\n]{0,100}(?:not available|aren't available|not connected|unavailable)|none of the decomp tools|no decomp tools", everything, re.I):
+            raise Fatal("The helper lost access to the app's tools. Restart this helper to reconnect; repeated paid retries are paused.")
+        if "Toolchain infrastructure failure" in everything:
+            raise Fatal("The compiler/converter setup failed. Fix the toolchain before restarting this helper; repair retries are paused.")
         if finished:
             if saw_tool:  # it said its work is done and used the tools: done, whatever the exit code
                 s.error = ""

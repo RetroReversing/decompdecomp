@@ -29,6 +29,13 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
   stand-in for a model that hands in the demo's own C; the app compiles and judges every function for real.</sub>
 </p>
 
+## Match through the live app
+
+[The live API workflow](docs/LIVE_API_WORKFLOW.md) shows how to use the existing judge, preserve attempt
+history, distinguish linking blockers from instruction differences, and synchronize a verified standalone build.
+Compiler preflight checks precede long ROM searches; typed SDK and structure-return hypotheses share the ordinary
+repair pipeline. A function match now carries a separate MIPS export-layout check, with a full rebuild still required.
+
 ## Automatic repairs before paid agents
 
 The bounded repair pass also tries equal-type chained local assignments in either order, final void calls as explicit returns, and terminal scalar bounds checks as ordered early returns. Empty polling loops can use an explicit entry guard, including in combination with the final-call rewrite. Each candidate is compiled and judged normally.
@@ -87,6 +94,13 @@ you to review. Imported projects retain their own build settings.
 
 This cannot identify an unknown original-source function or reconstruct a substantially wrong algorithm. Those
 still need source-assisted agent work. It also cannot guarantee that a nearly matching function will match.
+
+Source preparation now advances through untested private profiles across later passes instead of
+revisiting only the first cached choices. Each round keeps its existing two-new-profile allowance,
+shared compile/time budget and explicit source/header/profile approval gates. Source-lead evidence
+shows reference-versus-saved calls and concrete compiled control differences. Explicit helper
+declaration conflicts suggest prototype/caller review before body permutation. Better saved drafts
+stay selected; possible SDK/retail differences are advisory and do not generate branch patches.
 
 ## Changing a ROM project's compiler
 
@@ -411,6 +425,23 @@ judged tools. Reported input, output and cache tokens are tracked; missing usage
 costs remain unknown. Live MCP, compile-and-match and permission checks were tested on
 macOS; Linux and Windows launch settings have automated coverage.
 
+### Connect another AI tool
+
+In **Agents & models → Connect another AI tool with MCP**, choose a project and
+create a connection. The panel shows the running local server's port and URL,
+project-specific tool descriptions and input schemas, and copyable configuration.
+Use **Streamable HTTP** with the supplied **Authorization: Bearer …** header;
+configuration field names depend on your client. Clients that only accept stdio
+or OAuth connections cannot use this endpoint directly.
+
+Keep decompdecomp running on the same computer. Ask the AI to read `project_info`
+and follow the server instructions before claiming work. Each connection can read
+and change only its assigned project's work. The credential is shown once; keep it
+private. Connections survive app restarts, but a changed server port needs an
+updated URL. Revoke access in the same panel. Removing the project also revokes its
+manual connections. The external tool controls its own sessions and token costs;
+the app does not start, restart or supervise it.
+
 To inspect agent costs, open **What it said and did → Session transcript**. Each new
 session keeps the full app prompt (including guides and project instructions), exposed
 replies, app tool arguments/results, and reported input/cache/output usage. API helpers
@@ -429,6 +460,8 @@ compiler settings and judge provenance. Agents can include `repair_note`,
 request; these notes survive only if that candidate produces a new verified match.
 `report_repair` can add an explanation afterwards. No additional model call is
 needed when the note travels with the candidate.
+
+The default **Comparable source repairs only** filter requires changed source and comparable captured build settings. Equivalent captures for the same function, target, successful source, settings and review state are grouped, with their count shown; the underlying evidence remains intact. **Metrics coverage** identifies cumulative policy/deep-history totals and collection windows by trial origin, so different cohorts are not mistaken for comparable success rates.
 
 Filter by category and review state, browse one or all projects, add review notes,
 and download summaries or full examples as local JSON. Full exports include code,
@@ -500,7 +533,7 @@ Keep that file's name as it is. decompdecomp still reads it as `.decomp.wtf.json
 
 What changed on the way:
 
-- **Agents run inside the app only.** `decomp connect` and `decomp mcp` are gone. On its first start, the new
+- **Managed agents run inside the app.** `decomp connect` and `decomp mcp` are gone. On its first start, the new
   version removes the old `decomp` entries from your agents' settings (Claude Code, Codex, opencode, Antigravity and
   others), and its home page says what it removed. Before that, those entries started the old app again whenever
   you closed it.
@@ -608,6 +641,8 @@ prove what a function does, not what its author called it.
 **Has a whole game been decompiled with it?** Not yet. Games get far (hundreds or thousands of matched functions),
 and the export rebuilds the game byte for byte from matched C plus assembly for what isn't matched yet. A game at
 100%, polished, is the goal, and the first one will be announced here.
+
+**How do I commit progress to my standalone repository?** In project Settings, use **Save your progress → Sync to Git repository** and choose the checkout root of an existing decompdecomp `build.json`/`build.py` export. Commit or move its existing changes first, then click **Verify and sync**. The app checks additions in a private copy and requires the complete rebuilt image to equal your original before publishing source, isolated headers, per-function compiler settings and progress metadata. It lists the files ready to commit and explains which app matches could not be integrated. Existing hand-maintained C and build scripts stay intact; later syncs update only their own files, and committed manual edits take those sources out of sync ownership. No commit or push happens automatically. Ordinary `progress/` saves remain separate. Imported projects already keep their source in their own checkout; custom export layouts need an adapter.
 
 **What do I end up with?** The source code of a game you own, that builds it again. A DS game started from scratch
 reached 2,400 matched functions (58% of its code) in under two days, about half of them matched by free models, and
@@ -744,6 +779,149 @@ or count claims without submissions. Choose an explicit model; missing historica
 model attribution cannot be reconstructed. The filter also applies to named claims
 and never falls back to previously checked functions. Existing claims stay held.
 
+### Background verification and stuck compilers
+
+Saved-progress verification runs one project at a time. The sidebar and read-only project views show the current database while checks continue; the verification banner shows completed/total functions and lets you pause or resume. Pausing preserves the saved files and prevents project edits or judging from bypassing unfinished verification.
+
+Native compiler commands have a wall-time ceiling of 300 seconds (or their shorter command timeout). Set `DECOMP_COMPILER_TIMEOUT_SECONDS` before starting the app to change that ceiling. Imported builds also enforce their build timeout while waiting for output, including silent compilers. Timeout and cancellation stop the compiler tree; on macOS and Linux the app also stops remaining members of its isolated process group when a driver exits. On startup, recorded orphan groups are cleaned up only when process birth identities match and their previous app owner is gone. The tracker samples active groups once per second; unrecorded processes are never killed by startup cleanup. Windows uses tree termination during a run; startup orphan-group cleanup is currently POSIX-only.
+
 ### Compiler memory on macOS
 
 Native compiler and imported-project build processes are monitored while decompdecomp runs. If a process in a build tree exceeds 2 GiB of resident memory, the build is stopped and reports the limit. This is a sampled watchdog, so short spikes can exceed the limit. To change it for apps launched from Finder, run `launchctl setenv DECOMP_COMPILER_MEMORY_MB 1024` in Terminal and restart decompdecomp; the value is a limit in MiB (at least 16). Use `launchctl unsetenv DECOMP_COMPILER_MEMORY_MB` and restart to restore the default. The limit applies to each process; reduce deep permuter threads and agent concurrency to limit combined memory use. Compilers inside Linux VMs or containers have their own limits.
+
+Compiler-specific matching observations, measured cases and failed experiments are kept in
+[the compiler matching learning log](docs/COMPILER_MATCHING_LEARNINGS.md). New repairs propose source
+alternatives; only the ordinary exact judge can accept them.
+
+Automatic search also learns which repair families improve results under the same compiler profile and
+mismatch kind. It keeps an exploration lane and waits for enough observations before changing priorities.
+The repair examples dialog's **Classify this project** button groups untouched new evidence, retains
+existing reviews, and archives duplicate captures. Reviewed evidence remains available through the review
+state filter; classification does not enable a new compiler rule.
+
+Agent local repairs use the shared copy, typed-address, scope and inferred-layout candidates, with measured
+repair priorities. Machine-generated batches check their starting C first: a broken baseline returns one
+scoped diagnostic instead of compiling six equally broken variants. Explicit patches can still repair that C.
+
+For offline regression work, export **full repair examples** and run
+`uv run python -m decompnet.app.repair_replay repair-examples.json --output replay-results.json`.
+This uses already-installed pinned ROM compilers, checks the captured baseline/control, and fairly rotates
+repair families under per-case trial/time limits. It reports recovered compiler output, improvements,
+neutral/regressed trials and errors without updating game progress. Imported builds and missing historical
+inputs are explicitly skipped. See [the replay guide](docs/repair-replay.md) for scope and options.
+
+Use **Agents → Repair examples → Test automatic repairs** for examples from up to 20 distinct functions matching the current
+filters, or test a single expanded example. Trial/time controls, progress, results and **Stop replay**
+are in the dialog. Replays do not apply source or change review states. Source hashes distinguish
+direct random-rewrite evidence from inherited cascade labels before suggesting a new deterministic rule.
+Compact project facts summarise compiler ranges; each claim retains its actual compiler and user instructions.
+Repeated unchanged claims return a short status, and oversized/sparse batch requests explain why only one
+function was returned.
+
+Targeted local repair searches include arithmetic operand-order experiments and, on MIPS targets with direct-call/register evidence, forwarding declared incoming parameters into locally prototyped calls. These are bounded hypotheses, not semantic guarantees: only the ordinary linked-byte/objdiff judge can accept a match. Compiler/converter infrastructure failures are reported separately without consuming a failed-C attempt.
+
+### Sharing code between local projects
+
+**Matches from other games → Run now** searches ROM-mode and imported projects with the same processor and
+byte order, including assembly-only targets and enabled local SDK signatures. The panel distinguishes detected
+shared code, candidates ready to test, and functions needing writable C scaffolding. Detection is not recovered C.
+Function details group name suggestions from both kinds of projects and SDKs.
+
+Verified C can move in either direction, including between imported projects. The receiving project's compiler
+and ordinary byte/objdiff judge decide; donor compiler settings do not exclude an exact-code lead. Unsupported
+source-less builds show a blocker. Supported existing C object rules are probed before adding candidate files;
+the original assembly and reference objects remain intact. When automatic reuse is enabled, new matches queue
+compatible projects under the existing shared time/attempt budget. Discovery is refreshed by free passes rather
+than repeated on every UI poll; wider similarity and SDK-source/template searches remain ROM-only.
+
+### More local repairs before another model turn
+
+Autopilot can reuse a verified small MIPS wrapper from the same ROM project when its instruction
+shape and callee agree and only one paired global address differs. This includes low segment addresses.
+It tries up to three donors through the destination's normal compiler and byte judge; failures are cached.
+
+Shared draft/permuter and agent local repairs also try holding an integer global's address across a call,
+and splitting a combined pair of bitmask clears into ordered compound stores. These are source hypotheses:
+only the ordinary linked-byte or objdiff judge accepts a match.
+
+In **Settings → Local repairs between agent turns**, optionally enable an automatic local pass after a
+single-function `compile_and_diff` or `compile_patch` near miss (within 6% by the instruction score).
+It is off by default. The defaults are two generated trials and five seconds per submission; both are
+configurable. Trials share the agent's existing compile/stall limit, reuse scoped attempt caches, and
+make no model requests. Baseline verification can require an additional diagnostic compile. The time
+limit is checked between operations; an active compiler/build finishes under its own timeout.
+
+The tool response identifies the local pass, shows any selected changes and returns the current candidate
+revision. Failed alternatives do not replace a better starting candidate. Successful matches still go
+through the normal judge, and repair examples retain the automatic pass's family and source hashes.
+The pass supports ROM and writable imported projects through the shared local-repair runner; it does
+not change project compiler settings.
+
+### Agent continuation and repair evidence
+
+Claim packets diagnostically check inherited candidates before offering generated experiments. When an
+undeclared name has one consistent declaration in that function's scored history or current context,
+decompdecomp can prepend it candidate-locally and verify the result. Ambiguous types and failed recoveries
+remain explicit blockers; shared headers, saved C and match counts are unchanged. Checks are cached by
+claim/build/source scope; a five-second batch allowance is checked between builds, and active builds retain
+their normal timeout.
+
+Session transcripts now retain structured handoffs with remaining claims, recent scores, recorded notes,
+experiment history and the last exposed reply. A later session receives this as historical data and must
+refresh its candidate/claim state. Credit-required model failures pause with guidance to add credits or
+choose another model.
+
+Repair examples offer target-function, supporting-source and full-source diff views. Pattern candidates
+identify edits reproducible by bounded repair families; supporting declarations can still be essential.
+These hints do not classify, promote or apply examples automatically. Existing isolated replay remains the
+verification path. New hypotheses cover shared return tails, simple compound stores, redundant counted-loop
+guards, candidate-local float argument prototypes/constants, and explicitly named scalar runtime helpers.
+
+### Library leads and historical scores
+
+Local SDK object imports now retain instruction-shape fingerprints. Similar library routines can
+appear as **unverified** leads alongside exact signatures, and explicitly imported local C can be
+tried through the normal compiler and byte judge. Rescan existing SDK folders once to build the
+shape index. Unconditional macro dependencies are retained with imported C; no source is downloaded.
+
+Local repairs, Autopilot and the deep permuter can try bounded formatter source shapes and target
+jump-table case order. Small combinations cover interacting declaration and initialization choices.
+Only a verified destination match counts as progress. In a ROM function's inspector, **Historical
+score · recheck in Diff** indicates changed or missing compiler/header/scoring evidence; Diff shows
+the saved C compiled with the current inputs.
+
+### Target-guided local repairs
+
+Autopilot, agent local experiments and the deep permuter can try candidate-local call-argument,
+address-alias, single-field layout, boolean-mask and temporary-lifetime repairs. MIPS targets
+also guide field-load order. These bounded compiler trials use no model tokens. Run the deep
+permuter on one near-matching function when several repairs may need to interact; its existing
+time and variant limits still apply. The ordinary byte/object judge is the only acceptance path.
+
+Agent **Next function** options include descriptions in the dropdown and a live explanation below it.
+**No compiling C yet** selects only eligible open functions without a recorded successful C compile or
+scored candidate. It includes never-tried functions and compile failures, and stops when none remain;
+it does not fall back to already-compiling functions. Existing filters and claim ownership still apply.
+Historical evidence is used; it does not rebuild every function to check whether its C compiles today.
+
+Repair evidence now suggests a review category using the same conservative triage as **Classify new**;
+existing categories are retained and suggestions save only through the review controls. Function-only pattern
+hints also recognise captured cast/bitwise, dead unsigned shift/store, and explicit floating-cast lifetime
+repairs. These bounded hypotheses run in shared draft, local and deep search, with the ordinary destination
+judge; volatile code and unsupported forms remain untouched.
+
+### Recent-match follow-ups
+
+Repair examples separate **Build activity** from isolated source-edit cards. Build captures are grouped by
+project/unit, captured settings/context and one-minute window; each card opens the latest representative.
+This is a display grouping, not proof that records came from one build. Individual records remain stored
+and exportable.
+
+Shared local/draft/deep repair search can try an unused same-width integer local for a copied-value zero
+test, or stage an explicitly declared pointer-returning call through an unused pointer local. These remain
+bounded source hypotheses and must pass the ordinary destination judge.
+
+Reference preparation retains reachable same-file and multiline macro definitions verbatim, including their
+dependencies. It does not replace original graphics-style macro invocations with guessed expansions, and
+conflicting definitions ask for the correct source/header pair. Reference aggregate parameters and complete
+save/restore snapshots produce ABI/layout diagnostics; no aggregate type or size is invented.

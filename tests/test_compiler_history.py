@@ -110,3 +110,69 @@ def test_bulk_progress_includes_best_percentage(comparison, monkeypatch):
     logs = []
     net.survey_compilers('demo', all_installed=True, log=logs.append)
     assert any('10/10 combinations tested; best 80.00% (saved 50.00%); 0 exact matches.' in line for line in logs)
+
+
+def test_matched_comparison_uses_matching_source_and_prefers_default(comparison, monkeypatch):
+    net, profiles, _, _ = comparison
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET matched_source='matching source',best_source='different draft' WHERE name='f2'")
+    def judge(proj, fn, tc, flags, source):
+        assert source == 'matching source'
+        return True, SimpleNamespace(percent=100.0, score=0), ''
+    monkeypatch.setattr(net, '_judge_with', judge)
+    result = net.run_compiler_comparison('demo', function='f2')
+    rows = result['comparison']['ranked']
+    assert rows[0]['default'] and rows[0]['exact']
+    assert result['comparison']['exact_matches'] == len(profiles)
+    fn = net._function('f2', 'demo')
+    assert fn['status'] == 'matched' and fn['matched_source'] == 'matching source'
+    assert not net.compiler_test_result(net.project_row('demo'), fn)['stale']
+
+
+def test_flags_only_uses_each_functions_current_compiler_and_resumes(comparison, monkeypatch):
+    net, profiles, _, _ = comparison
+    profiles.append(('gcc-2.7.2-kmc', ('-O3',)))
+    proj = net.project_row('demo')
+    cfg = net.cfg(proj)
+    cfg['compiler_ranges'] = [{'start': 0x80001020, 'end': 0x80001040,
+                               'toolchain': 'sn-n64-281', 'flags': ['-O1']}]
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=? WHERE id=?', (json.dumps(cfg), proj['id']))
+    tested = []
+
+    def judge(proj, fn, tc, flags, source):
+        tested.append((fn['name'], tc, tuple(flags)))
+        return False, SimpleNamespace(percent=80.0, score=80), ''
+
+    monkeypatch.setattr(net, '_judge_with', judge)
+    result = net.run_compiler_comparison('demo', flags_only=True)
+    assert result['tried'] == 2
+    assert tested == [('f0', 'gcc-2.7.2-kmc', ('-O2',)), ('f0', 'gcc-2.7.2-kmc', ('-O3',)),
+                      ('f1', 'sn-n64-281', ('-O1',))]
+    history = net.compiler_test_result(net.project_row('demo'), net._function('f0', 'demo'))
+    assert not history['stale'] and history['comparison']['flags_only']
+    assert net.run_compiler_comparison('demo', flags_only=True)['skipped'] == 2
+    # A limited comparison must never make a later full compiler search look completed.
+    assert net.run_compiler_comparison('demo')['tried'] == 2
+    assert ('f0', 'sn-n64-281', ('-O1',)) in tested
+
+
+def test_comparison_queue_counts_exclude_completed_and_respect_run_limit(comparison):
+    net, _, _, _ = comparison
+    snapshots = []
+
+    class Log:
+        def __call__(self, line):
+            pass
+
+        def progress(self, value):
+            snapshots.append(dict(value))
+
+    first = net.survey_compilers('demo', all_installed=True, untested_only=True, limit=1, log=Log())
+    assert first['total'] == 1 and first['remaining'] == 0 and first['deferred'] == 1
+    assert snapshots[0]['completed'] == 0 and snapshots[0]['remaining'] == 1
+    assert snapshots[-1]['completed'] == 1 and snapshots[-1]['remaining'] == 0
+    snapshots.clear()
+    second = net.survey_compilers('demo', all_installed=True, untested_only=True, log=Log())
+    assert second['total'] == 1 and second['skipped'] == 1 and second['deferred'] == 0
+    assert snapshots[0]['total'] == 1

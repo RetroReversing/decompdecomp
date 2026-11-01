@@ -3,21 +3,38 @@
 const POLL_MS = 1000;  // the open project's live poll: claims, attempts, events
 const STATS_EVERY_MS = 8000;  // its numbers that change slowly (pace, cost)
 const MAP_EVERY_MS = 20000;  // its whole map again, even when nothing said it changed
+let projectLoad = null;
+function cancelProjectLoad() { projectLoad?.abort(); projectLoad = null; }
 async function openProject(slug, tab = "overview") {
+  cancelProjectLoad();
+  const controller = projectLoad = typeof AbortController !== "undefined" ? new AbortController() : null;
+  stopPolling();
   show("project");
   const gen = ++S.gen;
+  S.ov = null; S.fnDetail = null; S.fn = null; S.tab = tab;
+  $("project").setAttribute("data-loading", "");
+  $("project").setAttribute("aria-busy", "true");
+  $("projectLoading").hidden = false;
+  $("projectLoadingText").textContent = `Loading ${(S.projects || []).find(p => p.slug === slug)?.name || slug}…`;
+  $("projectRetry").hidden = true;
+  $("projectLoading").querySelector(".workbar").hidden = false;
   S.slug = slug; S.lastEvent = 0; S.lastAttempt = 0; S.seq = {}; S.scores = new Map(); S.flash = new Map(); S.sessions = []; S.claims = []; S.covered = false; S.roomSig = null;
   S.apFeed = null; S.stats = null; S.map = []; S.mapSig = null; geo = null;
   S.primed = false; S.openedAt = Date.now() / 1000;
   $("activity").innerHTML = ""; $("thoughts").innerHTML = ""; $("now").innerHTML = ""; S.logFor = null; renderLog();
+  // Overview and function-map reads are independent. Do not serialize their latency.
+  const mapRequest = api(`/api/map?slug=${slug}`, {signal:controller?.signal});
+  mapRequest.catch(() => {});  // setup-only projects may not need this response
   try {
-    const [ov] = await Promise.all([api(`/api/project?slug=${slug}`), S.st ? null : loadState()]);
+    const [ov] = await Promise.all([api(`/api/project?slug=${slug}`, {signal:controller?.signal}), S.st ? null : loadState()]);
     if (gen !== S.gen) return;  // another project opened meanwhile
     S.ov = ov;
   } catch (e) {
     if (gen !== S.gen) return;
-    toast(esc(e.message), "err");
-    location.hash = "#/";
+    $("projectLoadingText").textContent = `Could not load ${slug}: ${e.message}`;
+    $("projectLoading").querySelector(".workbar").hidden = true;
+    $("projectRetry").hidden = false;
+    $("projectRetry").onclick = () => openProject(slug, tab);
     return;
   }
   document.querySelectorAll("#ptabs [data-ptab]").forEach((a) => { a.href = `#/p/${slug}/${a.dataset.ptab}`; });
@@ -34,16 +51,32 @@ async function openProject(slug, tab = "overview") {
   $("ptabs").hidden = setup;
   $("forkSetup").hidden = !setup;
   document.querySelectorAll("[data-pane]").forEach((p) => { p.hidden = true; });
-  if (setup) { renderForkSetup(); return; }
-  setTab(tab);
+  if (setup) { finishProjectLoading(gen); renderForkSetup(); return; }
+  setTab(S.tab || tab);
   renderStats(S.ov);
-  await refreshMap();
+  try { await refreshMap(true, mapRequest); }
+  catch (e) {
+    if (gen !== S.gen) return;
+    $("projectLoadingText").textContent = `Could not load functions for ${slug}: ${e.message}`;
+    $("projectLoading").querySelector(".workbar").hidden = true;
+    $("projectRetry").hidden = false;
+    $("projectRetry").onclick = () => openProject(slug, S.tab);
+    return;
+  }
   if (gen !== S.gen) return;
+  finishProjectLoading(gen);
   await poll();
   if (gen !== S.gen) return;  // (or its timers would poll the next project too)
   S.timer = setInterval(poll, POLL_MS);
   S.statsTimer = setInterval(loadStats, STATS_EVERY_MS);
   loadStats();
+}
+
+function finishProjectLoading(gen) {
+  if (gen !== S.gen) return;
+  $("project").removeAttribute("data-loading");
+  $("project").setAttribute("aria-busy", "false");
+  $("projectLoading").hidden = true;
 }
 
 function stopPolling() {
@@ -75,10 +108,10 @@ document.querySelectorAll("[data-goto]").forEach((a) => {
 });
 
 /* The whole map only when something changed (`force`: a rename or a split, which the signature can't see). */
-async function refreshMap(force = true) {
-  const slug = S.slug;
-  const data = await api(`/api/map?slug=${slug}${!force && S.mapSig ? `&since=${encodeURIComponent(S.mapSig)}` : ""}`);
-  if (slug !== S.slug) return;
+async function refreshMap(force = true, prefetched = null) {
+  const slug = S.slug, gen = S.gen;
+  const data = await (prefetched || api(`/api/map?slug=${slug}${!force && S.mapSig ? `&since=${encodeURIComponent(S.mapSig)}` : ""}`));
+  if (slug !== S.slug || gen !== S.gen) return;
   S.lastMapFetch = Date.now();
   if (data.same) return;
   S.mapSig = data.sig;
@@ -143,6 +176,7 @@ async function poll() {
       applyClaims();
       if (claimSig !== S.claimSig || live.attempts.length) renderList();
     }
+    if (gen !== S.gen) return;
     S.claimSig = claimSig;
     if (S.fn && !$("drawer").hidden) {
       const touched = live.attempts.some((a) => a.function === S.fn) || live.events.some((e) => e.detail === S.fn);
@@ -155,9 +189,13 @@ async function poll() {
 }
 
 async function loadStats() {
+  const slug = S.slug, gen = S.gen;
   // the overview's charts and the Agents tab's "N matched" per agent both come from these
   if (!S.slug || (S.tab !== "overview" && S.tab !== "agents")) return;
-  try { S.stats = await api(`/api/stats?slug=${S.slug}`); } catch { return; }
+  let stats;
+  try { stats = await api(`/api/stats?slug=${slug}`); } catch { return; }
+  if (gen !== S.gen || slug !== S.slug) return;
+  S.stats = stats;
   if (S.tab === "overview") renderOverview();
   else renderSessions(S.sessions || []);
 }
@@ -194,7 +232,32 @@ function markPlatforms() {
 }
 
 function renderHeader(ov) {
-  $("progressSyncNotice").hidden = !ov.progress_syncing;
+  const sync = ov.progress_sync;
+  $("progressSyncNotice").hidden = !sync;
+  if (sync) {
+    const pause = $("progressSyncPause");
+    pause.textContent = sync.paused ? "Resume verification" : "Pause verification";
+    pause.onclick = async () => {
+      pause.disabled = true;
+      try { await api("/api/verification", {method:"POST",body:{slug:S.slug,paused:!sync.paused}}); await refreshMap(true); }
+      catch (error) { toast(esc(error.message), "err"); }
+      finally { pause.disabled = false; }
+    };
+    const counted = Number.isFinite(sync.total) && sync.total > 0;
+    $("progressSyncText").textContent = `${sync.phase}${counted ? ` · ${sync.done.toLocaleString()} / ${sync.total.toLocaleString()} functions (${Math.floor(100 * sync.done / sync.total)}%)` : ""}`;
+    $("progressSyncDetails").textContent = [sync.function ? `Checking ${sync.function}` : sync.message,
+      `${sync.elapsed_seconds}s elapsed`, sync.matched != null ? `${sync.matched} matches confirmed · ${sync.lost} no longer match` : null,
+      sync.idle_seconds >= 30 ? `No step completed for ${sync.idle_seconds}s; the current operation may still be running.` : null].filter(Boolean).join(" · ");
+    const bar = $("progressSyncBar");
+    bar.classList.toggle("determinate", counted);
+    bar.firstElementChild.style.width = counted ? `${100 * sync.done / sync.total}%` : "";
+    if (counted) {
+      bar.setAttribute("aria-valuenow", sync.done);
+      bar.setAttribute("aria-valuemax", sync.total);
+    } else {
+      bar.removeAttribute("aria-valuenow"); bar.removeAttribute("aria-valuemax");
+    }
+  }
   const fork = ov.kind === "fork";
   const chips = [`<span class="plat">${esc(ov.platform_name || "?")}</span>`];
   if (platformStatus(ov.platform) === "beta") chips.push(`<span class="chip-s beta" title="This platform works and needs more games tried on it: tell us how it goes">beta</span>`);
@@ -786,12 +849,33 @@ function uploadFile(url, file, onProgress) {
   });
 }
 
+function closeUnfinishedProject(slug, title) {
+  dialog("Close project", `<p>Close <b>${esc(title)}</b> and remove its unfinished import from decompdecomp?</p>
+    <p>The project folder and all files stay on disk. You can import the folder again later. Any app-only notes for this import will be removed.</p>
+    <div class="row"><button class="primary" id="fsCloseGo" type="button">Close project</button><button class="ghost" data-close type="button">Cancel</button></div>
+    <pre class="joblog" id="fsCloseLog" hidden></pre>`);
+  $("fsCloseGo").onclick = async () => {
+    const button = $("fsCloseGo"), log = $("fsCloseLog"), gen = S.gen;
+    button.disabled = true;
+    const finish = beginWork(log, "Closing project", [], "Project closed.");
+    try {
+      await api("/api/delete", { method: "POST", body: { slug, files: false } });
+      closeDialog();
+      loadNav();
+      if (S.slug === slug && S.gen === gen) location.hash = "#/";
+    } catch (e) { showJobError(log, e.message); }
+    finally { finish(); button.disabled = false; }
+  };
+}
+
 async function renderForkSetup() {
+  const setupGen = S.gen, requestedSlug = S.slug;
   const box = $("forkSetup");
   box.hidden = false;
   box.innerHTML = `<p class="muted">Looking at the project…</p>`;
   let n;
-  try { n = await api(`/api/fork/needs?slug=${S.slug}`); } catch (e) { box.innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
+  try { n = await api(`/api/fork/needs?slug=${requestedSlug}`); } catch (e) { if (setupGen !== S.gen) return; box.innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
+  if (setupGen !== S.gen || requestedSlug !== S.slug) return;
   const kinds = { manifest: "decompdecomp manifest", dtk: "dtk-template (configure.py + ninja)", configure: "configure.py + ninja", splat: "splat + make", objdiff: "objdiff project", custom: "its own setup" };
   const expectedSha1 = typeof n.sha1 === "string" && /^[0-9a-f]{40}$/i.test(n.sha1) ? n.sha1.toLowerCase() : null;
   const romVersions = Array.isArray(n.rom_versions) ? n.rom_versions.filter((v) => /^[0-9a-f]{40}$/i.test(v.sha1 || "")) : [];
@@ -799,7 +883,9 @@ async function renderForkSetup() {
     ...(romVersions.length ? romVersions.map((v) => [`Original ROM SHA-1 (${v.version})`, v.sha1]) :
       n.kind === "splat" || expectedSha1 ? [["Expected SHA-1", expectedSha1 || "Not specified in the splat config"]] : [])]
     .map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
-    <div class="row"><button class="ghost small-btn" id="fsFolder" type="button">Open project folder</button></div>`;
+    <div class="row"><button class="ghost small-btn" id="fsFolder" type="button">Open project folder</button>
+      <button class="ghost small-btn" id="fsClose" type="button">Close project…</button></div>
+    <p class="muted small">Closing removes this unfinished import from the app and keeps its folder on disk.</p>`;
   let findRom = null, usingGame = false;
   const run = async (start) => {
     usingGame = true;
@@ -916,6 +1002,8 @@ async function renderForkSetup() {
     $("fsCheck").onclick = () => run(() => api("/api/fork/check", { method: "POST", body: { slug: S.slug } }));
   }
   $("fsFolder").onclick = () => openFolder();
+  const setupTitle = S.ov.title;
+  $("fsClose").onclick = () => closeUnfinishedProject(requestedSlug, setupTitle);
 }
 
 

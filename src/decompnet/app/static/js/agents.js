@@ -190,6 +190,15 @@ function agentMetrics(s, stats) {
   return `<div class="agent-results-summary">${s.task === 'readable' ? `<span><strong>${stats?.polished || 0}</strong> polished</span>` : metric('matched',stats?.matched || 0)}${metric('improved',stats?.improved || 0)}</div>
     <div class="agent-timing"><span>${runtime} <span class="muted">since latest start</span></span><span><span class="muted">Last improvement</span> ${ago === 'None yet' ? ago : ago + ' ago'}</span></div>`;
 }
+function agentEfficiency(s) {
+  return (s.efficiency || []).slice(-3).map(e => {
+    const per = e.tokens_per_match;
+    const ratios = e.matches ? `${e.compiles_per_match.toFixed(1)} compiles / match · ${Math.round(e.seconds_per_match)} helper seconds / match` : 'No matches in this cohort yet';
+    const usage = per ? `${Math.round(per.input_tokens).toLocaleString()} uncached input · ${Math.round(per.cache_read_tokens).toLocaleString()} cache reads · ${Math.round(per.cache_write_tokens).toLocaleString()} cache writes · ${Math.round(per.output_tokens).toLocaleString()} output tokens / match` : 'Token averages unavailable: no matches or incomplete usage reporting';
+    return `<div class="small muted" title="${esc(e.note)}"><b>Completed sessions · ${esc(e.model || e.kind)} · ${esc(e.compiler)} · cohort ${esc(e.cohort)}</b><br>${e.sessions} sessions · ${e.matches} matches · ${ratios}<br>${usage}${e.average_function_instructions != null ? `<br>${Math.round(e.average_function_instructions)} instructions / attempted function` : ''}<br>Averages include unsuccessful work; compare the same cohort, model and similar function sizes.</div>`;
+  }).join('');
+}
+
 function agentUsage(s) {
   return `<div class="agent-usage"><span title="${Number(s.tokens || 0).toLocaleString()} reported tokens, including cache reads and writes">${compactAgentNumber(s.tokens)} tokens</span>${s.estimated_cost != null ? `<span title="Estimate at standard API rates, not your subscription bill">≈ ${money(s.estimated_cost)} API-equivalent</span>` : s.usd ? `<span>${money(s.usd)} reported cost</span>` : ''}</div>`;
 
@@ -240,11 +249,12 @@ function renderSessions(sessions) {
           ${live ? '' : `<button data-remove="${id}" type="button">Remove agent</button>`}</div></details></div>
       ${agentMetrics(s, b)}
       <span class="state ${s.state === 'paused' ? 'err' : ''}">${helperState(s, claim)}</span>
-      ${todo ? `<span class="todo-line">${esc(todo)}</span>` : ''}
+      ${todo ? `<span class="todo-line">${esc(todo)}</span>${s.can_login && !live && /login|sign.?in/i.test(s.todo || "") ? `<button class="ghost" type="button" data-login="${id}">Sign in to ${esc(s.kind_name)}</button>` : ""}` : ''}
       ${agentUsage(s)}
       <details class="agent-details" data-agent-details="${id}" ${agentDetailsOpen.has(s.id) ? 'open' : ''}><summary>Details</summary><div class="agent-details-body">
       <span class="facts-line">${facts.join(' · ')}</span>
       <span class="small muted">${Number(s.tokens || 0).toLocaleString()} total tokens used · ${rate == null ? '—' : compactAgentNumber(rate)} tokens / match${s.estimated_cost != null && b?.matched ? ` · ≈ ${money(s.estimated_cost / b.matched)} / match` : ''}</span>
+      ${agentEfficiency(s)}
       ${s.metrics_since ? `<span class="small muted">Metrics since reset · ${new Date(s.metrics_since * 1000).toLocaleString()}</span>` : ''}
       <span class="small muted">Work settings · ${s.per_session || 8} functions/session${s.task === "readable" ? "" : ` · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.model_untried ? " · never checked by this model" : ""}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.stall_compiles ? ` · move on after ${esc(s.selection.stall_compiles)} without improvement` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}`}</span>
       ${s.last_message ? `<div class="agent-message"><b class="small">Latest update</b><q class="said">${esc(s.last_message)}</q></div>` : ''}
@@ -279,6 +289,7 @@ function renderSessions(sessions) {
   box.querySelectorAll("[data-queue]").forEach((b) => { b.onclick = () => {
     const s = sessions.find((x) => x.id === b.dataset.queue);
     const panel = dialog(`Work selection · ${s.label}`, `${s.task === "readable" ? "" : selectionFields(s.selection)}<label class="field"><span>Functions per session</span><input data-session-size type="number" min="1" max="20" value="${s.per_session || 8}"></label><p class="muted small">Session size changes apply at the next session. The current function stays with its agent.</p><button class="primary" data-save-selection>Save</button><button class="ghost" data-cancel-selection>Cancel</button>`);
+    panel.addEventListener("change", () => updateSelectionDescription(panel));
     panel.querySelector("[data-cancel-selection]").onclick = closeDialog;
     panel.querySelector("[data-save-selection]").onclick = async () => {
       try {
@@ -316,6 +327,12 @@ function renderSessions(sessions) {
       } catch (error) { toast(esc(error.message),'err'); }
     };
   }; });
+  box.querySelectorAll("[data-login]").forEach(button => { button.onclick = async () => {
+    button.disabled = true;
+    try { await api("/api/agents/login", {method:"POST", body:{id:button.dataset.login}}); toast("Complete sign-in in the terminal, then press Start again."); }
+    catch (error) { toast(esc(error.message), "err"); }
+    finally { button.disabled = false; }
+  }; });
   act("[data-stop]", "/api/agents/stop", (b) => ({ id: b.dataset.stop }));
   act("[data-remove]", "/api/agents/stop", (b) => ({ id: b.dataset.remove, remove: true }));
   act("[data-again]", "/api/agents/restart", (b) => ({ id: b.dataset.again }));
@@ -346,12 +363,26 @@ $("removePaused").onclick = async () => {
 /* ------------------------------------------------------------------ the launcher: agent, model, how many */
 const LZ = { kind: null, model: "", customModel: false, apiSingleModel: null, apiCustomModel: "", models: [],
   multiple: false, endpointModels: {}, byKind: {}, count: 1, per: null, effort: "", task: "", selection: {} };
-const QUEUE_STRATEGIES = [["", "Automatic (recommended)"], ["easiest", "Easiest first"],
-  ["oldest_checked", "Oldest checked first"], ["least_tried", "Least tried first"], ["untried", "Untried first"], ["hardest", "Largest first"], ["closest", "Closest to matching"],
-  ["finish", "Finish source files"], ["random", "Random"]];
+const QUEUE_STRATEGIES = [
+  ["", "Automatic (recommended)", "Uses default/adaptive routing: easiest for ROM projects, finish source files for imported projects."],
+  ["easiest", "Easiest first", "Favours reusable matches and smaller functions; deprioritises abandoned functions and poorly performing regions."],
+  ["oldest_checked", "Oldest checked first", "Longest time since the last recorded attempt; never checked comes first."],
+  ["least_tried", "Least tried first", "Fewest recorded attempts first, then smaller functions."],
+  ["untried", "Untried first", "Zero-attempt functions first, favouring smaller functions; already-tried functions can follow."],
+  ["no_compiling_c", "No compiling C yet", "Only functions without a recorded successful C compilation or scored candidate. Includes never-tried functions and compile failures; stops when none remain."],
+  ["hardest", "Largest first", "Most instructions first. Size does not necessarily mean difficulty."],
+  ["closest", "Closest to matching", "Scored candidates first; fewer abandonments, then the smallest mismatch relative to function size."],
+  ["finish", "Finish source files", "Favours reusable matches, fewer abandonments and smaller functions; among similar sizes, files with fewer unmatched functions come first."],
+  ["random", "Random", "Random eligible function. Your filters, active claims and dependency rules still apply."]
+];
+function updateSelectionDescription(box) {
+  const select = box.querySelector('[data-selection-strategy]'), hint = box.querySelector('[data-selection-description]');
+  if (select && hint) hint.textContent = QUEUE_STRATEGIES.find(([value]) => value === select.value)?.[2] || '';
+}
 function selectionFields(policy = {}) {
-  return `<label class="field"><span>Next function</span><select data-selection-strategy>${QUEUE_STRATEGIES.map(([v, label]) =>
-    `<option value="${v}" ${(policy.strategy || "") === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+  return `<label class="field"><span>Next function</span><select data-selection-strategy>${QUEUE_STRATEGIES.map(([v, label, description]) =>
+    `<option value="${v}" ${(policy.strategy || "") === v ? "selected" : ""}> ${esc(label)} — ${esc(description)}</option>`).join("")}</select></label>
+    <p class="small muted" data-selection-description aria-live="polite">${esc(QUEUE_STRATEGIES.find(([v]) => v === (policy.strategy || ""))?.[2] || "")}</p>
     <label class="check"><input data-selection-model-untried type="checkbox" ${policy.model_untried ? "checked" : ""}><span>Only functions never checked by this model</span></label>
     <p class="small muted">Uses recorded model IDs across workers and sessions, ignoring effort suffixes. Requires an explicit model. Candidate submissions count, including compile errors; claims alone do not. Unknown historical model usage cannot be reconstructed. Oldest checked first puts never-checked functions first.</p>
     <label class="field"><span>Only functions below match % (optional)</span><input data-selection-below type="number" min="0" max="100" step="any" placeholder="No limit" value="${esc(policy.match_below ?? "")}"></label>
@@ -570,6 +601,7 @@ function renderLauncher(box, compact = true) {
     </div>`;
   const selectionBox = box.querySelector("[data-launch-selection]");
   if (selectionBox) selectionBox.onchange = () => {
+    updateSelectionDescription(selectionBox);
     try { LZ.selection = readSelection(selectionBox); } catch (e) { toast(esc(e.message), "err"); }
   };
   wireCopies(box);

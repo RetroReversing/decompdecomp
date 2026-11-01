@@ -2,11 +2,17 @@
 function renderCompilerProgress(progress, result) {
   const box = $("compilerProgress");
   box.hidden = false;
+  box.dataset.finished = String(!!result);
   if (!progress && !result) { box._compilerRows = []; box._compilerApplied = new Set(); }
   else if (result) box._compilerRows = result.results || result.improvements || [];
   else if (progress.results) box._compilerRows = progress.results;
   wireCompilerResultCounts(box);
   const set = (key, text) => { box.querySelector(`[data-${key}]`).textContent = text; };
+  const tally = result || progress;
+  const total = tally?.total, completed = result ? result.tried : (progress?.completed || 0);
+  set("queue", total == null ? "Counting eligible functions…" : `${completed} of ${total} functions done · ${Math.max(0, total - completed)} left${tally.deferred ? ` · ${tally.deferred} queued for another run` : ""}`);
+  const queueBar = box.querySelector("[data-queue-bar]");
+  queueBar.max = total || 1; queueBar.value = completed || 0;
   if (!progress && !result) {
     box.dataset.improved = "false";
     set("current", "Preparing…"); set("tested", "Waiting for the first result");
@@ -23,7 +29,7 @@ function renderCompilerProgress(progress, result) {
     set("completed", result.tried); set("improved", (result.improvements || []).length);
     set("exact", result.confirmed || 0);
     set("before", "—"); set("best", "—");
-    set("profile", "Review the better settings below and choose Apply to function. Nothing has been applied automatically.");
+    set("profile", "Review better settings or exact matches below. Apply individually or use Apply all. Nothing has been applied automatically.");
     const bar = box.querySelector("[data-bar]"); bar.max = 1; bar.value = 1;
     return;
   }

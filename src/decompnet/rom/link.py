@@ -18,6 +18,8 @@ class LinkResult:
     problems: list[str] = field(default_factory=list)
     # data the candidate defines itself, as placed at the game's copy: section name -> {offset: address}
     placements: dict[str, dict[int, int]] = field(default_factory=dict)
+    instructions_exact: bool | None = None
+    linked_code: bytes | None = None  # fully relocated instructions, diagnostic evidence only
 
 
 def _text(data: bytes) -> bool:

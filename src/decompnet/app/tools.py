@@ -204,8 +204,8 @@ repair_automation in compile_and_diff (single function only). These are saved on
 Explain what changed and how a deterministic repair could do it; omit uncertain explanations. No extra compile
 is needed. report_repair can annotate your captured match afterwards. These are review ideas, never live rules.
 """
-WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness, declaration_order, typed_temporary, branch_orientation, narrowing, source_lines, address_temporary, constant_local, comparison_load, stack_array, loop_induction, parameter_width, value_lifetime, sum_shape or call_result_inline experiments without spelling out variants. Pattern families need only function/revision; source_lines requires known debug flags. Releasing a tried function also runs a bounded local repair pass before another agent edits it. family_targets lists current choices; selector mode=next selects an untried target; anchor mode takes old/occurrence and declaration mode takes declaration. Never combine modes. Use compiler_experiments for up to six independent source/profile trials from the current revision instead of resending C to try_compiler. For C89 compilers keep declarations before statements in each block. Use compiler=current to retain the function compiler. Trials are diagnostic; get_compiler_trial retains each C/profile pair. Use try_local_repairs before guessing families: it discovers applicable repairs or tries a named families list against one snapshot with at most six compiles. Use compile_patch for small local edits; compile_and_diff is for whole-function rewrites. Wait for each same-function edit response before another edit; separate functions can run in parallel. Batches select the best continuation, keeping baseline on ties; apply selected changes in the response. Missing signedness/declaration_order selectors choose the next untried valid target. Use compile_variants to test up to six independent small alternatives against one revision in one call. Candidate-quality warnings are agent reports, not proofs. Read get_function(section=quality) for saved compiled alternatives before redoing a historical correction. Use report_candidate_issue with the affected revision and optional compiled alternative rather than relying on prose detection. needs requires original direct-call evidence, never a workaround for exhausted work. Quality reports do not pause agents or automatic workers. Use their evidence to repair the candidate; do not repeat an unchanged failed experiment. An Already tried or No untried response means stop that experiment until source or build inputs change. Use a different evidence-backed repair or release with precise notes. Supporting history and notes: get_function(section=history or notes). Prefer get_assembly(focus='mismatch:N') for a later differing instruction, focus='body' for a bounded post-entry page, or focus='callee_symbol' before reading full assembly pages. get_assembly and last_diff are paged.\n"
-FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness, declaration_order, typed_temporary, branch_orientation, narrowing, source_lines, address_temporary, constant_local, comparison_load, stack_array, loop_induction, parameter_width, value_lifetime, sum_shape or call_result_inline experiments without spelling out variants. Pattern families need only function/revision; source_lines requires known debug flags. Releasing a tried function also runs a bounded local repair pass before another agent edits it. family_targets lists current choices; selector mode=next selects an untried target; anchor mode takes old/occurrence and declaration mode takes declaration. Never combine modes. Use compiler_experiments for up to six independent source/profile trials from the current revision instead of resending C to try_compiler. For C89 compilers keep declarations before statements in each block. Use compiler=current to retain the function compiler. Trials are diagnostic; get_compiler_trial retains each C/profile pair. Use try_local_repairs before guessing families: it discovers applicable repairs or tries a named families list against one snapshot with at most six compiles. Use compile_patch for small local edits; compile_and_diff is for whole-function rewrites. Wait for each same-function edit response before another edit; separate functions can run in parallel. Batches select the best continuation, keeping baseline on ties; apply selected changes in the response. Missing signedness/declaration_order selectors choose the next untried valid target. Use compile_variants to test up to six independent small alternatives against one revision in one call. Candidate-quality warnings are agent reports, not proofs. Read get_function(section=quality) for saved compiled alternatives before redoing a historical correction. Use report_candidate_issue with the affected revision and optional compiled alternative rather than relying on prose detection. needs requires original direct-call evidence, never a workaround for exhausted work. Quality reports do not pause agents or automatic workers. Use their evidence to repair the candidate; do not repeat an unchanged failed experiment. An Already tried or No untried response means stop that experiment until source or build inputs change. Use a different evidence-backed repair or release with precise notes. Supporting history and notes: get_function(section=history or notes). Prefer get_assembly(focus='mismatch:N') for a later differing instruction, focus='body' for a bounded post-entry page, or focus='callee_symbol' before reading full assembly pages. get_assembly and last_diff are paged.\n"
+WORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness, declaration_order, typed_temporary, branch_orientation, narrowing, source_lines, address_temporary, constant_local, comparison_load, stack_array, loop_induction, parameter_width, value_lifetime, sum_shape or call_result_inline experiments without spelling out variants. Pattern families need only function/revision; source_lines requires known debug flags. Releasing a tried function also runs a bounded local repair pass before another agent edits it. family_targets lists current choices; selector mode=next selects an untried target; anchor mode takes old/occurrence and declaration mode takes declaration. Never combine modes. Use compiler_experiments for up to six independent source/profile trials from the current revision instead of resending C to try_compiler. For C89 compilers keep declarations before statements in each block. Use compiler=current to retain the function compiler. Trials are diagnostic; get_compiler_trial returns the selected C/profile and context ID, not the full project configuration. Use try_local_repairs before guessing families: it discovers applicable repairs or tries a named families list against one snapshot with at most six compiles. Use compile_patch for small local edits; compile_and_diff is for whole-function rewrites. Wait for each same-function edit response before another edit; separate functions can run in parallel. Batches select the best continuation, keeping baseline on ties; apply selected changes in the response. Missing signedness/declaration_order selectors choose the next untried valid target. Use compile_variants for up to six independent small alternatives. App sessions first run a bounded automatic repair pass once per source/build scope; if that pass runs, your supplied patches are not submitted. Continue from its returned revision and resubmit only if needed. Batch claims hydrate only the first function; load queued functions with get_function(section='brief'). Session context budgets start a fresh session with saved work and experiments. Candidate-quality warnings are agent reports, not proofs. Read get_function(section=quality) for saved compiled alternatives before redoing a historical correction. Use report_candidate_issue with the affected revision and optional compiled alternative rather than relying on prose detection. needs requires original direct-call evidence, never a workaround for exhausted work. Quality reports do not pause agents or automatic workers. Use their evidence to repair the candidate; do not repeat an unchanged failed experiment. An Already tried or No untried response means stop that experiment until source or build inputs change. Use a different evidence-backed repair or release with precise notes. Supporting history and notes: get_function(section=history or notes). Prefer get_assembly(focus='mismatch:N') for a later differing instruction, focus='body' for a bounded post-entry page, or focus='callee_symbol' before reading full assembly pages. get_assembly and last_diff are paged.\n"
+FORK_PROMPT += "\n" + REPAIR_GUIDANCE + "\nPrefer compile_patch for small edits instead of resending the complete C. Call get_candidate once if you lack the current source/revision; then keep your edited source and use the revision returned by each compile. Do not fetch get_candidate after a successful patch unless you lost track of the source or a patch is stale. Use compile_and_diff for substantial rewrites. Use compile_family for bounded casts, signedness, declaration_order, typed_temporary, branch_orientation, narrowing, source_lines, address_temporary, constant_local, comparison_load, stack_array, loop_induction, parameter_width, value_lifetime, sum_shape or call_result_inline experiments without spelling out variants. Pattern families need only function/revision; source_lines requires known debug flags. Releasing a tried function also runs a bounded local repair pass before another agent edits it. family_targets lists current choices; selector mode=next selects an untried target; anchor mode takes old/occurrence and declaration mode takes declaration. Never combine modes. Use compiler_experiments for up to six independent source/profile trials from the current revision instead of resending C to try_compiler. For C89 compilers keep declarations before statements in each block. Use compiler=current to retain the function compiler. Trials are diagnostic; get_compiler_trial returns the selected C/profile and context ID, not the full project configuration. Use try_local_repairs before guessing families: it discovers applicable repairs or tries a named families list against one snapshot with at most six compiles. Use compile_patch for small local edits; compile_and_diff is for whole-function rewrites. Wait for each same-function edit response before another edit; separate functions can run in parallel. Batches select the best continuation, keeping baseline on ties; apply selected changes in the response. Missing signedness/declaration_order selectors choose the next untried valid target. Use compile_variants for up to six independent small alternatives. App sessions first run a bounded automatic repair pass once per source/build scope; if that pass runs, your supplied patches are not submitted. Continue from its returned revision and resubmit only if needed. Batch claims hydrate only the first function; load queued functions with get_function(section='brief'). Session context budgets start a fresh session with saved work and experiments. Candidate-quality warnings are agent reports, not proofs. Read get_function(section=quality) for saved compiled alternatives before redoing a historical correction. Use report_candidate_issue with the affected revision and optional compiled alternative rather than relying on prose detection. needs requires original direct-call evidence, never a workaround for exhausted work. Quality reports do not pause agents or automatic workers. Use their evidence to repair the candidate; do not repeat an unchanged failed experiment. An Already tried or No untried response means stop that experiment until source or build inputs change. Use a different evidence-backed repair or release with precise notes. Supporting history and notes: get_function(section=history or notes). Prefer get_assembly(focus='mismatch:N') for a later differing instruction, focus='body' for a bounded post-entry page, or focus='callee_symbol' before reading full assembly pages. get_assembly and last_diff are paged.\n"
 
 
 def _console_guides() -> dict:
@@ -272,9 +272,11 @@ def _fork(net: RomNetwork, slug: str, what: str) -> str:
 
 def project_info(net: RomNetwork, slug: str, detail: bool = False) -> str:
     wish = net.instructions(slug)
-    text = _project_info(net, slug)
+    text = _project_info(net, slug, detail)
     open_ = net.overview(slug).get("suggestions") or []
-    if open_:  # so agents agree with one (suggest the same) rather than repeat it in other words
+    if open_ and not detail:
+        text += f'\nOpen suggestions: {len(open_)} compiler/setup suggestions; project_info(detail=true) lists them.'
+    if open_ and detail:  # so agents agree with one (suggest the same) rather than repeat it in other words
         text += "\nOpen suggestions to the user (suggest the same compiler and flags to agree):\n" + "\n".join(
             f"- {s['toolchain'] or '(setup)'} {' '.join(s['flags'])}"
             + "".join(f" 0x{a:X}-0x{b:X}" for a, b in s.get("ranges", [])) + f": {s['text'][:200]} [{len(s['agents'])} agree"
@@ -286,15 +288,16 @@ def project_info(net: RomNetwork, slug: str, detail: bool = False) -> str:
     return text + (f"\nThe user's instructions for this project (they come first):\n{wish}" if wish else "")
 
 
-def _project_info(net: RomNetwork, slug: str) -> str:
+def _project_info(net: RomNetwork, slug: str, detail: bool = True) -> str:
     if net.fork_slug(slug):
         return net.forks.info(slug)
     ov = net.overview(slug)
     pct = 100 * ov["matched_bytes"] / (ov["bytes"] or 1)
-    ranges = "".join(f"\n  0x{r['start']:X}-0x{r['end']:X}: {r['name']} {' '.join(r['flags'])}" for r in ov["compiler_ranges"])
+    ranges = "".join(f"\n  0x{r['start']:X}-0x{r['end']:X}: {r['name']} {' '.join(r['flags'])}" for r in ov["compiler_ranges"]) if detail else ""
     return (f"{ov['title']} ({ov['rom']['game_code']}, {ov['rom']['region']})\n"
             f"compiler: {ov['compiler']['name']} {' '.join(ov['compiler']['flags'])}"
-            + (f"; these address ranges are built with another:{ranges}" if ranges else "") + "\n"
+            + (f"; these address ranges are built with another:{ranges}" if ranges else
+               f"; {len(ov['compiler_ranges'])} address-range overrides (each claim shows its applicable compiler)" if ov["compiler_ranges"] else "") + "\n"
             + (f"this platform's compilers (for try_compiler): {', '.join(ov['compilers'])}\n" if len(ov["compilers"]) > 1 else "")
             + f"progress: {ov['matched']}/{ov['functions']} functions matched ({pct:.1f}% of code), "
             f"{ov['attempts']} compiles so far, context.h v{ov['context_version']}\n"
@@ -308,9 +311,9 @@ def _claim(net: RomNetwork, agent: Agent, slug: str, function: str, strategy: st
     batch of small ones."""
     strategy = strategy or ("finish" if net.fork_slug(slug) else "easiest")
     if not function and int(count or 1) > 1:
-        return agent_tokens.brief(net, net.claim_many(agent, slug, int(count), strategy), slug, agent)
+        return agent_tokens.claim_packet(net, agent, slug, net.claim_many(agent, slug, int(count), strategy))
     try:
-        return agent_tokens.brief(net, net.claim(agent, slug, function or None, strategy), slug, agent)
+        return agent_tokens.claim_packet(net, agent, slug, net.claim(agent, slug, function or None, strategy))
     except NetworkError as e:
         if not function or not re.search(r"already matched|is set aside|is claimed by|outside this agent|Max tries reached", str(e)):
             raise
@@ -511,10 +514,37 @@ def _named(net: RomNetwork, agent: Agent, slug: str, args: dict) -> dict:
 def _invoke(net: RomNetwork, agent: Agent, slug: str, name: str, args: dict) -> str:
     """Every helper sees pulled changes before acting; only tools that write work need a second synchronization."""
     net.progress.sync(slug, force=True)
-    result = HANDLERS[name](net, agent, slug, **_named(net, agent, slug, args))
+    result = _dispatch(net,agent,slug,name,args)
     if name not in READ_ONLY:
         net.progress.sync(slug, force=True)
     return result
+
+
+def _dispatch(net,agent,slug,name,args):
+    from . import session_budget
+    from .agent_local_pass import after_tool
+    budget=session_budget.current(net,agent,slug)
+    if budget:
+        budget.begin()
+    result=''
+    try:
+        named=_named(net,agent,slug,args)
+        if name=='compile_variants' and budget:
+            from .repair_first import before_variants
+            result=before_variants(net,agent,slug,named)
+            if result is not None:
+                return result
+        result=HANDLERS[name](net,agent,slug,**named)
+        result=after_tool(net,agent,slug,name,named,result)
+        if name in {'compile_patch','compile_and_diff','try_local_repairs','compile_family'}:
+            function=named.get('function','')
+            if function and ',' not in function:
+                from .efficiency_feedback import continuation
+                result+='\n'+continuation(net,agent,slug,function)
+        return result
+    finally:
+        if budget:
+            budget.end(result or '')
 
 
 def call(net: RomNetwork, agent: Agent, slug: str, name: str, args: dict) -> str:
@@ -546,7 +576,7 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
         if observe:
             observe(agent, slug, 'tool_request', {'name': name, 'arguments': args})
         try:
-            result = await anyio.to_thread.run_sync(lambda: HANDLERS[name](net, agent, slug, **_named(net, agent, slug, args)))
+            result = await anyio.to_thread.run_sync(lambda: _dispatch(net,agent,slug,name,args))
         except Exception as e:
             if observe:
                 observe(agent, slug, 'tool_response', {'name': name, 'error': str(e)})
@@ -578,7 +608,7 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
 
         Args:
             function: optional name or address (0x80001234) of a specific function
-            strategy: untried (no compile attempts first), finish (forks' default: the files closest to being linked first), easiest (fewest
+            strategy: no_compiling_c (only functions without a recorded successful C compilation), untried (no compile attempts first), finish (forks' default: the files closest to being linked first), easiest (fewest
                 instructions; ROM projects' default), closest (nearly matched already), hardest, random
             count: up to 6: small functions come as a batch (neighbours in one file) to write together and
                 judge in one compile_and_diff; a big one comes alone
@@ -655,7 +685,7 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
 
     @tool
     async def get_assembly(ctx: Context, function: str, start: int = 0, limit: int = 60, focus: str = "") -> str:
-        """Read target assembly: focus="mismatch" for the first differing target instruction, or a callee symbol/short anchor. Focus returns at most 40 lines. Omit focus for start/limit paging (up to 200 lines)."""
+        """Read target assembly: focus="mismatch" for the first differing target instruction, or a callee symbol/short anchor. Default focuses the first mismatch, or a bounded body region. Focus returns at most 40 lines. Use focus="page" for explicit start/limit paging (up to 200 lines)."""
         return await run(ctx, 'get_assembly', function=function, start=start, limit=limit, focus=focus)
 
     @tool

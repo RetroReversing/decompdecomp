@@ -24,7 +24,7 @@ typedef double f64;
 ''' + seeds.M2C_MACROS + '\n'
 
 
-def prepare(project, log=print, *, limit: int = 32) -> list[str]:
+def prepare(project, log=print, *, limit: int = 32, units: set[str] | None = None) -> list[str]:
     """Prepare a bounded batch of source-less units with app-verified reference objects.
 
     Probe the actual project's object rule before publishing each candidate. Never invent a compiler or alter
@@ -40,15 +40,29 @@ def prepare(project, log=print, *, limit: int = 32) -> list[str]:
     sources = []
     try:
         for entry in cfg.get('units', []):
-            if entry.get('base_path') or (entry.get('metadata') or {}).get('source_path'):
+            if units is not None and entry.get('name') not in units:
+                continue
+            source_path = (entry.get('metadata') or {}).get('source_path')
+            if source_path and Path(source_path).suffix.lower() not in ('.s', '.asm'):
                 continue
             target = (project.root / entry.get('target_path', '')).resolve()
             layout = next((refs / name for name in ('objects', 'targets')
                            if refs / name in target.parents), None)
-            if layout is None or not target.is_file():
+            if not target.is_file():
                 continue
-            relative = target.relative_to(layout).with_suffix('')
-            if layout.name == 'targets':
+            if layout is None:
+                # Native assembly-only objdiff units can use an existing generic C object rule too.
+                # Probe it; never add a Makefile rule or replace the assembly's linked baseline.
+                name = str(entry.get('name') or '')
+                relative = Path(name).with_suffix('')
+                if not name or relative.is_absolute() or '..' in relative.parts:
+                    continue
+                value = (entry.get('metadata') or {}).get('assembly_source') or source_path
+                assembly = project.root / value if isinstance(value, str) else project.root / relative.with_suffix('.s')
+                if project.root.resolve() not in assembly.resolve().parents:
+                    continue
+            elif layout.name == 'targets':
+                relative = target.relative_to(layout).with_suffix('')
                 value = (entry.get('metadata') or {}).get('assembly_source')
                 if not isinstance(value, str) or Path(value).is_absolute():
                     continue
@@ -56,6 +70,7 @@ def prepare(project, log=print, *, limit: int = 32) -> list[str]:
                 if project.root.resolve() not in assembly.parents:
                     continue
             else:
+                relative = target.relative_to(layout).with_suffix('')
                 assembly = refs / 'asm' / relative.with_suffix('.s')
             if not assembly.is_file():
                 continue

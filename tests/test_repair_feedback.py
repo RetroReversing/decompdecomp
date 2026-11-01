@@ -9,6 +9,21 @@ from decompnet.app.forkengine import ForkEngine
 from decompnet.network import Network, NetworkError
 
 
+def test_cascade_cannot_claim_another_candidates_random_rewrite(setup):
+    import hashlib
+
+    from decompnet.repair_feedback import trial
+    net,winner,_,_,fid=setup
+    source='int target(void){return 7;}'
+    with trial({'kind':'random rewrite','family':'perm_temp_for_expr','source_sha256':hashlib.sha256(b'other function').hexdigest()}):
+        net._record(fn(net,fid),winner,0,source,1,matched=True)
+    case=net.repair_feedback.listing('demo')['examples'][0]['id']
+    evidence=net.repair_feedback.detail('demo',case)['evidence']
+    assert evidence['provenance']['kind']=='inherited repair context'
+    assert evidence['provenance']['origin']['family']=='perm_temp_for_expr'
+    assert net.store.one('SELECT status FROM repair_examples WHERE id=?',case)['status']=='new'
+
+
 @pytest.fixture
 def setup(tmp_path):
     net = Network(tmp_path / 'app.db')
@@ -363,3 +378,89 @@ def test_legacy_automatic_captures_are_triaged_without_overwriting_review_notes(
         db.execute("UPDATE repair_examples SET status='new',review_note='Investigate further' WHERE id=?",(case,))
     RepairFeedback(net)
     assert net.repair_feedback.detail('demo',case)['status']=='new'
+
+
+def test_classify_new_is_previewable_idempotent_and_preserves_manual_reviews(setup):
+    net, *_ = setup
+    case = match(setup)
+    preview = net.repair_feedback.classify_new('demo')
+    assert preview['total'] == 1 and not preview['applied']
+    assert net.repair_feedback.detail('demo', case)['status'] == 'new'
+    assert preview['examples'][0]['category'] == 'constants'
+    applied = net.repair_feedback.classify_new('demo', True)
+    assert applied['applied'] and net.repair_feedback.detail('demo', case)['status'] == 'reviewed'
+    assert net.repair_feedback.classify_new('demo', True)['total'] == 0
+    net.repair_feedback.review('demo', case, 'new', note='Human investigation pending.')
+    assert net.repair_feedback.classify_new('demo', True)['total'] == 0
+    assert net.repair_feedback.detail('demo', case)['review_note'] == 'Human investigation pending.'
+
+
+def test_duplicate_triage_requires_identical_captured_build_evidence(setup):
+    net, *_ = setup
+    case = match(setup)
+    with net.store.tx() as db:
+        db.execute('''INSERT INTO repair_examples(project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence)
+            SELECT project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence FROM repair_examples WHERE id=?''', (case,))
+    result = net.repair_feedback.classify_new('demo', True)
+    assert [p['status'] for p in result['examples']] == ['reviewed', 'dismissed']
+    assert net.store.one('SELECT COUNT(*) n FROM repair_examples')['n'] == 2
+
+
+def test_prior_reviewed_evidence_is_used_when_grouping_new_duplicates(setup):
+    net, *_ = setup
+    case = match(setup)
+    net.repair_feedback.classify_new('demo', True)
+    with net.store.tx() as db:
+        db.execute('''INSERT INTO repair_examples(project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence)
+            SELECT project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence FROM repair_examples WHERE id=?''', (case,))
+    plan = net.repair_feedback.classify_new('demo')['examples']
+    assert len(plan) == 1 and plan[0]['status'] == 'dismissed'
+    assert f'#{case}' in plan[0]['note']
+
+
+def test_review_filter_requires_comparable_settings_and_groups_equivalent_captures(setup):
+    net, winner, _, _, fid = setup
+    net._record(fn(net,fid),winner,10,'before',1)
+    net._record(fn(net,fid),winner,0,'after',1,matched=True)
+    row = net.store.one('SELECT * FROM repair_examples ORDER BY id DESC LIMIT 1')
+    evidence = json.loads(row['evidence'])
+    evidence['comparable_settings'] = False
+    with net.store.tx() as db:
+        db.execute('UPDATE repair_examples SET evidence=? WHERE id=?', (json.dumps(evidence),row['id']))
+    assert not net.repair_feedback.listing('demo',comparable=True)['examples']
+    evidence['comparable_settings'] = True
+    with net.store.tx() as db:
+        db.execute('UPDATE repair_examples SET evidence=? WHERE id=?', (json.dumps(evidence),row['id']))
+        db.execute('INSERT INTO repair_examples(project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence) SELECT project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence FROM repair_examples WHERE id=?', (row['id'],))
+    examples = net.repair_feedback.listing('demo',comparable=True)['examples']
+    assert len(examples) == 1 and examples[0]['repetitions'] == 2
+
+
+def test_converter_infrastructure_failure_does_not_consume_attempt_budget(setup, monkeypatch):
+    net, winner, _, _, fid = setup
+    before = net.store.one('SELECT COUNT(*) n FROM attempts')['n']
+    monkeypatch.setattr(net,'_compile',lambda *args:SimpleNamespace(ok=False,log="Unknown section type '.rodata'"))
+    with pytest.raises(NetworkError,match='did not consume a repair attempt'):
+        net.compile_and_diff(winner,'target','int target(void){return 1;}','demo')
+    assert net.store.one('SELECT COUNT(*) n FROM attempts')['n'] == before
+    assert net.store.one('SELECT attempts FROM functions WHERE id=?',fid)['attempts'] == 0
+
+
+def test_build_activity_groups_only_same_unit_minute_and_settings(setup):
+    net, _, _, pid, fid = setup
+    match(setup)
+    row = net.store.one('SELECT * FROM repair_examples ORDER BY id DESC LIMIT 1')
+    evidence = json.loads(row['evidence'])
+    with net.store.tx() as db:
+        for number, stamp in enumerate((600, 601, 660)):
+            other = db.execute('INSERT INTO functions(project_id,name,status,unit) VALUES(?,?,?,?)',
+                               (pid, f'build_{number}', 'matched', 'shared')).lastrowid
+            item = json.loads(json.dumps(evidence));item.update(via='unit diff', unit='shared', function=f'build_{number}', target_sha256=str(number))
+            item['after']['source_sha256']=str(number)
+            db.execute('INSERT INTO repair_examples(project_id,function_id,created_at,evidence) VALUES(?,?,?,?)',
+                       (pid, other, stamp, json.dumps(item)))
+    records = net.repair_feedback.listing('demo')['examples']
+    builds = [r for r in records if r['evidence_kind']=='build report']
+    assert sorted(r['repetitions'] for r in builds) == [1,2]
+    assert len([r for r in records if r['evidence_kind']!='build report']) == 1
+    assert net.store.one('SELECT COUNT(*) AS n FROM repair_examples')['n'] == 4

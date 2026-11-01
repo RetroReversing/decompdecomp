@@ -1,7 +1,7 @@
 """The local decompdecomp server: the GUI, its API, and the MCP endpoint agents connect to.
 
 It listens on 127.0.0.1 only. The GUI answers only the app's own window, whose user agent carries the per-launch
-secret (window.py); helper agents need their own bearer token. Host headers are checked on every request, so web
+secret (window.py); managed and manual agents need their own project-scoped bearer token. Host headers are checked on every request, so web
 pages can't reach it through DNS rebinding.
 
 build() sets up what the routes share (the engine, helper agents, jobs, settings, the request checks) and hands it to
@@ -27,7 +27,7 @@ from .. import hostenv, wine
 from ..network import NetworkError
 from . import agents, collab, routes, saves, tools, updates, window, workers
 from .engine import RomNetwork
-from .routes import forks, life, pages, projects, repair_feedback, rooms, setup, state
+from .routes import forks, life, pages, projects, repair_feedback, repository_sync, rooms, setup, state
 from .support import Jobs, Settings, session_options
 
 
@@ -81,21 +81,27 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     net.permuter.configure(settings.data)
     workers.configure(settings.data.get("worker_threads"))
     net.auto_compiler = bool(settings.data.get("auto_compiler"))
+    from .agent_local_pass import configure as configure_local_repairs
+    configure_local_repairs(net,settings.data)
     manager.budget = lambda: float(settings.data.get("budget_usd") or 0)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
 
-    def project_of(agent) -> str | None:
-        """The one project an agent may work: a helper the app started (mapped while it runs), or an outside agent
-        the user approved for one project (pairing)."""
-        return manager.project_of(agent.id) or net.pairing_project(agent.id)
+    from . import manual_mcp
+
+    def project_for(agent_id) -> str | None:
+        """The one project an agent may work: a helper the app started (mapped while it runs), a connection the user
+        created in Agents & models, or an outside agent the user approved there for one project (pairing)."""
+        return (manager.project_of(agent_id) or net.pairing_project(agent_id)
+                or manual_mcp.project_for(net, settings, agent_id))
 
     def agent_of(ctx: Context):
         headers = ctx.headers or {}
         auth = headers.get("authorization") or headers.get("Authorization") or ""
         agent = net.authenticate(auth.removeprefix("Bearer ").strip() or None)
-        slug = project_of(agent)
+        slug = project_for(agent.id)
         if not slug:
-            raise NetworkError("this agent has no project: start helpers from the app, or pair it in the window")
+            raise NetworkError("This MCP connection is no longer assigned to a project. Create or pair one in "
+                               "Agents & models.")
         return agent, slug
 
     threading.Thread(target=collab.local_addresses, daemon=True).start()  # `tailscale status` can take seconds
@@ -162,7 +168,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
             agent = net.authenticate(auth.removeprefix("Bearer ").strip() or None)
         except NetworkError:
             return ListToolsResult(tools=[])
-        slug = project_of(agent)
+        slug = project_for(agent.id)
         if not slug:
             return ListToolsResult(tools=[])
         keep = set(tools.project_tools(net, slug))
@@ -189,6 +195,14 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         except ValueError:
             return {}
 
+    ui_limiter = anyio.CapacityLimiter(4)
+
+    async def ui_call(fn, *args):
+        def snapshot():
+            with net.progress.view():
+                return fn(*args)
+        return await anyio.to_thread.run_sync(snapshot, limiter=ui_limiter)
+
     async def call(fn, *args):
         return await anyio.to_thread.run_sync(fn, *args)
 
@@ -203,9 +217,9 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     # the app's parts add their routes (routes/__init__.py says which is where); forks come after state and projects,
     # whose autopilot and with_project they use
     app = routes.App(net, mcp, home, port, secret, mcp_url, build_id, manager, jobs, settings, allowed_hosts,
-                     guard, body, call, fail, updater=updates.Updater(before_restart, port, secret),
+                     guard, body, call, fail, ui_call=ui_call, updater=updates.Updater(before_restart, port, secret),
                      busy=busy, quit_app=quit_app)
-    for part in (pages, state, projects, repair_feedback, forks, setup, life, rooms, pairing):
+    for part in (pages, state, projects, repair_feedback, repository_sync, forks, setup, life, rooms, pairing):
         part.register(app)
 
     security = TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=sorted(allowed_hosts),

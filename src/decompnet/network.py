@@ -149,6 +149,7 @@ WAITING = ("SELECT w.function_id FROM waits w JOIN functions n ON n.id=w.needs_i
 READY = "SELECT w.function_id FROM waits w JOIN functions n ON n.id=w.needs_id WHERE n.status = 'matched'"
 WANTED = "SELECT w.needs_id FROM waits w JOIN functions b ON b.id=w.function_id WHERE b.status = 'open'"
 STRATEGIES = {
+    "no_compiling_c": "f.attempts ASC, f.n_insns ASC",
     "oldest_checked": "COALESCE((SELECT MAX(t.created_at) FROM attempts t WHERE t.function_id=f.id),0) ASC, f.id ASC",
     "least_tried": "f.attempts ASC, f.n_insns ASC",
     # (a failing part waits even for its twins: they'd fail the same way)
@@ -401,7 +402,7 @@ class Network:
     # ------------------------------------------------------------------ agents
 
     def register_agent(self, name: str, owner: str | None = None, *, trusted: bool = True, origin: str = "cli") -> str:
-        """Mint an agent token for one of the app's helpers (`trusted` stays on the record for older databases)."""
+        """Mint an agent token for a managed helper or manual MCP connection (`trusted` stays on the record for older databases)."""
         name = name.strip()
         if not name or len(name) > 40 or not all(c.isalnum() or c in "-_." for c in name):
             raise NetworkError("agent name must be 1-40 chars of [A-Za-z0-9-_.]")
@@ -626,6 +627,10 @@ class Network:
         result.effective_settings = {'compiler':cfg['compiler'], 'effective_command':list(invocation.cmd),
                                      'language':getattr(result,'language','unknown'), 'settings_source':'compile invocation snapshot'}
         return result
+
+    def _candidate_checks(self, fn, proj, obj: bytes) -> dict:
+        """Advisory diagnostics supplied by ROM engines; imported builds keep their whole-image gate."""
+        return {}
 
     def _evaluate(self, fn, proj, obj: bytes) -> tuple[FunctionObj | None, bool | None, list[str]]:
         """(candidate, verdict, problems) for a compiled object. verdict None means: decide by comparing
@@ -908,6 +913,10 @@ class Network:
                     percent = max(0.0, 100.0 * (1.0 - fn["best_score"] / max(1, fn["n_insns"] * 100)))
                     if percent >= below:
                         raise NetworkError(f"{fn['name']} is outside this agent's match percentage filter; claim another")
+                if (self.selection((proj or db.execute("SELECT slug FROM projects WHERE id=?", (fn["project_id"],)).fetchone())["slug"], agent.name).get("strategy") or strategy) == "no_compiling_c" and (
+                        fn["best_score"] is not None or db.execute(
+                            "SELECT 1 FROM attempts WHERE function_id=? AND compiled=1 LIMIT 1", (fn["id"],)).fetchone()):
+                    raise NetworkError(f"{fn['name']} already has a recorded compiling C candidate; choose another function")
                 other = db.execute("SELECT agent_id, expires_at FROM claims WHERE function_id=?", (fn["id"],)).fetchone()
                 if other is not None:
                     raise NetworkError(f"{fn['name']} is claimed by {self._agent_name(other['agent_id'])} "
@@ -941,6 +950,8 @@ class Network:
                              MAX(0.0, 100.0 * (1.0 - CAST(f.best_score AS REAL) / MAX(1, f.n_insns * 100))) < :below)
                         AND (:tries IS NULL OR (SELECT COUNT(*) FROM attempts a
                              WHERE a.function_id=f.id AND a.agent_id=:agent) < :tries)
+                        AND ({int(strategy != 'no_compiling_c')} OR (f.best_score IS NULL AND NOT EXISTS (
+                             SELECT 1 FROM attempts compiled_attempt WHERE compiled_attempt.function_id=f.id AND compiled_attempt.compiled=1)))
                         AND f.id NOT IN (SELECT function_id FROM claims)
                         AND f.id NOT IN (SELECT value FROM json_each(:stalled))
                         AND f.id NOT IN (SELECT value FROM json_each(:model_tried))
@@ -1297,6 +1308,8 @@ class Network:
         result = self._compile(proj, ctx["header"], source, fn)
 
         if not result.ok:
+            if re.search(r"Unknown section type|converter did not produce a big-endian ELF32|Missing [^\n]*reinstall", result.log, re.I):
+                raise NetworkError("Toolchain infrastructure failure; this did not consume a repair attempt. Fix the compiler/converter setup before retrying.\n" + result.log.strip())
             self._record(fn, agent, None, source, ctx["version"], effective_settings=getattr(result,"effective_settings",None))
             text = f"❌ COMPILE ERROR (context v{ctx['version']})\n{result.log.strip()}"
             self.remember_compile(key, agent, fn, text, None)
@@ -1312,6 +1325,7 @@ class Network:
         d = scoring.diff(self._target_obj(fn, proj), cand)
         if verdict is not None:
             d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
+        checks = self._candidate_checks(fn, proj, result.obj)
         matched_now = d.bytes_match and not scratch
         last = self.store.one("SELECT score FROM attempts WHERE function_id=? AND agent_id=? AND score IS NOT NULL "
                               "ORDER BY id DESC LIMIT 1", fn["id"], agent.id)
@@ -1323,8 +1337,9 @@ class Network:
         elif d.bytes_match:
             return {"text": f"✅ MATCH! {fn['name']} is byte-identical to the target ({fn['n_insns']} instructions). "
                             f"Credited to {agent.name}; your claim is released. Call claim_function for the next one."
-                            f"{self.dependents_note(fn['id'])}",
-                    "score": 0, "matched": True}
+                            f"{self.dependents_note(fn['id'])}"
+                            + ("\n" + checks["message"] if checks.get("message") else ""),
+                    "score": 0, "matched": True, "checks": checks}
         else:
             best = self.store.one("SELECT best_score FROM functions WHERE id=?", fn["id"])["best_score"]
             head = (f"score {d.score} ({scoring.percent_text(d.percent)} match) — best so far {best}. "
@@ -1334,6 +1349,10 @@ class Network:
                 head += ("\nNOT A MATCH YET: every instruction reads the same, but the bytes differ"
                          + (" because of the linking notes at the end: fix those." if problems else
                             ": an encoding the listing doesn't show (branch form, an immediate, a relocation)."))
+        if checks.get("link"):
+            head += "\n" + checks["link"]["message"]
+        if checks.get("address_mismatches"):
+            head += "\n" + checks["message"]
         warn = f"\ncompiler output:\n{result.log.strip()}" if result.log.strip() else ""
         if problems:
             warn += "\nwhen linking your code at the function's address:\n" + "\n".join(f"- {p}" for p in problems)
@@ -1341,7 +1360,7 @@ class Network:
         if not scratch:
             self.remember_compile(key, agent, fn, text, d.score)
             text += self.same_score_note(fn["id"], agent.id, d.score, source)
-        return {"text": text + self.stall_note(fn["id"], agent.id), "score": d.score, "matched": False}
+        return {"text": text + self.stall_note(fn["id"], agent.id), "score": d.score, "matched": False, "checks": checks}
 
     @staticmethod
     def _what_changed(d: scoring.DiffResult, last: int | None) -> str:
@@ -1469,12 +1488,17 @@ class Network:
 
     def _record(self, fn, agent: Agent, score: int | None, source: str, ctx_version: int, matched: bool = False,
                 compiled: bool | None = None, via: str = "agent", effective_settings=None,
-                prepared_header=None, prepared_inputs=None):
+                prepared_header=None, prepared_inputs=None, prepared_compiler=None):
         now = time.time()
         compiled = score is not None if compiled is None else compiled
         improved = False
         with self.store.tx() as db:
             current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
+            if prepared_compiler is not None:
+                if not matched or prepared_header is None or score != 0:
+                    raise NetworkError("Only a reverified exact prepared bundle can change its compiler profile.")
+                from .app.prepared_evidence import publish_profile
+                prepared_inputs = publish_profile(self, db, current, prepared_inputs, prepared_compiler, agent)
             # A compiler check can finish while this candidate is still compiling with the old flags.
             # Keep that attempt as evidence, but never turn its old-profile verdict into a new green status.
             config = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (fn["project_id"],)).fetchone()["config"])
@@ -1491,7 +1515,13 @@ class Network:
                        "VALUES(?,?,?,?,?,?,?,?)", (fn["id"], agent.id, score, compiled, ctx_version, source, now, via)).lastrowid
             self.repair_feedback.attempt(db, current, attempt, ctx_version, effective_settings)
             if matched and not stale:
+                from .match_bundle import capture as capture_bundle
+                capture_bundle(db,current,attempt,source,ctx_version,effective_settings)
                 self.repair_feedback.capture(db, current, source, agent.id, via, ctx_version, attempt)
+            if not matched and not stale and (not used or all(used.get(k)==own.get(k) for k in ("toolchain","flags"))):
+                from .match_bundle import failed_recheck
+                if failed_recheck(db,fn,attempt,source,score):
+                    self._event(db,fn['project_id'],agent.id,'regression',fn['name'])
             db.execute("UPDATE functions SET attempts=attempts+1 WHERE id=?", (fn["id"],))
             from . import candidate_quality
             reported = not matched and candidate_quality.reported_source(self, current, source)

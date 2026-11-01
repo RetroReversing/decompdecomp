@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import threading
 import time
 from pathlib import Path
@@ -42,7 +43,32 @@ class JudgeMixin:
         if not self.is_rom(proj):
             return super()._evaluate(fn, proj, obj)
         res = match.link(obj, fn["name"], self._rom_target(fn), self.symbols(proj["id"]), self.reader(proj, fn))
+        from ..candidate_diagnostics import export_layout, text, unresolved
+        checks = {'linked_bytes': {'exact': res.exact}, 'link': unresolved(res.problems),
+                  'export': export_layout(obj, fn['name'], res.exact, res.placements)}
+        checks['instructions'] = {'exact': res.instructions_exact}
+        checks['data'] = [p for p in res.problems if p.startswith('your data for ')]
+        address_rows = []
+        if res.linked_code is not None and res.candidate is not None and not res.problems and proj['arch'] == 'mips':
+            from ...arch.mips_addresses import aligned
+            rows = scoring.diff(self._target_obj(fn, proj), res.candidate).rows
+            address_rows = aligned(rows, self._rom_target(fn).code, res.linked_code, bool(proj['big_endian']))
+            checks['address_mismatches'] = [row for row in address_rows
+                                           if row['target'] is not None and row['candidate'] is not None
+                                           and row['target'] != row['candidate']]
+        checks['message'] = text(checks)
+        cache = self.__dict__.setdefault('_candidate_diagnostics', {})
+        with self.__dict__.setdefault('_candidate_diagnostics_lock', threading.Lock()):
+            cache[fn['id'], hashlib.sha256(obj).hexdigest()] = (checks, address_rows)
+            while len(cache) > 256:
+                del cache[next(iter(cache))]
         return res.candidate, res.exact if res.candidate is not None else None, res.problems
+
+    def _candidate_checks(self, fn, proj, obj: bytes) -> dict:
+        return self.__dict__.get('_candidate_diagnostics', {}).get((fn['id'], hashlib.sha256(obj).hexdigest()), ({}, []))[0]
+
+    def _candidate_addresses(self, fn, obj: bytes):
+        return self.__dict__.get('_candidate_diagnostics', {}).get((fn['id'], hashlib.sha256(obj).hexdigest()), ({}, []))[1]
 
     def rename_tokens(self, proj, text: str) -> str:
         """Show automatic names under their current names (func_80001234 -> deflate)."""
@@ -78,14 +104,19 @@ class JudgeMixin:
             text = self.claim(agent, project, None, strategy)  # the first, the usual way (with its "nothing left")
             held = self.store.all("SELECT f.* FROM claims c JOIN functions f ON f.id=c.function_id WHERE c.agent_id=? "
                                   "AND f.project_id=?", agent.id, proj["id"])
-            if not held or held[0]["n_insns"] > BATCH_INSNS:
+            if not held:
                 return text
+            if held[0]["n_insns"] > BATCH_INSNS:
+                return f"Requested {count} functions; returned 1 because it exceeds the {BATCH_INSNS}-instruction batch limit. Work on the held function before claiming again.\n\n" + text
         first = held[0]
         rows = list(held)
         if first["n_insns"] <= BATCH_INSNS and len(rows) < count:
             rows += self._batch_more(agent, proj, first, count - len(rows), strategy)
         if len(rows) == 1:
-            return self.claim(agent, project, None, strategy)
+            reason = (f"it exceeds the {BATCH_INSNS}-instruction batch limit" if first["n_insns"] > BATCH_INSNS
+                      else "no other eligible small functions in this file passed the queue filters")
+            return f"Requested {count} functions; returned 1 because {reason}. Work on the held function before claiming again.\n\n" + self.claim(agent, project, None, strategy)
+        rows = list({r["id"]: r for r in rows}.values())
         names = [r["name"] for r in rows]
         fork = self.fork_slug(project)
         head = (f"## CLAIMED {len(rows)} small functions: {', '.join(names)}\n"
@@ -99,12 +130,16 @@ class JudgeMixin:
         """Up to n more small open functions in the same file, using the normal queue and filters, claimed for the agent."""
         sdk=self.sdk_functions(proj)
         deferred=list(sdk) if first['id'] not in sdk else []
+        deferred += [r["function_id"] for r in self.store.all("SELECT function_id FROM claims WHERE agent_id=?", agent.id)]
         rows = []
         for _ in range(n):
             row = Network.claim_row(self, agent, proj['slug'], strategy=strategy,
                                     batch_from={'unit':first['unit'] or '', 'limit':BATCH_INSNS, 'deferred':deferred})
             if row is None:
                 break
+            if row["id"] in deferred:
+                break
+            deferred.append(row["id"])
             rows.append(row)
         return rows
 
@@ -368,11 +403,11 @@ class JudgeMixin:
         result = compile_source(compiler_config(Path(proj["root"]), {"compiler": settings}), header, canonical_source(fn, source))
         if not result.ok:
             return False, None, result.log
-        cand, verdict, _ = self._evaluate(fn, proj, result.obj)
+        cand, verdict, problems = self._evaluate(fn, proj, result.obj)
         if cand is None:
             return False, None, "the function isn't in what it compiled to"
         d = scoring.diff(self._target_obj(fn, proj), cand)
-        return (verdict if verdict is not None else d.bytes_match), d, ""
+        return (verdict if verdict is not None else d.bytes_match), d, "\n".join(problems)
 
     def _source_of(self, fn) -> str | None:
         """A function's best C, else its latest attempt."""

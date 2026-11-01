@@ -581,26 +581,33 @@ class ForkProject:
         try:
             proc = subprocess.Popen(capped(cmd), cwd=self.root, env=env, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, text=True, errors="replace", encoding="utf-8", creationflags=NO_WINDOW,
-                                    start_new_session=sys.platform == "darwin")
+                                    start_new_session=os.name != "nt")
         except FileNotFoundError:
             return False, f"{cmd[0]} isn't installed"
-        with CompilerMemoryWatchdog(proc) as watchdog:
-            out, seen, quiet = [], collections.Counter(), 0
-            for line in proc.stdout:
-                line = line.rstrip()
-                out.append(line)
-                if failed is not None and (m := _FAILED.match(line)):
-                    failed.extend(t for t in (m.group(1) or m.group(2)).split() if t not in failed and not t.startswith("[code="))
-                seen[line] += 1
-                if seen[line] > 2 or _NOISE.match(line):  # the same line again, or CodeWarrior's linker chatter
-                    quiet += 1
-                elif len(out) <= 400 or len(out) % 50 == 0 or _BUILD_ERROR.search(line):
-                    log(line)
-            try:
-                code = proc.wait(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                return False, "timed out"
+        from .. import compiler_processes
+        compiler_processes.track(proc.pid)
+        try:
+            with CompilerMemoryWatchdog(proc, timeout=timeout) as watchdog:
+                out, seen, quiet = [], collections.Counter(), 0
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    out.append(line)
+                    if failed is not None and (m := _FAILED.match(line)):
+                        failed.extend(t for t in (m.group(1) or m.group(2)).split() if t not in failed and not t.startswith("[code="))
+                    seen[line] += 1
+                    if seen[line] > 2 or _NOISE.match(line):  # the same line again, or CodeWarrior's linker chatter
+                        quiet += 1
+                    elif len(out) <= 400 or len(out) % 50 == 0 or _BUILD_ERROR.search(line):
+                        log(line)
+                try:
+                    code = proc.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    return False, "timed out"
+        finally:
+            compiler_processes.finish(proc)
+        if watchdog.timed_out:
+            return False, f"Build timed out after {timeout}s; its compiler processes were stopped."
         if watchdog.exceeded:
             out.append(watchdog.message())
         if quiet:

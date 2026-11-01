@@ -166,6 +166,13 @@ class Zcode(Agent):
         _models[self.id] = (time.time(), out)
         return out
 
+    def validate_model(self, model: str) -> str | None:
+        selected = (model or "").partition("#")[0]
+        if selected and selected not in {row["id"] for row in catalog()}:
+            _models.pop(self.id, None)
+            return "The selected ZCode model is no longer in its provider registry. Refresh the agent list, choose an available model in Work settings, then press Start again."
+        return None
+
     def session_command(self, exe: str, workdir, mcp_url: str, token: str, model: str) -> tuple[list[str], dict]:
         """`zcode app-server` speaks the ZCode Protocol on stdio. The app's MCP address, the token and the model reach
         it through `session/create` in `stdin`'s script, so they ride on the helper thread, never the command line."""

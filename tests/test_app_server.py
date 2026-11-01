@@ -25,6 +25,17 @@ needs_demo = pytest.mark.skipif(toolchains.installed("gcc-2.7.2-kmc") is None or
 PORT, SECRET = 6499, "s3cret-for-tests"
 
 
+def test_agent_local_pass_settings_are_opt_in_and_validate_budgets(app):
+    client,net,*_=app
+    assert not net.agent_local_repairs['enabled']
+    headers={'X-Decomp':'1'}
+    for bad in ({'agent_local_trials':True},{'agent_local_trials':7},{'agent_local_seconds':16},{'agent_local_enabled':'yes'}):
+        assert client.post('/api/settings',json=bad,headers=headers).status_code==400
+    response=client.post('/api/settings',json={'agent_local_enabled':True,'agent_local_trials':3,'agent_local_seconds':4},headers=headers)
+    assert response.status_code==200 and net.agent_local_repairs=={'enabled':True,'trials':3,'seconds':4}
+    client.post('/api/settings',json={'agent_local_enabled':False},headers=headers)
+
+
 @pytest.fixture(scope="module")
 def app(tmp_path_factory):
     home = tmp_path_factory.mktemp("home")
@@ -639,6 +650,7 @@ def test_builtin_api_agent_matches_a_function(app, monkeypatch):
 def test_an_agent_nobody_signed_in_to_stops_and_says_so(tmp_path, monkeypatch):
     """Claude Code without a sign-in exits at once: say that (not "exited with code 1") and don't keep retrying."""
     manager = agents.Manager(RomNetwork(tmp_path / "app.db", tmp_path), tmp_path, "http://127.0.0.1:9/mcp")
+    monkeypatch.setattr(manager, "_preflight_tools", lambda token: None)
     code = "print('Not logged in \\u00b7 Please run /login'); raise SystemExit(1)"
     monkeypatch.setattr(manager, "_command", lambda s, token, workdir: ([sys.executable, "-c", code], dict(os.environ), ""))
     s = agents.Session("claude-1", "claude", "Claude Code #1", "game", "claude-1", {})
@@ -650,6 +662,7 @@ def test_an_agent_out_of_credit_stops_and_says_so(tmp_path, monkeypatch):
     """DeepSeek's "Insufficient Balance" (here through opencode): stop at once and say what to do. "Too many
     requests" is the provider's limit of requests at once: not a failure, the session waits and tries again."""
     manager = agents.Manager(RomNetwork(tmp_path / "app.db", tmp_path), tmp_path, "http://127.0.0.1:9/mcp")
+    monkeypatch.setattr(manager, "_preflight_tools", lambda token: None)
     s = agents.Session("opencode-1", "opencode", "opencode #1", "game", "opencode-1", {})
 
     def says(text: str) -> None:
@@ -1466,7 +1479,7 @@ def test_project_overview_reads_database_while_progress_lock_is_busy(app, monkey
             worker.start()
             assert done.wait(2), 'overview waited for saved-code verification'
         assert result[0].status_code == 200
-        assert result[0].json() == {'title': 'Busy project', 'progress_syncing': True}
+        assert result[0].json() == {'title': 'Busy project', 'progress_syncing': False}
     finally:
         worker.join(timeout=3)
         with net.store.tx() as db:
@@ -1512,3 +1525,41 @@ def test_setup_agent_choices_endpoint_returns_installed_clis(app, monkeypatch):
     response = client.get('/api/fork/fix-setup')
     assert response.status_code == 200
     assert response.json() == {'agents': expected}
+
+
+def test_sidebar_reads_saved_snapshot_without_triggering_verification(app, monkeypatch):
+    client, net, _ = app
+    seen = []
+    monkeypatch.setattr(net.progress, 'sync', lambda *args, **kwargs: pytest.fail('UI must not start verification'))
+    def summary(slug):
+        seen.append(net.progress.viewing)
+        return {'slug':slug,'title':slug}
+    monkeypatch.setattr(net, 'summary', summary)
+    with net.store.tx() as db:
+        db.execute("INSERT OR IGNORE INTO projects(slug,name,root,config) VALUES('ui-snapshot','UI','/tmp','{}')")
+    response = client.get('/api/projects')
+    assert response.status_code == 200 and seen and all(seen)
+
+
+def test_manual_mcp_connections_require_window_and_write_header(app, tmp_path):
+    client, net, _ = app
+    with net.store.tx() as db:
+        db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                   ('manual-test', 'Manual test', 'mips', str(tmp_path), '{}'))
+    endpoint = '/api/manual-mcp'
+    assert client.get(endpoint, headers={'User-Agent': 'external'}).status_code == 401
+    payload = {'action': 'create', 'slug': 'manual-test'}
+    assert client.post(endpoint, json=payload).status_code == 403
+    headers = {'X-Decomp': '1'}
+    assert client.post(endpoint, json={'action': 'create', 'slug': 'missing'}, headers=headers).status_code == 400
+    result = client.post(endpoint, json=payload, headers=headers)
+    assert result.status_code == 200
+    connection = result.json()
+    assert connection['url'] == f'http://127.0.0.1:{PORT}/mcp'
+    assert connection['token'].startswith('dn_')
+    snapshot = client.get(endpoint + '?slug=manual-test').json()
+    assert snapshot['transport'] == 'Streamable HTTP'
+    assert any(t['name'] == 'project_info' and t['inputSchema'] for t in snapshot['tools'])
+    assert connection['token'] not in json.dumps(snapshot)
+    assert client.post(endpoint, json={'action': 'revoke', 'id': connection['id']}, headers=headers).status_code == 200
+    assert all(c['id'] != connection['id'] for c in client.get(endpoint).json()['connections'])

@@ -1,22 +1,32 @@
 """Rank applicable hypotheses by observed mismatches without excluding other families."""
 
 def order(families, rows):
-    from .permuter_focus import classify
+    from .permuter_focus import classify, normalized
+    rows = normalized(rows)
     focus = classify(rows)
     markers = {row[0] for row in rows if row[0] != ' '}
-    if focus == 'call':
-        preferred = ('call_arity', 'callee_parameter_width', 'callee_return_width', 'call_result_inline', 'parameter_width', 'parameter_storage')
+    from .normalization_repairs import frame_gap
+    if frame_gap(rows):
+        preferred = ('spill_normalization', 'split_narrow_lifetime', 'call_return_normalization',
+                     'stack_address_temporary', 'combined_scheduling', 'stack_padding')
+    elif focus == 'call':
+        preferred = ('target_call_argument', 'target_local_bundle', 'float_argument_bits', 'runtime_scalar_signature', 'call_forwarded_arguments', 'call_arity', 'callee_parameter_width', 'callee_return_width', 'call_result_inline', 'parameter_width', 'parameter_storage')
     elif markers and markers <= {'r', 's'}:
-        preferred = ('stack_padding', 'unused_scalar_local', 'local_storage', 'parameter_storage',
+        preferred = ('stack_address_temporary', 'combined_scheduling', 'stack_padding', 'unused_scalar_local', 'local_storage', 'parameter_storage',
                      'local_declaration_order', 'stack_array', 'parameter_width', 'declaration_order') if 's' in markers else (
-            'constant_register_reuse', 'copy_register_reuse', 'last_shift_reuse', 'unsigned_assignment_reuse', 'table_slot_lifetime', 'store_address_lifetime', 'pointer_cast_inline', 'comparison_reuse', 'integer_address_order',
-            'typed_temporary', 'value_lifetime', 'split_integer_lifetime', 'merge_integer_lifetimes',
+            'pointer_call_staging', 'pointer_load_inline', 'word_zero_test_reuse', 'pointer_local_reuse', 'independent_field_store_order', 'paired_pointer_declarations', 'copy_register_reuse', 'constant_index_temporary', 'balanced_call_references', 'call_return_normalization', 'split_narrow_lifetime', 'combined_call_lifetimes', 'branch_tail_lifetimes', 'staged_call_arguments', 'single_field_record', 'record_access_shape', 'split_call_result', 'direct_mask_condition', 'inline_scalar_shape', 'expression_placement', 'scalar_schedule_order', 'combined_scheduling', 'direct_compound_store', 'address_association', 'masked_value_reuse', 'cfg_integer_lifetimes', 'constant_register_reuse', 'last_shift_reuse', 'unsigned_assignment_reuse', 'table_slot_lifetime', 'store_address_lifetime', 'pointer_cast_inline', 'comparison_reuse', 'integer_address_order',
+            'comparison_operand_order', 'integer_product_order', 'arithmetic_operand_order', 'typed_temporary', 'value_lifetime', 'split_integer_lifetime', 'merge_integer_lifetimes',
             'split_scalar_lifetime', 'array_index_width', 'local_width', 'declaration_order')
+    elif 'r' in markers and markers <= {'r', 'i'}:
+        # Address rendering can coexist with a register near miss. Keep address
+        # hypotheses first; these are advisory priorities, never address proofs.
+        preferred = ('scalar_global_address', 'integer_address_order', 'call_return_normalization',
+                     'split_narrow_lifetime', 'inline_scalar_shape', 'local_widening', 'signedness')
     elif markers & {'<', '>', '|', 'o'}:
-        preferred = ('paired_load_order', 'pointer_before_store', 'guard_forward_jump', 'branch_call', 'goto_leaf', 'switch_layout',
+        preferred = ('target_call_argument', 'known_address_alias', 'single_field_record', 'target_local_bundle', 'structured_backedge', 'loop_invariant_placement', 'combined_scheduling', 'shared_return_tail', 'redundant_loop_guard', 'call_initialization', 'address_association', 'paired_load_order', 'pointer_before_store', 'guard_forward_jump', 'branch_call', 'goto_leaf', 'switch_layout',
                      'branch_orientation', 'loop_induction', 'callee_parameter_width', 'call_result_inline', 'parameter_width')
     elif 'i' in markers:
-        preferred = ('local_widening', 'integer_address_order', 'signedness', 'narrowing', 'constant_local')
+        preferred = ('known_address_alias', 'target_call_argument', 'target_local_bundle', 'local_widening', 'integer_address_order', 'signedness', 'narrowing', 'constant_local')
     else:
         return list(families)
     return sorted(families, key=lambda f: preferred.index(f) if f in preferred else len(preferred))
@@ -54,3 +64,11 @@ def remember(net, scope, family, baseline, measured):
 def demote(net, scope, families):
     history=getattr(net,'_repair_effects',{})
     return sorted(families,key=lambda family:history.get((scope,family),0)>=2)
+
+
+def effect_scope(net, fn, source):
+    """Family demotion belongs to this exact parent, not all future source shapes."""
+    import hashlib
+
+    from .agent_tokens import target_scope
+    return hashlib.sha256((target_scope(net,fn,'')+source).encode()).hexdigest()

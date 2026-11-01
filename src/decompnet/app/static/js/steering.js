@@ -13,7 +13,7 @@ function showDrawer(id) {
 function hideDrawer(id) {
   const d = $(id);
   if (d.hidden) return;
-  if (id === "drawer") { giveBack(null); S.fn = null; if (S.map.length) drawMap(); }
+  if (id === "drawer") { if (typeof cancelFunctionRead === "function") cancelFunctionRead(); giveBack(null); S.fn = null; S.fnDetail = null; S.fnNav = (S.fnNav || 0) + 1; if (S.map.length) drawMap(); }
   if (id === "dialog") S.dialogKind = "";
   d.hidden = true;
   if ($("drawer").hidden && $("dialog").hidden) document.body.classList.remove("locked");
@@ -102,6 +102,15 @@ function renderSteering(ov) {
   $("saveTitle").textContent = ov.kind === "fork" ? "Save the closest attempts" : "Save your progress";
   $("saveAbout").hidden = ov.kind === "fork";
   $("saveAboutFork").hidden = ov.kind !== "fork";
+  $("repositorySync").hidden = ov.kind === "fork";
+  if (ov.kind !== "fork" && $("repositoryFolder").dataset.slug !== S.slug) {
+    const slug = S.slug;
+    $("repositoryFolder").dataset.slug = slug;
+    $("repositoryFolder").value = "";
+    api(`/api/repository-sync?slug=${encodeURIComponent(slug)}`).then(r => {
+      if (S.slug === slug && !$("repositoryFolder").value) $("repositoryFolder").value = r.folder || "";
+    }).catch(() => {});
+  }
   renderKnowledge();
   // what agents can't change themselves: where a function ends, and suggestions; a compiler's are in Settings → Compiler
   const sg = (ov.suggestions || []).filter((s) => !s.toolchain), bd = ov.boundaries || [];
@@ -250,8 +259,12 @@ function renderAutopilot(ov) {
   };
   const cross = ov.cross_game || { counts: {}, recent: [] };
   const count = cross.counts.match || 0, tried = Object.values(cross.counts).reduce((a, b) => a + b, 0);
-  $("crossGamePanel").hidden = count === 0 && !cross.counts.improved;
+  $("crossGamePanel").hidden = false;
   $("crossGameSummary").innerHTML = `<div class="transfer-totals"><span><strong>${count.toLocaleString()}</strong> verified matches</span><span><strong>${(cross.counts.improved || 0).toLocaleString()}</strong> partial improvements</span><span><strong>${tried.toLocaleString()}</strong> attempts</span></div>${ov.free_search?.seconds > 0 ? `<p>Last free pass <b>${ov.free_search.matched} matches</b> from ${ov.free_search.attempts} checks</p>` : ''}`;
+  const discovery = cross.discovery;
+  $("crossGameSummary").innerHTML += discovery
+    ? `<p><b>${discovery.detected.toLocaleString()}</b> functions with shared code detected · <b>${discovery.ready.toLocaleString()}</b> ready to test · <b>${discovery.blocked.toLocaleString()}</b> need writable C scaffolding.</p><p class="muted small">Signatures are leads, not recovered C. Run now prepares supported assembly-only units and tests candidates with this project's judge. Unsupported builds keep their original setup.</p>${discovery.block_reason ? `<p class="muted small">Setup blocker: ${esc(discovery.block_reason)}</p>` : ''}`
+    : `<p class="muted small">Run now to detect shared code, including assembly-only functions, across local projects and SDKs.</p>`;
   const renderTransfers = () => {
     const filter = $("crossGameFilter").value;
     const rows = filter === 'matches' ? (cross.matches || cross.recent.filter(r => r.outcome === 'match')) : filter === 'improved' ? cross.recent.filter(r => r.outcome === 'improved') : cross.recent;
@@ -458,6 +471,7 @@ function projectCompilerFacts(ov) {
 }
 
 async function renderProjectSettings() {
+  const settingsGen = S.gen, settingsSlug = S.slug;
   renderDeepSweep();
   if ($("compilerImprovements").dataset.slug !== S.slug) $("compilerImprovements").replaceChildren();
   if ($("compilerProgress").dataset.slug !== S.slug) {
@@ -478,7 +492,9 @@ async function renderProjectSettings() {
     : "Every function is built with this compiler and these flags. If almost nothing matches, the game was probably built with another compiler or flags.";
   if (!$("compilerPanel").hidden) {
     if (!S.st) await loadState();
+    if (settingsGen !== S.gen || settingsSlug !== S.slug) return;
     fillCompilers($("setTc"), ov.compiler.toolchain, ov.platform);
+    for (const option of $("setTc").options) if (option.value === ov.compiler.toolchain) option.textContent += " · Default";
     $("setFlags").value = ov.compiler.flags.join(" ");
     $("autoAdjust").checked = !!ov.auto_compiler;
     $("setRanges").value = "";
@@ -487,7 +503,7 @@ async function renderProjectSettings() {
   }
   const prep = ov.source_preparation || {};
   $("sourcePrepEnabled").checked = !!prep.enabled;
-  for (const [id, key] of [["Root", "root"], ["Header", "header"], ["Includes", "include_roots"], ["Mappings", "mappings"], ["Overrides", "overrides"], ["Aliases", "aliases"]]) $("sourcePrep" + id).value = prep[key] || "";
+  for (const [id, key] of [["Root", "root"], ["Header", "header"], ["Includes", "include_roots"], ["Mappings", "mappings"], ["Overrides", "overrides"], ["Aliases", "aliases"], ["Definitions", "definitions"], ["Contexts", "contexts"], ["Helpers", "helpers"]]) $("sourcePrep" + id).value = prep[key] || "";
   await renderSdkSelection();
   const facts = [["Platform", ov.platform_name], ["Game", ov.rom?.title || ov.title], [fork ? "Version" : "Game code", ov.rom?.game_code || ov.version],
     !fork && ov.rom?.region ? ["Region", ov.rom.region] : null, fork ? ["Layout", ov.origin === "scratch" ? (ov.layout || "decomp") + " (from scratch)" : ov.fork_kind] : ["Compiler", `${ov.compiler.name} ${ov.compiler.flags.join(" ")}`],
@@ -562,6 +578,10 @@ $("autoAdjust").onchange = async () => {
   } catch (err) { $("autoAdjust").checked = !on; toast(esc(err.message), "err"); }
 };
 $("compilerParts").onclick = async (e) => {
+  const fn = e.target.closest("[data-compiler-function]");
+  if (fn) { openFn(fn.dataset.compilerFunction); return; }
+  const profileButton = e.target.closest("button[data-profile-default]");
+  if (profileButton) { await compareProfileWithDefault(profileButton); return; }
   const b = e.target.closest("button[data-unrange]");
   if (!b) return;
   const remove = (reopen) => api("/api/compiler", { method: "POST", body: { slug: S.slug, ranges: b.dataset.unrange, remove: true, reopen } });
@@ -676,18 +696,101 @@ async function loadCompilerAnswer() {
   renderCompilerAnswer(a);
   if (a.checking) S.answerTimer = setTimeout(loadCompilerAnswer, COMPILER_ANSWER_EVERY_MS);
 }
+
+$("compilerAnswer").addEventListener("click", e => {
+  const fn = e.target.closest("[data-compiler-function]");
+  if (fn) openFn(fn.dataset.compilerFunction);
+});
+$("compilerCleanupGo").onclick = async () => {
+  const slug = S.slug, button = $("compilerCleanupGo"), log = $("compilerCleanupLog"), result = $("compilerCleanupResult");
+  const limit = Number($("compilerRareLimit").value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 25) return toast("Choose a limit from 1 to 25 functions.", "err");
+  result.textContent = "";
+  const finish = beginWork(log, "Checking uncommon compiler settings", [button], "Compiler cleanup finished.");
+  try {
+    const {job} = await api("/api/compiler/cleanup", {method:"POST", body:{slug, rare_limit:limit}});
+    const out = await followJob(job, log);
+    if (S.slug !== slug) return;
+    result.textContent = `${out.changed.length} functions moved · ${out.profiles_before} → ${out.profiles_after} used profiles · ${out.ranges_before} → ${out.ranges_after} ranges · ${out.tested} trial comparisons · ${out.unchanged} unchanged · ${out.skipped} busy or shared-address functions skipped`;
+    await loadCompilerAnswer();
+  } catch (error) { if (S.slug === slug) showJobError(log, error.message); }
+  finally { finish(); }
+};
+
+function compilerFunctionLinks(functions) {
+  return (functions || []).map(f => `<button class="link mono" type="button" data-compiler-function="${esc(f.name)}" title="${esc(f.status || "")}">${esc(f.name)}</button>`).join("");
+}
+let compilerPartsAnswer = null;
+let compilerPartsSlug = null;
+let compilerDisplayedGroups = [];
+const compilerProfileJobs = new Map();
+async function compareProfileWithDefault(button) {
+  const group = compilerDisplayedGroups[Number(button.dataset.profileDefault)], part = group?.parts[0];
+  if (!part || group.default) return;
+  const slug = S.slug, key = `${slug}:${group.id}`;
+  if (compilerProfileJobs.get(key)?.running) return;
+  const profile = {toolchain:part.toolchain, flags:part.flag_list || part.flags.split(/\s+/).filter(Boolean)};
+  const item = {running:true, message:"Comparing matched functions against the default…"};
+  compilerProfileJobs.set(key, item); renderCompilerParts(compilerPartsAnswer);
+  try {
+    const {job} = await api("/api/compiler/cleanup", {method:"POST", body:{slug,profile}});
+    const out = await followJob(job, null, lines => {
+      item.message = lines[lines.length - 1] || "Comparing against default…";
+      if (S.slug === slug) renderCompilerParts(compilerPartsAnswer);
+    });
+    item.message = `${out.changed.length} moved to default · ${out.unchanged} kept their settings · ${out.skipped} busy/shared-address skips · ${out.tested} comparisons`;
+    if (S.slug === slug) toast(esc(item.message), out.changed.length ? "match" : undefined);
+  } catch (error) { item.message = error.message; }
+  finally {
+    item.running = false;
+    if (S.slug === slug) { renderCompilerParts(compilerPartsAnswer); await loadCompilerAnswer(); }
+  }
+}
+const compilerGroupsOpen = new Set();
+const compilerReasonsOpen = new Set();
+function renderCompilerParts(a) {
+  if (compilerPartsSlug !== S.slug) { compilerPartsSlug = S.slug; compilerGroupsOpen.clear(); compilerReasonsOpen.clear(); }
+  compilerPartsAnswer = a;
+  const parts = a.parts || [], mode = $("compilerGroup").value, sort = $("compilerSort").value;
+  $("compilerViewControls").hidden = !parts.length;
+  const row = (p, showProfile) => {
+    const [word, why] = PART_STATE[p.check] || PART_STATE[""];
+    return `<li class="compiler-range"><div class="compiler-range-heading"><code>${hexShort(p.start)}–${hexShort(p.end)}</code>
+      <span class="part-state ${esc(p.check || "none")}">${esc(word)}</span>
+      ${p.functions != null ? `<span class="muted small">${plural(p.functions, "function")}</span>` : ""}
+      <button class="ghost small-btn" type="button" data-unrange="${hexShort(p.start)}-${hex8(p.end)}" title="Return this range to the default compiler">Remove</button></div>
+      ${showProfile ? `<div class="small"><b>${esc(p.compiler)}</b><code class="compiler-arguments">${esc(p.flags)}</code></div>` : ""}
+      ${p.file ? `<div class="muted small mono">${esc(p.file)}</div>` : ""}
+      <div class="compiler-function-links">${compilerFunctionLinks(p.function_list)}</div>
+      ${p.said || why ? `<details class="compiler-range-reason" data-range-reason="${p.start}-${p.end}"${compilerReasonsOpen.has(`${p.start}-${p.end}`) ? " open" : ""}><summary>Verification details</summary><p class="small muted">${esc(p.said || why)}</p></details>` : ""}</li>`;
+  };
+  const groups = compilerPartGroups(parts, mode, sort);
+  compilerDisplayedGroups = groups;
+  setHtml($("compilerParts"), mode === "range" ? `<ol class="compiler-range-list">${groups.flatMap(g => g.parts).map(p => row(p, true)).join("")}</ol>`
+    : groups.map((g, index) => `<details class="compiler-profile" data-compiler-group="${esc(g.id)}"${compilerGroupsOpen.has(g.id) ? " open" : ""}>
+      <summary><span><b>${esc(mode === "family" ? g.family.toUpperCase() : g.compiler)}</b>${g.default ? ` <span class="chip-s">${mode === "family" && g.profiles > 1 ? "Includes default" : "Default"}</span>` : ""}${mode === "settings" ? `<code class="compiler-arguments">${esc(g.flags || "No arguments")}</code>` : ""}<span class="compiler-profile-count">${plural(g.parts.length, "range")}${g.functions != null ? ` · ${plural(g.functions, "function")}` : ""}${mode === "family" ? ` · ${plural(g.profiles, "argument profile")}` : ""}</span></span></summary>
+      ${mode === "settings" && !g.default && S.ov.kind !== "fork" ? `<div class="compiler-profile-action"><button class="ghost small-btn" type="button" data-profile-default="${index}"${compilerProfileJobs.get(`${S.slug}:${g.id}`)?.running ? " disabled" : ""}>Compare all matches with default</button><p class="small muted">Only exact byte matches move to the project default. Drafts and non-matches keep their settings.</p><p class="small" role="status">${esc(compilerProfileJobs.get(`${S.slug}:${g.id}`)?.message || "")}</p></div>` : ""}
+      <ol class="compiler-range-list">${g.parts.map(p => row(p, mode === "family")).join("")}</ol></details>`).join(""));
+  $("compilerParts").querySelectorAll("details[data-range-reason]").forEach(d => d.ontoggle = () => {
+    if (!d.isConnected) return;
+    if (d.open) compilerReasonsOpen.add(d.dataset.rangeReason); else compilerReasonsOpen.delete(d.dataset.rangeReason);
+  });
+  $("compilerParts").querySelectorAll("details[data-compiler-group]").forEach(d => d.ontoggle = () => {
+    if (!d.isConnected) return;
+    if (d.open) compilerGroupsOpen.add(d.dataset.compilerGroup); else compilerGroupsOpen.delete(d.dataset.compilerGroup);
+  });
+}
+for (const id of ["compilerGroup", "compilerSort"]) $(id).onchange = () => { if (compilerPartsAnswer) renderCompilerParts(compilerPartsAnswer); };
 function renderCompilerAnswer(a) {
+  $("compilerCleanup").hidden = S.ov.kind === "fork";
   $("installedCompilerTest").hidden = S.ov.kind === "fork" || !a.mips;
   const parts = a.parts || [];
-  setHtml($("compilerAnswer"), `This game was built with <b>${esc(a.compiler)}</b>${a.flags ? ` <span class="flags mono" title="the flags it was given">${esc(a.flags)}</span>` : ""}.${parts.length ? ` ${parts.length === 1 ? "One part" : `${parts.length} parts`} of it with another compiler: below.` : ""}`
-    + (a.elsewhere_count ? ` <span class="muted">${a.elsewhere_count === 1 ? "One more stretch of code looks" : `${a.elsewhere_count.toLocaleString()} more stretches of code look`} like another compiler's work; the app suggests a change once agents' C proves it.</span>` : ""));
+  const defaultOpen = $("compilerAnswer").querySelector("[data-default-functions]")?.open;
+  setHtml($("compilerAnswer"), `<div class="compiler-default"><span class="small muted">Default settings</span><div><b>${esc(a.compiler)}</b></div><code class="compiler-arguments">${esc(a.flags || "No arguments")}</code></div>
+    ${a.default_function_list?.length ? `<details data-default-functions${defaultOpen ? " open" : ""}><summary>Functions using the default settings (${a.default_function_list.length})</summary><div class="compiler-function-links">${compilerFunctionLinks(a.default_function_list)}</div></details>` : ""}
+    <p class="small muted">${a.default_functions != null ? `${plural(a.default_functions, "function")} use the default. ` : ""}${plural(parts.length, "explicit range")}${a.elsewhere_count ? ` · ${plural(a.elsewhere_count, "other range")} look like a different compiler; not applied.` : "."}</p>`);
   $("compilerState").textContent = a.checking ? "checking…" : "";
-  setHtml($("compilerParts"), parts.length ? `<ol class="parts">${parts.map((p) => {
-    const [word, why] = PART_STATE[p.check] || PART_STATE[""];
-    return `<li><code>${hexShort(p.start)}–${hexShort(p.end)}</code><span class="grow">${esc(p.compiler)} <span class="flags mono">${esc(p.flags)}</span></span>
-      ${p.file ? `<span class="muted small mono">${esc(p.file)}</span>` : ""}<span class="part-state ${esc(p.check || "none")}" title="${esc(p.said || why)}">${word}</span>${p.check === "waiting" && p.said ? `<span class="small muted">${esc(p.said)}</span>` : ""}
-      <button class="ghost small-btn" type="button" data-unrange="${hexShort(p.start)}-${hex8(p.end)}" aria-label="Build ${hexShort(p.start)} to ${hexShort(p.end)} with ${esc(a.compiler)} again" title="Build this part with ${esc(a.compiler)} again">Remove</button></li>`;
-  }).join("")}</ol>` : "");
+  renderCompilerParts(a);
   const sv = a.survey || {};
   const checks = (a.checks || []).slice(-20).reverse();
   setHtml($("compilerEvidence"), `<p class="small">The app works out which compiler built each part by itself: it tries agents' C for functions that don't match yet with the other compilers the game uses (${
@@ -720,6 +823,12 @@ $("deleteBtn").onclick = () => {
   };
 };
 
+function updateCompilerTestScope() {
+  const flagsOnly = $("compilerFlagsOnly").checked, retest = $("compilerRetest").checked;
+  $("compilerTestScope").textContent = `${flagsOnly ? "Current compiler only, with supported flag variations" : "All installed compilers and supported flag variations"} · ${retest ? "including completed attempts" : "new or changed attempts only"}.`;
+  $("testInstalledCompilers").textContent = retest ? "Retest compiler settings" : "Find better settings";
+}
+for (const id of ["compilerFlagsOnly", "compilerRetest"]) $(id).onchange = updateCompilerTestScope;
 $("testInstalledCompilers").onclick = async () => {
   const slug = S.slug;
   const button = $("testInstalledCompilers"), log = $("installedCompilerLog");
@@ -740,7 +849,7 @@ $("testInstalledCompilers").onclick = async () => {
       stopError.textContent = `Could not stop: ${e.message}. Try again.`; stopError.hidden = false;
     }
   };
-  const finish = beginWork(work, "Testing installed compilers", [button], "Compiler comparison finished.");
+  const finish = beginWork(work, "Testing installed compilers", [button, $("compilerFlagsOnly"), $("compilerRetest")], "");
   $("compilerLogDetails").hidden = false;
   $("compilerLogDetails").open = false;
   $("compilerFollowLog").checked = false;
@@ -762,7 +871,7 @@ $("testInstalledCompilers").onclick = async () => {
   renderCompilerProgress(null);
   showJobError(work, "");
   try {
-    const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, untested_only: !$("compilerRetest").checked } });
+    const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, flags_only: $("compilerFlagsOnly").checked, untested_only: !$("compilerRetest").checked } });
     jobId = job; stop.disabled = false;
     const result = await followJob(job, log, (_lines, snapshot) => {
       if (S.slug === slug && snapshot.progress) renderCompilerProgress(snapshot.progress);
@@ -787,12 +896,41 @@ function renderCompilerImprovements(slug, rows, filter = "improved") {
   list.dataset.slug = slug;
   list.dataset.filter = filter;
   for (const button of $("compilerProgress").querySelectorAll("[data-results-filter]")) button.setAttribute("aria-expanded", String(button.dataset.resultsFilter === filter));
-  const applied = $("compilerProgress")._compilerApplied || new Set();
+  const applied = $("compilerProgress")._compilerApplied ||= new Set();
+  const pending = rows.filter(r => !applied.has(r.function) && r.profile && (r.improved !== false || r.exact));
   const title = { completed: "Finished functions", improved: "Better settings", exact: "Exact matches" }[filter];
-  setHtml(list, `<div class="row"><h3>${esc(title)} · ${rows.length}</h3><button type="button" class="ghost small-btn" data-refresh-results>Refresh results</button></div><p class="small muted">Completed comparisons from this run, highest percentage first. Apply settings individually; each function is rechecked before any change. Refresh to include newly finished functions.</p>`
+  setHtml(list, `<div class="row"><h3>${esc(title)} · ${rows.length}</h3><button type="button" class="ghost small-btn" data-refresh-results>Refresh results</button>${pending.length ? `<button type="button" class="ghost small-btn" data-apply-all>Apply all · ${pending.length}</button>` : ""}</div><div data-apply-all-status role="status"></div><p class="small muted">Completed comparisons from this run, highest percentage first. Apply individually or apply all results in this group; each function is rechecked before any change. Refresh to include newly finished functions.</p>`
     + (rows.length ? `<div class="compiler-table"><table><thead><tr><th>Function</th><th>Before → tested</th><th>Compiler and flags</th><th>Action</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td><button type="button" class="ghost small-btn mono" data-result-function="${i}">${esc(r.function)}</button></td><td>${r.before == null ? "—" : `${r.before.toFixed(2)}%`} → <b>${r.best == null ? "—" : `${r.best.toFixed(2)}%`}</b></td><td>${r.profile ? `${esc(r.profile[0])}<br><span class="mono">${esc(r.profile[1].join(" "))}</span>` : "No compiled result"}</td><td>${applied.has(r.function) ? '<span class="small">Applied and rechecked</span>' : r.profile && (r.improved !== false || r.exact) ? `<button type="button" class="ghost small-btn" data-apply-improvement="${i}">Apply to function</button><span class="small" role="status"></span>` : '<span class="small muted">No improvement</span>'}</td></tr>`).join("")}</tbody></table></div>` : '<p class="small muted">No completed results in this group yet.</p>'));
   list.onclick = async (e) => {
-    if (S.slug !== slug) return;
+    if (S.slug !== slug || list._applying) return;
+    const allButton = e.target.closest("[data-apply-all]");
+    if (allButton) {
+      const status = list.querySelector("[data-apply-all-status]");
+      const controls = [...list.querySelectorAll("button")];
+      const finish = beginWork(status, `Applying ${pending.length} results`, controls, "Rechecks finished.");
+      list._applying = true;
+      let done = 0;
+      const failures = [];
+      try {
+        for (const r of pending) {
+          if (S.slug !== slug) break;
+          if (applied.has(r.function)) continue;
+          status.textContent = `Rechecking ${done + failures.length + 1}/${pending.length}: ${r.function}`;
+          try {
+            await api("/api/compiler", {method:"POST", body:{slug, function:r.function, toolchain:r.profile[0], flags:r.profile[1]}});
+            applied.add(r.function); done++;
+          } catch (error) { failures.push(`${r.function}: ${error.message}`); }
+        }
+      } finally {
+        list._applying = false; finish();
+        if (S.slug === slug) {
+          renderCompilerImprovements(slug, rows, filter);
+          list.querySelector("[data-apply-all-status]").textContent = `${done} applied and rechecked; ${failures.length} could not be applied.${failures.length ? " " + failures.join("; ") : ""}`;
+          await refreshMap(true);
+        }
+      }
+      return;
+    }
     if (e.target.closest("[data-refresh-results]")) {
       renderCompilerImprovements(slug, compilerResultRows($("compilerProgress")._compilerRows || [], filter), filter);
       return;
@@ -819,7 +957,7 @@ $("sourcePrepSave").onclick = async () => {
   const finish = beginWork(log, "Saving reference source settings", [button], "Reference source settings saved.");
   try {
     const body = { slug: S.slug, enabled: $("sourcePrepEnabled").checked };
-    for (const [id, key] of [["Root", "root"], ["Header", "header"], ["Includes", "include_roots"], ["Mappings", "mappings"], ["Overrides", "overrides"], ["Aliases", "aliases"]]) body[key] = $("sourcePrep" + id).value;
+    for (const [id, key] of [["Root", "root"], ["Header", "header"], ["Includes", "include_roots"], ["Mappings", "mappings"], ["Overrides", "overrides"], ["Aliases", "aliases"], ["Definitions", "definitions"], ["Contexts", "contexts"], ["Helpers", "helpers"]]) body[key] = $("sourcePrep" + id).value;
     const saved = await api("/api/source-preparation", { method: "POST", body });
     if (S.ov) S.ov.source_preparation = saved;
   } catch (e) { showJobError(log, e.message); } finally { finish(); }
@@ -985,4 +1123,68 @@ $("deepSweepReset").onclick = async () => {
     if (S.slug === slug) renderDeepSweepResults(status);
   } catch (error) { showJobError(log, error.message); }
   finally { done(); }
+};
+
+
+// Repository sync is an explicit, cancellable build. Ordinary progress autosave stays independent.
+let repositorySyncJob = null;
+$("repositorySyncStop").onclick = async () => {
+  try { if (repositorySyncJob) await api("/api/job/cancel", {method:"POST", body:{id:repositorySyncJob}}); }
+  catch (error) { showJobError($("repositorySyncLog"), error.message); }
+};
+$("repositorySyncGo").onclick = async () => {
+  const log = $("repositorySyncLog"), button = $("repositorySyncGo"), stop = $("repositorySyncStop");
+  const finish = beginWork(log, "Verifying repository progress", [button], "Repository sync finished.");
+  showJobError(log, "");
+  try {
+    const {job} = await api("/api/repository-sync", {method:"POST", body:{slug:S.slug, folder:$("repositoryFolder").value.trim()}});
+    repositorySyncJob = job; stop.hidden = false;
+    const result = await followJob(job, log);
+    log.textContent += `\n${result.verified_build ? "Full rebuilt image verified." : "No source additions; no full rebuild was needed."}\n${result.accepted.length} functions synced; ${result.skipped.length} could not be integrated.\n${result.changes || "No Git changes."}`;
+    for (const item of result.skipped) log.textContent += `\n${item.function}: ${item.reason}`;
+  } catch (error) { showJobError(log, error.message); }
+  finally { repositorySyncJob = null; stop.hidden = true; finish(); }
+};
+
+
+$("sourcePrepReviewsRefresh").onclick = async () => {
+  const panel = $("sourcePrepReviews"), button = $("sourcePrepReviewsRefresh"), slug = S.slug;
+  const finish = beginWork(panel, "Loading prepared profile evidence", [button], "Evidence loaded.");
+  try {
+    const {reviews} = await api("/api/source-preparation", {method:"POST", body:{slug, action:"reviews"}});
+    panel.innerHTML = reviews.length ? reviews.map((r, i) => `<div class="card"><strong>${esc(r.function)}</strong> · ${esc(r.toolchain || "")} ${esc(r.flags.join(" "))}<p>${r.exact ? "Exact when tested" : `Score ${r.score ?? "unavailable"}`} · ${esc(r.category)}</p>${r.source ? `<details><summary>Prepared C and private header</summary><pre>${esc(r.source)}</pre><pre>${esc(r.header)}</pre></details>` : ""}${r.diagnostic ? `<pre>${esc(r.diagnostic)}</pre>` : ""}${r.reviewable ? `<button data-prepared-review="${i}">Recheck and apply source, header & flags</button>` : "<span class=muted>Run preparation again if inputs changed.</span>"}<div data-prepared-log></div></div>`).join("") : "No prepared profile evidence yet. Run a preparation pass first.";
+    panel.onclick = async (event) => {
+      const apply = event.target.closest("[data-prepared-review]");
+      if (!apply || S.slug !== slug) return;
+      const row = reviews[Number(apply.dataset.preparedReview)], log = apply.parentElement.querySelector("[data-prepared-log]");
+      const done = beginWork(log, "Rechecking complete prepared bundle", [apply], "Bundle rechecked.");
+      try {
+        const {job} = await api("/api/source-preparation", {method:"POST", body:{slug, action:"apply-review", id:row.id}});
+        await followJob(job, log); apply.hidden = true; refreshMap();
+      } catch (error) { showJobError(log, error.message); } finally { done(); }
+    };
+  } catch (error) { showJobError(panel, error.message); } finally { finish(); }
+};
+
+
+$("sourcePrepAnalysisRefresh").onclick = async () => {
+  const slug = S.slug, button = $("sourcePrepAnalysisRefresh"), log = $("sourcePrepAnalysisLog");
+  const finish = beginWork(log, "Loading source leads and measured results", [button], "Source evidence loaded.");
+  try {
+    const data = await api("/api/source-preparation", {method:"POST", body:{slug, action:"analysis"}});
+    if (S.slug !== slug) return;
+    const panel = $("sourcePrepAnalysis");
+    panel.innerHTML = `<p class="muted">${esc(data.scope)}</p><div class="compiler-table"><table><thead><tr><th>Family / profile</th><th>Tested</th><th>Improved</th><th>Exact trials (functions)</th><th>Trial time</th></tr></thead><tbody>${data.families.map(r => `<tr><td>${esc(r.family)}<br>${esc(JSON.stringify(r.profile))}</td><td>${r.tested}</td><td>${r.improved}</td><td>${r.matched}</td><td>${(r.elapsed_ms/1000).toFixed(1)}s</td></tr>`).join("")}</tbody></table></div><p>Leads are ranked by compiled call, field-offset and control-flow agreement. These scores do not establish identity. An exact byte verdict still decides matching.</p>` + data.leads.map((r, i) => `<details class="card"><summary>${esc(r.function)} · ${esc(r.lead.symbol || "prepared context")} · support ${r.comparison.support}/100 · ${r.rejected ? "rejected" : r.exact ? "exact trial" : `score ${r.score ?? "unavailable"}`}</summary><p>${esc(r.lead.file || "")} · ${esc(r.family)} · ${esc(JSON.stringify(r.profile))}</p><p>${esc(r.comparison.note)}</p><pre>${esc(JSON.stringify({baseline_score:r.baseline,trial_score:r.score,target:r.comparison.target,candidate:r.comparison.candidate,missing_calls:r.comparison.missing_calls,extra_calls:r.comparison.extra_calls,source_parameters:r.comparison.source_parameters,source_alternatives:r.lead.alternatives,incoming_entry:r.comparison.entry,next_steps:r.comparison.next_steps},null,2))}</pre><p class="muted">Incoming register/stack slots are ABI locations, not a count of C parameters. Check wide arguments, aggregates and original callers.</p><pre>${esc(r.comparison.rows.map(row => row.join(" | ")).join("\n"))}</pre>${r.error ? `<pre>${esc(r.error)}</pre>` : ""}${r.rejected ? `<p>Rejected lead: ${esc(r.rejected)}</p>` : `<label>Reason to reject this source lead<input data-lead-reason placeholder="Explain the contradictory evidence"></label><button data-reject-lead="${i}" class="ghost">Retain as rejected lead</button>`}<div data-lead-log></div></details>`).join("");
+    panel.onclick = async (event) => {
+      const reject = event.target.closest("[data-reject-lead]");
+      if (!reject || S.slug !== slug) return;
+      const card = reject.parentElement, reason = card.querySelector("[data-lead-reason]").value.trim(), output = card.querySelector("[data-lead-log]");
+      if (!reason) { output.textContent = "Give the contradictory evidence first."; return; }
+      const done = beginWork(output, "Saving rejected source lead", [reject], "Rejection retained.");
+      try {
+        await api("/api/source-preparation", {method:"POST",body:{slug,action:"reject-lead",id:data.leads[Number(reject.dataset.rejectLead)].id,reason}});
+        output.textContent = `Rejected lead retained: ${reason}`; reject.hidden = true;
+      } catch (error) { showJobError(output,error.message); } finally { done(); }
+    };
+  } catch (error) { showJobError(log,error.message); } finally { finish(); }
 };

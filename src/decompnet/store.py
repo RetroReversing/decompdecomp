@@ -127,6 +127,11 @@ CREATE TABLE IF NOT EXISTS cross_game_attempts(
   source_project_id INTEGER NOT NULL, source_function_id INTEGER NOT NULL,
   outcome TEXT NOT NULL, reason TEXT, created_at REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_cross_game_attempts_project ON cross_game_attempts(project_id, created_at);
+CREATE TABLE IF NOT EXISTS sdk_shapes(
+ corpus TEXT NOT NULL, arch TEXT NOT NULL, big_endian INTEGER NOT NULL,
+ name TEXT NOT NULL, fingerprint TEXT NOT NULL, size INTEGER NOT NULL, ops TEXT NOT NULL,
+ PRIMARY KEY(corpus,arch,big_endian,name,fingerprint));
+CREATE INDEX IF NOT EXISTS idx_sdk_shapes_size ON sdk_shapes(arch,big_endian,size);
 CREATE TABLE IF NOT EXISTS sdk_sources(
   corpus TEXT NOT NULL, name TEXT NOT NULL, arch TEXT NOT NULL, big_endian INTEGER NOT NULL,
   source TEXT NOT NULL, header TEXT NOT NULL, compiler TEXT NOT NULL,

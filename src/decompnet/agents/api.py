@@ -106,6 +106,10 @@ class Api(Agent):
             s.push("info", f"session {s.runs}: {model} via {base} ({window // 1000}K tokens of context)")
             budget = int(window * API_CONTEXT_SHARE) - _tokens(schema)  # room for the reply and the tools' definitions
             for _step in range(int(s.options.get("max_steps", API_STEPS))):
+                if getattr(s,'context_budget',None) and s.context_budget.ready():
+                    s.rotated=True
+                    s.push('info','Starting a fresh session with saved candidates and experiments.')
+                    return True
                 if s.stop.is_set():
                     return True
                 for _attempt in range(API_TRIM_RETRIES):
@@ -338,6 +342,16 @@ def fit(messages: list[dict], budget: int, keep: int = 2) -> int:
                 before = _tokens(m)
                 m["content"] = text[:TRIM_TO] + "\n[... trimmed to save context: call the tool again if you need this]"
                 total -= before - _tokens(m)
+    # A larger tool schema can leave several already-trimmed old results over budget.
+    # Compact those once more, while retaining the newest exchange and tool-call structure.
+    for m in messages[max(2, keep):keep_from]:
+        text = m.get("content")
+        if total <= budget:
+            break
+        if m.get("role") in ("tool", "assistant") and isinstance(text, str) and len(text) > 120:
+            before = _tokens(m)
+            m["content"] = text[:80] + "\n[Earlier output trimmed; call the tool to recover.]"
+            total -= before - _tokens(m)
     return total
 
 
@@ -398,7 +412,7 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
                          s(function=st("function", True), start=it("zero-based line"), limit=it("up to 200 lines"), focus=st("mismatch:N, body, symbol or short assembly anchor"))),
         "claim_function": ("Claim the next function (or one by name/address). Returns assembly, data, best attempt, "
                            "notes and a draft. count > 1: a batch of small functions to judge together.",
-                           s(function=st("optional name or address"), strategy=st("finish | easiest | least_tried | oldest_checked | untried | closest | hardest | random"),
+                           s(function=st("optional name or address"), strategy=st("no_compiling_c | finish | easiest | least_tried | oldest_checked | untried | closest | hardest | random"),
                              count=it("up to 6 small functions at once"))),
         "get_function": ("Show any function by name or address.", s(function=st("name or address", True), section=st("all | history | candidate | quality | notes | declarations | compiler | layouts"))),
         "compile_and_diff": ("Whole-function rewrite: small edits should use compile_patch. Compile, link and diff against the ROM. "

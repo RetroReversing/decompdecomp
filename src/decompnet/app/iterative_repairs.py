@@ -10,13 +10,18 @@ from pathlib import Path
 
 from ..network import NetworkError
 from ..project import compiler_for
-from . import workers
+from . import region_repairs, search_frontier, workers
 
 WIDTH, DEPTH, PER_FUNCTION = 3, 3, 8
+DETOUR_RATIO = 1.25
 
 
-def advance(state, evaluate, variants, stopped):
-    """Resume a breadth-first beam, retaining improvements and bounded equal-score alternatives."""
+def advance(state, evaluate, variants, stopped, *, arch=None):
+    """Resume a bounded beam with one reserved slot for a temporarily worse source shape.
+
+    Detours spend the same phase budget and never replace saved best C. A later repair may need
+    an address or scope shape that initially makes register allocation worse.
+    """
     while state['pending'] and not stopped():
         node = state['pending'][0]
         report = evaluate(node['source'])
@@ -26,17 +31,28 @@ def advance(state, evaluate, variants, stopped):
         if report.get('matched'):
             return True
         score = report.get('score')
-        if isinstance(score, (int, float)) and 0 < score <= node['ceiling']:
-            # Keep two source shapes per identical output: a later source edit can distinguish them.
+        if (isinstance(score, (int, float)) and 0 < score <= node['ceiling'] * DETOUR_RATIO
+                and (score < node['ceiling'] or not search_frontier.unhelpful_detour(arch, node.get('baseline_rows'), report.get('rows') or []))):
+            # Keep two source shapes per identical output at each depth: a later source edit can distinguish them.
             # This only prunes search branches, never supplies a match verdict.
             output = output_key(report)
             outputs = state.setdefault('outputs', {})
-            if output is None or outputs.get(output, 0) < 2:
-                state['next'].append({**node, 'score': score, 'report': report})
+            if output is None or outputs.get(str(node['depth'])+':'+output, 0) < 2:
+                regions = region_repairs.snapshot(report.get('rows'))
+                state['next'].append({**node, 'score': score, 'report': report, 'regions': regions,
+                                      'region_gain': region_repairs.gain(node.get('region_baseline'), regions)})
                 if output is not None:
-                    outputs[output] = outputs.get(output, 0) + 1
+                    key = str(node['depth'])+':'+output
+                    outputs[key] = outputs.get(key, 0) + 1
         if not state['pending']:
-            best = sorted(state['next'], key=lambda n: n['score'])[:WIDTH]
+            ranked = sorted(state['next'], key=lambda n: (search_frontier.structure(n['report'].get('rows') or []),
+                                                            stack_distance(n['report'].get('rows') or []), n['score']))
+            ordinary = [n for n in ranked if n['score'] <= n['ceiling']]
+            detours = sorted((n for n in ranked if n['score'] > n['ceiling']),
+                             key=lambda n: (-n.get('region_gain', 0), n['score']))
+            numeric = min(ordinary, key=lambda n: n['score']) if ordinary else None
+            retained = ([numeric] if numeric else []) + [n for n in ordinary if n is not numeric]
+            best = retained[:WIDTH-1] + detours[:1] if detours else retained[:WIDTH]
             state['next'] = []
             for parent in best:
                 if parent['depth'] >= DEPTH:
@@ -46,8 +62,15 @@ def advance(state, evaluate, variants, stopped):
                         continue
                     state['seen'].append(source)
                     state['pending'].append(dict(source=source, depth=parent['depth'] + 1,
-                                                 ceiling=parent['score']))
+                                                 ceiling=min(parent['ceiling'], parent['score']),
+                                                 region_baseline=parent.get('regions'), baseline_rows=parent['report'].get('rows')))
     return False
+
+
+def stack_distance(rows):
+    """Advisory distance breaks flat-score frame ties, never a match verdict."""
+    from .permuter_focus import stack_distance as distance
+    return distance(rows)
 
 
 def repair_rules():
@@ -63,15 +86,19 @@ def output_key(report):
     return hashlib.sha256(repr((report['candidate_target'], report.get('candidate_relocs'))).encode()).hexdigest()
 
 
-def targeted_variants(source, report, fn, arch, flags, header=''):
-    from . import draft_repairs, repair_ranking, stack_padding_repairs
+def targeted_variants(source, report, fn, arch, flags, header='', tables=()):
+    from . import draft_repairs, normalization_repairs, repair_ranking, stack_padding_repairs
     labels = {}
-    proposals = draft_repairs.variants(source, fn['name'], arch, fn['asm'] or '', flags, labels, header=header)
+    proposals = draft_repairs.variants(source, fn['name'], arch, fn['asm'] or '', flags, labels, header=header, limit=None, tables=tables)
     for text in stack_padding_repairs.grow(source, fn['name'], arch, report.get('rows') or []):
         proposals.append(text)
         labels[text] = 'stack_padding'
+    if arch == 'mips':
+        for text in normalization_repairs.frame_variants(source, fn['name'], report.get('rows') or []):
+            proposals.append(text)
+            labels[text] = 'spill_normalization'
     families = repair_ranking.order(list(dict.fromkeys(labels[p] for p in proposals)), report.get('rows') or [])
-    return sorted(proposals, key=lambda p: families.index(labels[p]))
+    return sorted(proposals, key=lambda p: families.index(labels[p]))[:20]
 
 
 def run(twins, slug, job):
@@ -109,7 +136,7 @@ def run(twins, slug, job):
             return
         header = net._context(proj['id'], fn['unit'])['header']
         settings = compiler_for(cfg, fn['vram'])
-        context = similar_matches.trial_key('', header, settings, fn, ['beam-v2', symbols, rules])
+        context = similar_matches.trial_key('', header, settings, fn, ['beam-v5', symbols, rules])
         saved = net.store.one('SELECT context,state FROM repair_frontiers WHERE function_id=?', fn['id'])
         state = json.loads(saved['state']) if saved and saved['context'] == context else None
         if state is None or fn['best_source'] not in state['seen']:
@@ -151,13 +178,14 @@ def run(twins, slug, job):
             if report.get('candidate_target'):
                 compiled = dict(target=bytes.fromhex(report['candidate_target']), relocs=report.get('candidate_relocs', '[]'))
                 guided += similar_matches.literal_variants(source, compiled, fn, bool(proj['big_endian']))
-            targeted = targeted_variants(source, report, fn, proj['arch'], settings.get('flags', []), header)
+            from . import switch_tables
+            targeted = targeted_variants(source, report, fn, proj['arch'], settings.get('flags', []), header, switch_tables.read(net,proj,fn))
             # Interleave pools so address proposals cannot starve targeted families (or vice versa).
             pools = [guided[:4], targeted[:8], similar_matches.repair_variants(source, report)[:4]]
             return list(dict.fromkeys(item for group in zip_longest(*pools)
                                       for item in group if item is not None))
 
-        if advance(state, evaluate, variants, stopped):
+        if advance(state, evaluate, variants, stopped, arch=proj['arch']):
             with guard:
                 matched[0] += 1
                 job.reuse_matched += 1

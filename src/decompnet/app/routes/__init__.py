@@ -6,6 +6,7 @@ module's register(), which adds that part's routes to the MCP server's web app:
 - projects: everything under a project (/api/project, /api/function, /api/compiler, /api/export, ...)
 - forks:    public decomps forked by their address, and projects started from scratch on that build
 - setup:    compilers and tools, helper agents and their sign-in, settings
+- repository_sync: verified additions to a standalone Git export checkout
 - life:     updates, the window, quitting
 - rooms:    decompiling together (collab.py)
 - pairing:  agents outside the app asking for access, approved in the window
@@ -46,6 +47,7 @@ class App:
     body: Callable[..., Any]  # await body(request): the JSON object sent, or {}
     call: Callable[..., Any]  # await call(fn, *args): fn run in a thread
     fail: Callable[..., Any]  # fail(error, code=400): the error as JSON
+    ui_call: Callable[..., Any] | None = None  # reserved capacity for snapshot-only UI reads
     updater: updates.Updater | None = None
     busy: Callable[[], bool] | None = None  # whether helpers or a job are working
     quit_app: Callable[[], None] | None = None  # quit: the window, every helper, the server

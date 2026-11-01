@@ -52,6 +52,14 @@ def current_trial():
     return _TRIAL.get()
 
 
+def validated_provenance(provenance, source_hash):
+    """Cascaded matches must not inherit the triggering candidate's rewrite attribution."""
+    if provenance and provenance.get('source_sha256') and provenance['source_sha256'] != source_hash:
+        return {'kind':'inherited repair context','origin':provenance,
+                'note':'The recorded rewrite source hash differs from this candidate; do not mine it as a direct rewrite.'}
+    return provenance
+
+
 def _settings(proj, fn):
     cfg = json.loads(proj['config'])
     if cfg.get('kind') == 'fork':
@@ -75,7 +83,9 @@ class RepairFeedback:
             # reviews and agent annotations; only move untouched, provenance-backed captures.
             db.execute("UPDATE repair_examples SET status='implemented',review_note=? WHERE status='new' "
                        "AND explanation='' AND automation='' AND review_note='' "
-                       "AND json_extract(evidence,'$.provenance.kind')='deterministic draft repair'",
+                       "AND json_extract(evidence,'$.provenance.kind')='deterministic draft repair' "
+                       "AND (json_extract(evidence,'$.provenance.source_sha256') IS NULL OR "
+                       "json_extract(evidence,'$.provenance.source_sha256')=json_extract(evidence,'$.after.source_sha256'))",
                        ('Already produced by an automatic repair; retained for regression review.',))
 
     def attempt(self, db, fn, attempt_id, context_version, effective_settings=None):
@@ -84,11 +94,15 @@ class RepairFeedback:
         if effective_settings and settings['mode']=='rom':
             settings.update(effective_settings)
         if _TRIAL.get() is not None:
-            db.execute('INSERT INTO repair_attempt_provenance VALUES(?,?)',(attempt_id,json.dumps(_TRIAL.get())))
+            source = db.execute('SELECT source FROM attempts WHERE id=?',(attempt_id,)).fetchone()['source'] or ''
+            provenance = validated_provenance(_TRIAL.get(),hashlib.sha256(source.encode()).hexdigest())
+            db.execute('INSERT INTO repair_attempt_provenance VALUES(?,?)',(attempt_id,json.dumps(provenance)))
         header = db.execute('SELECT unit,header FROM context_versions WHERE project_id=? AND version=? '
                             "AND unit IN (?, '') ORDER BY (unit=?) DESC LIMIT 1",
                             (fn['project_id'], context_version, fn['unit'] or '', fn['unit'] or '')).fetchone()
         settings['context_unit'] = header['unit'] if header and settings['mode'] == 'rom' else None
+        from .app.baseline_status import revision as scoring_revision
+        settings['scoring_revision'] = scoring_revision()
         settings['context_sha256'] = hashlib.sha256(header['header'].encode()).hexdigest() if header and settings['mode'] == 'rom' else None
         db.execute('INSERT INTO repair_attempt_settings VALUES(?,?)', (attempt_id, json.dumps(settings)))
 
@@ -145,13 +159,14 @@ class RepairFeedback:
                        'agent_id': before['agent_id'], 'context_version': before['context_version'],
                        'settings': json.loads(old_settings['settings']) if old_settings else None} if before else None,
             'previous':snapshot(previous),
-            'provenance':json.loads(provenance['provenance']) if provenance else _TRIAL.get(),
+            'provenance':validated_provenance(json.loads(provenance['provenance']) if provenance else _TRIAL.get(),
+                                             hashlib.sha256(source.encode()).hexdigest()),
             'comparable_settings':bool(comparable),
             'comparison': 'closest comparable-settings failed attempt when available, otherwise closest historical failure; previous retains last own failed trial',
         }
         # Retain deterministic successes for regression analysis without proposing the installed
         # rule as new work. Agent explanations still cannot mark their own hypotheses implemented.
-        automated = (evidence.get('provenance') or {}).get('kind') == 'deterministic draft repair'
+        automated = (evidence.get('provenance') or {}).get('kind') in ('deterministic draft repair','automatic agent local pass')
         db.execute('INSERT INTO repair_examples(project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence,status,review_note) '
                    'VALUES(?,?,?,?,?,?,?,?,?)', (fn['project_id'], fn['id'], attempt_id, before['id'] if before else None,
                                              agent_id, time.time(), json.dumps(evidence), 'implemented' if automated else 'new',
@@ -184,22 +199,30 @@ class RepairFeedback:
                 raise NetworkError('Unknown review state.')
             clauses.append('e.status=?'); args.append(status)
         if comparable:
-            clauses.append("e.before_attempt_id IS NOT NULL AND json_extract(e.evidence,'$.before.source_sha256') != json_extract(e.evidence,'$.after.source_sha256')")
+            clauses.append("e.before_attempt_id IS NOT NULL AND json_extract(e.evidence,'$.comparable_settings')=1 AND json_extract(e.evidence,'$.before.source_sha256') != json_extract(e.evidence,'$.after.source_sha256')")
         return ' AND '.join(clauses), args
 
     def listing(self, slug='', category='', status='', before=0, comparable=False):
         where, args = self._where(slug, category, status, comparable)
-        rows = self.store.all('SELECT e.id,e.created_at,e.category,e.explanation,e.automation,e.status,'
-                              "CASE WHEN e.before_attempt_id IS NULL THEN 'no failed baseline' WHEN json_extract(e.evidence,'$.before.source_sha256')=json_extract(e.evidence,'$.after.source_sha256') THEN 'same source / settings' WHEN json_extract(e.evidence,'$.comparable_settings')=1 THEN 'source repair' ELSE 'settings also changed' END AS evidence_kind,"
-                              "json_extract(e.evidence,'$.provenance.kind')='deterministic draft repair' AS automation_known,"
-                              'p.slug,p.name AS project,f.name AS function,a.name AS agent FROM repair_examples e '
+        partition = "project_id,category,status,CASE WHEN json_extract(evidence,'$.via')='unit diff' THEN 'build:' || COALESCE(json_extract(evidence,'$.unit'),'') || ':' || CAST(created_at/60 AS INTEGER) ELSE 'function:' || function_id END,CASE WHEN json_extract(evidence,'$.via')!='unit diff' OR json_extract(evidence,'$.via') IS NULL THEN json_extract(evidence,'$.target_sha256') END,CASE WHEN json_extract(evidence,'$.via')!='unit diff' OR json_extract(evidence,'$.via') IS NULL THEN json_extract(evidence,'$.after.source_sha256') END,json_extract(evidence,'$.after.settings'),json_extract(evidence,'$.after.context_version')"
+        prefix = ('WITH grouped AS (SELECT e.*,ROW_NUMBER() OVER (PARTITION BY ' + partition +
+                  ' ORDER BY id DESC) AS position,COUNT(*) OVER (PARTITION BY ' + partition +
+                  ') AS repetitions FROM repair_examples e WHERE ' + where + ') ')
+        rows = self.store.all(prefix + 'SELECT e.id,e.created_at,e.category,e.explanation,e.automation,e.status,e.repetitions,'
+                              "CASE WHEN json_extract(e.evidence,'$.via')='unit diff' THEN 'build report' WHEN e.before_attempt_id IS NULL THEN 'no failed baseline' WHEN json_extract(e.evidence,'$.before.source_sha256')=json_extract(e.evidence,'$.after.source_sha256') THEN 'same source / settings' WHEN json_extract(e.evidence,'$.comparable_settings')=1 THEN 'source repair' ELSE 'settings also changed' END AS evidence_kind,"
+                              "(json_extract(e.evidence,'$.provenance.kind') IN ('deterministic draft repair','automatic agent local pass') AND "
+                              "(json_extract(e.evidence,'$.provenance.source_sha256') IS NULL OR "
+                              "json_extract(e.evidence,'$.provenance.source_sha256')=json_extract(e.evidence,'$.after.source_sha256'))) AS automation_known,"
+                              'p.slug,p.name AS project,f.name AS function,a.name AS agent FROM grouped e '
                               'JOIN projects p ON p.id=e.project_id JOIN functions f ON f.id=e.function_id '
-                              'LEFT JOIN agents a ON a.id=e.agent_id WHERE ' + where +
+                              'LEFT JOIN agents a ON a.id=e.agent_id WHERE e.position=1 '
                               ' AND (?=0 OR e.id<?) ORDER BY e.id DESC LIMIT 26', *args, before, before)
         groups = self.store.all('SELECT e.category,e.status,COUNT(*) AS count FROM repair_examples e WHERE ' + where +
                                 ' GROUP BY e.category,e.status', *args)
+        from .app.adaptive_repairs import coverage
         return {'examples': [dict(r) for r in rows[:25]], 'more': len(rows) > 25,
-                'groups': [dict(r) for r in groups], 'categories': CATEGORIES, 'states': STATES}
+                'groups': [dict(r) for r in groups], 'categories': CATEGORIES, 'states': STATES,
+                'metrics': coverage(self.net)}
 
     def detail(self, slug, case_id, include_source=True):
         where, args = self._where(slug)
@@ -209,6 +232,7 @@ class RepairFeedback:
         if row is None:
             raise NetworkError('No repair example exists in this project.')
         result = dict(row); evidence = json.loads(result.pop('evidence'))
+        evidence['provenance'] = validated_provenance(evidence.get('provenance'),evidence['after'].get('source_sha256'))
         for stage in ('before', 'after', 'previous'):
             value = evidence.get(stage)
             if not value:
@@ -247,6 +271,10 @@ class RepairFeedback:
                 evidence['previous_diff'] = ''.join(difflib.unified_diff(evidence['previous']['source'].splitlines(True),new.splitlines(True),fromfile='previous.c',tofile='matched.c'))
             evidence['diff'] = ''.join(difflib.unified_diff(old.splitlines(True), new.splitlines(True),
                                                           fromfile='before.c', tofile='matched.c'))
+            from .repair_views import focused
+            evidence.update(focused(old, new, evidence.get('symbol') or evidence['function']))
+            from .repair_review import classify
+            evidence['review_suggestion'] = classify({'evidence': evidence})
         return result | {'evidence': evidence}
 
     def review(self, slug, case_id, status, category='', note=None):
@@ -260,6 +288,43 @@ class RepairFeedback:
                        'review_note=COALESCE(?,review_note) WHERE id=?',
                        (status, category, category, str(note)[:6000] if note is not None else None, case_id))
         return {'message': 'Review state saved.'}
+
+    def classify_new(self, slug, apply=False):
+        """Triage at most 500 untouched examples; existing human reviews and annotations stay intact."""
+        from . import repair_review
+        where, args = self._where(slug, 'unclassified', 'new')
+        rows = self.store.all('SELECT e.id FROM repair_examples e WHERE ' + where +
+                              " AND e.review_note='' AND e.explanation='' AND e.automation='' ORDER BY e.id LIMIT 500", *args)
+        seen, plans, counts = {}, [], {}
+        scope, scope_args = self._where(slug)
+        prior = self.store.all("SELECT e.id,e.project_id,json_extract(evidence,'$.target_sha256') AS target,"
+                               "json_extract(evidence,'$.after') AS after FROM repair_examples e WHERE " + scope +
+                               " AND e.status IN ('reviewed','implemented') ORDER BY e.id", *scope_args)
+        for row in prior:
+            old = {'project_id':row['project_id'], 'evidence':{'target_sha256':row['target'],
+                   'after':json.loads(row['after'] or '{}')}}
+            key = repair_review.identity(old)
+            if key:
+                seen.setdefault(key, row['id'])
+        for row in rows:
+            detail = self.detail(slug, row['id'])
+            proposal = repair_review.classify(detail)
+            key = repair_review.identity(detail)
+            if key in seen:
+                proposal.update(status='dismissed', note=f'Duplicate captured evidence of example #{seen[key]}; original retained.')
+            elif key:
+                seen[key] = row['id']
+            proposal['id'] = row['id']
+            counts[proposal['category']] = counts.get(proposal['category'], 0) + 1
+            plans.append(proposal)
+        if apply:
+            with self.store.tx() as db:
+                for proposal in plans:
+                    # A review arriving during the analysis must win over this automatic triage.
+                    db.execute("UPDATE repair_examples SET status=?,category=?,review_note=? WHERE id=? AND "
+                               "status='new' AND category='unclassified' AND review_note='' AND explanation='' AND automation=''",
+                               (proposal['status'], proposal['category'], proposal['note'] + ' Evidence group: ' + proposal['group'] + '.', proposal['id']))
+        return {'examples': plans, 'counts': counts, 'applied': bool(apply), 'total': len(plans)}
 
     def export(self, slug='', category='', status='', include_source=False, comparable=False):
         where, args = self._where(slug, category, status, comparable)

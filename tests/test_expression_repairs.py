@@ -46,10 +46,14 @@ def test_saved_m2c_refinement_strips_typedef_block_before_type_replacement():
 
 def test_identifier_argument_drop_is_individual_and_keeps_effects():
     src = 'void f(int x, int y) { send(x, y); send(x, y); }'
-    candidates = draft_repairs.variants(src, 'f', 'mips')
+    labels = {}
+    candidates = [c for c in draft_repairs.variants(src, 'f', 'mips', labels=labels)
+                  if labels[c] == 'expression_or_near_repair']
     assert len(candidates) == 2
     assert all(c.count('send(x, y)') == 1 for c in candidates)
-    assert not draft_repairs.variants('void f(int x) { send(x, x++); }', 'f', 'mips')
+    labels = {}
+    unsafe = draft_repairs.variants('void f(int x) { send(x, x++); }', 'f', 'mips', labels=labels)
+    assert not [c for c in unsafe if labels[c] == 'expression_or_near_repair']
 
 
 def test_call_argument_repairs_skip_function_like_macros():

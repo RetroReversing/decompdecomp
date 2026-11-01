@@ -178,6 +178,7 @@
 
 <!-- ================================================================ a project -->
 <main id="project" class="view project" hidden>
+  <div id="projectLoading" class="navigation-loading" role="status" hidden><h2 id="projectLoadingText">Loading project…</h2><div class="workbar" role="progressbar" aria-label="Loading project"><i></i></div><button id="projectRetry" class="ghost" type="button" hidden>Retry</button></div>
   <header class="phead" id="phead">
     <div class="ph-row">
       <div class="ph-title">
@@ -209,7 +210,7 @@
     </nav>
   </header>
 
-  <div class="notice" id="progressSyncNotice" role="status" hidden><div>Checking saved progress. Counts may change as verification finishes.<div class="workbar" role="progressbar" aria-label="Checking saved progress"><i></i></div></div></div>
+  <div class="notice" id="progressSyncNotice" role="status" hidden><div class="row"><div id="progressSyncText"></div><button id="progressSyncPause" class="ghost small-btn" type="button">Pause verification</button></div><div class="small muted" id="progressSyncDetails"></div><div class="workbar" id="progressSyncBar" role="progressbar" aria-label="Saved progress verification"><i></i></div></div>
   <div class="notice" id="coverageNotice" hidden></div>
   <div class="panel" id="progressPopulations" hidden></div>
   <div class="notice" id="compilerNotice" hidden></div>
@@ -374,8 +375,8 @@
 
   <!-- settings -->
   <section class="ptab" data-pane="settings">
-    <section class="panel">
-      <header class="panel-head"><h2>Local source preparation</h2><span class="muted small">optional · no AI tokens</span></header>
+    <details class="panel settings-disclosure" id="sourcePrepPanel">
+      <summary class="panel-head"><h2>Local source preparation</h2><span class="muted small">optional · no AI tokens</span></summary>
       <div class="pad">
         <p class="small muted">Have reference source you want to use? Map its functions explicitly. The app reads it without changing it, preserves line breaks and tries the ordinary compiler/link judge. A mapping alone never counts as a match.</p>
         <label class="check"><input id="sourcePrepEnabled" type="checkbox"><span>Use this local source before permuting unmatched functions</span></label>
@@ -384,21 +385,29 @@
         <label>Additional include folders (one per line)<textarea id="sourcePrepIncludes" rows="2"></textarea></label>
         <label>Function mappings (destination = source symbol @ relative file)<textarea id="sourcePrepMappings" rows="4" placeholder="func_80001000 = update_objects @ objects.c"></textarea></label>
         <label>Other symbol aliases (reference name = destination name)<textarea id="sourcePrepAliases" rows="2" placeholder="gObjects = D_80010000"></textarea></label>
+        <label>Original object definitions (optional: reference_symbol @ relative/file.c)<textarea id="sourcePrepDefinitions" rows="2" placeholder="gManager @ manager.c"></textarea></label>
+        <label>Coherent source/header alternatives (optional: destination = symbol @ file.c | header.h)<textarea id="sourcePrepContexts" rows="2"></textarea></label>
+        <p class="muted">Use complete matching SDK revisions. Up to two alternatives per function share the pass budget; the app never invents missing fields or combines revisions.</p>
+        <label>Original static helpers (optional: helper_name @ relative/file.c)<textarea id="sourcePrepHelpers" rows="2"></textarea></label>
+        <p class="muted">Only referenced, explicitly selected static helpers are retained for inlining. Extra emitted functions are rejected by the existing export guard. Selected object definitions keep their original bit patterns and expression order.</p>
+
+        <p class="small muted">Only selected objects referenced by the candidate are included. The app tries preserved definitions before the version without them; exact judging and export data checks still apply. Split multiple object declarations into a prepared subset.</p>
         <label>Retail macro values (numeric, one per line)<textarea id="sourcePrepOverrides" rows="2" placeholder="OBJECT_LIMIT=128"></textarea></label>
         <p class="small muted">Reference paths and mappings stay on this machine; accepted C and declarations are included in saved/exported work. Use a declarations header with the retail layouts, not debug settings. Imported projects keep their existing build headers; the reference body must compile against those. Each preparation pass is limited to 8 compiles / 20 seconds; unchanged trials are skipped.</p>
         <div class="row"><button id="sourcePrepSave" class="ghost" type="button">Save source settings</button><button id="sourcePrepRun" class="primary" type="button">Try preparation pass</button></div>
-        <div id="sourcePrepLog"></div>
+        <div id="sourcePrepLog"></div><button id="sourcePrepReviewsRefresh" class="ghost" type="button">Review prepared profiles</button><div id="sourcePrepReviews"></div>
+        <button id="sourcePrepAnalysisRefresh" class="ghost" type="button">Source leads & experiment results</button><div id="sourcePrepAnalysisLog"></div><div id="sourcePrepAnalysis"></div>
       </div>
-    </section>
+    </details>
 
-    <section class="panel" id="deepSweepPanel">
-      <header class="panel-head"><h2>Deep permutation pass</h2><span class="muted small">all unmatched functions · no AI tokens</span></header>
+    <details class="panel settings-disclosure" id="deepSweepPanel">
+      <summary class="panel-head"><h2>Deep permutation pass</h2><span class="muted small">all unmatched functions · no AI tokens</span></summary>
       <div class="pad">
         <p class="small muted">Give each function a longer turn through local repairs and random permutations. Completed passes are saved. After restarting the app, start the deep pass again to continue. Changed source, headers or compiler inputs make a function eligible again.</p>
-        <div class="row"><label>Minutes per function<input id="deepSweepMinutes" type="number" min="1" max="120" value="5"></label><label>Variants per function<input id="deepSweepVariants" type="number" min="1" max="1000000" value="10000"></label><label title="Functions searched at once. Empty: as many as this computer can spare. More threads finish sooner and leave the app slower to respond.">Threads<input id="deepSweepThreads" type="number" min="1" placeholder="auto"></label></div>
+        <div class="row"><label>Maximum minutes per function<input id="deepSweepMinutes" type="number" min="1" max="120" value="5"></label><label>Variants per function<input id="deepSweepVariants" type="number" min="1" max="1000000" value="10000"></label><label title="Functions searched at once. Empty: as many as this computer can spare. More threads finish sooner and leave the app slower to respond.">Threads<input id="deepSweepThreads" type="number" min="1" placeholder="auto"></label></div>
         <label class="check"><input id="deepSweepRepeat" type="checkbox"><span>Repeat previously completed passes</span></label>
         <div class="row"><button id="deepSweepStart" type="button" class="primary">Deep permute untested functions</button><button id="deepSweepStop" type="button" class="ghost" hidden>Stop deep pass</button></div>
-        <p class="small muted">Each thread picks a different eligible function in random order. Busy functions and those without scored C wait for their agent or draft. Only the ordinary byte judge can save a match. A completed pass means its bounded turn finished, not that every possible rewrite was tried.</p>
+        <p class="small muted">Each thread picks a different eligible function in random order. Turns start with half the time allowance and extend after improvements, up to your maximum. Repeated identical output can rotate sooner; rotated functions remain eligible next run. Busy functions and those without scored C wait for their agent or draft. Only the ordinary byte judge can save a match. A completed pass means its bounded turn finished, not that every possible rewrite was tried.</p>
         <div class="deep-sweep-counts" id="deepSweepCounts" aria-label="Deep pass progress">
           <div><b id="deepSweepDone">0</b><span>functions done</span></div>
           <div><b id="deepSweepLeft">0</b><span>functions left with scored C</span></div>
@@ -411,25 +420,40 @@
         <div id="deepSweepResults" aria-live="polite"></div>
         <div id="deepSweepLog"></div>
       </div>
-    </section>
+    </details>
 
     <div class="cols">
       <section class="panel" id="compilerPanel" aria-labelledby="compilerH">
         <header class="panel-head"><h2 id="compilerH">Compiler</h2><span class="muted small" id="compilerState"></span></header>
         <div class="pad">
           <p class="answer" id="compilerAnswer"></p>
-          <div id="compilerParts"></div>
+          <div class="compiler-view-controls" id="compilerViewControls" hidden>
+            <label>Group by <select id="compilerGroup"><option value="settings">Compiler + arguments</option><option value="family">Compiler family</option><option value="range">Address ranges</option></select></label>
+            <label>Sort <select id="compilerSort"><option value="count">Most ranges</option><option value="address">Address ↑</option><option value="address-desc">Address ↓</option><option value="compiler">Compiler name</option></select></label>
+          </div><div id="compilerParts"></div>
+          <details id="compilerCleanup" class="compiler-cleanup more" hidden>
+            <summary>Reduce the number of compiler profiles</summary><div class="more-body">
+            <label>Rare profiles: at most <input id="compilerRareLimit" type="number" min="1" max="25" value="3"> functions</label>
+            <p class="small muted">Test matched C from rare profiles against up to three more-common installed profiles. Change settings only when the same source matches byte for byte. Busy functions, shared overlay addresses and unfinished drafts keep their settings. The final check protects every affected match.</p>
+            <button id="compilerCleanupGo" class="ghost" type="button">Clean up compiler settings</button>
+            <p id="compilerCleanupResult" class="small" role="status"></p>
+            <pre id="compilerCleanupLog" class="joblog" hidden></pre>
+          </div></details>
           <div id="compilerWaiting"></div>
-          <label class="check" id="autoAdjustRow"><input type="checkbox" id="autoAdjust"><span><b>Apply proven changes by themselves.</b> When agents prove a part of the game was built with another compiler (its code matches with it, and its neighbours agree), the app uses it without asking you.</span></label>
-          <div id="installedCompilerTest">
-            <div class="row"><button class="ghost" type="button" id="testInstalledCompilers">Test untested functions</button><button class="ghost" type="button" id="stopInstalledCompilers" hidden>Stop comparison</button></div>
+          <details class="more"><summary>Automatic compiler changes</summary><div class="more-body"><label class="check" id="autoAdjustRow"><input type="checkbox" id="autoAdjust"><span><b>Apply proven changes by themselves.</b> When agents prove a part of the game was built with another compiler (its code matches with it, and its neighbours agree), the app uses it without asking you.</span></label></div></details>
+          <details class="more" id="installedCompilerTest">
+            <summary>Find better compiler settings</summary><div class="compiler-test-body">
+            <div><p class="small muted">Test saved C locally, then review and apply the results. No AI tokens are used.</p></div>
+            <div class="compiler-test-options"><label class="check"><input type="checkbox" id="compilerFlagsOnly"><span><b>Flag variations only</b><small>Faster: keep each function’s compiler and test different flags.</small></span></label>
+            <label class="check"><input type="checkbox" id="compilerRetest"><span><b>Retest completed functions</b><small>Leave off to continue with new or changed attempts.</small></span></label></div>
+            <p class="small muted" id="compilerTestScope">All installed compilers and supported flag variations · new or changed attempts only.</p>
+            <div class="row"><button class="primary" type="button" id="testInstalledCompilers">Find better settings</button><button class="ghost" type="button" id="stopInstalledCompilers" hidden>Stop comparison</button></div>
             <p class="small" id="compilerStopError" role="alert" hidden></p>
-            <label class="check"><input type="checkbox" id="compilerRetest"><span>Include previously tested functions</span></label>
-            <p class="small muted">Compare saved C against installed compilers. Results are saved; settings change only when you apply them.</p>
-            <details class="more"><summary>What gets tested?</summary><div class="more-body small muted">Up to 400 unmatched functions per run. Unchanged completed comparisons are skipped, so another run continues with the remaining functions. Tests optimization, small-data and debug variants, using no AI tokens or downloads. This is a bounded search, not every possible flag combination.</div></details>
+
             <div id="installedCompilerWork"></div>
             <section class="compiler-progress" id="compilerProgress" aria-label="Compiler comparison progress" hidden>
-              <div class="compiler-progress-heading"><span class="small muted">Current function</span><b class="mono" data-current>Preparing…</b></div>
+              <div class="compiler-queue-count"><span data-queue>Counting eligible functions…</span><progress data-queue-bar max="1" value="0" aria-label="Functions completed in this run"></progress></div>
+              <div class="compiler-progress-heading"><span class="small muted compiler-current-label">Current function</span><b class="mono" data-current>Preparing…</b></div>
               <div class="compiler-progress-count"><span data-tested>Waiting for the first result</span><progress data-bar max="1" value="0" aria-label="Settings tested for current function"></progress></div>
               <dl class="compiler-progress-stats">
                 <div class="compiler-percent"><dt>Saved match</dt><dd data-before>—</dd></div>
@@ -441,11 +465,12 @@
               <p class="small muted compiler-progress-profile" data-profile>Comparing the saved C. Compiler settings stay unchanged.</p>
             </section>
             <div id="compilerImprovements" tabindex="-1" aria-label="Compiler comparison function results"></div>
+            <details class="more"><summary>What gets tested?</summary><div class="more-body small muted">Up to 400 unmatched functions per run. Unless retesting is enabled, unchanged completed comparisons are skipped. Tests optimization, small-data and debug variants, using no AI tokens or downloads. This is a bounded search, not every possible flag combination.</div></details>
             <details class="more" id="compilerLogDetails" hidden><summary>Detailed output</summary><div class="more-body">
               <label class="check"><input type="checkbox" id="compilerFollowLog"><span>Follow latest output</span></label>
               <pre class="joblog" id="installedCompilerLog" aria-label="Compiler comparison results" aria-live="off"></pre>
             </div></details>
-          </div>
+          </div></details>
           <details class="more" id="compilerHow">
             <summary>How the app checks</summary>
             <div class="more-body" id="compilerEvidence"></div>
@@ -494,6 +519,13 @@
             <label class="field"><span>Save now, to this folder (empty: the <code>progress</code> folder)</span><span class="pick-row"><input id="saveFolder" class="mono" placeholder="/home/you/decomp-saves/my-game"><button class="ghost small-btn" type="button" data-pick="folder" data-for="saveFolder" data-title="Where to save this project">Choose…</button></span></label>
             <div class="row"><button class="ghost small-btn" id="saveGo" type="button">Save now</button></div>
             <pre class="joblog" id="saveLog" hidden></pre>
+            <section id="repositorySync" class="note">
+              <h3>Sync to Git repository</h3>
+              <p class="muted small">Add verified app matches to an existing decompdecomp export checkout. Its build setup and hand-maintained C stay intact. Sync updates only sources it previously created, verifies in a private copy, then shows files ready to commit. Commit or move existing checkout changes first. No automatic commits or pushes.</p>
+              <label class="field"><span>Git checkout root</span><span class="pick-row"><input id="repositoryFolder" class="mono" placeholder="/path/to/my-game-decomp"><button class="ghost small-btn" type="button" data-pick="folder" data-for="repositoryFolder" data-title="Git checkout root">Choose…</button></span></label>
+              <div class="row"><button class="primary small-btn" id="repositorySyncGo" type="button">Verify and sync</button><button class="ghost small-btn" id="repositorySyncStop" type="button" hidden>Stop</button></div>
+              <pre class="joblog" id="repositorySyncLog" hidden></pre>
+            </section>
           </div>
         </section>
         <section class="panel" id="sdkPanel">
@@ -534,6 +566,19 @@
     <div class="ag-grid" id="agList"></div>
   </section>
   <section class="panel" id="pairPanel" hidden><header class="panel-head"><h2>Access requests</h2></header><div class="pad" id="pairBox"></div></section>
+  <section class="panel manual-mcp" aria-labelledby="mcpHeading">
+    <header class="panel-head"><h2 id="mcpHeading">Connect another AI tool with MCP</h2></header>
+    <div class="pad">
+      <p>Use the local MCP server with an AI tool that supports Streamable HTTP and bearer authentication. Keep decompdecomp running on this computer.</p>
+      <div id="mcpStatus" role="status"></div>
+      <label class="field"><span>Project for this connection</span><select id="mcpProject"></select></label>
+      <div class="row"><button class="primary" id="mcpCreate" type="button">Create connection</button><button class="ghost" id="mcpRefresh" type="button">Refresh</button></div>
+      <pre class="joblog" id="mcpLog" hidden></pre>
+      <div id="mcpConfig"></div>
+      <details><summary>Available tools <span id="mcpToolCount"></span></summary><div id="mcpTools"></div></details>
+      <details><summary>Your manual connections</summary><div id="mcpConnections"></div></details>
+    </div>
+  </section>
   <div class="cols ag-cols">
     <section class="panel"><header class="panel-head"><h2>Models with an API key</h2></header><div class="pad" id="apiBox"></div></section>
   </div>
@@ -590,17 +635,24 @@
         <button class="ghost icon" data-close type="button" aria-label="Close" title="Close (Esc)">✕</button>
       </div>
     </header>
+    <div id="functionLoading" class="navigation-loading" role="status" hidden><p id="functionLoadingText">Loading function…</p><div class="workbar" role="progressbar" aria-label="Loading function"><i></i></div><button id="functionRetry" class="ghost" type="button" hidden>Retry</button></div>
     <div class="drawer-body">
       <p class="set-aside" id="fnAside" hidden><span id="fnAsideWhy"></span> <button class="link-btn" id="fnReopen" type="button">Give it back to the agents</button></p>
       <div id="fnCompilerTest" hidden>
+        <h3>Compiler settings</h3><div id="fnCurrentCompiler" class="small"></div><div id="fnCompilerMatches"></div>
+        <label class="check"><input type="checkbox" id="fnCompilerFlagsOnly"><span>Flag variations only — use this function’s current compiler</span></label>
         <button class="ghost small-btn" id="fnTestCompilers" type="button">Test installed compilers &amp; flags</button>
         <p class="small muted">Tests this function’s saved C attempt locally with every installed compiler and supported flag-search variant. No AI tokens; settings stay unchanged. This is not every possible compiler option.</p>
         <p class="small muted" id="fnCompilerHistory">Not tested yet.</p>
         <p class="compiler-result" id="fnCompilerSummary" role="status" hidden></p>
-        <div id="fnCompilerRanked"></div>
         <button class="primary small-btn" id="fnApplyCompiler" type="button" hidden>Apply these settings to this function</button>
         <details class="more"><summary>Comparison details</summary><pre class="joblog" id="fnCompilerLog" hidden></pre></details>
       </div>
+      <details class="more" id="fnVerification" hidden>
+        <summary>Last verified match</summary>
+        <p class="small muted" id="fnVerificationStatus"></p>
+        <button class="ghost small-btn" type="button" id="fnVerificationDownload">Download source, header and verification inputs</button>
+      </details>
       <details class="more deep-search" id="fnDeepPanel" hidden>
         <summary>Deep permuter · this function <span class="deep-free">No AI tokens</span></summary>
         <p class="small muted" id="fnDeepHistory"></p>
@@ -638,7 +690,7 @@
         <ul class="problems" id="diffProblems"></ul>
       </div>
       <div class="code-cols" id="fnCodeView" hidden>
-        <div><p class="col-title">Target assembly (from your game)</p><pre class="code asm" id="fnAsm"></pre></div>
+        <div><p class="col-title">Target assembly (from your game)<button class="link-btn" id="copyAsm" type="button" title="Copy assembly without address annotations">Copy</button></p><pre class="code asm" id="fnAsm"></pre></div>
         <div>
           <p class="col-title"><span id="fnSrcKind">C</span><button class="link-btn" id="copySrc" type="button">Copy</button></p>
           <div class="editor" id="editor">
@@ -687,10 +739,12 @@
 <script src="/assets/js/agents.js"></script>
 <script src="/assets/js/transcripts.js"></script>
 <script src="/assets/js/candidate-recovery.js"></script>
+<script src="/assets/js/repair-replay.js"></script>
 <script src="/assets/js/repair-feedback.js"></script>
 <script src="/assets/js/deep-progress.js"></script>
 <script src="/assets/js/function.js"></script>
 <script src="/assets/js/compiler-progress.js"></script>
+<script src="/assets/js/compiler-groups.js"></script>
 <script src="/assets/js/steering.js"></script>
 <script src="/assets/js/pages.js"></script>
 </body>

@@ -55,3 +55,61 @@ These experimental profiles are omitted from routine installed-profile searches.
 Use `try_compiler` explicitly with existing C and context. A configured compiler
 or range remains in comparisons. Check nontrivial functions before suggesting a
 range. Do not infer compiler identity from a trivial arithmetic match.
+
+
+## Check ABI and context before long permutations
+
+For an existing record returned by value, prefer a real C structure return over a guessed explicit
+result pointer. IDO chooses the hidden-pointer ABI and copy schedule. Preserve SDK record types,
+command macros and typed pointer locals inside inline helpers when available. These are hypotheses,
+not automatic equivalence proofs: judge each candidate with its exact compiler and flags.
+
+The app preflights up to four installed flag profiles before a long ROM search, caching actual inputs.
+Exact-winning changes respect the project's automatic compiler setting; similarity-only improvements
+remain suggestions. Missing global addresses need relocation evidence before random rewriting. A
+function match can still have a non-contiguous constant-pool export blocker; verify the whole image.
+See `docs/COMPILER_MATCHING_LEARNINGS.md` for the controlled IDO 5.3 regression and neutral reader experiments.
+
+After a source repair
+- Recheck relevant optimization profiles before further mutations: corrected SDK bodies can still need `-O1` or `-O3` instead of `-O2`. Deep search repeats its bounded cached flag preflight after saved local/random improvements; only exact results can apply automatically, respecting automatic-compiler settings.
+- With authorized local source, configure its function mapping and declarations. Deep search tries that typed template before permutations and preserves original line layout. Verify cleanup branches against retail; reference revisions can differ.
+- Equality operand order and unsigned integer product order can affect instruction scheduling. The local repair families try bounded simple-read variants; volatile accesses, calls and floating-point reassociation are excluded.
+
+Runtime and static-call evidence
+- Small signed 64-bit modulo and double-to-unsigned-64 targets can need `-O1 -mips3 -32`, even while surrounding files use MIPS II. Check real 64-bit argument/return widths. Instruction-based preflight hypotheses remain bounded and require the normal exact judge.
+- Recorded SDK-signature identity prioritizes `-O1` before wider optimization probes; a name alone is insufficient evidence.
+- When target HI/LO relocations prove an interior code address, reference that entry directly instead of retaining a byte-pointer base-plus-offset expression that emits extra arithmetic. Candidate-local declarations do not establish a new function boundary.
+- Caller-saved temporaries live across a call can indicate compiler-specialized static-helper clobbers. Inspect the original translation unit and argument registers; adding helper bodies to an isolated candidate is not a proven remedy.
+
+Original object definitions
+- If a diff has repeated extra LUI address loads around global-field stores, compare the original translation unit's definitions with the candidate's extern declarations. Source-local definition/layout knowledge can affect code generation; the mechanism is not uniquely established.
+- Select only authorized original objects in Local source preparation, using `reference_symbol @ relative/file.c`. The app tries the preserved definitions before the version without them. Do not invent initializers, alignment or addresses to force a match; normal data-placement/export and complete-image checks remain necessary.
+- Numeric branch selection preserves source line numbers before function extraction. For unsupported preprocessing or unknown compiler-specific macros, supply explicit numeric overrides or a prepared subset.
+
+If only unresolved runtime-helper call operands differ, confirm the helper ABI at the target call sites before
+permuting. An explicit correctly typed helper call can resolve a relocation while retaining the exact instruction
+sequence. Preserve original SDK unions, record types, macros and locals. Nearby verified `-O1` profiles are useful
+trial priorities for SDK routines, but only the current function's byte judge can confirm a candidate.
+
+A target-supported math alias must also have its correct float/double prototype; implicit-int returns change the
+calling convention. If only an allocation immediate differs, compare the ROM's requested extent with reference
+sizeof before changing any types. A different allocation extent does not prove a missing field. Prepared-source
+improvements merit bounded compiler-profile probes with that source's private header before further permutation.
+
+SDK I/O near-matches may need `-O1` with original `register` locals and byte-aligned response records. Keep the
+original volatile MMIO access shape: replacing a proven numeric register address with an address-of-symbol or
+scalar-symbol expression can change IDO 5.3's address setup/register selection. Only use addresses proven by the
+target; rejudge linked bytes rather than symbolic diff spelling. Inspect retail polling masks, error constants
+and recovery paths when an SDK revision differs. Changing optimization alone does not establish compatibility.
+
+## Original helper context before more permutations
+
+An incoming `f12` together with a live integer/pointer in `a0` can indicate an original static-helper
+calling convention that an exposed ordinary-C signature does not reproduce. Inspect the caller's argument
+setup and local helper context first; `mtc1` defining `f12` is not incoming-float evidence. Register and
+stack slots do not directly count C parameters, especially with wide or aggregate arguments.
+
+Use prepared-source investigation evidence to compare compiled calls, field offsets and branch/exit
+shapes. Similarity supports a source lead; it does not prove its name or justify automatic retail edits.
+After repeated register-only misses under unchanged source/context/profile inputs, prefer a targeted
+prototype/type or declaration-lifetime experiment. Exact judging still decides every candidate.

@@ -161,8 +161,9 @@ def test_output_duplicates_bound_expansion_but_preserve_two_source_shapes():
         expanded.append(source)
         return ['a','b','c'] if source=='seed' else []
     assert not search.advance(state,evaluate,variants,lambda:False)
-    assert expanded==['seed','a']
-    assert len(state['outputs'])==1
+    assert expanded==['seed','a','b']
+    assert len(state['outputs'])==2
+    assert max(state['outputs'].values())==2
     assert search.output_key({'rows':[]}) is None
     assert search.output_key({'candidate_target':'00','candidate_relocs':'[]'}) != search.output_key(
         {'candidate_target':'00','candidate_relocs':'[1]'})
@@ -170,7 +171,7 @@ def test_output_duplicates_bound_expansion_but_preserve_two_source_shapes():
 
 def test_targeted_repairs_chain_and_keep_serialized_progress(monkeypatch):
     from decompnet.app import draft_repairs
-    def proposals(source,name,arch,asm,flags,labels,header=''):
+    def proposals(source,name,arch,asm,flags,labels,header='',limit=None,tables=()):
         out={'seed':['lifetime'], 'lifetime':['done']}.get(source,[])
         labels.update({p:'split_scalar_lifetime' for p in out})
         return out
@@ -188,7 +189,7 @@ def test_targeted_repairs_chain_and_keep_serialized_progress(monkeypatch):
 
 def test_targeted_ranking_prefers_load_order_for_scheduling_diffs(monkeypatch):
     from decompnet.app import draft_repairs
-    def proposals(source,name,arch,asm,flags,labels,header=''):
+    def proposals(source,name,arch,asm,flags,labels,header='',limit=None,tables=()):
         labels.update(a='signedness',b='pointer_before_store',c='paired_load_order')
         return ['a','b','c']
     monkeypatch.setattr(draft_repairs,'variants',proposals)
@@ -266,3 +267,69 @@ def test_the_default_is_what_the_computer_can_spare(pair, monkeypatch):
     pair.cascades.iterative_threads = 3
     search.run(pair.twins, 'destination', Job())
     assert sizes == [workers.default_workers(), 3]
+
+
+def test_reserved_detour_survives_better_siblings_and_can_lead_to_exact_match():
+    state, expanded = seed(), []
+    reports = {'seed':20, 'one':10, 'two':11, 'three':12, 'detour':24, 'done':0}
+    def variants(source, report):
+        expanded.append(source)
+        return {'seed':['one', 'two', 'three', 'detour'], 'detour':['done']}.get(source, [])
+    assert search.advance(state, lambda s: dict(score=reports[s], matched=s == 'done'), variants, lambda: False)
+    assert 'detour' in expanded and 'three' not in expanded
+
+
+def test_detour_limit_does_not_compound_and_survives_serialization():
+    state, calls = seed(), []
+    def evaluate(source):
+        calls.append(source)
+        return dict(score={'seed':20, 'detour':24, 'too_far':28}[source], matched=False)
+    def variants(source, report):
+        return {'seed':['detour'], 'detour':['too_far']}.get(source, [])
+    assert not search.advance(state, evaluate, variants, lambda: len(calls) >= 2)
+    state = json.loads(json.dumps(state))
+    expanded = []
+    assert not search.advance(state, evaluate, lambda s,r: expanded.append(s) or [], lambda: False)
+    assert calls == ['seed', 'detour', 'too_far'] and not expanded
+
+
+def test_region_gain_wins_reserved_detour_slot_over_a_lower_total_score():
+    from .test_region_repairs import rows
+    state, expanded = seed(), []
+    reports = {'seed':dict(score=20,rows=rows({0,1,2})),
+               'weak':dict(score=21,rows=rows({0,1})),
+               'local_fix':dict(score=24,rows=rows(set(range(20,32)))),
+               'done':dict(score=0,matched=True)}
+    def variants(source, report):
+        expanded.append(source)
+        return {'seed':['weak','local_fix'], 'local_fix':['done']}.get(source, [])
+    assert search.advance(state, lambda s: reports[s], variants, lambda:False)
+    assert 'local_fix' in expanded and 'weak' not in expanded
+
+
+def test_unhelpful_frame_growth_is_not_expanded_but_exact_verdict_wins():
+    baseline = [(' ','addiu $sp, $sp, -32','addiu $sp, $sp, -32'),
+                ('r','move $s0, $a0','move $s1, $a0')]
+    larger = [('s','addiu $sp, $sp, -32','addiu $sp, $sp, -40'),
+              ('r','move $s0, $a0','move $s1, $a0'), ('>','','nop')]
+    expanded = []
+    state = seed()
+    state['pending'][0]['baseline_rows'] = baseline
+    assert not search.advance(state,lambda s:dict(score=21,matched=False,rows=larger),
+                              lambda s,r:expanded.append(s) or [],lambda:False,arch='mips')
+    assert not expanded
+    state = seed()
+    state['pending'][0]['baseline_rows'] = baseline
+    assert search.advance(state,lambda s:dict(score=0,matched=True,rows=larger),
+                          lambda s,r:[],lambda:False,arch='mips')
+
+def test_identical_output_plateau_can_continue_at_each_depth():
+    state = seed()
+    calls = []
+    def evaluate(source):
+        calls.append(source)
+        return dict(score=20, matched=source == 'done', candidate_target='aa', candidate_relocs='[]')
+    def variants(source, report):
+        return {'seed':['a'], 'a':['b'], 'b':['done']}[source]
+    assert search.advance(state, evaluate, variants, lambda: False)
+    assert calls == ['seed', 'a', 'b', 'done']

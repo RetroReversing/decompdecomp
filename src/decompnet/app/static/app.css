@@ -1015,7 +1015,9 @@ details.more[open] > summary::before { content: "− "; }
 .ptab[data-pane="settings"] .flags,
 .ptab[data-pane="settings"] dd,
 .ptab[data-pane="settings"] .check span { overflow-wrap: anywhere; }
-#installedCompilerTest { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+#installedCompilerTest { border-top: 1px solid var(--line-soft); }
+.compiler-test-body { display: grid; gap: 14px; padding: 12px 0; }
+.compiler-queue-count { display: grid; gap: 8px; font-size: 13px; font-weight: 600; }
 #testInstalledCompilers { justify-self: start; }
 #installedCompilerTest > .small { line-height: 1.55; }
 #installedCompilerLog { min-width: 0; max-width: 100%; max-height: 280px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
@@ -1233,3 +1235,64 @@ details.more[open] > summary::before { content: "− "; }
 #crossGameBody[hidden], #crossGameWork[hidden] { display: none; }
 #crossGameWork { padding: 12px 16px; border-bottom: 1px solid var(--line); }
 #crossGameLog { max-height: 140px; }
+
+.compiler-view-controls { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+.compiler-view-controls label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); flex: 1; min-width: 150px; }
+.compiler-profile { border: 1px solid var(--line); border-radius: 6px; margin: 10px 0; overflow: hidden; }
+.compiler-profile > summary { padding: 12px; cursor: pointer; }
+.compiler-profile-count { display: block; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.compiler-arguments { display: block; white-space: normal; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; margin-top: 5px; color: var(--muted); background: transparent; }
+.compiler-range-list { list-style: none; margin: 0; padding: 0; }
+.compiler-range { padding: 10px 12px; border-top: 1px solid var(--line); }
+.compiler-range-heading { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.compiler-range-heading button { margin-left: auto; }
+.compiler-range-heading code { overflow-wrap: anywhere; }
+.compiler-range-reason { margin-top: 6px; }
+.compiler-range-reason summary { font-size: 12px; color: var(--muted); cursor: pointer; }
+.compiler-view-controls select { min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); font: inherit; }
+#progressSyncBar.determinate i { animation: none; transform: none; transition: width .2s; }
+
+.compiler-function-links { display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 8px 0; max-height: 240px; overflow: auto; }
+.compiler-function-links button { font-size: 12px; }
+.compiler-cleanup { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 16px; }
+#compilerRareLimit { width: 64px; padding: 4px; }
+
+/* Native disclosures keep their open state while settings data is refreshed. */
+.settings-disclosure { margin-bottom: 20px; }
+.settings-disclosure > summary { cursor: pointer; list-style: none; }
+.settings-disclosure > summary::-webkit-details-marker { display: none; }
+.settings-disclosure > summary::before { content: ""; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); flex: none; }
+.settings-disclosure[open] > summary::before { transform: rotate(45deg); }
+.settings-disclosure > summary:focus-visible { outline: 2px solid var(--hl); outline-offset: -3px; }
+
+.compiler-selected { background: var(--hl); color: var(--hl-ink); border-color: var(--hl); font-weight: 600; }
+
+.compiler-profile-action { padding: 10px 12px; border-top: 1px solid var(--line); }
+
+/* Keep comparison choices together and finished results free of empty per-function scores. */
+.compiler-test-options { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.compiler-test-options .check { margin: 0; border: 0; border-radius: 0; padding: 12px; }
+.compiler-test-options .check + .check { border-top: 1px solid var(--line-soft); }
+.compiler-test-options small { display: block; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+#installedCompilerTest h3 { margin: 0 0 6px; }
+#installedCompilerTest .compiler-test-options + p { margin: 0; }
+.compiler-progress[data-finished="true"] .compiler-percent,
+.compiler-progress[data-finished="true"] .compiler-current-label { display: none; }
+.compiler-progress[data-finished="true"] .compiler-progress-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.compiler-progress[data-finished="true"] .compiler-progress-stats > div { grid-column: auto; }
+.compiler-table td button.small-btn { white-space: nowrap; }
+
+/* A selected identity must never label the previous view's data or controls. */
+.navigation-loading { padding: 24px; }
+#project[data-loading] > :not(.navigation-loading) { display: none !important; }
+#drawer[data-loading] .drawer-body { display: none !important; }
+#drawer[data-loading] .drawer-head .row > :not([data-close]):not(#fnPrev):not(#fnNext) { visibility: hidden; pointer-events: none; }
+/* Numeric evidence stays separate from symbolic assembly and its score. */
+.raw-address { display: block; color: var(--muted); font: 11px/1.5 var(--mono); }
+
+.manual-mcp { margin: 24px 0; }
+.manual-mcp .pad { display: grid; gap: 16px; }
+.manual-mcp .cmd { align-items: flex-start; }
+.manual-mcp .cmd code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.manual-mcp details { border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.manual-mcp .mcp-tool, .mcp-connection { padding: 12px 0; }

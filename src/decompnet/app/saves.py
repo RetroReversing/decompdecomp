@@ -217,6 +217,9 @@ def _check_progress_folder(folder: Path, *, chosen: bool = False) -> None:
 
 def _check_save_paths(folder: Path, *, chosen: bool = False) -> None:
     """Reject links before README, the map or a save's files can follow one outside the selected save folder."""
+    if (folder / 'build.json').is_file() and (folder / 'build.py').is_file():
+        raise NetworkError('This is a standalone build checkout. Use Sync to Git repository instead of Save now, '
+                           'and keep the progress folder separate from the build tree.')
     _check_progress_folder(folder, chosen=chosen)
     for name in ("src", "best", "include"):
         path = folder / name
@@ -301,6 +304,9 @@ def _manifest_from_rows(net, proj, cfg: dict, rows, folder: Path) -> tuple[dict,
                        **{k: v for k, v in json.loads(r["meta"] or "{}").items() if k in SET_ASIDE_META}}
                       for r in rows if r["status"] == "asm"],
     }
+    from ..match_bundle import portable
+    if bundle := portable(net, pid):
+        manifest['verification'] = bundle
     return manifest, functions, units
 
 
@@ -700,7 +706,7 @@ def _apply_context(net, slug: str, folder: Path, manifest: dict, log,
     if manifest.get("title"):
         with net.store.tx() as db:
             db.execute("UPDATE projects SET name=? WHERE id=?", (manifest["title"], pid))
-    restorer, _ = net.local_agent("restored")
+    restorer = net.attribution_agent("restored")
     with net.store.tx() as db:
         for unit, file in (manifest.get("headers") or {}).items():
             check_cancel()
@@ -717,7 +723,7 @@ def _apply_context(net, slug: str, folder: Path, manifest: dict, log,
     for note in manifest.get("notes") or []:
         check_cancel()
         try:
-            net.add_note(net.local_agent(note.get("by") or "restored")[0], slug, note["text"], note.get("function"))
+            net.add_note(net.attribution_agent(note.get("by") or "restored"), slug, note["text"], note.get("function"))
         except NetworkError:
             continue  # its function is gone (a split the layout couldn't make again)
     with net.store.tx() as db:
@@ -740,7 +746,10 @@ def _judge_saved(net, slug: str, folder: Path, manifest: dict, by_name: dict, sa
         by_vram.setdefault(row["vram"], []).append(name)
     matched, lost, best = 0, [], 0
     log(f"judging {len(saved)} saved functions again")
-    for old_name, info in saved.items():
+    update = getattr(log, "progress", lambda **fields: None)
+    for index, (old_name, info) in enumerate(saved.items()):
+        update(phase="Verifying saved functions" if judge_code else "Reading saved function records",
+               done=index, total=len(saved), function=old_name, matched=matched, best=best, lost=len(lost))
         check_cancel()
         log(f"checking {old_name}")
         kind = "src" if "matched_by" in info else "best"
@@ -753,6 +762,8 @@ def _judge_saved(net, slug: str, folder: Path, manifest: dict, by_name: dict, sa
         if name is None or text is None:
             lost.append(old_name) if kind == "src" else None
             continue
+        from ..match_bundle import restore_evidence
+        restore_evidence(net,pid,name,old_name,manifest)
         current = net.store.one("SELECT status,best_source FROM functions WHERE project_id=? AND name=?", pid, name)
         if current["status"] == "matched":
             matched += kind == "src"
@@ -768,11 +779,12 @@ def _judge_saved(net, slug: str, folder: Path, manifest: dict, by_name: dict, sa
             else:
                 best += 1
             continue
-        credit, _ = net.local_agent((info.get("matched_by") or info.get("best_by") or "restored"))
+        credit = net.attribution_agent(info.get("matched_by") or info.get("best_by") or "restored")
         agent, _ = net.local_agent("progress-judge")
         try:
             result = net.attempt(agent, name, text, slug)
         except (NetworkError, toolchains.ToolchainError) as e:
+            check_cancel()  # A paused/cancelled check is not a failed match; abort and roll back instead.
             # A compiler that isn't here (an unknown one can never be installed) must not stop the other saved work
             # from coming back; the function stays open for when the user picks one (#118).
             log(f"{name}: {e}")
@@ -795,6 +807,7 @@ def _judge_saved(net, slug: str, folder: Path, manifest: dict, by_name: dict, sa
                 lost.append(name)
         else:
             best += 1
+    update(done=len(saved), total=len(saved), function=None, matched=matched, best=best, lost=len(lost))
     log(f"restored: {matched} matched functions, {best} best attempts" + (f"; {len(lost)} no longer match" if lost else ""))
     return {"matched": matched, "best": best, "lost": lost}
 

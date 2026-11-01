@@ -80,4 +80,9 @@ def retrieve(net,agent,slug,function,trial_id):
     fn=net._function(function,slug);record=getattr(net,'_compiler_trials',{}).get(trial_id)
     if not record or (record['agent'],record['slug'],record['function'])!=(agent.id,slug,fn['name']):
         raise NetworkError('Trial is unavailable for this worker/function; rerun the bounded experiment.')
-    return json.dumps(record,ensure_ascii=False)
+    # The complete private configuration remains in the ledger for reproduction.
+    # Range checks/surveys are unrelated to this selected C/profile pair.
+    fields = ('function','source','compiler','flags','revision','scope','flags_source','result')
+    compact = {key: record[key] for key in fields if key in record}
+    compact['context_id'] = hashlib.sha256(json.dumps(record.get('project_config',{}),sort_keys=True,default=str).encode()).hexdigest()[:20]
+    return json.dumps(compact,ensure_ascii=False)

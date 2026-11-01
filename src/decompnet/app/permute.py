@@ -41,7 +41,7 @@ from ..network import NetworkError
 from ..permuter import mutate
 from ..project import compiler_for
 from ..repair_feedback import trial as repair_trial
-from . import draft_repairs, workers
+from . import draft_repairs, switch_tables, workers
 
 log = logging.getLogger("decompdecomp")
 NEAR = 0.06  # a near miss: at most this much of the function differs (best_score <= 6% of n_insns * 100)
@@ -296,11 +296,11 @@ class Permuter:
                 log.info('permuter: %s: header unavailable: %s', fn['name'], error)
                 continue
             labels = {}
-            candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels,header=header)
-            from . import repair_ranking
+            candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels,header=header,limit=None,tables=switch_tables.read(self.net,proj,fn))
+            from . import normalization_repairs, repair_ranking
+            normalization_repairs.extend_frame(candidates, labels, fn['best_source'], fn['name'], proj['arch'], repair_ranking.evidence(self.net,fn['id'],agent.id))
             ranked = repair_ranking.order(dict.fromkeys(labels.get(text, 'draft_repair') for text in candidates),repair_ranking.evidence(self.net,fn['id'],agent.id))
-            from . import agent_tokens
-            effect_scope=agent_tokens.target_scope(self.net,fn,'') if hasattr(self.net,'_context') else None
+            effect_scope=repair_ranking.effect_scope(self.net,fn,fn['best_source']) if hasattr(self.net,'_context') else None
             ranked=repair_ranking.demote(self.net,effect_scope,ranked)
             if not self._hold(agent, fn, count_turn=False):
                 continue
@@ -323,8 +323,13 @@ class Permuter:
                     if measured == 0:
                         st.add(improved=1, matched=1)
                         continue
+                    normalization_repairs.extend_frame(candidates, labels, fn['best_source'], fn['name'], proj['arch'], repair_ranking.evidence(self.net,fn['id'],agent.id))
                     ranked = repair_ranking.order(dict.fromkeys(labels.get(text, 'draft_repair') for text in candidates), repair_ranking.evidence(self.net, fn['id'], agent.id))
                     ranked = repair_ranking.demote(self.net, effect_scope, ranked)
+                from . import adaptive_repairs, permuter_focus
+                policy_rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
+                ranked = adaptive_repairs.order(self.net, proj, fn, policy_rows, ranked)
+                policy_key = adaptive_repairs.profile(self.net, proj, fn)
                 candidates.sort(key=lambda text: ranked.index(labels.get(text, 'draft_repair')) if labels.get(text, 'draft_repair') in ranked else len(ranked))
                 for candidate in candidates:
                     if st.stop.is_set() or attempts >= budget or time.monotonic() >= deadline:
@@ -341,8 +346,13 @@ class Permuter:
                     baseline=getattr(self.net,'_agent_outcomes',{}).get((agent.id,fn['id']))
                     if baseline and baseline.get('source')!=fn['best_source']:
                         baseline=None
+                    policy_started = time.monotonic()
                     with repair_trial({'kind':'deterministic draft repair','family':labels.get(candidate,'draft_repair'),'base_source_sha256':hashlib.sha256(fn['best_source'].encode()).hexdigest(),'source_sha256':hashlib.sha256(candidate.encode()).hexdigest()}):
                         score = self._score(agent, proj, fn, candidate, best, fork)
+                    if not getattr(self, 'trace_variants', False) and getattr(self, '_trial_outcome', '') != 'no_edit':
+                        adaptive_repairs.record(self.net, policy_key, permuter_focus.classify(policy_rows),
+                                                labels.get(candidate, 'draft_repair'), best, score,
+                                                (time.monotonic()-policy_started)*1000, origin="background deterministic")
                     measured=getattr(self.net,'_agent_outcomes',{}).get((agent.id,fn['id']))
                     if measured and measured.get('source')==candidate:
                         repair_ranking.remember(self.net,effect_scope,labels.get(candidate,'draft_repair'),baseline,measured)
@@ -392,8 +402,29 @@ class Permuter:
         """Deep search can run bounded local repairs here without changing normal random turns."""
         return best, source
 
+    def _compiler_preflight(self, proj, fn, st, deadline):
+        from .matching_preflight import run
+        return run(self.net, proj, fn, log.info,
+                   lambda: not st.stop.is_set() and time.monotonic() < deadline)
+
     def _permute(self, agent, proj, fn, st: State) -> None:
         seconds = self.seconds
+        preflight_deadline = time.monotonic() + seconds
+        preflight = self._compiler_preflight(proj, fn, st, preflight_deadline)
+        seconds = max(0, preflight_deadline-time.monotonic())
+        st.add(variants=preflight['tested'])
+        proj = self.net.project_row(proj['slug'])
+        fn = self.net._function(fn['name'], proj['slug']) if hasattr(self.net, '_function') else fn
+        if fn['status'] == 'matched':
+            st.add(tried=1, matched=int(bool(preflight.get('applied'))), improved=int(bool(preflight.get('applied'))))
+            return
+        if preflight.get('link'):
+            if self._hold(agent, fn):
+                st.add(tried=1)
+                self._let_go(agent, fn)
+            return  # Keep the C for address repairs/agents; random rewriting cannot resolve a missing address.
+        if seconds <= 0:
+            return
         if st.stop.is_set() or not self._hold(agent, fn, seconds=seconds):
             return
         st.add(tried=1)
@@ -401,6 +432,7 @@ class Permuter:
         fork = self.net.fork_slug(proj["slug"])
         rng = random.Random(f"{fn['id']}-{fn['permuted']}")
         gen = None
+        header = ''
         try:
             if available():
                 # (as m2c reads it: what's only for C++ made pycparser refuse GTA San Andreas's whole header)
@@ -412,10 +444,10 @@ class Permuter:
                 except OSError as e:  # its environment is broken: the simple rewrites still work
                     log.info("permuter: decomp-permuter didn't start: %s", e)
             # (a draft still in m2c's macros isn't C decomp-permuter's parser reads: written out, it is the same code)
-            start_src = best_src = cur_src = m2cfix.expand_macros(fn["best_source"])
+            start_src = best_src = cur_src = m2cfix.expand_macros(fn["best_source"], header)
             best = cur = fn["best_score"]
             deadline = time.monotonic() + seconds
-            from . import permuter_focus, repair_ranking
+            from . import adaptive_repairs, permuter_focus, repair_ranking
             if hasattr(self.net, 'keep_diff'):
                 measured, _ = self._baseline(agent, proj, fn, st, fork)
                 if measured == 0:
@@ -427,20 +459,51 @@ class Permuter:
                 if best == 0:
                     return
             rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
-            focus, boosts = permuter_focus.classify(rows), permuter_focus.boosts(rows)
+            focus = permuter_focus.classify(rows)
+            boosts = adaptive_repairs.boosts(self.net, proj, fn, rows, permuter_focus.boosts(rows))
+            from .search_frontier import Frontier
+            frontier = self.search_frontier = Frontier()
+            frontier.offer(best_src, best, rows)
             batches = misses = 0
             while time.monotonic() < deadline and best > 0 and not st.stop.is_set():
                 if gen is not None:
                     # a batch of decomp-permuter's variants, of the C the turn started from and of the best so far in
                     # turn: from the best alone, rewrites piled on rewrites and got stuck on one of nine near misses of
                     # the demo ROM (at 45); taking turns, every one matched within 12 s
-                    base = best_src if batches % 2 else start_src
+                    # A freshly saved winner takes the next batch. Other batches rotate the
+                    # original, numeric best and structurally promising alternatives.
+                    fresh = self.net._function(fn['name'], proj['slug']) if hasattr(self.net, '_function') else fn
+                    if fresh['status'] == 'matched':
+                        break
+                    if fresh['best_source'] and fresh['best_score'] is not None and fresh['best_score'] < best:
+                        fn = fresh
+                        fresh_proj = self.net.project_row(proj['slug'])
+                        fresh_header = seeds.c_only(self.net.forks.permuter_header(fork, fn['name']) if fork else
+                                                    self.net._context(proj['id'], fn['unit'])['header'])
+                        if fresh_header != header or fresh_proj['config'] != proj['config']:
+                            frontier = self.search_frontier = Frontier()
+                        proj, header = fresh_proj, fresh_header
+                        family = weight_family(self.net.cfg(proj), fn['vram'], bool(fork))
+                        best, _ = self._baseline(agent, proj, fn, st, fork)
+                        if best is None or best == 0:
+                            break
+                        best_src = m2cfix.expand_macros(fn['best_source'], header)
+                        rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
+                        frontier.offer(best_src, best, rows)
+                        reseed = True
+                    else:
+                        reseed = getattr(self, '_reseed_random', False)
+                    self._reseed_random = False
+                    base = (best_src if reseed else frontier.choose(batches//3, best_src) if batches % 3 == 2
+                            else best_src if batches % 2 else start_src)
                     batches += 1
+                    if batches % 2 == 0:
+                        boosts = adaptive_repairs.boosts(self.net, proj, fn, rows, permuter_focus.boosts(rows))
                     # Alternate upstream defaults with focused weights: preserve an exploratory lane when
                     # the advisory mismatch category is incomplete or points at the wrong repair.
                     batch = gen.batch({"header": header, "source": base, "function": fn["name"], "family": family,
                                        "seed": rng.randrange(MAX_SEED), "count": BATCH, "weight_boosts": boosts if batches % 2 == 0 else {},
-                                       "trace": bool(getattr(self, "trace_variants", False))})
+                                       "trace": True})
                     if batch is None:  # C it can't read: the simple rewrites can still try
                         gen.close()
                         gen = None
@@ -463,24 +526,31 @@ class Permuter:
                     provenance = {'kind': 'random rewrite', 'family': lineage[-1] if lineage else 'random_rewrite_unattributed',
                                   'lineage': lineage or [], 'base_source_sha256': hashlib.sha256(base.encode()).hexdigest(),
                                   'source_sha256': hashlib.sha256(cand.encode()).hexdigest()}
+                    started = time.monotonic()
                     with repair_trial(provenance):
                         score = self._score(agent, proj, fn, cand, best, fork)
+                    if not getattr(self, 'trace_variants', False) and getattr(self, '_trial_outcome', '') != 'no_edit':
+                        adaptive_repairs.record(self.net, adaptive_repairs.profile(self.net, proj, fn), focus,
+                                                provenance['family'], best, score, (time.monotonic()-started)*1000, origin="background random")
                     if score is None:
                         continue
+                    measured_rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
+                    frontier.offer(cand, score, measured_rows, arch=proj['arch'], baseline=rows, baseline_score=best)
                     if score < best:
                         best, best_src = score, cand
                         st.add(improved=1)
                         if best > 0:
                             best, best_src = self._after_improvement(agent, proj, fn, st, fork, best, best_src)
                         rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
-                        focus, boosts = permuter_focus.classify(rows), permuter_focus.boosts(rows)
+                        focus = permuter_focus.classify(rows)
+                        boosts = adaptive_repairs.boosts(self.net, proj, fn, rows, permuter_focus.boosts(rows))
                         if best == 0:
                             st.add(matched=1)
                             log.info("permuter: %s matched", fn["name"])
                             break
-                        if best < score:
-                            cur, cur_src = best, best_src
-                            break  # generate the next batch from the refined winner, not its parent
+                        cur, cur_src = best, best_src
+                        self._reseed_random = True
+                        break  # discard siblings generated from an obsolete parent after every improvement
                     if score <= cur or rng.random() < 0.02:  # mostly downhill, now and then sideways off a plateau
                         cur, cur_src = score, cand
         finally:
@@ -594,7 +664,8 @@ class Permuter:
     def _score(self, agent, proj, fn, source: str, best: int, fork: str | None) -> int | None:
         """A variant's score; recorded (as the function's best attempt, or its match) only when it beats `best`."""
         with self.net.progress.judging(proj["slug"]) if hasattr(self.net, "progress") else nullcontext():
-            return self._score_work(agent, proj, fn, source, best, fork)
+            from .experiment_evidence import measured
+            return measured(self, agent, proj, fn, source, best, fork)
 
     def _score_work(self, agent, proj, fn, source: str, best: int, fork: str | None) -> int | None:
         self._trial_outcome = 'unscored'
@@ -617,6 +688,8 @@ class Permuter:
         if cand is None:
             return None
         self._trial_outcome = 'scored'
+        from .experiment_evidence import output
+        self._trial_output = output(cand)
         d = scoring.diff(self.net._target_obj(fn, proj), cand)
         if verdict is not None:
             d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)

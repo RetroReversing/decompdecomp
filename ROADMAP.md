@@ -1,14 +1,47 @@
 # Roadmap
 
+Implemented: source preparation advances cached private profile searches, retains scoped link failures,
+and explains reference/saved-draft call differences plus explicit helper declaration conflicts.
+SDK version identification and automatic retail-source patching are not implemented.
+
+Implemented: explicitly selected definition-preserving source candidates, bounded numeric conditional-branch
+selection with original line layout, advisory repeated-address-load diagnostics; instruction-guided MIPS runtime width/ISA/ABI hypotheses, SDK-signature profile priority,
+proven interior-address source repairs and advisory specialized-call diagnostics; bounded compiler preflight
+before long ROM searches and after saved deep-search improvements,
+explicit profile-induced match results, opt-in mapped source before deep mutations, advisory type/retail checks,
+side-effect-free comparison and unsigned product order hypotheses, input-scoped retries, existing-record
+structure-return and SDK-style setter hypotheses, typed local SDK candidates by name, separate MIPS function/export
+layout diagnostics, and compressed-cartridge repository identity checks. See [the live API workflow](docs/LIVE_API_WORKFLOW.md).
+Planned: runtime/specialized-call evidence readers for other architectures, preflight integration with imported
+projects' own file-compiler workflows, standalone-layout adapters for
+non-MIPS object formats, and export normalization for compiler-emitted prefixes. Imported projects retain their
+existing objdiff/whole-image gates; no generic preflight changes their build settings.
+
 Deep search now chains bounded local repairs after random improvements. Register reuse hypotheses share
 all normal draft/permuter paths. Fresh exact judgments repair score-zero/open bookkeeping; plain return
-conflicts can recover a buildable ROM candidate with an honest baseline and retained history. Adaptive
-per-function budgets and a pool of alternative search candidates remain planned follow-ups.
+conflicts can recover a buildable ROM candidate with an honest baseline and retained history. A bounded numeric/structural source frontier and immediate reseeding now preserve useful alternatives.
+Project sweeps now use progress-sensitive soft allowances within the requested hard cap; rotated
+functions remain eligible next run. Explicit single-function searches keep their requested limit.
 
 Bounded integer/call repairs now include evidence-led local widening, candidate-owned callee prototype widths,
 integer lifetime splits/merges, call distribution into branches, terminal goto leaves and switch layout variants.
 They share the ROM/imported-project judge and existing budgets; a better similarity score remains a draft.
-General CFG liveness, fallthrough switch rewriting and shared-header prototype inference remain future work.
+Bounded scalar CFG liveness now supports masked-value reuse, extra lifetime merges and m2c draft hints.
+Unknown syntax gives no advice. General C/C++ CFG analysis, fallthrough switch rewriting and shared-header
+prototype inference remain future work.
+
+Targeted address association and call initialization now share bounded local repair paths.
+Input-scoped experiment costs reduce ineffective family priority while retaining exploration.
+Last exact source/header/compiler evidence travels with saved progress; imported evidence never
+accepts code. MIPS stack diagnostics separate saved slots from local operands. Equivalent readers
+for non-MIPS architectures and imported-project GUI diagnostics remain planned. Experimental
+bitfield frame hypotheses require explicit local-family selection.
+
+Connected exact repair sequences now guide shared family ordering and deep local follow-ups.
+Each candidate retains its own mismatch advice. Compact build-scoped evidence reaches agents;
+failed rechecks of locally captured exact source raise deduplicated regression alerts.
+See [learned repair search](docs/learned-repair-search.md). Durable cross-restart alternative
+source frontiers and controlled live agent-token comparisons remain future work.
 
 What's planned for decompdecomp, roughly in order, and why. Every item keeps the rule that matters most: a match is
 byte-identical after linking (ROM mode) or objdiff 100% (fork mode). Nothing here accepts code that only does the
@@ -73,6 +106,11 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 
 | Feature | N64 | PS1 | PS2 | PSP | GameCube · Wii | Windows PC | DS | Public decomps |
 | :-- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| Targeted scalar scheduling repairs and experiment costs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Portable last-exact evidence | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ historical, own build |
+| Stack slot layout diagnostics | ✓ | ✓ | ✓ | ✓ | — reader planned | — reader planned | — reader planned | — GUI adapter planned |
+| Learned repair sequences, scoped brief evidence and sweep rotation | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ build-scoped |
+| Last-exact failed-recheck alerts | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ local judgments only |
 | Status | recommended | beta | beta | beta | beta | beta | beta | the project's own |
 | Start from your own copy | ✓ | ✓ | ✓ | ✓ unencrypted or decrypted program and modules (ISO, CSO, CHD) | ✓ | ✓ | ✓ | fork by address |
 | Judge | link · compare | link · compare | link · compare | link · compare | objdiff | objdiff | objdiff | objdiff |
@@ -82,6 +120,9 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | C++ methods drafted as `Class::method` | ✓ | ✓ | ✓ | ✓ | — | ✓ (RTTI, and classes from the vtables constructors store) | — | — |
 | Twins: free matches from identical code | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Local mapped source preparation | ✓ | ✓ | ✓ | ✓ | body only¹ | body only¹ | body only¹ | body only¹ |
+| Bounded flag preflight before long search | ✓ ROM | ✓ ROM | ✓ ROM | ✓ ROM | — own build | — own build | — own build | — own build |
+| Existing-record structure-return / typed inline-setter hypotheses | ✓ | ✓ | ✓ | ✓ | ✓ C shapes | ✓ C shapes | ✓ C shapes | by supported C architecture |
+| Separate function and export-layout checks | ✓ MIPS ROM | ✓ MIPS ROM | ✓ MIPS ROM | ✓ MIPS ROM | — own build | — own build | — own build | — own build |
 | Permuter on near misses | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Hand-written assembly set aside | ✓ | ✓ | ✓ | ✓ | ✓ | Visual C++'s exception-handling stubs | BIOS call stubs, pieces of functions | MIPS, PowerPC, ARM's BIOS stubs and pieces of functions |
 | Pieces of functions joined to their function | — | — | — | — | — | ✓ (`scratch.merge_pieces`) | ✓ (`recover.merge_pieces`) | — |
@@ -90,6 +131,7 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Kernel stubs set aside and named | — | set aside (BIOS calls) | ✓ | set aside, named by library and NID | — | ✓ import thunks | — | — |
 | Function-end reports (`report_boundary`) | ✓ | ✓ | ✓ | ✓ | — | ✓ (agents agree, the rebuild checks) | — | — |
 | Compiler ranges and suggestions | ✓ | ✓ | ✓ | ✓ | from scratch: per source file (`try_compiler`, Settings); else the project's build | per source file (`try_compiler`, Settings) | per source file (`try_compiler`, Settings) | the project's build |
+| Verified cleanup of rare compiler profiles | ✓ ROM mode | ✓ ROM mode | ✓ ROM mode | ✓ ROM mode | — | — | — | — |
 | Flag search (`search_flags`) | ✓ | ✓ | ✓ | ✓ | the project's build | per source file (/Oy-, /O1, /Ob1) | the project's build | the project's build |
 | Compiler map and the judge's survey | ✓ | ✓ | ✓ | ✓ | — | ✓ per source file, Rich header | — | — |
 | Range checks: a range applies after its neighbours confirm it | ✓ | ✓ | ✓ | ✓ | — | ✓ over source files | — | — |
@@ -107,8 +149,11 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Saved README preserves notes, with completion bar and function map | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Reimport: a new split, matched work kept (Settings) | ✓ | ✓ | ✓ | ✓ | — | ✓ (Ghidra again, the newest rules) | — | — |
 | Rebuildable export | ✓ | ✓ | ✓ | ✓ | the project | the project (`ninja rebuild`) | the project | the project |
+| Verified Git export sync (explicit Settings action) | build.json export | shared export adapter | shared export adapter | shared export adapter | source already in checkout | source already in checkout | source already in checkout | source already in checkout |
 | Progress bars for foreground jobs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Rooms: decompile together | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+Git export sync stages additions and updates only files it owns, validates each C candidate and the full rebuilt image, then publishes commit-ready files. It preserves build scripts and existing hand-maintained source, lists skipped candidates, supports cancellation and detects concurrent checkout changes. The N64 adapter was exercised on a private racing-project copy; shared export and imported-mode behavior has synthetic Git/build coverage. Custom layouts, including the GBA exporter, need an adapter before they can use this action.
 
 Linked-image exports: progress, maps, disassembly and Check again work through objdiff. Agent edits,
 autopilot, permuting, polishing, joins/splits and compiler changes for these **read-only snapshot units: —**.
@@ -151,7 +196,7 @@ Where to start on a gap:
   and the sign of a field the code only or's and tests.
 - **Twins across games** and **restoring a save** work on ROM projects (`app/twins.py`, `app/saves.py`). In project
   mode a project's matched C is its git repository; twins across games pair two projects' target objects
-  (`Twins._across_projects`, PC so far: GameCube, Wii and DS projects of two games would work the same way but
+  (`shared_reuse.transfer`, PC so far: GameCube, Wii and DS projects of two games would work the same way but
   weren't tried); what's missing is opening a save's best attempts in a new copy of the project.
 
 ROM projects now keep an indexed library of verified functions from the user's other local games, report every
@@ -969,9 +1014,10 @@ and a keyboard-accessible actions menu. The agent list scrolls with the page.
 Exact-fingerprint partial C reuse now rejudges better saved candidates across local ROM and imported
 projects, retaining only destination improvements and recording provenance separately from verified matches.
 Trials are cached by candidate/target/context/settings, capped at 64 per pass and share existing search budgets.
-Configured automatic MIPS ROM cascades also react to partial improvements. Imported automatic cascades and
-tracking dependencies outside an imported checkout remain planned; imported reuse runs through manual free
-passes and snapshots local source/header/build inputs (at most 10,000 files / 32 MiB).
+Configured automatic cascades now queue compatible ROM and imported projects after new matches or improvements.
+Exact transfers use the destination judge, independently of donor compiler settings. Wider similarity/template
+search remains ROM-only; tracking dependencies outside an imported checkout remains planned. Imported reuse
+snapshots local source/header/build inputs (at most 10,000 files / 32 MiB).
 
 Cross-game transfer results use compact, responsive rows with separate provenance, result labels and score changes; recent partial improvements can be filtered independently.
 
@@ -981,3 +1027,291 @@ Deep-permuter trial measurements now retain scoring outcomes and elapsed judge t
 Local follow-up candidates after a random improvement are counted separately, so their improvements and cost can
 be evaluated without conflating them with initial repairs. Historic attempts remain in their existing counters;
 new outcome and timing measurements begin when this version runs.
+
+## Compiler profile cleanup in imported projects
+
+ROM projects can consolidate rare profiles after exact byte comparisons and a final regression check. Imported
+projects still need cleanup through their per-file build settings and objdiff unit checks, including stale-input
+validation and rollback before any settings change is published. The app hides cleanup for these projects until
+that path is implemented; their declared build commands must not be rewritten as ROM compiler ranges.
+
+Project overview reads query SDK signatures by the game’s indexed fingerprints, reuse imported library reports, and prefer LibYAML’s safe loader for large compiler declaration maps. No judge or detection evidence changes.
+
+### Compiler source-shape repairs
+
+- Done: bounded short-array copy recognition, existing typed record accesses, lexical pointer scopes,
+  synthetic one-shot wrapper alternatives, array-address sharing and paired conservative lifetime merges
+  in the shared draft repair path. These are local compiler hypotheses, available to supported 32-bit
+  ROM/project repair callers; incompatible compiler builtins fail through the normal judge.
+- Done: one bounded regression branch in the persistent ROM/MIPS iterative repair phase, within its
+  existing independent budget and rotation. Imported-project iterative search remains limited by the
+  file-context adaptation already noted in `app/iterative_repairs.py`.
+- Planned: infer new record layouts from verified multi-access evidence and adapt persistent iterative
+  search to imported file contexts. Current repairs use existing simple record definitions only.
+
+### Evidence-driven automatic repair search
+
+- Done: persisted build-profile/mismatch outcome priorities in deterministic and random repair search,
+  with minimum sample sizes, bounded nonzero weights and exploration retained.
+- Done: target-aligned regional gains select the existing bounded regression branch in persistent
+  ROM/MIPS iterative search and single-function deep search (both judge modes when rows are available).
+- Done: bounded candidate-local inference of consistent scalar record fields in the shared draft path,
+  including ROM and supported 32-bit imported-project callers. Shared layouts remain unchanged.
+- Done: local, guarded triage of untouched repair examples, duplicate grouping and preserved manual reviews.
+- Planned: broader real-game replay to establish whether inferred records or adaptive priorities yield
+  more exact matches; the initial near-miss sample found no new matches from inferred records.
+
+### Agent transcript efficiency
+
+- Done: shared bounded pointer-chase reuse, independent scalar initialization order, terminal early
+  returns and repeated member-store hypotheses, available to ROM/imported draft, permuter and local tools.
+- Done: repair dialog batch/single-example compiler-output replay with explicit budgets, progress,
+  cancellation and non-adopting results. Imported historical build input gaps remain as described below.
+- Done: source-hash validation distinguishes cascaded provenance from the candidate that triggered it;
+  random rewrite reports also validate the failed baseline hash before calling evidence direct.
+
+- Done: the CLI preflight also executes read-only project_info through authenticated MCP before model
+  launch; advertised tools alone cannot hide a failed helper/project association. Existing bounded
+  lost-connection pausing from #194 remains in place.
+- Done: declared byte-field F macros expand for the shared ROM/imported permuter input, including nested
+  loads/stores. Unrecognised macro definitions and ordinary functions named F remain untouched.
+- Done: bounded floating-product intermediate lifetime proposals in shared draft, permuter and agent
+  local families. Existing casts/order remain explicit; loops, escaped locals and later live uses are excluded.
+- Done: offline, bounded full-export replay for recorded ROM compiler profiles, with baseline/control
+  validation and per-family rotation. Reports never adopt matches or alter example review state.
+- Planned: standalone imported-project replay needs archived build inputs and historical headers; exports
+  currently lack those inputs and are explicitly skipped rather than tested with guessed settings.
+
+- Done: scoped diagnostic baseline preflight for generated agent batches, shared copy/scope/layout repair
+  availability and adaptive priorities in ROM and supported imported-project callers. Explicit patches
+  remain an escape path for correcting broken C; they still use the ordinary judge.
+- Done: compact project-range summaries, normal-lease-preserving suppression of unchanged claim packets,
+  explicit reasons for single-function batch fallbacks, and bounded retries for invalid authorization grants.
+- Done: verified ROM agent symbol substitutions can complete recorded donor transfers using the existing
+  unambiguous-provenance and independent-pair requirements. Imported transfer-origin support remains a gap;
+  `repair_mappings.harvest` explicitly restricts this path to ROM projects.
+
+- Windows compiler orphan cleanup after an app crash: add process birth verification and job-object ownership equivalent to the POSIX startup registry. Runtime timeout/tree termination is already supported.
+
+Shared target discovery now covers ROM and imported objects, including assembly-only units, and local SDK
+signatures. Explicit bounded cross-game passes populate the catalog; overview polling never crawls checkouts.
+The results panel separates detected shared code, writable candidates, scaffolding blockers and verified
+transfers. Imported function details expose the same grouped name hints. Native assembly units can receive
+C candidates only when their existing build successfully probes the candidate object rule; references and
+linked assembly remain unchanged. Projects without such a rule remain blocked and need a build adapter.
+ROM → imported and imported → imported C are judged by the receiving project's objdiff configuration;
+imported → ROM and ROM → ROM retain their link/byte judge. Cross-compiler exact candidates are permitted.
+
+## Verified wrapper families and between-turn local repairs
+
+Implemented: same-project small MIPS ROM wrapper reuse with one paired global-address substitution;
+integer scalar-address lifetimes and ordered bitmask-store proposals in shared draft/permuter/agent paths;
+and an opt-in bounded local pass after single-function agent near misses in both judge modes.
+All proposals retain the normal judge and cache/budget gates.
+
+Wrapper-family discovery on imported projects and non-MIPS targets: **—**. The initial index needs raw
+ROM instructions plus resolved MIPS HI16/LO16/JAL relocation pairs. Imported objdiff units do not expose
+that same target representation; an object-format adapter and equivalent relocation checks are needed.
+Cross-project wrapper-family inference and multiple changing globals remain future work.
+
+Transcript follow-ups: inherited-candidate declaration diagnostics/recovery, structured per-helper session
+handoffs, credit-required model failures, target/supporting/full repair diffs and advisory pattern candidates
+are implemented in the shared agent/repair pipeline. New bounded repair families use the existing local,
+draft and deep-permuter paths and ordinary destination judges. Recovery only reuses unambiguous existing
+single-line declarations; missing complex/multiline types still require an agent. Handoffs record exposed
+notes/replies, not hidden reasoning, and never automatically execute suggested next steps.
+
+- Done: local source preparation retains referenced mapped-file typedefs/macros; ROM preflight prioritizes bounded
+  same-toolchain neighbour profiles; helper-only diffs explain target-call mappings without mutating symbols.
+  Imported projects retain their own build headers/settings; no neighbour-profile override is applied to them.
+
+## Library formatter repair learning
+
+Implemented: approximate local SDK opcode leads, explicitly imported C macro dependencies, bounded
+formatter source-shape combinations, target jump-table case order and historical-baseline warnings.
+Shared C repairs reach ROM and imported-project judges through the existing draft/local/deep paths.
+Library leads are advisory; they cannot rename code or count progress without the normal checks.
+Target-table reading currently supports MIPS ROM assembly with bounded, mapped tables. Other
+processors and imported object-mode table discovery: **—**, require their relocation/table adapters.
+Approximate SDK hints in imported project mode: **—**, require reading the target unit object through
+that mode's existing object-format adapter. Generic C source-shape repairs already reach that mode.
+
+- Done: typed SDK math-call mapping hints, allocation-extent advisories, bounded post-preparation compiler checks,
+  and first-error compiler summaries with private full logs. Imported builds retain their own compiler settings;
+  allocation/prototype hints are advisory and never alter symbols or record layouts.
+
+## Target-guided local scheduling repairs
+
+Implemented: candidate-owned missing first-call arguments evidenced by MIPS delay-slot loads,
+byte-address alias hypotheses, single-field records across distinct call results, inverse record
+access shapes, direct boolean masks, split call-result locals and compatible dead-result reuse.
+Field-load capture tests offset orders observed in MIPS target assembly. Candidates are bounded
+and round-robin by family; two-family bundles and the existing iterative/deep frontier keep
+interactions available. Every accepted change still passes the ordinary destination judge.
+
+Generic source repairs reach ROM and imported-project mode on supported 32-bit processors.
+MIPS call/load evidence requires target assembly; other-processor argument recovery and
+64-bit record layouts: **—**, need ABI-aware argument and pointer-width adapters. Shared
+headers, symbol maps and compiler profiles are not changed by these local hypotheses.
+
+- Done: explicit coherent reference source/header alternatives, same-file private helper prototypes,
+  selected static inlining helpers, missing-macro/mixed-typedef advisories and a single bounded stale-input retry.
+  Original bit-pattern object initializers remain verbatim; extraction rejects call expressions posing as definitions.
+  Imported builds keep their own headers/settings: automatic SDK replacement there is **—**, requires their
+  build system's existing header compatibility workflow. SDK-version identity remains advisory, not inferred fact.
+
+Agent work selection now explains every strategy in the dropdown and selected-option help. The shared
+`no_compiling_c` strategy restricts automatic and named new claims to open functions with neither a scored
+candidate nor a recorded successful compilation, in both project modes; existing claims continue normally.
+This is historical compile evidence, not a fresh build preflight or a claim that the function cannot compile.
+
+- Done: MIPS raw-word I/O profile priorities, proven-address/width MMIO expression candidates, I/O local-storage
+  candidates, and aggregate copies using existing byte-only records. Shared diff/preparation advisories flag
+  constant and recovery-branch discrepancies without editing them. Ordinary judges, budgets and compiler approval
+  gates remain. Imported projects retain build-owned settings; analogous target evidence on other processors: **—**,
+  requires processor/ABI adapters. Existing one-retry stale preparation handling is reused rather than widened.
+Captured lifetime follow-ups: split scalar casts from constant bitwise operations, reuse a dead unsigned
+shift result in a store outside loops/gotos, and split a same-type floating cast before a product while
+preserving factor order. Integrated with shared draft/local/deep families and advisory repair pattern views.
+Isolated private replays recovered two recorded SN64 compiler-output controls with the new families;
+a third selected KMC case was already recovered by the existing typed-temporary family. Replay recovery
+is a regression result, not a new game match. Mixed/context-dependent examples remain for review.
+
+- Done: mapped-file preparation tries up to eight unambiguous referenced object definitions verbatim before
+  its extern-only alternative; explicit definition selections and paired contexts remain supported. Named-buffer
+  address candidates require an existing array declaration and raw MIPS address evidence. Typed runtime-helper
+  call-only diagnostics, entry-context/NOP/record advisories, and rejected-preflight-suggestion recovery share
+  ordinary judges and budgets. Other processors' address/entry evidence adapters: **—**, planned work; imported
+  projects retain build-owned compiler profiles and ROM-only entry diagnostics do not alter their setup.
+## Register-only local lifetime search
+
+Shared draft, agent-local and deep searches offer bounded branch-tail locals, scalar call staging
+and combined proposals for ordinary C in ROM and imported-project mode. Register-only diagnostics
+prioritise these shapes. Search frontiers avoid expanding measured frame/code growth without
+structural improvement, while retaining numeric improvements and ordinary exact judging. Generated
+compile errors reuse input-scoped caches; agent summaries include failures and regressions.
+Synthetic execution/search regressions are distinct from newly measured private-game recoveries.
+
+Latest-match follow-ups: grouped build activity in repair evidence; same-width copied zero-test lifetime and
+explicit pointer-return-call staging hypotheses in shared draft/local/deep search; actual multiline reference
+macro dependency preservation; reference by-value aggregate and whole-structure snapshot diagnostics.
+Unknown aggregate layouts/ABI shapes remain diagnostic-only. Macro invocations and original supporting types
+are preserved rather than hand-expanded. Synthetic MIPS compiler controls cover the new lifetime families;
+other processor/object judges retain the same shared dispatch and no acceptance criteria changed.
+
+Private-context profile probes also cover prepared candidates that fail to improve under the current
+flags (two probes within the existing shared budget). Their source/header/profile evidence is retained
+for review; joint context/profile approval and automatic promotion remain future work.
+
+- Done: bounded adjacent scalar prefix-result and postfix-store hypotheses feed shared
+  draft, agent-local and deep-repair families. Pinned-compiler controls verify generated
+  shapes; nonadjacent increment motion and automatic narrowing remain unsupported pending
+  liveness and range evidence. No new full-game matches are attributed to this rule.
+
+- Done: bounded arithmetic-before-call, explicitly typed element-store and local
+  unsigned-short reuse hypotheses feed the shared repair pipeline. Matched callee
+  types/prototypes and existing cross-game library leads expose attributed source
+  declarations/macros for review in ROM and imported-project workflows. Live headers
+  remain unchanged; adopting context still requires compilation and the normal judge.
+
+## Typed pointer and paired declaration repairs
+
+Shared draft, agent-local and deep paths extend pointer call staging and word-zero-test reuse,
+add pointer-load inlining and CFG-safe pointer storage reuse, and offer a bounded declaration-order
+cross product without requiring an improving first edit. Distinct plain struct-field stores can
+swap only with memory-independent values. These ordinary C hypotheses reach ROM and imported
+projects through their existing judges; uncertain aliasing/volatility stays with the agent.
+Fixed-context replay distinguishes judge-only revisions from compiler/header changes. Private
+linked replay recovered three already solved pointer/zero-test controls; an existing MMIO family
+recovered a fourth. This is regression evidence, not new progress or measured token savings.
+
+### Prepared source/profile review and data diagnostics
+
+- Exact private source/header/profile probes can be reviewed together in local ROM projects. Applying
+  rechecks the ordinary byte/data judge, claims and stale inputs, then saves a private header and
+  function-only profile atomically. Imported builds retain their own header/profile ownership.
+- MIPS link diagnostics distinguish exact linked instructions from differing initialized data and show
+  the differing address range. Other linker adapters retain their current exact verdict; structured
+  instruction/data detail remains an adapter gap.
+- Original typed preparation still runs before broad permutation. At most two named-array copy
+  hypotheses require an existing plain-int-array declaration, exact extent and verified ROM values.
+- Private preparation history retains source/header hashes, profiles and failure categories, with
+  source/header/profile/target/symbol/build scoped invalidation; it is review evidence, not progress.
+
+### Smaller matching conversations
+
+- Done: compiler-trial reads expose only the selected C/profile and context ID;
+  complete private configuration stays in the internal diagnostic ledger.
+- Done: multi-function claims hydrate the first function and retain a compact
+  queue; queued briefs and full assembly remain explicitly available. Assembly
+  defaults to the first mismatch, with a bounded body fallback and explicit paging.
+- Done: app helper sessions run a small repair-first pass once per source/build
+  scope before handwritten batches. Existing failed-trial ledgers remain authoritative.
+- Done: CLI and API conversations rotate after 80 tools or 160,000 tool-response
+  characters, once active tools finish. Structured handoffs retain candidate
+  revisions, remaining experiments, history and notes; claims and source survive.
+
+## Raw MIPS address repairs
+
+- Done: numeric effective addresses accompany symbolic ROM diff operands and agent
+  mismatch feedback, derived from the target and fully linked candidate bytes.
+- Done: bounded expression-local literal/byte-array high-half repairs, including
+  independent pairs, reach draft, agent-local, deep and autopilot address passes.
+  Synthetic guards cover signed offsets, clobbers, control flow, endianness, missing
+  words, ambiguous destinations, macros, typed-pointer scaling and unrelated C.
+- Verified privately: V-Rally PAL's historical `func_8000F660` near-miss replays
+  80 -> 80 for either single, 80 -> 0 for the pair under the normal byte judge.
+  No extra live matches or measured AI-token savings are claimed.
+- Planned: analogous raw address diagnostics for processors other than MIPS;
+  these proposals currently require MIPS instruction evidence.
+
+### Matching efficiency feedback
+
+- Done: persistent claim/build-scoped recent-score windows hand back work after
+  24 scored trials with at most 1% recent gain, retaining best C and actionable
+  notes. Larger explicit work budgets extend the minimum; changed build inputs
+  invalidate the window. New sources remain eligible for later work.
+- Done: compile replies summarize the first differing region and mismatch category;
+  independent batches report selected revision, claim state and applied patch IDs.
+- Done: existing compiler/focus-specific repair learning now includes measured
+  trial time, with bounded weights and original-queue exploration preserved.
+- Done: agent Details shows completed-session compiles, helper seconds and separate
+  token categories per recorded match, grouped by model/build/work-selection
+  cohort with observed function sizes. Unsuccessful work stays in the denominator;
+  missing provider usage suppresses token averages. Legacy unscoped sessions are
+  excluded from these comparisons. This is not exact per-function billing.
+
+### Prepared-source investigation evidence
+
+Local preparation now retains ranked compiled call/field/control evidence, source identities (including
+coherent alternative files), explicit rejected-lead reasons and a compiled target/candidate difference
+view. Ranking never assigns canonical names or changes source branches automatically. Unchanged rejected
+ROM trials are skipped; changed source/header/profile/target/build inputs renew evidence.
+
+MIPS incoming-register diagnostics recognize floating aliases and mixed `f12`/`a0` entry usage, show
+available caller setup in agent briefs and distinguish incoming stack slots from C parameter counts.
+Other processors need equivalent ABI adapters; imported builds currently expose measured scores/family
+results without compiled structural differences. Their original build still owns compiler/header settings.
+
+Repeated prepared register-only misses receive targeted lifetime/type/helper-context guidance. Local family
+results exclude cached repeats, separate compiler profiles and retain denominators; after 32 trials a family
+can influence preparation order with original-order exploration retained. These observations are not causal
+model/compiler rankings, and no family or unmatched function is automatically excluded.
+
+### Navigation loading and response ownership
+
+- Done: project and function navigation clears stale identities/data immediately,
+  displays a loading bar and supports retry. Overview and map reads start in
+  parallel. Abandoned primary GETs are cancelled where supported; generation
+  checks still reject responses that arrive after cancellation or A → B → A visits.
+- Done: a pending function read cannot block a different function. Delayed map,
+  compiler-column, statistics and diff responses cannot repaint a later visit.
+  Compiler/deep-search jobs continue on the backend while their UI callbacks stay
+  tied to the initiating function view; new views do not inherit old progress.
+- Done: unfinished imported projects can be closed directly from setup, keeping
+  the repository folder and all files on disk for a later import.
+
+- Done: Agents & models shows the local MCP endpoint, transport and port, with
+  project-specific tool descriptions/schemas. Manual clients can create copyable,
+  persistent project-scoped credentials and revoke them without exposing the GUI
+  secret or saving plaintext bearer tokens. External sessions remain client-managed.

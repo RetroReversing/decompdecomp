@@ -285,6 +285,24 @@ def register(app: App) -> None:
             await call(manager.stop, str(data["id"]))
         return JSONResponse({"ok": True})
 
+    @mcp.custom_route("/api/agents/login", methods=["POST"])
+    async def api_agents_login(request: Request) -> Response:
+        if (bad := guard(request, write=True)):
+            return bad
+        try:
+            sid = str((await body(request)).get("id", ""))
+            session = manager.sessions.get(sid)
+            if session is None:
+                raise ValueError("This helper no longer exists.")
+            kind = kinds.get(session.kind)
+            exe = agents._which(kind.command)
+            if not exe:
+                raise ValueError(f"{kind.name} is not installed.")
+            await call(kind.login, exe)
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            return fail(ValueError(f"Could not open sign-in: {error}"))
+        return JSONResponse({"ok": True})
+
     @mcp.custom_route("/api/agents/restart", methods=["POST"])
     async def api_agents_restart(request: Request) -> Response:
         """Start a stopped or paused helper again."""
@@ -301,6 +319,15 @@ def register(app: App) -> None:
         if (bad := guard(request, write=True)):
             return bad
         data = await body(request)
+        if any(key in data for key in ('agent_local_enabled','agent_local_trials','agent_local_seconds')):
+            from ..agent_local_pass import configure
+            if 'agent_local_enabled' in data and not isinstance(data['agent_local_enabled'],bool):
+                return fail(ValueError('Automatic local repairs must be true or false.'))
+            for key,maximum in (('agent_local_trials',6),('agent_local_seconds',15)):
+                if key in data and (isinstance(data[key],bool) or not isinstance(data[key],int) or not 1<=data[key]<=maximum):
+                    return fail(ValueError(f'{key}: choose an integer from 1 to {maximum}.'))
+            settings.data.update({key:data[key] for key in ('agent_local_enabled','agent_local_trials','agent_local_seconds') if key in data})
+            configure(net,settings.data)
         if isinstance(data.get("api"), dict):  # (before 0.10.1: the one endpoint there was) the first one
             first = settings.endpoints()[0]["id"] if settings.endpoints() else ""
             settings.save_endpoint(data["api"] | {"id": first})

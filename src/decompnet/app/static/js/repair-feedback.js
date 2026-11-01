@@ -9,9 +9,19 @@ $("repairExamples").onclick = async () => {
     <div class="repair-scroll"><div class="repair-filters">
     <div class="repair-filter-selects"><label>Category<select data-category aria-label="Repair category"><option value="">All categories</option></select></label>
     <label>Review state<select data-status aria-label="Review state"><option value="new" selected>New (not yet reviewed)</option><option value="">All review states</option></select></label>
-    <button data-refresh type="button">Refresh</button></div>
+    <button data-refresh type="button">Refresh</button><button data-classify type="button">Classify this project</button></div>
     <div class="repair-filter-checks"><label><input type="checkbox" data-all> Across all projects</label>
-    <label><input type="checkbox" data-comparable checked> Only with changed failed C</label></div></div>
+    <label><input type="checkbox" data-comparable checked> Comparable source repairs only</label></div></div>
+    <div data-triage-work></div>
+    <section class="repair-help" aria-label="Automatic repair replay"><h3>Test automatic repairs · no AI tokens</h3>
+    <p>Replay examples from up to 20 distinct functions matching these filters against captured successful compiler output. This is a regression test: it does not apply source, change game progress or mark examples implemented. Missing historical build inputs are reported as skips.</p>
+    <label>Trials per example <input data-replay-trials type="number" min="1" max="32" value="12"></label>
+    <label>Seconds per example <input data-replay-seconds type="number" min="1" max="120" value="30"></label>
+    <label><input data-replay-minimize type="checkbox" checked> Minimize captured fix first (uses up to half the trials)</label>
+    <label><input data-replay-diagnostics type="checkbox"> Capture GCC phase summary (two extra local compiles; installed native GCC only)</label>
+    <button data-replay-start type="button">Test automatic repairs</button><button data-replay-save type="button" hidden>Download analysis report</button><button data-replay-stop type="button" hidden>Stop replay</button>
+    <p class="muted small">Reports can include private C and compiler evidence. Analysis does not apply source or change game progress.</p>
+    <p data-replay-summary class="muted small" role="status"></p><div data-replay-work></div><pre data-replay-results class="repair-replay-results" hidden tabindex="0" aria-label="Repair replay results"></pre></section>
     <section class="repair-help" aria-label="Batch candidate recovery"><h3>Recheck reported candidates · this project · no AI tokens</h3>
     <p>Rejudge saved alternatives, smallest functions first. Measurements are saved across runs; unchanged results are skipped. This does not replace C, clear warnings or mark matches.</p>
     <label>Functions per batch <input data-recovery-limit type="number" min="1" max="200" value="20"></label>
@@ -19,11 +29,12 @@ $("repairExamples").onclick = async () => {
     <button data-recovery-start type="button">Rejudge next batch</button><button data-recovery-stop type="button" hidden>Stop</button>
     <p data-recovery-summary class="muted small" role="status"></p><div data-recovery-work></div></section>
     <section data-quality class="repair-list" aria-label="Candidate quality review"></section>
-    <p data-count class="repair-count" role="status"></p><div data-list class="repair-list"></div>
+    <details class="repair-help"><summary>Metrics coverage · all projects</summary><p data-metrics class="small muted"></p></details>
+    <p data-count class="repair-count" role="status"></p><div data-list class="repair-list"></div><details class="repair-help" data-build-reports hidden><summary>Build activity · grouped by unit and one-minute window</summary><p class="muted small">Build reports are status captures, not isolated C repairs. Original records remain available; each card opens the latest representative.</p><div data-build-list class="repair-list"></div></details>
     <button data-more hidden type="button">Older examples</button>
     <details class="repair-help"><summary>How to use these examples</summary><p>Expand a card to compare the failed candidate with the match.
     Send promising examples to a coding agent, or export them for analysis. Review and test any proposed app changes: examples do not teach the permuter automatically.</p>
-    <p class="muted small">Captures prefer comparable compiler settings. Headers, compiler changes and other edits may also matter; the diff alone does not prove the cause.</p></details></div>
+    <p class="muted small">Comparable source repairs require changed C and matching captured settings. Uncheck the filter to inspect compiler/context changes separately. Headers, compiler changes and other edits may also matter; the diff alone does not prove the cause.</p></details></div>
     <footer class="repair-footer"><div class="repair-export-actions"><button data-export-full type="button">Export full examples</button>
     <button data-export type="button">Export summaries</button><button data-prompt type="button">Copy analysis prompt</button></div>
     <p class="muted small">Full examples include game source and headers. Downloads stay local until you share them. Review notes may also contain code.</p></footer>`;
@@ -37,6 +48,7 @@ $("repairExamples").onclick = async () => {
   const scope = () => `slug=${encodeURIComponent(slug)}&all=${all.checked ? 1 : 0}`;
   const filters = () => `${scope()}&comparable=${comparable.checked ? 1 : 0}&category=${encodeURIComponent(category.value)}&status=${encodeURIComponent(status.value)}`;
   setupCandidateRecovery(dialog, slug, () => load());
+  const replay = setupRepairReplay(dialog, () => ({slug, all:all.checked, category:category.value, status:status.value, comparable:comparable.checked}));
   const controls = [category, status, all, comparable, get('[data-refresh]'), get('[data-more]')];
   function options(select, values) {
     for (const value of values) { if (Array.from(select.options).some((option) => option.value === value)) continue; const option = document.createElement('option'); option.value = value; option.textContent = value.replaceAll('_', ' '); select.append(option); }
@@ -47,7 +59,7 @@ $("repairExamples").onclick = async () => {
     const title = document.createElement('span'); title.className = 'repair-card-title'; title.textContent = row.function;
     const meta = document.createElement('span'); meta.className = 'repair-card-meta'; meta.textContent = `#${row.id} · ${row.project}${row.agent ? ' · ' + row.agent : ''}`;
     const badges = document.createElement('span'); badges.className = 'repair-badges';
-    for (const value of [row.category.replaceAll('_', ' '), row.status, row.evidence_kind || 'source repair', ...(row.automation_known ? ['already automated'] : [])]) {
+    for (const value of [row.category.replaceAll('_', ' '), row.status, row.evidence_kind || 'source repair', ...(row.automation_known ? ['already automated'] : []), ...(row.repetitions > 1 ? [`${row.repetitions} ${row.evidence_kind === 'build report' ? 'build' : 'equivalent'} captures`] : [])]) {
       const badge = document.createElement('span'); badge.className = 'repair-badge'; badge.textContent = value; badges.append(badge);
     }
     summary.append(title, meta, badges);
@@ -62,12 +74,25 @@ $("repairExamples").onclick = async () => {
         const pre = document.createElement('pre'); pre.className = 'repair-diff'; pre.setAttribute('tabindex', '0'); pre.setAttribute('aria-label', 'Source changes');
         const change = document.createElement('p'); change.className = 'muted small';
         change.textContent = data.evidence.source_change_label || '';
-        const diff = data.evidence.diff || 'No comparable failed source is available. Check the full technical evidence for settings and context.';
+        const view = document.createElement('select'); view.setAttribute('aria-label', 'Repair diff scope');
+        const choices = [['function_diff', 'Target function'], ['supporting_diff', 'Declarations and neighbouring functions'], ['diff', 'Full source']];
+        for (const [value, label] of choices) {
+          const option = document.createElement('option'); option.value = value; option.textContent = label;
+          option.disabled = data.evidence[value] == null; view.append(option);
+        }
+        view.value = data.evidence.function_diff == null ? 'diff' : 'function_diff';
+        const renderDiff = () => {
+        pre.replaceChildren();
+        const diff = data.evidence[view.value] || 'No changes in this scope.';
         for (const line of diff.split('\n')) {
           const span = document.createElement('span');
           span.className = line.startsWith('@@') ? 'diff-range' : line.startsWith('+') ? 'diff-added' : line.startsWith('-') ? 'diff-removed' : 'diff-context';
           span.textContent = line; pre.append(span);
         }
+        };
+        view.onchange = renderDiff; renderDiff();
+        if (data.evidence.focus_note) change.textContent += " " + data.evidence.focus_note;
+        if (data.evidence.pattern_candidates?.length) change.textContent += " Pattern candidates: " + data.evidence.pattern_candidates.join(', ') + '. ' + data.evidence.pattern_note;
         const raw = document.createElement('details'), rawTitle = document.createElement('summary'), rawText = document.createElement('pre');
         rawTitle.textContent = 'Full technical evidence'; rawText.textContent = JSON.stringify(data.evidence, null, 2);
         raw.append(rawTitle, rawText);
@@ -77,6 +102,13 @@ $("repairExamples").onclick = async () => {
         const kind = document.createElement('select'); kind.setAttribute('aria-label', `Category for example ${row.id}`);
         for (const value of categories) { const option = document.createElement('option'); option.value = value; option.textContent = value.replaceAll('_', ' '); kind.append(option); }
         kind.value = data.category;
+        const suggestion = data.evidence.review_suggestion;
+        if (suggestion && suggestion.category !== 'unclassified') {
+          const suggested = document.createElement('p'); suggested.className = 'muted small';
+          suggested.textContent = `Suggested category: ${suggestion.category.replaceAll('_', ' ')}. ${suggestion.note}`;
+          body.append(suggested);
+          if (data.category === 'unclassified') kind.value = suggestion.category;
+        }
         const note = document.createElement('textarea'); note.setAttribute('aria-label', `Your review note for example ${row.id}`);
         note.placeholder = 'Your review note, proposed rule or implementation PR'; note.value = data.review_note || '';
         const save = document.createElement('button'); save.type = 'button'; save.textContent = 'Save review';
@@ -119,8 +151,10 @@ $("repairExamples").onclick = async () => {
         advanced.className = 'repair-review';
         advancedTitle.textContent = 'Classify and save review'; advanced.append(advancedTitle, review, kind, note, save);
         const evidence = document.createElement('details'), evidenceTitle = document.createElement('summary');
-        evidenceTitle.textContent = 'Before/after evidence and compiler settings'; evidence.append(evidenceTitle, change, pre, raw); evidence.open = true;
-        body.append(explanation, providers, send, hint, log, evidence, advanced); details.loaded = true;
+        evidenceTitle.textContent = 'Before/after evidence and compiler settings'; evidence.append(evidenceTitle, change, view, pre, raw); evidence.open = true;
+        const test = document.createElement('button'); test.type = 'button'; test.textContent = 'Test automatic repairs for this example';
+        test.onclick = () => replay(row.id);
+        body.append(explanation, test, providers, send, hint, log, evidence, advanced); details.loaded = true;
       } catch (error) { toast(esc(error.message), 'err'); }
       finally { finish(); }
     });
@@ -132,7 +166,7 @@ $("repairExamples").onclick = async () => {
       const data = await api(`/api/repair-examples?${filters()}&before=${reset ? 0 : before}`);
       if (!dialog.isConnected) return;
       if (reset) {
-        list.replaceChildren();
+        list.replaceChildren(); get('[data-build-list]').replaceChildren(); get('[data-build-reports]').hidden = true;
         const quality = await api(`/api/repair-examples/quality?${scope()}`);
         const area = get('[data-quality]'); area.replaceChildren();
         for (const report of quality.reports || []) {
@@ -175,9 +209,18 @@ $("repairExamples").onclick = async () => {
         }
       }
       options(category, data.categories); options(status, data.states);
-      get('[data-count]').textContent = data.groups.map((group) => `${group.count} ${group.category.replaceAll('_', ' ')} (${group.status})`).join(' · ') || 'No examples for these filters.';
-      if (reset && !data.examples.length) { const empty = document.createElement('p'); empty.className = 'repair-empty'; empty.textContent = 'No examples match these filters. Try another review state or clear “Only with changed failed C” to include baseline and settings-only captures.'; list.append(empty); }
-      for (const row of data.examples) { list.append(card(row, data.states, data.categories)); before = row.id; }
+      if (data.metrics) {
+        const m = data.metrics, describe = x => `${x.attempted.toLocaleString()} trials · ${x.improved.toLocaleString()} improvements · ${x.matched.toLocaleString()} matches`;
+        get('[data-metrics]').textContent = `Adaptive policy: ${describe(m.policy)}. ${m.deep ? `Deep history: ${describe(m.deep)}. ` : ""}${m.scope} ${m.sources.map(s => `${s.origin}: ${describe(s)}, ${new Date(s.first_at*1000).toLocaleString()} to ${new Date(s.last_at*1000).toLocaleString()}`).join("; ")}`;
+        get('[data-metrics]').textContent += (m.input_effects || []).map(r => ` ${r.family.replaceAll("_", " ")}: ${r.attempted} proposals, ${r.no_edit} with no edit, ${r.same_output} identical function outputs, ${r.worse} worse, ${r.improved} improved.`).join("") + " Input-specific priorities drop only after 8 fresh trials with no improvement and at least 80% no-edit/identical/worse results. Exploration remains enabled; edits reset the input scope.";
+      }
+      get('[data-count]').textContent = data.groups.map((group) => `${group.count} captures · ${group.category.replaceAll('_', ' ')} (${group.status})`).join(' · ') || 'No examples for these filters.';
+      if (reset && !data.examples.length) { const empty = document.createElement('p'); empty.className = 'repair-empty'; empty.textContent = 'No examples match these filters. Try another review state or clear “Comparable source repairs only” to include baseline and settings-only captures.'; list.append(empty); }
+      for (const row of data.examples) {
+        const build = row.evidence_kind === 'build report';
+        if (build) get('[data-build-reports]').hidden = false;
+        (build ? get('[data-build-list]') : list).append(card(row, data.states, data.categories)); before = row.id;
+      }
       get('[data-more]').hidden = !data.more;
     } catch (error) { toast(esc(error.message), 'err'); }
     finally { done(); }
@@ -202,5 +245,15 @@ $("repairExamples").onclick = async () => {
   get('[data-export]').onclick = (event) => download(false, event.currentTarget);
   get('[data-export-full]').onclick = (event) => download(true, event.currentTarget);
   get('[data-close]').onclick = () => dialog.close(); dialog.addEventListener('close', () => dialog.remove(), {once: true});
+  get('[data-classify]').onclick = async () => {
+    const button = get('[data-classify]');
+    const done = beginWork(get('[data-triage-work]'), 'Classifying new examples', [button]);
+    try {
+      const result = await api('/api/repair-examples/classify', {method: 'POST', body: {slug}});
+      toast(`${result.total} examples reviewed. Categories describe evidence; no new rules were enabled.`);
+      await load();
+    } catch (error) { toast(esc(error.message), 'err'); }
+    finally { done(); }
+  };
   dialog.showModal(); await load();
 };
