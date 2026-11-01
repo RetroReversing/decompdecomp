@@ -133,3 +133,25 @@ later syntax errors; fix the first one before rewriting a function. Math aliases
 A sole allocation immediate discrepancy is a reason to inspect sizeof and the target call arguments, not to invent
 fields. After a prepared-source improvement, bounded compiler checks reuse its saved private context, respecting
 the same pass budget/deadline and compiler approval settings.
+
+### Coherent reference context and bounded retries
+
+Local source preparation supports optional `contexts`, one explicitly paired alternative per line:
+`destination = reference_symbol @ relative/source.c | relative/header.h`. Up to two alternatives per function
+are tried alongside the original context within the same budget/deadline. Files remain inside authorized roots.
+Use complete compatible SDK revisions; the app does not invent structure fields or mix header/body versions.
+Conflicting typedef and missing macro-like call advisories ask for inspection rather than rewriting declarations.
+
+Same-file helper definitions can supply their actual ANSI prototypes. No missing signature is guessed.
+Optional `helpers` uses `helper_name @ relative/file.c` to retain explicitly selected, referenced static helpers
+for inlining, including their referenced macros/types. The existing single-emitted-function guard remains:
+non-inlined extra function bodies are rejected. Imported builds retain their own headers and judge; private
+reference headers cannot be installed into them by preparation.
+
+Selected object definitions retain integer bit-pattern initializers and expression order verbatim. Do not
+replace union-based constants with rounded decimal literals. The normal linked data and whole-image export
+checks still decide whether their placement is valid.
+
+Warnings about implicit declarations now appear in preparation logs even after successful compilation. An
+input-change race can retry once with fresh destination state, spending the same compile/time budget. Claim
+loss, compiler failures and imported builds are not automatically retried. No stale result can be promoted.

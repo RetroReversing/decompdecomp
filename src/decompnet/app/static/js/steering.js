@@ -501,7 +501,7 @@ async function renderProjectSettings() {
   }
   const prep = ov.source_preparation || {};
   $("sourcePrepEnabled").checked = !!prep.enabled;
-  for (const [id, key] of [["Root", "root"], ["Header", "header"], ["Includes", "include_roots"], ["Mappings", "mappings"], ["Overrides", "overrides"], ["Aliases", "aliases"], ["Definitions", "definitions"]]) $("sourcePrep" + id).value = prep[key] || "";
+  for (const [id, key] of [["Root", "root"], ["Header", "header"], ["Includes", "include_roots"], ["Mappings", "mappings"], ["Overrides", "overrides"], ["Aliases", "aliases"], ["Definitions", "definitions"], ["Contexts", "contexts"], ["Helpers", "helpers"]]) $("sourcePrep" + id).value = prep[key] || "";
   await renderSdkSelection();
   const facts = [["Platform", ov.platform_name], ["Game", ov.rom?.title || ov.title], [fork ? "Version" : "Game code", ov.rom?.game_code || ov.version],
     !fork && ov.rom?.region ? ["Region", ov.rom.region] : null, fork ? ["Layout", ov.origin === "scratch" ? (ov.layout || "decomp") + " (from scratch)" : ov.fork_kind] : ["Compiler", `${ov.compiler.name} ${ov.compiler.flags.join(" ")}`],
@@ -955,7 +955,7 @@ $("sourcePrepSave").onclick = async () => {
   const finish = beginWork(log, "Saving reference source settings", [button], "Reference source settings saved.");
   try {
     const body = { slug: S.slug, enabled: $("sourcePrepEnabled").checked };
-    for (const [id, key] of [["Root", "root"], ["Header", "header"], ["Includes", "include_roots"], ["Mappings", "mappings"], ["Overrides", "overrides"], ["Aliases", "aliases"], ["Definitions", "definitions"]]) body[key] = $("sourcePrep" + id).value;
+    for (const [id, key] of [["Root", "root"], ["Header", "header"], ["Includes", "include_roots"], ["Mappings", "mappings"], ["Overrides", "overrides"], ["Aliases", "aliases"], ["Definitions", "definitions"], ["Contexts", "contexts"], ["Helpers", "helpers"]]) body[key] = $("sourcePrep" + id).value;
     const saved = await api("/api/source-preparation", { method: "POST", body });
     if (S.ov) S.ov.source_preparation = saved;
   } catch (e) { showJobError(log, e.message); } finally { finish(); }
