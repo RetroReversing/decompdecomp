@@ -1170,8 +1170,17 @@ $("sourcePrepReviewsRefresh").onclick = async () => {
   const finish = beginWork(panel, "Loading prepared profile evidence", [button], "Evidence loaded.");
   try {
     const {reviews} = await api("/api/source-preparation", {method:"POST", body:{slug, action:"reviews"}});
-    panel.innerHTML = reviews.length ? reviews.map((r, i) => `<div class="card"><strong>${esc(r.function)}</strong> · ${esc(r.toolchain || "")} ${esc(r.flags.join(" "))}<p>${r.exact ? "Exact when tested" : `Score ${r.score ?? "unavailable"}`} · ${esc(r.category)}</p>${r.source ? `<details><summary>Prepared C and private header</summary><pre>${esc(r.source)}</pre><pre>${esc(r.header)}</pre></details>` : ""}${r.diagnostic ? `<pre>${esc(r.diagnostic)}</pre>` : ""}${r.reviewable ? `<button data-prepared-review="${i}">Fresh check & apply source, header & flags</button>` : "<span class=muted>Run preparation again if inputs changed.</span>"}<div data-prepared-log></div></div>`).join("") : "No prepared profile evidence yet. Run a preparation pass first.";
+    panel.innerHTML = (reviews.some(r => r.reviewable) ? `<button data-prepared-batch>Fresh check & apply up to 20 exact bundles</button><div data-prepared-batch-log></div>` : "") + (reviews.length ? reviews.map((r, i) => `<div class="card"><strong>${esc(r.function)}</strong> · ${esc(r.toolchain || "")} ${esc(r.flags.join(" "))}<p>${r.exact ? "Exact when tested" : `Score ${r.score ?? "unavailable"}`} · ${esc(r.category)}</p>${r.source ? `<details><summary>Prepared C and private header</summary><pre>${esc(r.source)}</pre><pre>${esc(r.header)}</pre></details>` : ""}${r.diagnostic ? `<pre>${esc(r.diagnostic)}</pre>` : ""}${r.reviewable ? `<button data-prepared-review="${i}">Fresh check & apply source, header & flags</button>` : "<span class=muted>Run preparation again if inputs changed.</span>"}<div data-prepared-log></div></div>`).join("") : "No prepared profile evidence yet. Run a preparation pass first.");
     panel.onclick = async (event) => {
+      if (event.target.closest("[data-prepared-batch]") && S.slug === slug) {
+        const batch = panel.querySelector("[data-prepared-batch]"), log = panel.querySelector("[data-prepared-batch-log]");
+        const done = beginWork(log, "Rechecking exact bundles", [...panel.querySelectorAll("button")], "Bundle checks complete.");
+        try {
+          const {job} = await api("/api/source-preparation", {method:"POST", body:{slug, action:"recheck-exact", limit:20}});
+          await followJob(job, log); batch.hidden = true; refreshMap();
+        } catch (error) { showJobError(log, error.message); } finally { done(); }
+        return;
+      }
       const apply = event.target.closest("[data-prepared-review]");
       if (!apply || S.slug !== slug) return;
       const row = reviews[Number(apply.dataset.preparedReview)], log = apply.parentElement.querySelector("[data-prepared-log]");

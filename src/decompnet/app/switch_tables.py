@@ -82,7 +82,7 @@ def read(net, proj, fn):
     if proj['arch']!='mips' or not getattr(net,'is_rom',lambda p:False)(proj):
         return []
     asm=fn['asm'] or ''; result=[]
-    for hit in re.finditer(r'%hi\((jtbl_[A-Za-z0-9_]+)\)',asm):
+    for hit in re.finditer(r'%hi\(((?:jtbl_|D_)[A-Za-z0-9_]+)\)',asm):
         prefix=asm[max(0,hit.start()-700):hit.start()]
         bound=list(re.finditer(r'addiu\s+\$\w+,\s*\$\w+,\s*(-0x[0-9A-Fa-f]+)',prefix))
         length=list(re.finditer(r'sltiu\s+\$\w+,\s*\$\w+,\s*(0x[0-9A-Fa-f]+|\d+)',prefix))
@@ -111,3 +111,43 @@ def read(net, proj, fn):
             if all(fn['vram']<=n<fn['vram']+fn['size'] for n in destinations):
                 result.append((low,destinations))
     return result
+
+
+def hints(source, name, tables=(), header=''):
+    """Compare source labels with bounded retail tables; never infer a missing case body."""
+    span=find(source,name)
+    if not span:return []
+    text=_blank(source[span[0]:span[1]])
+    constants={m[1]:int(m[2],0) for m in re.finditer(r'(?m)^\s*#define\s+(\w+)\s+(-?(?:0x[0-9a-fA-F]+|[0-9]+))\s*(?://[^\n]*)?$',header)}
+    result=[]
+    for switch in re.finditer(r'\bswitch\s*\(',text):
+        cond=close(text,switch.end()-1)
+        if not cond:continue
+        brace=cond+len(text[cond:])-len(text[cond:].lstrip())
+        if text[brace:brace+1]!='{':continue
+        end=close(text,brace,'{','}')
+        if not end:continue
+        labels=[];positions=[];unknown=False
+        for hit in re.finditer(r'\bcase\s+([^:]+):',text[brace+1:end-1]):
+            before=text[brace+1:brace+1+hit.start()]
+            if before.count('{')!=before.count('}'):continue
+            token=hit[1].strip().strip('()').strip()
+            try:number=constants[token] if token in constants else value(token)
+            except (ValueError,SyntaxError):unknown=True;continue
+            labels.append(number);positions.append((hit.start(),hit.end()))
+        if unknown:continue
+        for low,destinations in tables:
+            inside={n for n in labels if low<=n<low+len(destinations)}
+            if len(inside)<2:continue
+            for i in range(len(labels)-1):
+                a,b=labels[i:i+2]
+                between=text[brace+1+positions[i][1]:brace+1+positions[i+1][0]].strip()
+                if not between and a in inside and b in inside and destinations[a-low]!=destinations[b-low]:
+                    result.append(f'Retail switch-table review: grouped source labels {a}/{b} have different target entry points. Check fallthrough and revision-specific case grouping; no labels were changed.')
+            from collections import Counter
+            counts=Counter(destinations);common=counts.most_common(1)[0]
+            # A modal destination is only a default hypothesis. Ties give no evidence.
+            if len(counts)>1 and list(counts.values()).count(common[1])==1:
+                missing=[low+i for i,address in enumerate(destinations) if low+i not in inside and address!=common[0]]
+                if missing:result.append('Retail switch-table review: distinct target destinations for source-absent case(s) '+', '.join(map(str,missing[:12]))+'. The modal destination is only a default hypothesis; inspect retail arms before changing archived source. No case body was synthesized.')
+    return list(dict.fromkeys(result))[:4]

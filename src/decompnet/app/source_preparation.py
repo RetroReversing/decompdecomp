@@ -237,7 +237,14 @@ def prepare(reader, cfg, mapping, aliases, fallback):
     helper_context=helpers(reader, cfg, body, header, macros)
     header += helper_context
     from .source_match_context import macro_context
-    header += macro_context(original, body+helper_context, header)
+    reference_macros = original
+    if cfg.get('header') and '#include' in original:
+        # Read only the mapped file's authorized include tree; retain macros, not its functions/data.
+        try:
+            reference_macros, _ = source_conditions.select(reader.flatten(path.resolve()), macros, reader.overrides)
+        except NetworkError as error:
+            reader.advisories.append('Reference include macros could not be read; retaining the explicit private header. Add the matching SDK include roots to recover missing macros. '+str(error))
+    header += macro_context(reference_macros, body+helper_context, header)
     header += prototypes(original, body, header, symbol)
     selected = []
     from .source_match_context import dependencies
@@ -281,6 +288,10 @@ def prepare_variants(reader, cfg, mapping, aliases, fallback):
         add(prepare(reader,{**cfg,'header':str(reader.root/header)},origin,{**aliases,symbol:dest},fallback),origin)
         count+=1
         if count>=2:break
+    from .helper_expansion import variants as expand_helpers
+    for pair in list(result)[:2]:
+        for _, expanded in expand_helpers(pair[0],mapping[0],pair[1]):
+            add((expanded,pair[1]),mapping)
     return result
 
 
@@ -349,11 +360,14 @@ def attempt(permuter, proj, fn, source, header, agent, fork, diagnostic=None, le
         from .sdk_io_repairs import hints
         for hint in hints(source,dict(fn).get('asm',''),diff.rows):diagnostic(fn['name']+': '+hint)
     if diagnostic:
-        from .source_storage import object_hints
-        for hint in object_hints(diff.rows,header):diagnostic(fn['name']+': '+hint)
+        from .source_storage import object_hints, typed_object_hints
+        for hint in object_hints(diff.rows,header)+typed_object_hints(diff.rows,source,header):diagnostic(fn['name']+': '+hint)
         if dict(proj).get('arch')=='mips':
             from .source_storage import wide_argument_hints
             for hint in wide_argument_hints(fn['asm'] or '',header):diagnostic(fn['name']+': '+hint)
+    if diagnostic and hasattr(net,'reader'):
+        from .switch_tables import hints, read
+        for hint in hints(source,fn['name'],read(net,proj,fn),header):diagnostic(fn['name']+': '+hint)
     score = 0 if diff.bytes_match else max(1, diff.score)
     if fn['best_score'] is None or score < fn['best_score']:
         net._record(fn, agent, score, source, 0, matched=diff.bytes_match, via='local-source',

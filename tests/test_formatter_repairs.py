@@ -58,6 +58,8 @@ def test_table_reader_uses_bounded_consistent_image_mapping():
                         reader=lambda p,f:lambda address,size:None,_rom=lambda p:(image,[]))
     proj={'id':1,'arch':'mips','big_endian':1}
     assert switch_tables.read(net,proj,fn)==[(32,[0x1000,0x1010])]
+    address_fn={**fn,'asm':fn['asm'].replace('jtbl_data','D_00001040')}
+    assert switch_tables.read(net,proj,address_fn)==[(32,[0x1000,0x1010])]
     cfg['segments'].append({'vram':0x2000,'rom_start':16,'rom_end':32})
     assert switch_tables.read(net,proj,fn)==[]
 
