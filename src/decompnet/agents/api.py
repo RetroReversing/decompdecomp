@@ -94,10 +94,11 @@ class Api(Agent):
         if s.options.get("api_key"):
             headers["Authorization"] = f"Bearer {s.options['api_key']}"
         schema = api_tool_schemas(fork=bool(net.fork_slug(s.slug)), names=tools.project_tools(net, s.slug))
-        messages = [{"role": "system", "content": tools.INSTRUCTIONS},
+        messages = [{"role": "system", "content": manager.app_instructions(s)},
                     {"role": "user", "content": manager.prompt(s)}]
         if s.record:
             s.record('prompt', messages)
+            s.record('instructions', messages[0]['content'])
             s.record('tool_definitions', schema)
         count = int(s.options.get("per_session", PER_SESSION))
         used_tool, start, done = False, len(messages), 0

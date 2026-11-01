@@ -1038,3 +1038,18 @@ detailed measured outcomes and timing coverage. It contains no source code, ROM
 bytes or credentials. Missing older measurements are blank; `partial` timing must
 be compared using `measured_attempts` and measured gains, rather than all-time
 counts. Totals and newer outcome measurements overlap and must not be added.
+
+### Experiment with agent prompts
+
+**Agents & models → Agent prompts** edits the global defaults. Each agent’s **Prompts**
+button can override its initial prompt and app instructions separately; unchecked fields
+inherit the global defaults. Global initial templates are separate for ROM work, imported
+projects and polishing. Use the displayed placeholders, and double literal braces as
+`{{` / `}}` in initial-prompt templates. App instructions are literal text.
+
+Preview shows the proposed text without saving; an agent preview expands project values
+and includes its current continuation context. Restore built-in defaults globally or use
+global defaults for one agent. Changes apply to its next session. Project instructions,
+guides and handoff context are still appended to the initial prompt. App instructions are
+decompdecomp’s MCP/API instructions, not the CLI provider’s private system prompt.
+Effective session text is recorded in transcripts; prompt profiles distinguish efficiency cohorts.

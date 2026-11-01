@@ -115,12 +115,31 @@ def test_an_outside_agent_pairs_through_the_window(app):
         assert answer["state"] == "approved" and answer["token"].startswith("dn_")
         assert anon.post("/api/pair/status", json={"id": pending[0]["id"], "secret": "the-wrong-secret"}).status_code == 400
 
+        from decompnet.app import prompt_settings
+        prompt_settings.save_global(net, {'instructions':'Custom app instructions for this test'})
         # its MCP tools are the paired project's: initialize, then tools/list with the token
         headers = {"Authorization": f"Bearer {answer['token']}"}
         r = anon.post("/mcp", headers={**headers, "Accept": "application/json, text/event-stream"},
                       json={"jsonrpc": "2.0", "id": 1, "method": "initialize",
                             "params": {"protocolVersion": "2025-03-26", "capabilities": {},
                                        "clientInfo": {"name": "outside-cli", "version": "0"}}})
+        initialized = json.loads(r.text.split('data: ',1)[1].splitlines()[0])['result']
+        assert initialized['instructions']=='Custom app instructions for this test'
+        from decompnet.app.agents import Session
+        manager = app[2]
+        paired_agent = net.authenticate(answer['token'])
+        custom = Session('prompt-mcp','codex',paired_agent.name,'pair-demo',paired_agent.name,
+                         {'prompts':{'instructions':'Private per-agent app instructions'}})
+        manager.sessions[custom.id] = custom
+        per_agent = anon.post('/mcp', headers={**headers,'Accept':'application/json, text/event-stream'},
+                             json={'jsonrpc':'2.0','id':10,'method':'initialize',
+                                   'params':{'protocolVersion':'2025-03-26','capabilities':{},
+                                             'clientInfo':{'name':'other-initialize','version':'0'}}})
+        assert json.loads(per_agent.text.split('data: ',1)[1].splitlines()[0])['result']['instructions']=='Private per-agent app instructions'
+        assert initialized['instructions']=='Custom app instructions for this test'
+        manager.sessions.pop(custom.id)
+
+        prompt_settings.save_global(net,{})
         sid = r.headers["mcp-session-id"]
         r = anon.post("/mcp", headers={**headers, "Accept": "application/json, text/event-stream",
                                        "Mcp-Session-Id": sid, "mcp-session-id": sid},
@@ -1589,3 +1608,43 @@ def test_metrics_export_route_uses_private_project_guard_and_returns_saved_path(
     assert response.status_code == 200 and response.json()['path'] == '/Downloads/metrics.csv'
     assert calls == [('example', 'metrics')]
     assert client.post('/api/permuter/pass', json={'slug':'example','action':'export-metrics','csv':'metrics'}).status_code == 403
+
+
+def test_prompt_settings_are_guarded_and_preview_does_not_save(app):
+    from decompnet.app import prompt_settings
+    client, net, _ = app
+    endpoint='/api/agent-prompts'
+    assert client.get(endpoint,headers={'User-Agent':'external'}).status_code==401
+    assert client.post(endpoint,json={'overrides':{}}).status_code==403
+    headers={'X-Decomp':'1'}
+    assert client.post(endpoint,json={'overrides':{'initial_rom':'{unknown}'}},headers=headers).status_code==400
+    data={'overrides':{'instructions':'Test global app instructions'}}
+    assert client.post(endpoint,json={**data,'action':'preview'},headers=headers).json()['instructions']=='Test global app instructions'
+    assert prompt_settings.global_overrides(net)=={}
+    saved=client.post(endpoint,json=data,headers=headers)
+    assert saved.status_code==200
+    assert next(f for f in saved.json()['fields'] if f['key']=='instructions')['custom']
+    assert client.post(endpoint,json={'helper':'missing','overrides':{}},headers=headers).status_code==400
+    client.post(endpoint,json={'overrides':{}},headers=headers)
+
+
+def test_per_agent_prompt_preview_and_save_are_isolated(app,tmp_path,monkeypatch):
+    from decompnet.app.agents import Session
+    client, net, manager = app
+    with net.store.tx() as db:
+        db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                   ('prompt-demo','Prompt demo','mips',str(tmp_path),'{}'))
+    helper = Session('991','codex','prompt-reader','prompt-demo','prompt-reader',{})
+    manager.sessions[helper.id]=helper
+    monkeypatch.setattr(net,'overview',lambda slug:{'title':'Synthetic game','kind':'rom','platform':'n64',
+                                                   'compiler':{'toolchain':'gcc-2.7.2-kmc'}})
+    payload={'helper':helper.id,'overrides':{'initial_rom':'Experiment {title}','instructions':'Private instructions'}}
+    preview=client.post('/api/agent-prompts',json={**payload,'action':'preview'},headers={'X-Decomp':'1'})
+    assert preview.status_code==200
+    assert 'Experiment Synthetic game' in preview.json()['initial']
+    assert preview.json()['instructions']=='Private instructions'
+    assert 'prompts' not in helper.options
+    response=client.post('/api/agent-prompts',json=payload,headers={'X-Decomp':'1'})
+    assert response.status_code==200 and helper.options['prompts']==payload['overrides']
+    assert next(f for f in client.get('/api/agent-prompts').json()['fields'] if f['key']=='instructions')['value'] != 'Private instructions'
+    manager.sessions.pop(helper.id)

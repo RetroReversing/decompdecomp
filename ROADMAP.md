@@ -1419,3 +1419,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Done: agent improvement lists correctly convert match ratios to percentages and label the current total match explicitly, distinguishing it from the agent’s historical improvement.
 
 - Done: manual MCP connection setup is collapsed by default in Agents & models, using the shared keyboard-accessible disclosure styling.
+
+- Done: global and per-agent initial-prompt templates (ROM/imported/polishing) and app-instruction overrides support preview, inheritance and reset. Sessions freeze their effective templates; authenticated MCP initialization/discovery and API system messages use the selected instructions, transcripts record the effective text, and prompt profiles separate efficiency cohorts. Project instructions and continuation context remain appended.
