@@ -161,8 +161,9 @@ def test_output_duplicates_bound_expansion_but_preserve_two_source_shapes():
         expanded.append(source)
         return ['a','b','c'] if source=='seed' else []
     assert not search.advance(state,evaluate,variants,lambda:False)
-    assert expanded==['seed','a']
-    assert len(state['outputs'])==1
+    assert expanded==['seed','a','b']
+    assert len(state['outputs'])==2
+    assert max(state['outputs'].values())==2
     assert search.output_key({'rows':[]}) is None
     assert search.output_key({'candidate_target':'00','candidate_relocs':'[]'}) != search.output_key(
         {'candidate_target':'00','candidate_relocs':'[1]'})
@@ -304,3 +305,31 @@ def test_region_gain_wins_reserved_detour_slot_over_a_lower_total_score():
         return {'seed':['weak','local_fix'], 'local_fix':['done']}.get(source, [])
     assert search.advance(state, lambda s: reports[s], variants, lambda:False)
     assert 'local_fix' in expanded and 'weak' not in expanded
+
+
+def test_unhelpful_frame_growth_is_not_expanded_but_exact_verdict_wins():
+    baseline = [(' ','addiu $sp, $sp, -32','addiu $sp, $sp, -32'),
+                ('r','move $s0, $a0','move $s1, $a0')]
+    larger = [('s','addiu $sp, $sp, -32','addiu $sp, $sp, -40'),
+              ('r','move $s0, $a0','move $s1, $a0'), ('>','','nop')]
+    expanded = []
+    state = seed()
+    state['pending'][0]['baseline_rows'] = baseline
+    assert not search.advance(state,lambda s:dict(score=21,matched=False,rows=larger),
+                              lambda s,r:expanded.append(s) or [],lambda:False,arch='mips')
+    assert not expanded
+    state = seed()
+    state['pending'][0]['baseline_rows'] = baseline
+    assert search.advance(state,lambda s:dict(score=0,matched=True,rows=larger),
+                          lambda s,r:[],lambda:False,arch='mips')
+
+def test_identical_output_plateau_can_continue_at_each_depth():
+    state = seed()
+    calls = []
+    def evaluate(source):
+        calls.append(source)
+        return dict(score=20, matched=source == 'done', candidate_target='aa', candidate_relocs='[]')
+    def variants(source, report):
+        return {'seed':['a'], 'a':['b'], 'b':['done']}[source]
+    assert search.advance(state, evaluate, variants, lambda: False)
+    assert calls == ['seed', 'a', 'b', 'done']

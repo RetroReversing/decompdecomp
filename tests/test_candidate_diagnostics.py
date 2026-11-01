@@ -63,3 +63,9 @@ def test_a_prefix_requires_builder_verification_instead_of_claiming_export_readi
     struct.pack_into('>II',obj,symbols['sh_offset']+16+4,8,8)
     result=diagnostics.export_layout(bytes(obj),'f',True,{})
     assert result['state']=='requires_normalization' and result['ready'] is None
+
+
+def test_linked_byte_verdict_takes_precedence_over_symbolic_annotations():
+    assert 'Linked bytes verified identical' in diagnostics.text({'linked_bytes':{'exact':True}})
+    assert 'do not repair' in diagnostics.text({'linked_bytes':{'exact':True}})
+    assert diagnostics.text({'linked_bytes':{'exact':False}}) == ''

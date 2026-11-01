@@ -245,6 +245,8 @@ class Search(Permuter):
             for candidate in stack:
                 labels.setdefault(candidate, 'stack_padding')
             choices += stack
+            from . import normalization_repairs
+            normalization_repairs.extend_frame(choices, labels, source, fn['name'], proj['arch'], rows)
             for family, candidate in permuter_local.variants(source, fn['name']):
                 labels.setdefault(candidate, family)
                 choices.append(candidate)
@@ -271,7 +273,7 @@ class Search(Permuter):
                     del self._parent_rows
                 if score is not None and best < score <= best * 1.25 and not getattr(self, '_trial_reused', False):
                     measured_rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
-                    alternatives.offer(candidate, score, measured_rows)
+                    alternatives.offer(candidate, score, measured_rows, arch=proj['arch'], baseline=rows)
                     source_rows[candidate] = measured_rows
                     lineage.retain(source,candidate,labels.get(candidate,'local_repair'))
                 if score is not None and score < best:

@@ -44,7 +44,7 @@ class JudgeMixin:
             return super()._evaluate(fn, proj, obj)
         res = match.link(obj, fn["name"], self._rom_target(fn), self.symbols(proj["id"]), self.reader(proj, fn))
         from ..candidate_diagnostics import export_layout, text, unresolved
-        checks = {'link': unresolved(res.problems),
+        checks = {'linked_bytes': {'exact': res.exact}, 'link': unresolved(res.problems),
                   'export': export_layout(obj, fn['name'], res.exact, res.placements)}
         checks['message'] = text(checks)
         cache = self.__dict__.setdefault('_candidate_diagnostics', {})

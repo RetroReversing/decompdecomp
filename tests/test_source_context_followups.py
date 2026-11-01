@@ -8,7 +8,9 @@ def test_same_file_definition_preserved_with_plain_alternative(tmp_path):
     (tmp_path/'f.c').write_text('static unsigned long long clock = 62500000ULL;\nunsigned long long original(void){return clock;}')
     (tmp_path/'f.h').write_text('extern unsigned long long clock;')
     cfg={'root':str(tmp_path),'header':str(tmp_path/'f.h')}
-    pairs=prep.prepare_variants(prep.Reader(cfg),cfg,('dest','original','f.c'),{'original':'dest'},'')
+    reader=prep.Reader(cfg)
+    pairs=prep.prepare_variants(reader,cfg,('dest','original','f.c'),{'original':'dest'},'')
+    assert any('mapped-file object clock' in hint for hint in reader.advisories)
     assert len(pairs)==2 and 'clock = 62500000ULL;' in pairs[0][0]
     assert 'clock = 62500000ULL;' not in pairs[1][0]
     assert '#line' in pairs[0][0] and 'return clock;' in pairs[0][0]

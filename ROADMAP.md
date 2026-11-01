@@ -1179,3 +1179,11 @@ is a regression result, not a new game match. Mixed/context-dependent examples r
   call-only diagnostics, entry-context/NOP/record advisories, and rejected-preflight-suggestion recovery share
   ordinary judges and budgets. Other processors' address/entry evidence adapters: **—**, planned work; imported
   projects retain build-owned compiler profiles and ROM-only entry diagnostics do not alter their setup.
+## Register-only local lifetime search
+
+Shared draft, agent-local and deep searches offer bounded branch-tail locals, scalar call staging
+and combined proposals for ordinary C in ROM and imported-project mode. Register-only diagnostics
+prioritise these shapes. Search frontiers avoid expanding measured frame/code growth without
+structural improvement, while retaining numeric improvements and ordinary exact judging. Generated
+compile errors reuse input-scoped caches; agent summaries include failures and regressions.
+Synthetic execution/search regressions are distinct from newly measured private-game recoveries.

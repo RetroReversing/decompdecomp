@@ -11,8 +11,11 @@ def hints(source, name, asm='', arch='', rows=None):
     clean = _blank(source)
     body = clean[span[0]:span[1]]
     from .helper_call_diagnostics import suggestions
+    from .permuter_focus import classify
     from .preparation_diagnostics import allocations
     result = suggestions(rows) + allocations(source, rows)
+    if classify(rows) == 'register':
+        result.append('Only register operands differ in the displayed instructions. Prioritise local lifetimes and declaration shapes over constants: try branch_tail_lifetimes, staged_call_arguments or combined_call_lifetimes when offered. Inline helpers can enlarge the frame; check instruction count and frame size before expanding that direction. This is search advice, not an exact verdict.')
 
     from .target_local_repairs import call_arguments
     if arch == "mips" and call_arguments(source, name, asm):

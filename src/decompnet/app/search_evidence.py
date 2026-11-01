@@ -1,7 +1,7 @@
 """Bounded build-scoped search notes for agents: useful differences without full assembly replay."""
 import hashlib
 
-from . import experiment_evidence, permuter_focus, repair_ranking
+from . import agent_tokens, experiment_evidence, permuter_focus, repair_ranking
 
 LIMIT = 64
 
@@ -40,7 +40,10 @@ def brief(net, proj, fn):
         if alternatives:
             lines.append('Recent tested alternatives (not adopted): '+', '.join(f"{v['kind'] or 'mixed'} score {v['score']}" for v in alternatives[-2:]))
     experiment_evidence.prepare(net)
-    rows = net.store.all('SELECT family,attempted,same_output,no_edit,improved FROM repair_input_effects WHERE function_id=? AND scope=? ORDER BY attempted DESC LIMIT 3',fn['id'],experiment_evidence.scope(net,proj,fn))
+    rows = net.store.all('SELECT family,attempted,same_output,no_edit,improved,worse,failed FROM repair_input_effects WHERE function_id=? AND scope=? ORDER BY attempted DESC LIMIT 3',fn['id'],experiment_evidence.scope(net,proj,fn))
     if rows:
-        lines.append('Current-input local trials: '+'; '.join(f"{r['family']}: {r['attempted']} proposals, {r['same_output']} identical output, {r['no_edit']} no edits, {r['improved']} improvements" for r in rows)+'. These families remain available.')
+        lines.append('Current-input local trials: '+'; '.join(f"{r['family']}: {r['attempted']} proposals, {r['same_output']} identical output, {r['no_edit']} no edits, {r['worse']} worse, {r['failed']} failed, {r['improved']} improvements" for r in rows)+'. These families remain available.')
+    cached = net.store.all("SELECT family,COUNT(*) AS n FROM agent_family_targets WHERE function_id=? AND scope=? AND family IN ('compiled-miss','compiled-error') GROUP BY family", fn['id'], agent_tokens.target_scope(net,fn,''))
+    if cached:
+        lines.append('Previously tested candidates under current build inputs: '+', '.join(f"{r['n']} {r['family']}" for r in cached)+'. Local repairs skip these exact source hashes; change source/build inputs before retrying. This is not proof that a whole family is exhausted.')
     return '\n\nLocal search evidence:\n'+'\n'.join(lines)+'\nRequest full diff/history only when needed.' if lines else ''

@@ -34,3 +34,30 @@ def test_frontier_keeps_numeric_best_and_distinct_structural_alternatives_with_b
     assert len(frontier.nodes) <= search_frontier.WIDTH
     assert {'numeric','moved','register'} <= {n['source'] for n in frontier.nodes}
     assert frontier.choose(1,'fallback') != 'fallback'
+
+
+def test_frame_and_code_growth_prune_only_unhelpful_expansion():
+    baseline = [(' ','addiu $sp, $sp, -32','addiu $sp, $sp, -32'),
+                ('r','move $s0, $a0','move $s1, $a0')]
+    larger = [('s','addiu $sp, $sp, -32','addiu $sp, $sp, -40'),
+              ('r','move $s0, $a0','move $s1, $a0'), ('>','','nop')]
+    assert search_frontier.unhelpful_detour('mips',baseline,larger)
+    assert not search_frontier.unhelpful_detour('mips',[],larger)
+    assert not search_frontier.unhelpful_detour('ppc',baseline,larger)
+    assert not search_frontier.unhelpful_detour('mips',baseline,larger[:-1])
+    frontier = search_frontier.Frontier()
+    frontier.offer('helper',12,larger,arch='mips',baseline=baseline)
+    assert not frontier.nodes
+    # Removing a register miss can justify exploring a new frame/code shape.
+    mostly_registers = baseline+[('r','move $s2, $a1','move $s3, $a1')]*8
+    assert not search_frontier.unhelpful_detour('mips',mostly_registers,larger)
+
+
+def test_numeric_improvements_still_enter_the_frontier():
+    baseline = [(' ','addiu $sp, $sp, -32','addiu $sp, $sp, -32'),
+                ('r','move $s0, $a0','move $s1, $a0')]
+    larger = [('s','addiu $sp, $sp, -32','addiu $sp, $sp, -40'),
+              ('r','move $s0, $a0','move $s1, $a0'), ('>','','nop')]
+    frontier = search_frontier.Frontier()
+    frontier.offer('improved',9,larger,arch='mips',baseline=baseline,baseline_score=10)
+    assert frontier.nodes[0]['source'] == 'improved'

@@ -251,7 +251,9 @@ def prepare(reader, cfg, mapping, aliases, fallback):
         for name,definition in source_definitions.related(declarations(original),reference_used-explicit-{symbol}):
             # A header's actual definition already supplies layout knowledge; never duplicate it.
             try:source_definitions.extract(declarations(header),name)
-            except NetworkError:selected.append(rename(definition,aliases))
+            except NetworkError:
+                selected.append(rename(definition,aliases))
+                reader.advisories.append(f'Trying original mapped-file object {name}; its initializer/layout is unchanged and standalone placement still needs verification.')
     if selected:
         source = '\n'.join(selected) + '\n' + source
     return source, rename(header, aliases)

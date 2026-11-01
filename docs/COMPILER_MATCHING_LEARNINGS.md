@@ -703,3 +703,65 @@ are recommended ahead of broad searches when differences are only register alloc
 A rejected partial compiler suggestion now keeps the working profile and returns to source search. Unexpected
 errors and cancellation are not swallowed. These synthetic regressions are separate from manual game matches;
 this change has not been installed into the running app during development.
+### Bounded automation from the KMC local-lifetime case
+
+The verified `gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2 -g3` draw-pair case above
+motivates three shared C hypothesis families: `branch_tail_lifetimes`,
+`staged_call_arguments` and `combined_call_lifetimes`. The first duplicates a terminal,
+straight-line call pair into two existing arms with separate integer locals. Staging uses
+only known unescaped integer locals and signed-int literals; combinations are capped at eight.
+This deliberately covers a narrow source shape, not every shared-tail rendering routine.
+Qualified objects, ambiguous types, macros and escaping/jumping control flow are left alone.
+
+Register-only rows, including indirect-call register changes, prioritise these families.
+After ordinary judging, a non-improving detour that grows both a previously correct frame
+and the instruction count without improving instruction structure is not expanded further.
+Unknown layouts and numeric improvements remain eligible. This is bounded search pruning,
+not an equivalence proof or permission to skip the exact judge.
+
+Synthetic execution regressions compare call values/order for both arms and varied signed
+inputs using a host compiler. Search tests cover frame-growth pruning, exact verdict precedence,
+input-scoped failure caching and retry after changed build inputs. These are controlled feature
+regressions; no additional private-game matches or token savings are claimed for these families.
+The linked-byte verdict is reported separately from symbolic annotations. Known generated
+compile errors now join the existing exact-source miss cache, while infrastructure failures
+stay retryable; compact agent summaries expose both failures and regressions.
+
+### Normalization lifetimes and partial frame gaps (1 November 2026)
+
+A private 808-instruction KMC GCC 2.7.2 routine was verified exact with the unchanged
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3` profile. The final steps isolate three reusable shapes:
+
+- A signed-halfword normalization, followed by a void setter, can be expressed as an inline
+  helper that performs the setter and returns the normalized value. Keeping that value live
+  across the call recovered the last two register operands. No extra call was emitted and the
+  callee prototype stayed unchanged. Pure expression helpers had not recovered this allocation.
+- A variable used first as a full-width loop stride and later only through signed-halfword reads
+  benefited from a separate narrow saved value. The automatic repair mirrors earlier assignments
+  into the new value, including paths that skip the later phase; an initial zero alone is not a
+  general correctness guarantee. Address escapes, compound updates and unsupported syntax are skipped.
+- The target frame was 48 bytes larger, but the first thirteen stack slots already agreed.
+  Six late narrowing helpers before low-bit masks reserved six unused eight-byte spill slots,
+  preserving the instruction sequence and aligning the final two spills. A diagnostic compiler
+  built from the pinned compiler's source reproduced the installed compiler's output and traced
+  a nonzero reference count for a pseudo eliminated by combination. This explains the observed
+  unused storage; it does not establish a universal frame-padding rule.
+
+`call_return_normalization` and `split_narrow_lifetime` feed the shared local repair pipeline.
+`spill_normalization` requires a consistent positive MIPS frame gap, unchanged earlier stack
+accesses and local integer values immediately masked to the low fifteen bits or fewer. It tries
+at most eight bundles, including the inferred slot count, without changing masks or array extents.
+The per-function deep search, background local repair, agent local experiments and iterative
+phase use the same bounded proposals and ordinary judge. Other architectures can use the scalar
+lifetime repairs; the frame hypothesis currently requires MIPS stack-offset evidence.
+
+A controlled private replay using generated candidates recovered **141 → 115 → 110 → exact**
+in ten candidate compiles (eight frame candidates, one lifetime split, one call/return helper).
+This reproduces an already established match, not ten new matches or a measured success rate.
+Committed tests use synthetic C, including skipped-phase, negative-value and mask-preservation cases.
+
+Equal numeric scores can hide useful frame progress: each additional spill slot reduced offset
+error without reducing the mismatch count. The frontiers now use stack-offset distance as an
+advisory tie-breaker. The iterative beam's allowance of two source shapes with identical compiler
+output applies at each depth rather than being consumed across the whole search. Width, depth,
+compile/time budgets, exact-output evidence and normal linked-byte acceptance remain mandatory.
