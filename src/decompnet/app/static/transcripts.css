@@ -127,6 +127,10 @@
 .transcript-markdown blockquote { margin: 12px 0; padding: 4px 14px; border-left: 3px solid var(--line); color: var(--muted); }
 .transcript-md-table { overflow: auto; } .transcript-md-table th, .transcript-md-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); text-align: left; }
 
+.transcript-tool-exchange > summary .transcript-event-label { overflow-wrap:anywhere; min-width:0; }
+.transcript-tool-arguments { margin: 0 16px 14px; }
+.transcript-tool-arguments > summary { color:var(--muted); padding:10px 0; }
+.transcript-tool-exchange > .transcript-tool-result { margin:12px 16px 16px; border-left:3px solid var(--match); }
 .tool-catalog > .transcript-tool > summary { display:flex; align-items:center; gap:12px; padding:12px 14px; cursor:pointer; }
 .tool-catalog > .transcript-tool > summary code { flex:1; min-width:0; }
 .tool-catalog > .transcript-tool > summary input { width:18px; height:18px; flex:none; }

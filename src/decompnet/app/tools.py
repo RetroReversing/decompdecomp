@@ -4,6 +4,7 @@ built-in API agent. Every tool works on the project the agent was started on."""
 from __future__ import annotations
 
 import re
+import uuid
 from importlib import resources
 from typing import Callable, Literal
 
@@ -579,18 +580,19 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
             agent, slug = agent_of(ctx)
         except NetworkError as e:
             raise ToolError(str(e)) from None
+        call_id = uuid.uuid4().hex
         if observe:
-            observe(agent, slug, 'tool_request', {'name': name, 'arguments': args})
+            observe(agent, slug, 'tool_request', {'name': name, 'arguments': args, 'call_id': call_id})
         try:
             result = await anyio.to_thread.run_sync(lambda: _dispatch(net,agent,slug,name,args))
         except Exception as e:
             if observe:
-                observe(agent, slug, 'tool_response', {'name': name, 'error': str(e)})
+                observe(agent, slug, 'tool_response', {'name': name, 'error': str(e), 'call_id': call_id})
             if isinstance(e, NetworkError):
                 raise ToolError(str(e)) from None
             raise
         if observe:
-            observe(agent, slug, 'tool_response', {'name': name, 'content': result})
+            observe(agent, slug, 'tool_response', {'name': name, 'content': result, 'call_id': call_id})
         return result
 
     def tool(fn):
