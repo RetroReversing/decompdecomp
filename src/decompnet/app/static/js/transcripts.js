@@ -196,6 +196,8 @@ $("helperTranscript").onclick = async () => {
       ? `Reported tokens: ${row.input_tokens.toLocaleString()} input (excluding cache), ${row.cache_read_tokens.toLocaleString()} cache read, ${row.cache_write_tokens.toLocaleString()} cache write, ${row.output_tokens.toLocaleString()} output. ${row.usd ? money(row.usd) + " reported cost." : "No dollar cost reported."}`
       : row?.tokens ? `${row.tokens.toLocaleString()} tokens reported; input/cache/output breakdown unavailable.`
       : "No token usage reported yet; this does not mean the session was free.";
+    if (row?.usage_coverage === 'partial') dialog.querySelector('[data-usage]').textContent += ' Usage incomplete: incremental reports only; final totals were not received.';
+
   }
   async function load(reset = true, old = false, silent = false) {
     const request = ++generation;

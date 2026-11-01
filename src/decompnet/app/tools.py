@@ -347,12 +347,14 @@ def _compile(net: RomNetwork, agent: Agent, slug: str, function: str, source: st
         agent_tokens.outcome(net, agent, fn, source, result)
         from . import agent_evidence
         unchanged_note=agent_evidence.track(net,agent,slug,fn)
-        if unchanged_note:
-            result+='\n'+unchanged_note
         agent_tokens.remember(net, agent, fn, previous_attempt)
         result = agent_tokens.feedback(net, agent, slug, names[0], result, previous_diff)
+        if unchanged_note:
+            result += '\n'+unchanged_note
         _, revision = agent_tokens.candidate(net, agent, slug, names[0])
-        if net._function(names[0],slug)['status']=='open':
+        open_function = net._function(names[0],slug)['status']=='open'
+        held = net.store.one('SELECT 1 FROM claims WHERE function_id=? AND agent_id=?',fn['id'],agent.id)
+        if open_function and held:
             state = net.stall_status(fn['id'],agent.id)
             remaining = max(0,state['after']-state['no_better'])
             result += f"\nBudget: {remaining}/{state['after']} without improvement remaining; Candidate revision {revision}."
@@ -361,6 +363,8 @@ def _compile(net: RomNetwork, agent: Agent, slug: str, function: str, source: st
                 result += limit
             elif not remaining:
                 result += '\nNext: release_function with notes, then claim another function.'
+        elif open_function:
+            result += f"\nCandidate revision {revision}. Claim ended; claim another eligible function. Do not release this function again."
         else:
             result += f"\nCandidate revision {revision}."
         # Server conversion cannot recover tokens already sent. Coach once per claim when the exact

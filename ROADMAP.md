@@ -1,5 +1,10 @@
 # Roadmap
 
+Implemented: compact claims prioritize verified mismatch regions while keeping complete candidates; last_diff
+can reuse an exact scoped baseline without compiling. Unchanged-output advice starts earlier with recent
+change history and respects exhausted/released claims. Compiler failures include bounded declaration/context
+guidance, and stale edits include current C near the requested anchor without fuzzy replacements. Claude
+partial-message usage is deduplicated and reconciled with final totals; interrupted coverage remains explicit.
 Implemented: private original range-predicate helpers and bounded mask-signedness context trials in
 mapped ROM preparation; focused two-load repair ranking; MIPS candidate-only epilogue boundary
 warnings; concrete comparison/immediate revision leads; current-source/build-scoped unsuccessful
