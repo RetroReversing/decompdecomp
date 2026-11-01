@@ -531,10 +531,11 @@ class Twins:
             self.run(slug, job)
             job.state = "running"  # run() finishes its local pass; cross-project work is still cancellable
             job.matched += self.across_games(slug, job)
-            from . import free_candidates, similar_matches
+            from . import free_candidates, named_donors, similar_matches
 
             free_candidates.budget(job, self.net.cascades.seconds, self.net.cascades.attempts)
             started = time.monotonic()
+            job.matched += named_donors.run(self, slug, job)
             job.matched += free_candidates.run(self, slug, job)
             job.matched += similar_matches.run(self, slug, job)
             with self.net.store.tx() as db:

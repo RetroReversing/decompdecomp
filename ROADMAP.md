@@ -1382,3 +1382,18 @@ model/compiler rankings, and no family or unmatched function is automatically ex
 - Done: deep-pass activity cards default to active only, retain expandable output when sorted, and show measured elapsed duration for active and completed functions.
 
 - Done: parallel deep searches use per-function runner credentials outside rooms too, preventing token invalidation between workers and the background permuter.
+### Same-name verified source reuse
+
+- Done: a shared bounded Autopilot/cascade phase tries meaningful same-name matched C across
+  compatible ROM and imported projects before broader similarity search. Names are discovery hints,
+  not identity/ABI or match proofs. Generated address names are excluded; targets and donor projects rotate.
+- Done: imported donors use read-only, checkout-bounded includes and literal build hints. Missing
+  conditional headers become preprocessor errors rather than guessed declarations. Supported pinned
+  destination compilers produce a compact declaration closure and can try one source-declared numeric
+  version boundary coherently across headers/body. No make/configure or model calls are introduced.
+- Done: candidate/context/profile/target/linker/build inputs scope cached trials. ROM header promotion
+  does not repeat an unchanged self-contained donor trial; imported destinations retain their native
+  headers and normal objdiff build. Only the normal exact verdict creates a match.
+- Planned: preprocessing adapters for drivers without a supported `-c` → `-E` mode, automatically
+  supplying foreign static helpers/initialized data, and preparing assembly-only imported units from
+  name-only leads. Those cases remain visible skips or need explicit existing source-preparation setup.
