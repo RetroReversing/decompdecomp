@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
 const elements = {diffSum: {}, diff: {querySelectorAll: () => []}, diffProblems: {}};
 const esc = text => String(text).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-const ctx = {$: id => elements[id], esc, S: {ov: {kind: 'rom'}}, MARK: {}, MARK_TEXT: {}, insnHtml: esc};
+const ctx = {$: id => elements[id], esc, S: {ov: {kind: 'rom'}}, MARK: {}, MARK_TEXT: {}, insnHtml: esc, setEditorSourceMapping:()=>{}};
 vm.createContext(ctx);
 const source = fs.readFileSync('src/decompnet/app/static/js/function.js','utf8');
 vm.runInContext(source.slice(source.indexOf('function renderDiff('),source.indexOf('async function loadDiff(')),ctx);

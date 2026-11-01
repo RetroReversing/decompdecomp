@@ -17,6 +17,7 @@ function setup() {
     show: () => {}, stopPolling: () => {}, markNav: () => {}, showDrawer: id => {el(id).hidden=false;},
     giveBack: () => {}, drawMap: () => {}, toast: e => errors.push(e), esc: String, hex8: String,
     renderKnownCompilerProfiles: () => {}, renderFnChart: () => {}, showFnTab: () => {},
+    setEditorSourceMapping:data=>{S.sourceMap=data;},
     setEditor: source => {el('fnEdit').value=source;}, highlightAsm: String,
     nameChangeBusy: false, clock: String, groups: new Set(), L: {}, FUNCTION_ROWS: 200,
     renderLog: () => {}, renderHeader: () => {}, renderStats: () => {}, renderForkSetup: () => {},
@@ -36,7 +37,7 @@ const detail = name => ({name,unit:'u',insns:1,status:'open',best:100,source:`so
   f.ctx.fnBadge=()=>{};
   const a=f.ctx.openFn('A');
   assert.equal(f.el('fnName').textContent,'A');
-  assert.equal(f.S.fnDetail,null); assert.equal(f.el('drawer').attrs['aria-busy'],'true');
+  assert.equal(f.S.fnDetail,null); assert.equal(f.S.sourceMap,null); assert.equal(f.el('drawer').attrs['aria-busy'],'true');
   const b=f.ctx.openFn('B');
   assert.equal(f.calls[0].signal.aborted,true);
   assert.equal(f.calls.length,2,'A slow function must not block the newly selected function');

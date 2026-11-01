@@ -1091,3 +1091,15 @@ rather than work logs about one function. Use function notes for those. The user
 **Accept for all agents** with one supporting model; automatic acceptance still needs
 two different models. Accepted knowledge is identified as user-approved or model
 consensus, without claiming a single-model tip was independently confirmed.
+### C lines behind assembly differences
+
+In a function’s **Edit** tab, red lines are associated with differing, extra or moved
+compiled instructions; yellow lines have operand differences. Click a marked line
+number to see the target and compiled instructions. Editing the source clears these
+marks until another comparison. Agent compile responses include bounded C-line evidence too.
+
+These are compiler debug locations from the exact compiled object. Optimization can
+associate several statements with one location, so the marks are advisory. No compiler
+flags are changed to manufacture a map. Missing target-only instructions have no
+compiled C location. ELF DWARF 1/2+ and ECOFF are supported; absent, ambiguous or
+unsupported information is labelled unavailable, including COFF/CodeView for now.
