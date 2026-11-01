@@ -402,13 +402,13 @@ def _add_note(net: RomNetwork, agent: Agent, slug: str, text: str, function: str
     return net.add_note(agent, slug, text, function)
 
 
-def _redraft(net, slug, function, context):
+def _redraft(net, slug, function, context, agent=None):
     if isinstance(context,str) and context.strip() and not re.search(r'[;{}#]',context):
         raise NetworkError('redraft context must be C declarations, not prose. Save observations with add_note; use get_function(section=candidate) to read existing C.')
     if not isinstance(context,str) or not context.strip():
         raise NetworkError('redraft needs nonempty C declarations in context (a real struct, callee prototype or extern). '
                            'To inspect existing C, use get_function(function, section="candidate"). No redraft was run.')
-    return agent_tokens.brief(net,net.redraft(slug,function,context),slug)
+    return agent_tokens.brief(net,net.redraft(slug,function,context),slug,agent)
 
 
 HANDLERS: dict[str, Callable[..., str]] = {
@@ -447,7 +447,7 @@ HANDLERS: dict[str, Callable[..., str]] = {
                                                             if net.fork_slug(slug) else net.read_data(slug, what, length)),
     "get_class": lambda net, agent, slug, what="": net.get_class(slug, what),
     "guess_struct": lambda net, agent, slug, function, argument="arg0": net.guess_struct(slug, function, argument),
-    "redraft": lambda net, agent, slug, function, context: _redraft(net, slug, function, context),
+    "redraft": lambda net, agent, slug, function, context: _redraft(net, slug, function, context, agent),
     "compiler_map": lambda net, agent, slug, survey=False, check_ranges=False:
         net.compiler_map_text(slug, bool(survey), bool(check_ranges)),
     "list_functions": lambda net, agent, slug, status="open", limit=40: net.list_functions(slug, status, limit),

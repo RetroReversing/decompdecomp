@@ -1411,3 +1411,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
   name-only leads. Those cases remain visible skips or need explicit existing source-preparation setup.
 
 - Done: room deep searches publish one measured turn summary instead of phase-release boilerplate; latest summaries replace repeats per runner/function, and obsolete lease notes are omitted from function views and briefs without deleting history.
+
+- Done: per-agent Work settings can omit assembly byte/address presentation columns from claims, briefs, full function reads, redrafts and assembly pages; labels and operands remain intact across ROM and imported projects.

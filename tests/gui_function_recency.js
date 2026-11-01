@@ -18,3 +18,9 @@ assert(c.selectionFields({model_untried:true}).includes('checked'));
 assert(c.selectionFields().includes('Oldest checked first'));
 const policy=c.readSelection({querySelector:s=>fields[s]});
 assert.equal(policy.strategy,'oldest_checked');assert.equal(policy.model_untried,true);
+
+assert(c.assemblySetting({assembly_metadata:false}).includes('data-assembly-metadata'));
+assert(!c.assemblySetting({assembly_metadata:false}).includes('checked'));
+assert(c.assemblySetting().includes('checked'));
+fields['[data-assembly-metadata]']={checked:false};
+assert.equal(c.readSelection({querySelector:s=>fields[s]}).assembly_metadata,false);

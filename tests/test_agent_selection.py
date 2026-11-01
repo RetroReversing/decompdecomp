@@ -298,3 +298,12 @@ def test_model_filter_requires_explicit_identity(net):
         net.claim_row(a,'game')
     with pytest.raises(NetworkError):
         net.validate_selection({'model_untried':'yes'})
+
+
+def test_assembly_metadata_policy_is_boolean_persisted_and_agent_scoped(net):
+    net.set_selection('game', 'reader', {'assembly_metadata': False})
+    assert net.selection('game', 'reader')['assembly_metadata'] is False
+    assert 'assembly_metadata' not in net.selection('game', 'other')
+    for value in ('false', 0, None):
+        with pytest.raises(NetworkError, match='Assembly byte'):
+            net.validate_selection({'assembly_metadata': value})

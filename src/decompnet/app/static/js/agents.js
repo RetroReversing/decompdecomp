@@ -288,12 +288,12 @@ function renderSessions(sessions) {
   });
   box.querySelectorAll("[data-queue]").forEach((b) => { b.onclick = () => {
     const s = sessions.find((x) => x.id === b.dataset.queue);
-    const panel = dialog(`Work selection · ${s.label}`, `${s.task === "readable" ? "" : selectionFields(s.selection)}<label class="field"><span>Functions per session</span><input data-session-size type="number" min="1" max="20" value="${s.per_session || 8}"></label><p class="muted small">Session size changes apply at the next session. The current function stays with its agent.</p><button class="primary" data-save-selection>Save</button><button class="ghost" data-cancel-selection>Cancel</button>`);
+    const panel = dialog(`Work selection · ${s.label}`, `${s.task === "readable" ? assemblySetting(s.selection) : selectionFields(s.selection)}<label class="field"><span>Functions per session</span><input data-session-size type="number" min="1" max="20" value="${s.per_session || 8}"></label><p class="muted small">Session size changes apply at the next session. The current function stays with its agent.</p><button class="primary" data-save-selection>Save</button><button class="ghost" data-cancel-selection>Cancel</button>`);
     panel.addEventListener("change", () => updateSelectionDescription(panel));
     panel.querySelector("[data-cancel-selection]").onclick = closeDialog;
     panel.querySelector("[data-save-selection]").onclick = async () => {
       try {
-        const selection = s.task === "readable" ? s.selection || {} : readSelection(panel);
+        const selection = s.task === "readable" ? {...(s.selection || {}), assembly_metadata: panel.querySelector("[data-assembly-metadata]").checked} : readSelection(panel);
         await api("/api/agents/selection", { method: "POST", body: { id: s.id, selection, per_session: Number(panel.querySelector("[data-session-size]").value) } });
         s.selection = selection;
         s.per_session = Number(panel.querySelector("[data-session-size]").value);
@@ -379,8 +379,11 @@ function updateSelectionDescription(box) {
   const select = box.querySelector('[data-selection-strategy]'), hint = box.querySelector('[data-selection-description]');
   if (select && hint) hint.textContent = QUEUE_STRATEGIES.find(([value]) => value === select.value)?.[2] || '';
 }
+function assemblySetting(policy = {}) {
+  return `<label class="check"><input data-assembly-metadata type="checkbox" ${policy.assembly_metadata !== false ? "checked" : ""}><span>Include byte and address columns in agent assembly</span></label><p class="small muted">Turn off to save tokens in assembly requests and function briefs. Keeps labels, instructions and addresses used by operands. Applies to the next tool response.</p>`;
+}
 function selectionFields(policy = {}) {
-  return `<label class="field"><span>Next function</span><select data-selection-strategy>${QUEUE_STRATEGIES.map(([v, label, description]) =>
+  return `${assemblySetting(policy)}<label class="field"><span>Next function</span><select data-selection-strategy>${QUEUE_STRATEGIES.map(([v, label, description]) =>
     `<option value="${v}" ${(policy.strategy || "") === v ? "selected" : ""}> ${esc(label)} — ${esc(description)}</option>`).join("")}</select></label>
     <p class="small muted" data-selection-description aria-live="polite">${esc(QUEUE_STRATEGIES.find(([v]) => v === (policy.strategy || ""))?.[2] || "")}</p>
     <label class="check"><input data-selection-model-untried type="checkbox" ${policy.model_untried ? "checked" : ""}><span>Only functions never checked by this model</span></label>
@@ -406,7 +409,7 @@ function readSelection(box) {
   const unchangedRaw = box.querySelector('[data-selection-unchanged]')?.value.trim() || '';
   const unchanged = unchangedRaw === '' ? null : Number(unchangedRaw);
   if (unchanged !== null && (!Number.isInteger(unchanged) || unchanged < 0 || unchanged > 1000)) throw new Error('Use a whole number from 0 to 1000 for unchanged outputs.');
-  return { ...(unchanged === null ? {} : { unchanged_compiles: unchanged }), strategy: box.querySelector("[data-selection-strategy]").value, match_below: below,
+  return { ...(box.querySelector("[data-assembly-metadata]") ? {assembly_metadata: box.querySelector("[data-assembly-metadata]").checked} : {}), ...(unchanged === null ? {} : { unchanged_compiles: unchanged }), strategy: box.querySelector("[data-selection-strategy]").value, match_below: below,
     ...(box.querySelector("[data-selection-model-untried]")?.checked ? { model_untried: true } : {}),
     ...(stall === null ? {} : { stall_compiles: stall }),
     ...(max === null ? {} : { max_tries: max }) };
