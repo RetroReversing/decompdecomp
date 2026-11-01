@@ -1342,6 +1342,29 @@ assignments stayed unchanged, while lifetime and scheduling dumps differed. This
 initialization order without claiming a newly discovered allocation cause. No source was applied and
 this replay does not count as another matched function.
 
+### Shared result pointer, branch-local name pointers, then declaration order
+
+A further private 666-instruction / 2,664-byte MIPS function reached exact linked bytes through
+the running app, retaining KMC GCC 2.7.2 `-G0 -mips3 -mgp32 -mfp32 -O2 -g3` throughout.
+Its initial score was 5455 (91.8%); the candidate had 632 instructions. Splitting both a result
+pointer and a name pointer into eleven branch-local scopes improved score to 2660 (96.0%),
+660 instructions. Retaining the shared result pointer while making only name pointers branch-local
+reached score 40 (99.9%) with all 666 instructions. Only eight register positions differed.
+Swapping two plain local integer declarations recovered the final temporary-register substitution
+and exact score 0. The linked-byte and instruction checks were true; no data/address problems,
+and export layout was ready. A full image rebuild was not part of this function-level experiment.
+
+Controlled failures: splitting only the result pointer and keeping the name pointer shared worsened
+the candidate to score 12530 / 597 instructions. Explicit returns versus fallthrough after the
+branch-local blocks made no difference to the tested score. Moving the final two temporaries'
+load order, or adding `register` to either local, retained score 40 rather than fixing it.
+
+Interpretation: splitting every local is not a general allocator repair. Selectively combining
+shared and branch-local lifetimes can prevent unwanted tail merging and restore register allocation.
+A mixed-lifetime candidate should survive alongside the all-shared and all-split alternatives;
+then bounded declaration-order repairs can finish it. These are generating-source hypotheses,
+not proof of original variable spelling or source layout. This result is manual live-API matching,
+not a claim that the automatic repair families found all intermediate steps.
 ### Automating selective branch pointer lifetimes
 
 The shared `branch_pointer_lifetimes` family now tries individual pointer splits and bounded combinations,
@@ -1382,6 +1405,52 @@ observation remains unresolved: its nearby padding includes two NOPs followed by
 Concrete source comparisons and compiled immediate differences are now shown as revision leads.
 Unsuccessful preparations are summarized only under their original source/build scope, so changed
 inputs remain eligible and old failed experiments are not mistaken for universal impossibility.
+
+### Selector staging, control flow and debug profiles
+
+A private 741-instruction V-Rally regression recovered an already known exact match using
+bounded single-case switch, shared flag-guard join, selector/address staging and unsigned
+halfword hypotheses. Selector staging requires the old pointer to be dead on every
+successor; qualified variants change an existing load rather than adding reads. Macro
+bodies stay in place, and unknown preprocessing/control transfers are rejected. These
+are compiler hypotheses, not semantic proofs; the ordinary exact judge remains mandatory.
+
+The original saved candidate scored 1976. The first generated bundle scored 1216 under
+its original GCC debug profile. Normal profile preflight then tested the current and
+no-debug settings and adopted the exact result through ordinary revalidation. In an
+isolated ROM engine/database this used seven compiler invocations, about 1.66 compiler
+seconds and 2.33 elapsed seconds, excluding database preparation, repository synchronization
+and full cartridge rebuilding. This is known-match recovery, not a new match or a general
+success-rate measurement. Source and ROM inputs remain private.
+
+Promising candidates (score at most ten points per instruction) now prioritize installed
+debug-flag variants within the existing profile budget. Other candidates retain the
+existing optimization-first search. Imported builds still own their compiler flags.
+Register-only differences produce compact allocation/address guidance, not a claimed cause.
+Revoking a manual MCP connection drains its in-flight attempts, retains their results and
+releases only its claims; queued work on that revoked connection cannot reclaim them.
+
+### Measure combined-search effort rather than assume a speedup
+
+The selective branch-lifetime case motivates combining source repairs and preserving correct
+regions, but not a universal declaration or formatting rule. The shared frontier now ranks
+structural alternatives by newly damaged previously correct target blocks while retaining the
+numeric winner. This is advisory and cannot reject an otherwise exact candidate.
+
+An unchanged-profile private 666-instruction KMC GCC frozen-output benchmark recovered the
+previously verified control with all deterministic families in 67 candidate compiles (about
+20 seconds), including three compiler failures. Restricting generation to the branch families
+recovered it in 19 compiles (about five seconds). Both additionally compiled two controls.
+The earlier direct branch-family list recovered at proposal 17: these measurements do not
+establish a speedup. The round-robin beam and direct list have different proposal orders.
+The successful family already generates a bundled lifetime/declaration edit, so its one-family
+path is not proof that a multi-edge chain was necessary in this replay. Synthetic plateau and
+structure-gain tests separately exercise actual multi-edge continuation, cache reuse and resume.
+
+Keep successful and failed frozen cases as private benchmark inputs, compare first recovery
+trial and wall time under fixed context, and preserve data/relocation checks. Do not train exact
+repair recipes or adopt game progress from a frozen-output replay alone.
+
 
 
 ### CPU recovery from source context and measured retail differences

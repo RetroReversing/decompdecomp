@@ -26,7 +26,7 @@ from pathlib import Path
 from decompnet.hostenv import NO_WINDOW, find_uv
 
 from .. import __version__, toolchains
-from . import edition, window
+from . import edition, source_checkout, window
 
 REPO = "RetroReversing/decompdecomp"
 RECHECK = {"release": 3 * 3600, "branch": 15 * 60}  # GitHub allows 60 unauthenticated API calls an hour
@@ -294,6 +294,7 @@ class Updater:
         self.last: dict | None = None
         self.job = {"state": "idle", "log": [], "error": None}
         self._lock = threading.Lock()
+        self.checkout = source_checkout.Checkout()
 
     def set_source(self, repo: str, branch: str) -> dict:
         with self._lock:

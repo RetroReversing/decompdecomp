@@ -257,7 +257,7 @@ def prepare(reader, cfg, mapping, aliases, fallback):
             continue
         text, _ = source_conditions.select(reader.flatten(reader.root / file), macros, reader.overrides)
         definition = source_definitions.extract(declarations(text), name)
-        selected.append(rename(definition, aliases))
+        selected.append(rename(source_definitions.externalize(definition), aliases))
     if cfg.get('_same_file_definitions'):
         explicit={name for name,_ in source_definitions.mappings(cfg.get('definitions',''))}
         reference_used=used | {name for name,target in aliases.items() if target in used}
@@ -265,7 +265,7 @@ def prepare(reader, cfg, mapping, aliases, fallback):
             # A header's actual definition already supplies layout knowledge; never duplicate it.
             try:source_definitions.extract(declarations(header),name)
             except NetworkError:
-                selected.append(rename(definition,aliases))
+                selected.append(rename(source_definitions.externalize(definition),aliases))
                 reader.advisories.append(f'Trying original mapped-file object {name}; its initializer/layout is unchanged and standalone placement still needs verification.')
     if selected:
         source = '\n'.join(selected) + '\n' + source

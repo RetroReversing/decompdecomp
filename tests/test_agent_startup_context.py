@@ -43,7 +43,7 @@ def test_polishing_facts_have_no_function_claim_and_large_briefs_are_bounded(mon
     manager.prepare_session(tidy,object())
     assert not claims and 'Project facts' in tidy.startup_context
     matching=Session('b','api','B','game','worker',{})
-    manager.prepare_session(matching,object())
+    manager.prepare_session(matching,SimpleNamespace(id=1))
     assert len(matching.startup_context)<6800 and 'abbreviated' in matching.startup_context
 
 
@@ -55,5 +55,5 @@ def test_startup_failed_claim_is_not_cached_as_success(monkeypatch):
     monkeypatch.setattr(tools,'_claim',fail)
     session=Session('a','codex','A','game','worker',{})
     with pytest.raises(NetworkError,match='room unavailable'):
-        manager.prepare_session(session,object())
+        manager.prepare_session(session,SimpleNamespace(id=1))
     assert session.startup_context is None

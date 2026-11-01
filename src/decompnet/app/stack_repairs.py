@@ -76,10 +76,12 @@ def variants(source, name):
             b = a
         emit('parameter_storage', [(a,b,'' if param['storage'] else 'register ')])
     # Adjacent uninitialized locals only, not statements, initialized objects or nested scopes.
-    for first, second in list(zip(declarations, declarations[1:]))[:3]:
+    for first, second in list(zip(declarations, declarations[1:]))[:12]:
         a,b = opening+1+first.start('type'),opening+1+first.end()
         c,d = opening+1+second.start('type'),opening+1+second.end()
         if first['storage'] or second['storage']:
             continue
         emit('local_declaration_order', [(a,b,source[c:d]),(c,d,source[a:b])])
-    return result[:LIMIT]
+    swaps = [r for r in result if r[0] == "local_declaration_order"]
+    other = [r for r in result if r[0] != "local_declaration_order"]
+    return (swaps + other)[:LIMIT]

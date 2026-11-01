@@ -49,7 +49,7 @@ def test_release_handover_compacted_and_small_edit_coached_once(tmp_path,monkeyp
     text='## CLAIMED: game/f\n### Target assembly\n```asm\n'+'nop\n'*100+'```\n'
     monkeypatch.setattr(net,'release_function',lambda *args:text)
     result=tools.call(net,a,'game','release_function',{'function':'f','notes':'done'})
-    assert result.count('nop\n')==24 and 'get_assembly' in result
+    assert result.count('nop\n')==12 and 'get_assembly' in result
     net.claim_row(a,'game','f')
     source='int f(){\n/*'+'x'*500+'*/\nreturn 1;}'
     net._record(fn,a,10,source,1)

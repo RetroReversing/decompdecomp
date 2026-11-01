@@ -141,7 +141,7 @@ async function refreshMap(force = true, prefetched = null) {
    matches on the map. */
 let pollingGen = -1;
 async function poll() {
-  if (pollingGen === S.gen || !S.slug) return;
+  if (pollingGen === S.gen || !S.slug || (document.hidden && S.primed)) return;  // (minimised: nobody sees it)
   const gen = pollingGen = S.gen, slug = S.slug, first = !S.primed;
   try {
     const live = await api(`/api/live?slug=${slug}&e=${S.lastEvent}&a=${S.lastAttempt}&s=${encodeURIComponent(JSON.stringify(S.seq))}`);
@@ -171,6 +171,7 @@ async function poll() {
     renderNow(live.claims);
     renderStats(live.overview);
     const claimSig = live.claims.map((c) => c.name + "\u0000" + c.agent).join("\n");
+    if (live.cut && !first) mapDirty = true;  // (attempts it didn't send: the map's counts come again)
     if (mapDirty || Date.now() - S.lastMapFetch > MAP_EVERY_MS) await refreshMap(mapDirty);
     else {
       applyClaims();
@@ -188,12 +189,18 @@ async function poll() {
   }
 }
 
+let statsLoading = null;
 async function loadStats() {
   const slug = S.slug, gen = S.gen;
   // the overview's charts and the Agents tab's "N matched" per agent both come from these
-  if (!S.slug || (S.tab !== "overview" && S.tab !== "agents")) return;
+  if (!S.slug || document.hidden || (S.tab !== "overview" && S.tab !== "agents")) return;
+  if (statsLoading && statsLoading.slug === slug && statsLoading.gen === gen) return;
+  const request = api(`/api/stats?slug=${slug}`);
+  const loading = { slug, gen, request };
+  statsLoading = loading;
   let stats;
-  try { stats = await api(`/api/stats?slug=${slug}`); } catch { return; }
+  try { stats = await request; } catch { return; }
+  finally { if (statsLoading === loading) statsLoading = null; }
   if (gen !== S.gen || slug !== S.slug) return;
   S.stats = stats;
   if (S.tab === "overview") renderOverview();

@@ -13,7 +13,9 @@ def test_old_make_cross_cpp_and_missing_local_compiler(tmp_path, monkeypatch):
     assert 'GNU Make 4.0 or newer' in result
     assert 'Missing cross preprocessor: mips64-elf-cpp' in result
     assert 'not binutils' in result
-    assert 'missing compiler: tools/ido/cc' in result
+    assert 'tools/ido/cc' not in result  # a Make variable may belong to an inactive branch
+    missing = buildhelp.explain(tmp_path, '/usr/bin/make', 'tools/ido/cc: No such file or directory\n')
+    assert 'tools/ido/cc' in missing
     assert 'IDO 5.3' not in result and 'IDO 7.1' not in result
     assert (tmp_path / 'Makefile').read_text() == make
     assert sorted(p.name for p in tmp_path.iterdir()) == ['Makefile']

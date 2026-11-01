@@ -25,6 +25,45 @@ def test_chains_improving_edits_and_resumes_serialized_frontier():
     assert calls == ['seed', 'step', 'done']
 
 
+def test_family_paths_resume_failed_edges_and_stop_at_exact():
+    state = seed()
+    calls = []
+    def judge(source):
+        calls.append(source)
+        return dict(score=None if source == 'bad' else 0 if source == 'exact' else 20,
+                    matched=source == 'exact')
+    def variants(source, report):
+        return {'seed':[('scope','bad'), ('scope','step')], 'step':[('declarations','exact')]}[source]
+    assert not search.advance(state, judge, variants, lambda: len(calls) >= 3)
+    state = json.loads(json.dumps(state))
+    assert search.advance(state, judge, variants, lambda: False)
+    assert state['winning_path'] == ['scope', 'declarations']
+    assert calls == ['seed', 'bad', 'step', 'exact']
+    assert state['counts']['compile_failed'] == 1
+    assert state['reason'] == 'matched'
+
+
+def test_structure_gain_gets_a_bounded_combination_burst_without_losing_the_wave():
+    state = seed()
+    calls = []
+    before = [('r','op '+str(i),'other') for i in range(32)]
+    after = [('r' if i < 2 else ' ','op '+str(i),'other') for i in range(32)]
+    def judge(source):
+        calls.append(source)
+        return {'score':20 if source == 'seed' else 10, 'matched':False,
+                'rows':before if source == 'seed' else after}
+    def variants(source, report):
+        return {'seed':[('scope','useful'),('scope','sibling')],
+                'useful':[('order','a'),('order','b'),('order','c')]}.get(source, [])
+    assert not search.advance(state, judge, variants, lambda: len(calls) >= 4)
+    assert calls == ['seed','useful','a','b']
+    assert [n['source'] for n in state['pending']] == ['sibling','c']
+    state = json.loads(json.dumps(state))
+    search.advance(state, judge, variants, lambda: False)
+    assert calls == ['seed','useful','a','b','sibling','c']
+    assert state['bridge_bursts'] == 1 and state['reason'] == 'supported_variants_exhausted'
+
+
 def test_plateau_alternatives_but_not_worse_or_failed_builds():
     state, expanded = seed(), []
     def variants(source, report):
@@ -50,7 +89,7 @@ def test_busy_and_stopped_preserve_pending_work():
     assert not search.advance(state, lambda s: None, lambda *a: [], lambda: False)
     assert state == seed()
     assert not search.advance(state, lambda s: 1/0, lambda *a: [], lambda: True)
-    assert state == seed()
+    assert state == seed() | {'reason':'budget_or_stop'}
 
 
 def test_cached_frontier_and_context_invalidation(pair, monkeypatch):
@@ -171,7 +210,7 @@ def test_output_duplicates_bound_expansion_but_preserve_two_source_shapes():
 
 def test_targeted_repairs_chain_and_keep_serialized_progress(monkeypatch):
     from decompnet.app import draft_repairs
-    def proposals(source,name,arch,asm,flags,labels,header='',limit=None,tables=()):
+    def proposals(source,name,arch,asm,flags,labels,header='',limit=None,tables=(),callees=''):
         out={'seed':['lifetime'], 'lifetime':['done']}.get(source,[])
         labels.update({p:'split_scalar_lifetime' for p in out})
         return out
@@ -189,7 +228,7 @@ def test_targeted_repairs_chain_and_keep_serialized_progress(monkeypatch):
 
 def test_targeted_ranking_prefers_load_order_for_scheduling_diffs(monkeypatch):
     from decompnet.app import draft_repairs
-    def proposals(source,name,arch,asm,flags,labels,header='',limit=None,tables=()):
+    def proposals(source,name,arch,asm,flags,labels,header='',limit=None,tables=(),callees=''):
         labels.update(a='signedness',b='pointer_before_store',c='paired_load_order')
         return ['a','b','c']
     monkeypatch.setattr(draft_repairs,'variants',proposals)
@@ -202,13 +241,13 @@ def test_new_repair_rules_reopen_frontier_and_reuse_cached_seed(pair,monkeypatch
         db.execute("UPDATE functions SET best_source='seed',best_score=20,n_insns=8 WHERE id=2")
     monkeypatch.setattr(address_repairs,'variants',lambda *a:[])
     monkeypatch.setattr(similar_matches,'repair_variants',lambda *a:[])
-    monkeypatch.setattr(search,'targeted_variants',lambda *a:[])
+    monkeypatch.setattr(search,'targeted_variants',lambda *a,**kw:[])
     monkeypatch.setattr(search,'repair_rules',lambda:['old'])
     calls=[]
     monkeypatch.setattr(pair,'try_quietly',lambda a,p,f,s:calls.append(s) or dict(score=20,matched=False))
     search.run(pair.twins,'destination',Job())
     monkeypatch.setattr(search,'repair_rules',lambda:['new'])
-    monkeypatch.setattr(search,'targeted_variants',lambda s,*a:['new-shape'] if s=='seed' else [])
+    monkeypatch.setattr(search,'targeted_variants',lambda s,*a,**kw:[('test_family','new-shape')] if s=='seed' else [])
     search.run(pair.twins,'destination',Job())
     assert calls==['seed','new-shape']
 

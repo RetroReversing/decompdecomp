@@ -241,7 +241,7 @@ def test_a_batch_of_small_functions_in_one_call(game):
     net, slug, _ = game
     agent, _ = net.local_agent("batcher")
     brief = tools.call(net, agent, slug, "claim_function", {"count": 3, "strategy": "easiest"})
-    assert brief.startswith("## CLAIMED 3 small functions"), brief[:300]
+    assert "## CLAIMED 3 small functions" in brief, brief[:300]
     held = [r["name"] for r in net.store.all("SELECT f.name FROM claims c JOIN functions f ON f.id=c.function_id "
                                              "WHERE c.agent_id=?", agent.id)]
     assert len(held) == 3

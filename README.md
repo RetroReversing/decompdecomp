@@ -11,7 +11,7 @@
   <img alt="macOS" src="https://img.shields.io/badge/platform-macOS%20Intel%20%2F%20Apple%20Silicon-15140f?style=flat-square">
   <img alt="Windows" src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-15140f?style=flat-square">
   <a href="https://discord.gg/hhEm3zZagB"><img alt="Discord" src="https://img.shields.io/badge/Discord-join-5865F2?style=flat-square&logo=discord&logoColor=white"></a>
-  <img alt="Agents: Claude Code, Codex, opencode, Antigravity, any API model" src="https://img.shields.io/badge/agents-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20opencode%20%C2%B7%20API%20models-157a49?style=flat-square">
+  <img alt="Agents: Claude Code, Codex, opencode, Antigravity, ZCode, any API model" src="https://img.shields.io/badge/agents-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20opencode%20%C2%B7%20Antigravity%20%C2%B7%20ZCode%20%C2%B7%20API%20models-157a49?style=flat-square">
 </p>
 
 decompdecomp is an app that decompiles games you own. AI agents write C or C++ for each function of the game. The
@@ -353,6 +353,8 @@ Set **Settings → ROM library** to the folder containing your extracted game fi
 needs its game, decompdecomp searches that folder recursively for the project's expected SHA-1 and fills in a
 matching path. N64 .z64, .v64 and .n64 byte orders are recognized regardless of filename. Confirm ownership and
 click **Use path** to continue. The search does not unpack archives or start a build.
+It checks at most 5,000 files, 2 GiB of data, or 30 seconds per search; choose a smaller folder or select the
+game manually if it reaches a limit.
 
 If setup fails after accepting your ROM, reopen the project or retry: its verified copy is detected first and
 **Retry setup** reuses it without opening the file chooser. Projects without a declared SHA-1 still need manual
@@ -469,7 +471,8 @@ Type `decomp`, or open decompdecomp from your apps menu. It opens in a window of
    Demo Quest 64. For an N64, PlayStation or PlayStation 2 game, the app offers to install all of that console's
    compilers first. Then it tests which one built the game. Tick the box only if you accept the proprietary ones.
 2. **Start agents.** Any model with an API key (DeepSeek, OpenRouter, OpenAI, a local model), or Claude Code,
-   Codex, Cursor Agent, Kimi Code, opencode, Antigravity CLI and ZCode. Run several, and different models: they work on different functions at the
+   Codex, Cursor Agent, Kimi Code, opencode, Antigravity CLI, ZCode and ZCode CLI. ZCode uses the desktop app's
+   session protocol; ZCode CLI uses the separately installed npm CLI. Run several, and different models: they work on different functions at the
    same time.
 3. **Watch the map.** Each square is a function. It turns green when its function matches. The autopilot matches
    the easy ones for free, before any agent starts.
@@ -657,12 +660,14 @@ game's code is its rights holder's: keep it to yourself.
 | Nintendo 64 | Recommended |
 | PlayStation (PS1) | Beta |
 | PlayStation 2 | Beta |
+| PlayStation 3 | Beta (from your decrypted EBOOT.ELF; the free ps3dev GCC, or your own SDK's compiler) |
 | PSP | Beta |
 | GameCube, Wii | Beta |
 | Windows PC games | Beta |
 | Nintendo DS | Beta |
 | Game Boy Advance | Beta |
-| 3DS, Switch, Xbox, Xbox 360 | Community decomps only |
+| Original Xbox | Beta (from your default.xbe, .xiso or Redump .iso; needs Visual C++ 7.0/7.1 and Ghidra; wine for games built with link-time code generation; your own XDK, optional, sets its library code aside) |
+| 3DS, Switch, Xbox 360 | Community decomps only |
 
 1.0.3 rewrote most of the app, so every platform needs testing again, Nintendo 64 too. Try it on a game you own and
 [tell us how it went](https://github.com/n-delic/decompdecomp/issues): what worked, what didn't, what was confusing. Reports are how a platform goes
@@ -671,7 +676,9 @@ from beta to recommended.
 Proprietary compilers (CodeWarrior, Visual C++, IDO) are installed only after you accept their licenses in the app.
 Visual C++ 2017 runs through [wine](https://www.winehq.org/) on Linux and macOS, which you install yourself (your distribution's `wine`
 package; on a Mac, Wine Stable from [Gcenx's builds](https://github.com/Gcenx/macOS_Wine_builds/releases), which needs Rosetta 2 on Apple Silicon): the app says
-so when you install that pack. The older Visual C++ run without it.
+so when you install that pack. The older Visual C++ run without it. A game built with a Visual C++ the packs don't
+have (2012, 2013, 2019, 2022...) builds with your own copy of it: point Setup at your Visual Studio's VC folder (it's
+read where it is, never copied).
 
 ## Questions people ask
 
