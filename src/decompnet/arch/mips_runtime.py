@@ -155,3 +155,25 @@ def specialized_argument_setup(callee, caller, name):
         if len(proven)>=2:
             return {'registers':proven,'setup':setup,'call':line}
     return None
+
+
+
+def word_argument_pairs(asm):
+    """Adjacent loads into ABI word pairs at a direct call, including the delay slot."""
+    code=instructions(asm);result=[]
+    for index,line in enumerate(code):
+        match=re.fullmatch(r'jal\s+([A-Za-z_]\w*)',line)
+        if not match:continue
+        before=code[max(0,index-12):index]
+        last=next((i for i in range(len(before)-1,-1,-1) if before[i].startswith(('jal ','jalr '))),-1)
+        window=before[last+1:]+code[index+1:index+2];loads={}
+        for text in window:
+            write=re.match(r'([a-z][a-z0-9.]*)\s+(\$a[0-3]),',text)
+            if not write or write[1] in {'sw','sd','sh','sb'}:continue
+            loads.pop(write[2],None)
+            load=re.fullmatch(r'lw\s+(\$a[0-3]),\s*(-?0x[0-9a-fA-F]+|-?\d+)\((\$\w+)\)',text)
+            if load:loads[load[1]]=(int(load[2],0),load[3])
+        for pair in [('$a0','$a1'),('$a2','$a3')]:
+            if all(reg in loads for reg in pair) and loads[pair[0]][1]==loads[pair[1]][1] and loads[pair[1]][0]==loads[pair[0]][0]+4:
+                result.append({'function':match[1],'registers':pair,'loads':[loads[r] for r in pair]})
+    return result

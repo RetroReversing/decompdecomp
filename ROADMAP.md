@@ -1,5 +1,10 @@
 # Roadmap
 
+Implemented: original object storage preservation, advisory local-static scope and extern-load
+diagnostics, narrow-prototype/paired-word MIPS call evidence, and resumable per-profile saved-draft
+preflight. The prototype reader is MIPS-only; equivalent evidence for other architectures is planned.
+Imported projects retain their own build/profile workflow.
+
 Implemented: bounded same-project verified-neighbour context hypotheses, direct separate body/header
 checks, and explicit fresh rechecks of saved exact profile bundles for ROM projects. Imported-project
 context reuse/pair submission needs an adapter for its own build headers; planned. MIPS internal

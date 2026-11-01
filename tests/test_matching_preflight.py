@@ -104,6 +104,7 @@ def test_rejected_partial_suggestion_keeps_working_profile_and_returns_to_search
     assert 'not suggested' in result['suggestion_rejected']
     assert net.cfg(proj)['compiler']['flags']==['-O2'] and not state['applied']
     assert any('continue source search' in line for line in logs)
+    assert preflight.run(net,proj,fn)['tested']==1  # Continue the remaining debug profile.
     assert preflight.run(net,proj,fn)['cached']
 
 
@@ -113,3 +114,29 @@ def test_unexpected_suggestion_failure_is_not_swallowed():
     def fail(*args,**kwargs):raise NetworkError('project was removed')
     net.suggest=fail
     with pytest.raises(NetworkError,match='project was removed'):preflight.run(net,proj,fn)
+
+
+def test_one_profile_rounds_resume_durably_instead_of_retesting_first_choices():
+    net,proj,fn,state=setup()
+    assert preflight.run(net,proj,fn,max_profiles=1)['pending']==4
+    assert preflight.run(net,proj,fn,max_profiles=1)['pending']==3
+    assert preflight.run(net,proj,fn,max_profiles=1)['pending']==2
+    last=preflight.run(net,proj,fn,max_profiles=1)
+    assert last['best']['exact'] and last['pending']==0
+    assert state['calls']==[['-O2'],['-O0'],['-O1'],['-O3']]
+    assert len(state['suggested'])==1
+    assert preflight.run(net,proj,fn,max_profiles=1)['cached']
+    fn['best_source']+=' /* improved source */'
+    assert preflight.run(net,proj,fn,max_profiles=1)['tested']==1
+    assert state['calls'][-1]==['-O2']
+
+
+def test_completed_profiles_survive_a_stopped_later_probe():
+    net,proj,fn,state=setup();checks=[]
+    def check():
+        checks.append(True)
+        return len(checks)<=2
+    assert preflight.run(net,proj,fn,check=check)['tested']==1
+    result=preflight.run(net,proj,fn)
+    assert result['best']['exact'] and result['tested']==3
+    assert state['calls']==[['-O2'],['-O0'],['-O1'],['-O3']]

@@ -117,6 +117,15 @@ separately and optionally enter a complete flag profile. A fresh byte/data judgm
 source/header/profile bundle together; misses keep the working candidate. Prepared profile reviews
 can explicitly recheck old evidence against current inputs before applying anything.
 
+Source extraction preserves file-level `static` declarations as well as function-local storage.
+Source-lead notes flag a lost local static, extra compiled address-high loads around extern objects,
+and explicit narrow MIPS prototypes where the target passes adjacent word pairs. These are review
+leads, not automatic type or data-definition changes. Preserve authorized original initializers.
+
+Saved-draft compiler preflight now resumes each completed profile across later bounded passes,
+including after a stop. Improved source or changed judge inputs starts a fresh search. Exact results
+still pass the normal compiler-change gate; partial results never change settings automatically.
+
 ## Changing a ROM project's compiler
 
 Changing the game's compiler or an address range checks every affected matched function before saving.

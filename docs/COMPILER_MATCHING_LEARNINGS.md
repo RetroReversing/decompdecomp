@@ -1095,3 +1095,24 @@ Source/header concatenation also inflated scratch padding. A direct local body/h
 form preserve their separation and source layout. Historical exact source/header/profile bundles can be
 explicitly recompiled against fresh inputs and published atomically only after current byte/data checks.
 Synthetic tests cover these paths separately from the manual game results.
+
+### Storage scope, object definitions and resumable profile checks
+
+A source-assisted live MIPS batch recovered a local cache function at IDO 5.3 `-O3`
+with `-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul` only after retaining
+function-local static declarations. Moving the objects to extern/global context changed
+address loads and register reuse. A scheduler entry at `-O2` needed an original wide
+buffer-size argument and original timing-object definitions rather than extern-only substitutes.
+These are manual byte-verified observations from the preceding batch, not new automated matches.
+
+Extraction now retains file-level `static`; advisory comparisons call out lost local statics,
+extra address-high loads for declared externs and adjacent target word loads against explicitly
+narrow MIPS prototypes. None moves storage, synthesizes initializers or infers an ABI automatically.
+Synthetic controls cover preserved storage, narrow/wide declarations, overwritten and nonadjacent loads.
+
+Saved-draft flag preflight used to cache the first bounded subset as a complete search.
+It now caches each completed profile under the full judge-input scope and resumes unvisited
+choices on later passes. A controlled fake-judge regression reaches a later `-O3` exact result
+with one new probe per round, retains completed work after interruption and resets on source change.
+This test demonstrates search coverage, not an additional game match. Exact revalidation and
+compiler-setting approval gates remain unchanged.

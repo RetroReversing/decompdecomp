@@ -230,6 +230,8 @@ def prepare(reader, cfg, mapping, aliases, fallback):
     reader.advisories.extend(compatibility(original, body, header))
     from .source_next_steps import prototype_hints
     reader.advisories.extend(prototype_hints(original, body, header))
+    from .source_storage import scope_hints
+    reader.advisories.extend(scope_hints(rename(body,aliases),source,rename(header,aliases),destination))
     from .source_match_context import aggregate_hints
     reader.advisories.extend(aggregate_hints(body, symbol, header))
     helper_context=helpers(reader, cfg, body, header, macros)
@@ -346,6 +348,12 @@ def attempt(permuter, proj, fn, source, header, agent, fork, diagnostic=None, le
     if diagnostic and dict(proj).get('arch')=='mips':
         from .sdk_io_repairs import hints
         for hint in hints(source,dict(fn).get('asm',''),diff.rows):diagnostic(fn['name']+': '+hint)
+    if diagnostic:
+        from .source_storage import object_hints
+        for hint in object_hints(diff.rows,header):diagnostic(fn['name']+': '+hint)
+        if dict(proj).get('arch')=='mips':
+            from .source_storage import wide_argument_hints
+            for hint in wide_argument_hints(fn['asm'] or '',header):diagnostic(fn['name']+': '+hint)
     score = 0 if diff.bytes_match else max(1, diff.score)
     if fn['best_score'] is None or score < fn['best_score']:
         net._record(fn, agent, score, source, 0, matched=diff.bytes_match, via='local-source',

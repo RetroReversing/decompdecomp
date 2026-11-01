@@ -52,44 +52,58 @@ def _run(net, proj, fn, log, check, max_profiles):
         if source := candidate(dict(fn).get('asm', ''), fn['name']):
             ranked = prioritized(proj, fn, own)
             probes.insert(1, (ranked[0] if ranked else list(own['flags']), source))
-    probes = probes[:max(1, min(MAX_PROFILES, max_profiles))]
     candidates = [(own['toolchain'], tuple(flags)) for flags, _ in probes]
-    digest = net._comparison_digest(proj, fn, fn['best_source'], candidates)
-    key = 'matching-preflight-v2:'+digest+':'+hashlib.sha256(repr(probes).encode()).hexdigest()
-    old = net.store.one('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], key)
-    if old:
-        result = json.loads(old['feedback'])
-        result = {**result, 'tested': 0, 'cached': True}
-    else:
-        result = {'tested': 0, 'best': None}
-        def ensure():
-            if check() is False:
-                raise PreflightStopped()
-        try:
-            with compiler.cancellable(ensure):
-                for (toolchain, flags), (_, source) in zip(candidates, probes):
+    input_digest = net._comparison_digest(proj, fn, fn['best_source'], candidates)
+    key = 'matching-preflight-v3:'+input_digest+':'+hashlib.sha256(repr(probes).encode()).hexdigest()
+    result = {'tested': 0, 'best': None, 'pending': 0}
+    best_key = None
+    allowance = min(MAX_PROFILES, max_profiles)
+    def ensure():
+        if check() is False:
+            raise PreflightStopped()
+    try:
+        with compiler.cancellable(ensure):
+            for flags, source in probes:
+                probe_key = key+':probe:'+hashlib.sha256(repr((flags,source)).encode()).hexdigest()
+                old = net.store.one('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], probe_key)
+                if old:
+                    item = json.loads(old['feedback'])
+                else:
+                    if result['tested'] >= allowance:
+                        result['pending'] += 1
+                        continue
                     ensure()
-                    exact, diff, problems = net._judge_with(proj, fn, toolchain, list(flags), source)
+                    exact, diff, problems = net._judge_with(proj, fn, own['toolchain'], list(flags), source)
                     result['tested'] += 1
-                    blocked = unresolved([problems])
-                    if blocked:
+                    ensure()  # An interrupted in-flight profile remains retryable.
+                    item = {'toolchain': own['toolchain'], 'flags': list(flags), 'source': source,
+                            'score': None if diff is None else 0 if exact else max(1,diff.score),
+                            'exact': bool(exact), 'link': unresolved([problems]), 'notified': False}
+                    if item['link']:
                         from .helper_call_diagnostics import suggestions
                         for hint in suggestions(getattr(diff, 'rows', [])):log(hint)
-                        result['link'] = blocked
-                        break
-                    if diff is not None:
-                        score = 0 if exact else max(1, diff.score)
-                        if result['best'] is None or score < result['best']['score']:
-                            result['best'] = {'toolchain': toolchain, 'flags': list(flags), 'score': score, 'exact': bool(exact), 'source': source}
-                    if exact:
-                        break  # Do not spend more budget once the exact judge succeeds.
-        except PreflightStopped:
-            return result
-        if check() is False:
-            return result  # Interrupted runs never consume a future retry.
-        with net.store.tx() as db:
-            db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
-                       (fn['id'], key, 'preflight', 'bounded compiler preflight', json.dumps(result)))
+                    with net.store.tx() as db:
+                        db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
+                                   (fn['id'],probe_key,'profile','completed bounded profile',json.dumps(item)))
+                if item.get('link'):
+                    result['link'] = item['link']
+                    break
+                if item['score'] is not None and (result['best'] is None or item['score'] < result['best']['score']):
+                    result['best'] = item
+                    best_key = probe_key
+                if item['exact']:
+                    result['pending'] = 0
+                    break
+    except PreflightStopped:
+        return result
+    if check() is False:
+        return result
+    result['cached'] = result['tested'] == 0
+    with net.store.tx() as db:
+        db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
+                   (fn['id'],key,'preflight','resumable compiler preflight',json.dumps(result)))
+    if result['pending']:
+        log(f"Compiler preflight has {result['pending']} untested profiles remaining for this saved source/context; later passes resume them.")
     if result.get('link'):
         log(result['link']['message'])
     best = result.get('best')
@@ -97,7 +111,8 @@ def _run(net, proj, fn, log, check, max_profiles):
         fresh = net.project_row(proj['slug'])
         current = net._function(fn['name'], proj['slug'])
         # Another worker may have improved the C during probing. Never apply an old-source hypothesis.
-        if current['status'] == 'open' and current['best_source'] == fn['best_source']:
+        if (current['status'] == 'open' and current['best_source'] == fn['best_source']
+                and net._comparison_digest(fresh,current,current['best_source'],candidates)==input_digest):
             if best['exact'] and net.auto_adjusts(fresh) and best.get('source', fn['best_source']) == fn['best_source']:
                 try:
                     net.apply_function_compiler(proj['slug'], fn['name'], best['toolchain'], best['flags'])
@@ -106,7 +121,7 @@ def _run(net, proj, fn, log, check, max_profiles):
                 except NetworkError as error:
                     log('Compiler preflight left settings unchanged: '+str(error))
             else:
-                if not result.get('cached'):
+                if not best.get('notified'):
                     agent, _ = net.local_agent('autopilot')
                     try:
                         net.suggest(agent, proj['slug'], 'Compiler preflight found a rejudged improvement.',
@@ -118,6 +133,11 @@ def _run(net, proj, fn, log, check, max_profiles):
                         if not str(error).startswith('not suggested:'):raise
                         result['suggestion_rejected'] = str(error)
                         log('Compiler preflight kept the working settings and will continue source search: '+str(error))
+                    if best_key:
+                        best['notified']=True
+                        with net.store.tx() as db:
+                            db.execute('UPDATE reuse_trials SET feedback=? WHERE function_id=? AND signature=?',
+                                       (json.dumps(best),fn['id'],best_key))
                 log('Compiler preflight found a better source/profile hypothesis: '+' '.join(best['flags'])+
                     '. Partial results need review; exact results also respect automatic compiler settings.')
     return result
