@@ -66,3 +66,16 @@ def test_cached_source_miss_continues_profiles_but_rejected_lead_does_not(tmp_pa
     monkeypatch.setattr(analysis, 'rejected', lambda *args: True)
     prep.run(worker, proj, State(), budget=3)
     assert calls == ['source', 'profiles', 'profiles']
+
+
+def test_padded_reference_headers_keep_line_layout_without_repeated_whitespace_scans():
+    padding = '\n' * 20000
+    assert not prototype_hints(padding+'int sound(int id);', 'void f(void){sound(0);}', padding+'int sound(int number);')
+
+
+def test_padded_original_definition_keeps_source_line_boundaries():
+    from decompnet.forks.csource import find
+    padding = '\n' * 20000
+    source = padding + '#define LIMIT 1\nint original(void) { return LIMIT; }\n'
+    span = find(source, 'original')
+    assert span and 'int original(void)' in source[span[0]:span[1]]

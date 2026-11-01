@@ -985,3 +985,8 @@ Private profile search now budgets new probes rather than slicing two already ca
 Later preparation passes advance through installed-toolchain flag variants, caching link failures too.
 Compile/time caps and source/header/profile review remain; no private probe changes live build flags.
 Synthetic tests cover scheduling and advisory diagnostics separately from the manual game matches.
+
+Repeated source/header concatenation also exposed whitespace-heavy preparation overhead. Anchored
+preprocessor patterns must use horizontal whitespace, not `\s*` that can rescan thousands of empty
+lines. Padded-source regressions retain original source layout. Preparation now explains when its
+round ends before compilation rather than silently reporting zero attempts.

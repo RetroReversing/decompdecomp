@@ -16,7 +16,7 @@ def signatures(text, names):
     clean = _blank(text)
     result = {}
     for name in names:
-        pattern = r'(?:^|[;{}\n])\s*((?:(?:extern|static|inline)\s+)?(?:' + IDENT + r'[ \t*]+)+)' + re.escape(name) + r'\s*\(([^(){};]*)\)\s*(?:;|\{)'
+        pattern = r'(?:^|[;{}\n])[ \t]*((?:(?:extern|static|inline)[ \t]+)?(?:' + IDENT + r'[ \t*]+)+)' + re.escape(name) + r'\s*\(([^(){};]*)\)\s*(?:;|\{)'
         found = list(re.finditer(pattern, clean))
         if found:
             match = found[-1]
@@ -26,7 +26,7 @@ def signatures(text, names):
                 # Names do not affect an ANSI scalar/pointer signature. Keep typedef-only
                 # parameters and unknown syntax intact rather than guessing their types.
                 named = re.fullmatch(r'(.+?[\s*])(' + IDENT + r')', parameter)
-                if named and named[2] not in {'int','long','short','char','float','double','void'}:
+                if named and named[1].strip() not in {'const','volatile','struct','union','enum'} and named[2] not in {'int','long','short','char','float','double','void'}:
                     parameter = named[1].strip()
                 params.append(parameter)
             result[name] = ' '.join(re.sub(r'\b(?:extern|static|inline)\b', '', match[1]).split()) + ' (' + ', '.join(params) + ')'
