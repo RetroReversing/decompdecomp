@@ -735,3 +735,44 @@ def test_members_stay_in_the_room_when_their_app_restarts(built, tmp_path):  # n
     again.links[gslug].stop()
     again.links[gslug].sync()
     assert [m["name"] for m in room._members_now()] == ["sam"]
+
+
+def test_deep_room_search_claims_and_host_confirms_demo_match(built, tmp_path):  # noqa: F811
+    from decompnet.app.deep_permuter import Search
+    from tests.test_deep_permuter import Log
+
+    h, g = tmp_path / 'host', tmp_path / 'guest'
+    h.mkdir(); g.mkdir()
+    host = RomNetwork(h / 'db', h)
+    slug = host.import_rom(built, confirmed=True, log=lambda *_: None)
+    agent, _ = host.local_agent('seed')
+    wrong = DAMAGE.replace('hp -= amount;', 'hp -= amount + 1;')
+    assert wrong != DAMAGE
+    seeded = host.attempt(agent, 'func_80000808', wrong, slug)
+    assert seeded['score'] is not None, seeded['text']
+    host.release(agent, 'func_80000808', '', slug)
+    host.rooms[slug] = collab.Room(host, slug)
+    invite = host.rooms[slug].open_invite()
+    client = TestClient(collab.host_app(host, host.rooms), base_url='https://abc.trycloudflare.com')
+    guest = RomNetwork(g / 'db', g)
+    gslug = collab.join_room(guest, f'https://abc.trycloudflare.com/join/{invite}#room={slug}',
+                            'deep-client', built, log=lambda *_: None, client=client, start=False)
+    seeder, _ = guest.local_agent('seed-client')
+    guest.claim(seeder, gslug, 'func_80000808')
+    seeded = guest.attempt(seeder, 'func_80000808', wrong, gslug)
+    assert seeded['score'] is not None, seeded['text']
+    guest.release(seeder, 'func_80000808', '', gslug)
+    fn = guest._function('func_80000808', gslug)
+    runner, _ = guest.local_agent(f'permuter-{fn["id"]}')
+    search = Search(guest, 1, 10, Log(), fn)
+    assert search._hold(runner, fn)
+    assert any(c['agent'].startswith('deep-client.permuter-') for c in host.live(slug)['claims'])
+    try:
+        score = search._score(runner, guest.project_row(gslug), fn, DAMAGE, fn['best_score'], None)
+        assert score == 0
+        assert host._function('func_80000808', slug)['status'] == 'matched'
+        assert guest._function('func_80000808', gslug)['status'] == 'matched'
+    finally:
+        search._let_go(runner, fn)
+    assert not guest.store.one('SELECT 1 FROM claims')
+    assert not host.store.one('SELECT 1 FROM claims')
