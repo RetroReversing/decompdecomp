@@ -1611,3 +1611,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Planned: copied imported-build benchmark adapters and broader independent unresolved
   cohorts; the current iterative autopilot remains MIPS ROM-only. Shared measurement and
   policy helpers remain usable by existing supported local/deep paths.
+
+- Done: saved-file verification uses a small reserved header spinner instead of a transient page banner. Details, progress and pause/resume are available on demand without shifting project content; reduced-motion and paused states are respected.

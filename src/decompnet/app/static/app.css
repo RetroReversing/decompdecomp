@@ -1339,3 +1339,14 @@ th[aria-sort="ascending"] .table-sort, th[aria-sort="descending"] .table-sort { 
 .copy-path { overflow-wrap: anywhere; }
 .local-form { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .local-form input[type=text] { width: 100%; box-sizing: border-box; }
+
+/* Verification stays in a reserved header slot; background reads never shift the page. */
+.verification-status { position: relative; flex: 0 0 32px; width: 32px; }
+.verification-status[hidden] { display: block !important; visibility: hidden; pointer-events: none; }
+.verification-status > summary { display: grid; place-items: center; width: 32px; height: 32px; cursor: pointer; list-style: none; border-radius: var(--r-sm); }
+.verification-status > summary::-webkit-details-marker { display: none; }
+.verification-status > summary:hover { background: var(--open); }
+.verification-status.paused .spin-dot { animation-play-state: paused; border-top-color: var(--muted); }
+.verification-pop { width: min(400px, calc(100vw - 32px)); padding: 16px; display: grid; gap: 12px; }
+@media (prefers-reduced-motion: reduce) { .verification-status .spin-dot { animation: none; } }
+@media (max-width: 600px) { .verification-pop { position: fixed; top: 80px; right: 16px; } }
