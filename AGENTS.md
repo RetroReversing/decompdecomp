@@ -204,4 +204,8 @@ Always submit decompdecomp changes on a feature or fix branch through a pull req
 
 When a change requires clients to update, build a fresh shareable macOS app after testing
 with `bash packaging/macos/build.sh --app-only`. Deliver the .app folder directly in Downloads,
-without a ZIP unless requested. State its architecture, version and source commit.
+without a ZIP unless requested. For Apple Silicon, always deliver to the stable folder
+`/Users/a/Downloads/decompdecomp_RetroReversing_macos_arm64/decompdecomp.app`, replacing
+the previous exported app instead of creating version/commit-named folders. State the
+architecture, version and source commit in the response. This export must not replace
+or restart the installed Applications app unless explicitly requested.
