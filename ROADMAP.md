@@ -1622,3 +1622,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Done: compiler advice identifies bounded candidate-local C89 declaration suspects and offers explicit recovery. Raw provider usage accounting is grouped in a collapsed app-only transcript section; source events and usage totals remain intact.
 
 - Done: agent C-line mismatch evidence uses bounded Markdown rows with readable change names and Expected/Current columns, escaped code cells, explicit omissions and unlocated differences. Compact feedback retains the whole section; transcripts render escaped pipes and backtick-containing code without breaking table columns.
+
+- Done: the update dialog separates installed/available builds, packaged releases and source checkout into responsive sections. Source checkout has a native parent-folder Browse control, full-width path field, styled download action and collapsed setup instructions; the running build commit fills missing install metadata.
