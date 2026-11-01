@@ -1415,3 +1415,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Done: per-agent Work settings can omit assembly byte/address presentation columns from claims, briefs, full function reads, redrafts and assembly pages; labels and operands remain intact across ROM and imported projects.
 
 - Done: metrics CSV export saves through the private app API to Downloads with a visible saved path or error, avoiding embedded-webview Blob downloads. Recent deep-search cards distinguish completed turns from active workers and expose failure reasons.
+
+- Done: agent improvement lists correctly convert match ratios to percentages and label the current total match explicitly, distinguishing it from the agent’s historical improvement.

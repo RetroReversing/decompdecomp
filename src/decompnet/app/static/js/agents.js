@@ -143,7 +143,7 @@ async function showAgentResults(session, kind) {
   panel.setAttribute('aria-labelledby', 'agent-results-title');
   panel.innerHTML = `<header><div><h2 id="agent-results-title">${kind === 'matched' ? 'Matched' : 'Improved'} functions</h2>
     <p>${esc(session.label || session.agent)}</p></div><button data-close type="button" class="ghost">Close</button></header>
-    <p class="muted small">${kind === 'matched' ? 'Current matches credited to this agent.' : 'Distinct functions where this agent beat the previous best. Includes matches, even if another agent finished them.'} Click a function to inspect it.</p>
+    <p class="muted small">${kind === 'matched' ? 'Current matches credited to this agent.' : 'Distinct functions where this agent beat the previous best. Includes matches, even if another agent finished them. Current match is the function’s total match now, including later work by other agents; it is not the percentage gained by this agent.'} Click a function to inspect it.</p>
     <div data-results></div><button data-more type="button" class="ghost" hidden>More functions</button>`;
   document.body.append(panel); panel.showModal();
   panel.querySelector('[data-close]').onclick = () => panel.close();
@@ -162,7 +162,7 @@ async function showAgentResults(session, kind) {
         link.onclick = () => { panel.close(); openFn(fn.name); };
         const state = document.createElement('span'); state.className = 'muted small';
         const pct = pctOf(fn.best_score,fn.n_insns);
-        state.textContent = fn.status === 'matched' ? 'Matched · 100%' : pct == null ? fn.status : `${pct.toFixed(1)}% current best`;
+        state.textContent = fn.status === 'matched' ? 'Matched · 100%' : pct == null ? fn.status : `Current match: ${pctText(pct)}`;
         row.append(link,state); list.append(row); before = fn.id;
       }
       more.hidden = !data.more;
