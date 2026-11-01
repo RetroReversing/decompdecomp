@@ -202,5 +202,6 @@ linting). In short:
 
 Always submit decompdecomp changes on a feature or fix branch through a pull request; do not commit directly to main.
 
-When a change requires clients to update, build a fresh shareable client ZIP after testing.
-State its platform, architecture, version and source commit; do not reuse an older archive.
+When a change requires clients to update, build a fresh shareable macOS app after testing
+with `bash packaging/macos/build.sh --app-only`. Deliver the .app folder directly in Downloads,
+without a ZIP unless requested. State its architecture, version and source commit.

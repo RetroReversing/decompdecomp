@@ -1001,15 +1001,36 @@ function renderDeepSweepResults(status) {
   $("deepSweepRecipes").querySelectorAll("[data-deep-win]").forEach(button => {
     button.onclick = () => openFn(wins[Number(button.dataset.deepWin)].function);
   });
-  const rows = status.improvements || [];
-  $("deepSweepResults").innerHTML = `<p><b>${status.improved || 0} functions improved</b> by deep permutation</p>`
-    + (rows.length ? `<div class="compiler-table"><table><thead><tr><th>Function</th><th>Starting score</th><th>Starting match</th><th>New score</th><th>New match</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td><button type="button" class="ghost small-btn mono" data-deep-result="${i}">${esc(r.function)}</button></td><td>${esc(r.starting_score)}</td><td>${esc(r.starting_percent_text)}</td><td><b>${esc(r.new_score)}</b></td><td><b>${esc(r.new_percent_text)}</b></td></tr>`).join("")}</tbody></table></div><p class="small muted">Lower scores and higher match percentages are better. Saved across restarts and repeat passes; each function appears once, from its first recorded improvement to its best deep-pass result.</p>` : "");
+  const resultHost = $("deepSweepResults");
+  if (resultHost.dataset.slug !== S.slug) {
+    resultHost.dataset.slug = S.slug; resultHost.dataset.sortKey = "difference"; resultHost.dataset.sortDirection = "desc";
+  }
+  const sortKey = resultHost.dataset.sortKey || "difference", descending = resultHost.dataset.sortDirection !== "asc";
+  const value = (row, key) => key === "difference" ? row.starting_score - row.new_score
+    : key === "starting_percent_text" || key === "new_percent_text" ? parseFloat(row[key]) : row[key];
+  const rows = [...(status.improvements || [])].sort((a,b) => {
+    const x = value(a, sortKey), y = value(b, sortKey);
+    const comparison = typeof x === "string" ? x.localeCompare(String(y)) : (Number.isFinite(x) ? x : -Infinity) - (Number.isFinite(y) ? y : -Infinity);
+    return (descending ? -comparison : comparison) || a.function.localeCompare(b.function);
+  });
+  const columns = [["function", "Function"], ["starting_score", "Starting score"], ["new_score", "New score"], ["difference", "Score difference"], ["starting_percent_text", "Starting match"], ["new_percent_text", "New match"]];
+  const headings = columns.map(([key,label]) => `<th aria-sort="${sortKey === key ? descending ? "descending" : "ascending" : "none"}"><button class="link-btn" type="button" data-deep-sort="${key}">${label}${sortKey === key ? descending ? " ▼" : " ▲" : ""}</button></th>`).join("");
+  $("deepSweepMatched").textContent = (status.improvements || []).filter(r => r.new_score === 0).length.toLocaleString();
+  $("deepSweepImproved").textContent = (status.improved || (status.improvements || []).length || 0).toLocaleString();
+  $("deepSweepResults").innerHTML = `<p><b>${status.improved || rows.length} functions improved</b> by deep permutation</p>`
+    + (rows.length ? `<div class="compiler-table"><table><thead><tr>${headings}</tr></thead><tbody>${rows.map((r, i) => `<tr><td><button type="button" class="ghost small-btn mono" data-deep-result="${i}">${esc(r.function)}</button></td><td>${esc(r.starting_score)}</td><td><b>${esc(r.new_score)}</b></td><td>${esc(r.starting_score - r.new_score)}</td><td>${esc(r.starting_percent_text)}</td><td><b>${esc(r.new_percent_text)}</b></td></tr>`).join("")}</tbody></table></div><p class="small muted">Lower scores and higher match percentages are better. Score difference is starting minus new score. Saved across restarts and repeat passes; each function appears once, from its first recorded improvement to its best deep-pass result.</p>` : "");
   ["deepSweepRecipes", "deepSweepResults"].forEach((id, group) => {
     $(id).querySelectorAll(".compiler-table").forEach((table, i) => {
       const position = scrollPositions[group][i];
       if (position) [table.scrollTop, table.scrollLeft] = position;
     });
   });
+  resultHost.querySelectorAll("[data-deep-sort]").forEach(button => { button.onclick = () => {
+    const key = button.dataset.deepSort;
+    resultHost.dataset.sortDirection = key === sortKey ? descending ? "asc" : "desc" : key === "function" ? "asc" : "desc";
+    resultHost.dataset.sortKey = key;
+    renderDeepSweepResults(status);
+  }; });
   $("deepSweepResults").querySelectorAll("[data-deep-result]").forEach(button => {
     button.onclick = () => openFn(rows[Number(button.dataset.deepResult)].function);
   });
@@ -1028,6 +1049,9 @@ async function renderDeepSweep() {
     $("deepSweepStatus").textContent = "Loading deep pass…";
     $("deepSweepStart").disabled = true;
     $("deepSweepStop").hidden = true;
+    $("deepSweepStop").disabled = false; $("deepSweepStop").textContent = "Stop deep pass";
+    $("deepSweepStart").hidden = false;
+    $("deepSweepActive").textContent = "0";
     $("deepSweepRecipes").replaceChildren();
     $("deepSweepResults").replaceChildren();
     for (const id of ["deepSweepDone", "deepSweepLeft", "deepSweepWaiting"]) $(id).textContent = "0";
@@ -1045,9 +1069,13 @@ async function renderDeepSweep() {
       $("deepSweepRepeat").checked = false;
     }
     renderDeepSweepResults(status);
-    renderDeepActivity(status.progress || {});
+    renderDeepActivity(status.state === "running" ? status.progress || {} : {...(status.progress || {}), workers:[]});
     $("deepSweepThreads").placeholder = status.threads_default ? `auto (${status.threads_default})` : "auto";
-    $("deepSweepStart").disabled = status.state === "running";
+    $("deepSweepStart").disabled = false;
+    $("deepSweepStart").hidden = status.state === "running";
+    $("deepSweepReset").disabled = status.state === "running";
+    $("deepSweepActive").textContent = status.state === "running" ? (status.progress?.workers || []).length.toLocaleString() : "0";
+    if (status.state !== "running") { $("deepSweepStop").disabled = false; $("deepSweepStop").textContent = "Stop deep pass"; }
     $("deepSweepStop").hidden = status.state !== "running";
     const done = status.queue_done || 0, left = status.queue_left || 0;
     $("deepSweepDone").textContent = done.toLocaleString();
@@ -1055,8 +1083,8 @@ async function renderDeepSweep() {
     $("deepSweepWaiting").textContent = (status.awaiting_source || 0).toLocaleString();
     $("deepSweepBar").max = Math.max(1, done + left);
     $("deepSweepBar").value = done;
-    $("deepSweepStatus").textContent = `${done} done · ${left} left with scored C · ${status.errors} need attention · ${status.completed} saved passes in history`;
-    if (status.error) $("deepSweepStatus").textContent += ` · ${status.error}`;
+    $("deepSweepStatus").textContent = status.error || (status.errors ? `${status.errors} functions need attention.` : "");
+    $("deepSweepStatus").hidden = !$("deepSweepStatus").textContent;
     if (status.state === "running" && deepSweepFollowing?.job !== status.job) followDeepSweep(slug, status.job);
   } catch (error) { if (S.slug === slug && version === deepSweepProjectVersion) showJobError($("deepSweepLog"), error.message); }
 }
@@ -1064,7 +1092,9 @@ async function followDeepSweep(slug, job) {
   if (deepSweepFollowing) deepSweepFollowing.finish();
   const host = $("deepSweepLog"), log = document.createElement("pre");
   host.textContent = ""; host.append(log);
-  $("deepSweepStart").disabled = true;
+  $("deepSweepStart").hidden = true;
+  $("deepSweepStop").hidden = false;
+  $("deepSweepReset").disabled = true;
   const done = beginWork(log, "Deep permutation pass", [], "Deep pass finished");
   let finished = false;
   const following = {job, finish: () => { if (!finished) { finished = true; done(); } }};
@@ -1089,7 +1119,7 @@ async function followDeepSweep(slug, job) {
           }
         }).catch(() => {}).finally(() => { refreshing = false; });
       }
-      $("deepSweepStatus").textContent = Array.isArray(progress.workers) ? `${progress.workers.length} functions active · ${progress.functions_tested || 0} functions tested · ${progress.matches || 0} matches` : `${progress.function || "Queue"} · ${progress.phase || "working"} · ${progress.functions_tested || 0} functions tested · ${progress.matches || 0} matches`;
+      $("deepSweepActive").textContent = (progress.workers || []).length.toLocaleString();
     }, () => S.slug === slug && deepSweepFollowing === following);
   } catch (error) { if (S.slug === slug && deepSweepFollowing === following) showJobError(log, error.message); }
   finally {
@@ -1112,8 +1142,9 @@ $("deepSweepStart").onclick = async () => {
   if (job && S.slug === slug) { $("deepSweepStop").hidden = false; followDeepSweep(slug, job); }
 };
 $("deepSweepStop").onclick = async () => {
+  const button = $("deepSweepStop"); button.disabled = true; button.textContent = "Stopping…";
   try { await api("/api/permuter/pass", {method:"POST", body:{slug:S.slug, action:"stop"}}); }
-  catch (error) { showJobError($("deepSweepLog"), error.message); }
+  catch (error) { button.disabled = false; button.textContent = "Stop deep pass"; showJobError($("deepSweepLog"), error.message); }
 };
 
 $("deepSweepReset").onclick = async () => {

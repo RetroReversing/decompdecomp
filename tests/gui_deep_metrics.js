@@ -2,7 +2,7 @@
 const fs = require("fs"), vm = require("vm"), assert = require("assert");
 const elements = new Map(), buttons = [], opened = [];
 const get = id => {
-  if (!elements.has(id)) elements.set(id, {innerHTML:"", querySelectorAll(selector) {
+  if (!elements.has(id)) elements.set(id, {dataset:{}, innerHTML:"", querySelectorAll(selector) {
     if (selector === "[data-deep-win]" && this.innerHTML.includes("data-deep-win")) {
       const button = {dataset:{deepWin:"0"}}; buttons.push(button); return [button];
     }
