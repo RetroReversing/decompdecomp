@@ -33,18 +33,20 @@ def advance(state, evaluate, variants, stopped, *, arch=None):
         score = report.get('score')
         if (isinstance(score, (int, float)) and 0 < score <= node['ceiling'] * DETOUR_RATIO
                 and (score < node['ceiling'] or not search_frontier.unhelpful_detour(arch, node.get('baseline_rows'), report.get('rows') or []))):
-            # Keep two source shapes per identical output: a later source edit can distinguish them.
+            # Keep two source shapes per identical output at each depth: a later source edit can distinguish them.
             # This only prunes search branches, never supplies a match verdict.
             output = output_key(report)
             outputs = state.setdefault('outputs', {})
-            if output is None or outputs.get(output, 0) < 2:
+            if output is None or outputs.get(str(node['depth'])+':'+output, 0) < 2:
                 regions = region_repairs.snapshot(report.get('rows'))
                 state['next'].append({**node, 'score': score, 'report': report, 'regions': regions,
                                       'region_gain': region_repairs.gain(node.get('region_baseline'), regions)})
                 if output is not None:
-                    outputs[output] = outputs.get(output, 0) + 1
+                    key = str(node['depth'])+':'+output
+                    outputs[key] = outputs.get(key, 0) + 1
         if not state['pending']:
-            ranked = sorted(state['next'], key=lambda n: (search_frontier.structure(n['report'].get('rows') or []), n['score']))
+            ranked = sorted(state['next'], key=lambda n: (search_frontier.structure(n['report'].get('rows') or []),
+                                                            stack_distance(n['report'].get('rows') or []), n['score']))
             ordinary = [n for n in ranked if n['score'] <= n['ceiling']]
             detours = sorted((n for n in ranked if n['score'] > n['ceiling']),
                              key=lambda n: (-n.get('region_gain', 0), n['score']))
@@ -65,6 +67,12 @@ def advance(state, evaluate, variants, stopped, *, arch=None):
     return False
 
 
+def stack_distance(rows):
+    """Advisory distance breaks flat-score frame ties, never a match verdict."""
+    from .permuter_focus import stack_distance as distance
+    return distance(rows)
+
+
 def repair_rules():
     from ..claim_stalls import file_digest
     from ..claim_stalls import repair_rules as rules
@@ -79,12 +87,16 @@ def output_key(report):
 
 
 def targeted_variants(source, report, fn, arch, flags, header='', tables=()):
-    from . import draft_repairs, repair_ranking, stack_padding_repairs
+    from . import draft_repairs, normalization_repairs, repair_ranking, stack_padding_repairs
     labels = {}
     proposals = draft_repairs.variants(source, fn['name'], arch, fn['asm'] or '', flags, labels, header=header, limit=None, tables=tables)
     for text in stack_padding_repairs.grow(source, fn['name'], arch, report.get('rows') or []):
         proposals.append(text)
         labels[text] = 'stack_padding'
+    if arch == 'mips':
+        for text in normalization_repairs.frame_variants(source, fn['name'], report.get('rows') or []):
+            proposals.append(text)
+            labels[text] = 'spill_normalization'
     families = repair_ranking.order(list(dict.fromkeys(labels[p] for p in proposals)), report.get('rows') or [])
     return sorted(proposals, key=lambda p: families.index(labels[p]))[:20]
 
@@ -124,7 +136,7 @@ def run(twins, slug, job):
             return
         header = net._context(proj['id'], fn['unit'])['header']
         settings = compiler_for(cfg, fn['vram'])
-        context = similar_matches.trial_key('', header, settings, fn, ['beam-v4', symbols, rules])
+        context = similar_matches.trial_key('', header, settings, fn, ['beam-v5', symbols, rules])
         saved = net.store.one('SELECT context,state FROM repair_frontiers WHERE function_id=?', fn['id'])
         state = json.loads(saved['state']) if saved and saved['context'] == context else None
         if state is None or fn['best_source'] not in state['seen']:

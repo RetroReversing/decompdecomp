@@ -297,7 +297,8 @@ class Permuter:
                 continue
             labels = {}
             candidates = draft_repairs.variants(fn['best_source'], fn['name'], proj['arch'], fn['asm'] or '', flags=compiler_for(self.net.cfg(proj),fn['vram']).get('flags',[]) if not fork else [], labels=labels,header=header,limit=None,tables=switch_tables.read(self.net,proj,fn))
-            from . import repair_ranking
+            from . import normalization_repairs, repair_ranking
+            normalization_repairs.extend_frame(candidates, labels, fn['best_source'], fn['name'], proj['arch'], repair_ranking.evidence(self.net,fn['id'],agent.id))
             ranked = repair_ranking.order(dict.fromkeys(labels.get(text, 'draft_repair') for text in candidates),repair_ranking.evidence(self.net,fn['id'],agent.id))
             from . import agent_tokens
             effect_scope=agent_tokens.target_scope(self.net,fn,'') if hasattr(self.net,'_context') else None
@@ -323,6 +324,7 @@ class Permuter:
                     if measured == 0:
                         st.add(improved=1, matched=1)
                         continue
+                    normalization_repairs.extend_frame(candidates, labels, fn['best_source'], fn['name'], proj['arch'], repair_ranking.evidence(self.net,fn['id'],agent.id))
                     ranked = repair_ranking.order(dict.fromkeys(labels.get(text, 'draft_repair') for text in candidates), repair_ranking.evidence(self.net, fn['id'], agent.id))
                     ranked = repair_ranking.demote(self.net, effect_scope, ranked)
                 from . import adaptive_repairs, permuter_focus

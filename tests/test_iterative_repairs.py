@@ -161,8 +161,9 @@ def test_output_duplicates_bound_expansion_but_preserve_two_source_shapes():
         expanded.append(source)
         return ['a','b','c'] if source=='seed' else []
     assert not search.advance(state,evaluate,variants,lambda:False)
-    assert expanded==['seed','a']
-    assert len(state['outputs'])==1
+    assert expanded==['seed','a','b']
+    assert len(state['outputs'])==2
+    assert max(state['outputs'].values())==2
     assert search.output_key({'rows':[]}) is None
     assert search.output_key({'candidate_target':'00','candidate_relocs':'[]'}) != search.output_key(
         {'candidate_target':'00','candidate_relocs':'[1]'})
@@ -321,3 +322,14 @@ def test_unhelpful_frame_growth_is_not_expanded_but_exact_verdict_wins():
     state['pending'][0]['baseline_rows'] = baseline
     assert search.advance(state,lambda s:dict(score=0,matched=True,rows=larger),
                           lambda s,r:[],lambda:False,arch='mips')
+
+def test_identical_output_plateau_can_continue_at_each_depth():
+    state = seed()
+    calls = []
+    def evaluate(source):
+        calls.append(source)
+        return dict(score=20, matched=source == 'done', candidate_target='aa', candidate_relocs='[]')
+    def variants(source, report):
+        return {'seed':['a'], 'a':['b'], 'b':['done']}[source]
+    assert search.advance(state, evaluate, variants, lambda: False)
+    assert calls == ['seed', 'a', 'b', 'done']

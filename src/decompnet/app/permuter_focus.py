@@ -83,3 +83,19 @@ def classify(rows):
 def boosts(rows):
     # Multiply existing upstream weights, never invent unknown mutations or remove the compiler's defaults.
     return dict.fromkeys(BOOSTS.get(classify(rows), ()), 3)
+
+
+def stack_distance(rows):
+    """Advisory offset distance distinguishes equal-score partial-frame repairs."""
+    if not rows or any(not isinstance(r, (tuple, list)) or len(r) != 3 or
+                       any(not isinstance(c, str) for c in r) for r in rows):
+        return 0
+    distance = 0
+    for marker, left, right in rows:
+        if marker != 's' or '$sp' not in left or '$sp' not in right:
+            continue
+        a = re.findall(r'-?0x[0-9a-f]+', left)
+        b = re.findall(r'-?0x[0-9a-f]+', right)
+        if len(a) == len(b) == 1:
+            distance += abs(int(a[0], 0)-int(b[0], 0))
+    return distance

@@ -155,6 +155,11 @@ def available(net, agent, slug, fn, source, revision, requested):
         measured = getattr(net,'_agent_outcomes',{}).get((agent.id,fn['id']))
         if measured and measured.get('source') == source:
             pools['stack_padding'] += stack_padding_repairs.grow(source,fn['name'],proj['arch'],measured.get('rows') or [])
+    if 'spill_normalization' in pools and proj['arch'] == 'mips':
+        from . import normalization_repairs
+        measured = getattr(net,'_agent_outcomes',{}).get((agent.id,fn['id']))
+        if measured and measured.get('source') == source:
+            pools['spill_normalization'] = normalization_repairs.frame_variants(source,fn['name'],measured.get('rows') or [])
     if 'store_address_lifetime' in pools:
         pools['store_address_lifetime'] = store_address_repairs.variants(source,fn['name'],proj['arch'])
     if 'paired_load_order' in pools:
