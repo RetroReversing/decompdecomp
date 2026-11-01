@@ -35,6 +35,7 @@ function setupRepairReplay(dialog, scope) {
         (row.context_note ? `\n${row.context_note}` : '') +
         (row.minimization ? `\nEdit minimization: ${row.minimization.reverted} of ${row.minimization.edits} edits reverted; ${row.minimization.retained.length} retained${row.minimization.exhausted ? ' (budget reached)' : ''}. Compiler-output evidence only.` : '') +
         (row.compiler_diagnostics ? `\nCompiler phases: ${row.compiler_diagnostics.skipped || (row.compiler_diagnostics.output_unchanged ? 'output unchanged; ' : 'output changed; phase evidence is not comparable; ') + Object.keys(row.compiler_diagnostics.phases || {}).join(', ')}` : '') +
+        (row.compiler_diagnostics?.comparison ? `\nPhase comparison: ${row.compiler_diagnostics.comparison.lead || row.compiler_diagnostics.comparison.note}` : '') +
         (row.remaining ? `\n${row.remaining} candidates remain outside this budget.` : '')).join('\n\n');
       results.hidden = false;
     } catch (error) { showJobError(host,error.message); summary.textContent = 'Replay ended. No game progress or review states changed.'; }

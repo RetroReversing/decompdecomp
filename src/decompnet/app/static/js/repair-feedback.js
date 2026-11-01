@@ -20,6 +20,7 @@ $("repairExamples").onclick = async () => {
     <details class="repair-section" data-build-reports hidden><summary>Build reports</summary><p class="small muted">Grouped by source unit and one-minute window. These are build status captures, not isolated source repairs.</p><div data-build-list class="repair-list"></div></details>
     <details class="repair-section" data-tools><summary>Testing &amp; analysis <span class="muted small">Local compiler tools · no AI tokens</span></summary>
     <p class="small muted">These tests measure saved evidence. They do not apply source, change game progress or mark repairs as implemented.</p>
+    <label class="small"><input type="checkbox" data-auto-analysis> Automatically analyse new matches locally</label><p class="small muted" data-auto-budget></p>
     <details class="repair-tool" data-replay-panel><summary>Test automatic repairs</summary>
     <p class="small muted">Test the app’s repair rules against up to 20 functions in the current filters. Missing historical build inputs are skipped.</p>
     <div class="repair-form-grid"><label>Trials per example<input data-replay-trials type="number" min="1" max="32" value="12"></label>
@@ -52,6 +53,14 @@ $("repairExamples").onclick = async () => {
   const filters = () => `${scope()}&comparable=${comparable.checked ? 1 : 0}&category=${encodeURIComponent(category.value)}&status=${encodeURIComponent(status.value)}`;
   setupCandidateRecovery(dialog, slug, () => load());
   const replay = setupRepairReplay(dialog, () => ({slug, all:all.checked, category:category.value, status:status.value, comparable:comparable.checked}));
+  const auto = get('[data-auto-analysis]');
+  api('/api/repair-examples/analysis').then(info => { auto.checked=info.enabled; get('[data-auto-budget]').textContent=info.budget; }).catch(error => toast(error.message));
+  auto.onchange = async () => {
+    auto.disabled=true;
+    try { await api('/api/repair-examples/analysis',{method:'POST',body:{enabled:auto.checked}}); }
+    catch(error) { auto.checked=!auto.checked; toast(error.message); }
+    finally { auto.disabled=false; }
+  };
   const controls = [category, status, all, comparable, get('[data-refresh]'), get('[data-more]')];
   function options(select, values) {
     for (const value of values) { if (Array.from(select.options).some((option) => option.value === value)) continue; const option = document.createElement('option'); option.value = value; option.textContent = select === status ? reviewLabel(value) : value.replaceAll('_', ' '); select.append(option); }
@@ -100,6 +109,17 @@ $("repairExamples").onclick = async () => {
         const raw = document.createElement('details'), rawTitle = document.createElement('summary'), rawText = document.createElement('pre');
         rawTitle.textContent = 'Compiler settings and full evidence'; rawText.textContent = JSON.stringify(data.evidence, null, 2);
         raw.append(rawTitle, rawText);
+        if (data.automatic_analysis) {
+          const analysis=document.createElement('details'), title=document.createElement('summary'), text=document.createElement('pre');
+          title.textContent='Automatic repair analysis · '+data.automatic_analysis.state;
+          text.textContent=JSON.stringify(data.automatic_analysis.report,null,2);
+          analysis.append(title,text);
+          if(data.automatic_analysis.state==='running') { const bar=document.createElement('progress'); bar.setAttribute('aria-label','Analysing captured repair'); analysis.append(bar); }
+          raw.append(analysis);
+          const report=data.automatic_analysis.report;
+          if(report.minimization) change.textContent+=` Automatic analysis reverted ${report.minimization.reverted} of ${report.minimization.edits} captured edits without changing frozen compiler output. Selected source is unchanged.`;
+          else if(report.skipped) change.textContent+=' Automatic analysis: '+report.skipped;
+        }
         const review = document.createElement('select'); review.setAttribute('aria-label', `Review state for example ${row.id}`);
         for (const value of states) { const option = document.createElement('option'); option.value = value; option.textContent = reviewLabel(value); review.append(option); }
         review.value = data.status;
@@ -240,6 +260,7 @@ $("repairExamples").onclick = async () => {
       if (data.metrics) {
         const m = data.metrics, describe = x => `${x.attempted.toLocaleString()} trials · ${x.improved.toLocaleString()} improvements · ${x.matched.toLocaleString()} matches`;
         get('[data-metrics]').textContent = `Adaptive policy: ${describe(m.policy)}. ${m.deep ? `Deep history: ${describe(m.deep)}. ` : ""}${m.scope} ${m.sources.map(s => `${s.origin}: ${describe(s)}, ${new Date(s.first_at*1000).toLocaleString()} to ${new Date(s.last_at*1000).toLocaleString()}`).join("; ")}`;
+        get('[data-metrics]').textContent += (m.efficiency || []).slice(0,12).map(r => ` ${r.family}: ${r.matched}/${r.attempted} exact wins (${(100*r.matches_per_compile).toFixed(1)}%/compile), ${r.matches_per_trial_minute == null ? 'unknown time rate' : r.matches_per_trial_minute.toFixed(2)+' wins/trial-minute'}; ${r.evidence}, profile ${r.profile.slice(0,8)}, ${r.focus}.`).join('')+' Trial time is summed elapsed measurement time, not measured CPU time or wall time for a whole run.';
         get('[data-metrics]').textContent += (m.input_effects || []).map(r => ` ${r.family.replaceAll("_", " ")}: ${r.attempted} proposals, ${r.no_edit} with no edit, ${r.same_output} identical function outputs, ${r.worse} worse, ${r.improved} improved.`).join("") + " Input-specific priorities drop only after 8 fresh trials with no improvement and at least 80% no-edit/identical/worse results. Exploration remains enabled; edits reset the input scope.";
       }
       get('[data-breakdown]').textContent = data.groups.map((group) => `${group.count} captures · ${group.category.replaceAll('_', ' ')} (${group.status})`).join(' · ') || 'No examples for these filters.';

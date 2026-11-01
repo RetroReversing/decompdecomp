@@ -37,7 +37,7 @@ def rewrite_evidence(evidence):
             'direct':direct,'note':'Replay still required; the final rewrite name alone does not isolate a cause.'}
 
 
-def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_cancel=lambda:None, progress=lambda value:None, minimize=False, diagnostics=False):
+def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_cancel=lambda:None, progress=lambda value:None, minimize=False, diagnostics=False, ablation_only=False):
     """Replay one frozen case; injectable measurement permits the same runner with a copied project judge."""
     if not 1 <= trials <= 128 or not 1 <= seconds <= 600:
         raise ValueError('Use 1–128 trials and 1–600 seconds per example.')
@@ -96,7 +96,7 @@ def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_ca
     if target.fingerprint() == baseline['object'].fingerprint() and baseline.get('data') == control.get('data'):
         return report | {'skipped':'Failed and successful sources produce the same normalized control output; no isolated regression.'}
     if diagnostics and time.monotonic()<deadline:
-        from .compiler_diagnostics import diagnose
+        from .compiler_diagnostics import compare, diagnose
         if baseline.get('raw_obj') and control.get('raw_obj'):
             failed = diagnose(profile,before['header'],before['source'],name,root=root or '.',baseline_obj=baseline['raw_obj'])
             check_cancel()
@@ -104,7 +104,7 @@ def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_ca
                           if time.monotonic()<deadline else {'skipped':'Replay time budget reached.'})
             report['compiler_diagnostics'] = {'before':failed,'after':successful,
                 'output_unchanged':bool(failed.get('output_unchanged') and successful.get('output_unchanged')),
-                'phases':successful.get('phases',{}),'note':'At most two extra compiles comparing failed and successful captures; no source applied.'}
+                'phases':successful.get('phases',{}),'comparison':compare(failed,successful),'note':'At most two extra compiles comparing failed and successful captures; no source applied.'}
         else:
             report['compiler_diagnostics'] = diagnose(profile,after['header'],after['source'],name,root=root or '.')
         check_cancel()
@@ -117,11 +117,13 @@ def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_ca
             return bool(not measured.get('error') and measured['object'].fingerprint()==target.fingerprint()
                         and measured.get('data')==control.get('data'))
         report['minimization'] = ablate(before['source'],after['source'],preserves,
-                                       trials=max(1,trials//2),stopped=lambda:time.monotonic()>=deadline)
+                                       trials=trials if ablation_only else max(1,trials//2),stopped=lambda:time.monotonic()>=deadline)
         for row in report['minimization']['trials']:
             outcome = 'edit_reverted' if row['preserves_output'] else 'edit_retained'
             report['trials'].append({'family':'revert_captured_edit','outcome':outcome,**row})
             counts[outcome] += 1
+    if ablation_only:
+        return report | {'summary':dict(counts),'remaining':0}
     labels = {}
     candidates = draft_repairs.variants(before['source'],name,platform.arch,evidence.get('target_asm') or '',
                                         profile.get('flags',[]),labels,limit=None,header=after['header'])

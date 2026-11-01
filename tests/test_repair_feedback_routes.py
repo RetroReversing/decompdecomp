@@ -166,3 +166,15 @@ def test_replay_is_guarded_scoped_and_cancellable(repair_app,monkeypatch):
         if state['state']!='running':break
         time.sleep(.01)
     assert state['state']=='cancelled'
+
+
+def test_automatic_analysis_setting_is_guarded_and_boolean(repair_app):
+    client,_,_=repair_app
+    url='/api/repair-examples/analysis'
+    assert client.get(url,headers={'User-Agent':'outside'}).status_code==401
+    assert client.get(url).json()['enabled'] is True
+    assert client.post(url,json={'enabled':False}).status_code==403
+    assert client.post(url,json={'enabled':'false'},headers={'X-Decomp':'1'}).status_code==400
+    response=client.post(url,json={'enabled':False},headers={'X-Decomp':'1'})
+    assert response.status_code==200 and response.json()['enabled'] is False
+    assert client.get(url).json()['enabled'] is False

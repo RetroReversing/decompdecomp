@@ -32,3 +32,16 @@ def test_shared_family_order_promotes_learned_starts_without_removing_exploratio
     lineage.retain('start','middle','learned');lineage.retain('middle','end','finish',exact=True)
     order=adaptive_repairs.order(net,proj,fn,rows,['unexplored','learned','other'])
     assert order[0]=='learned' and set(order)=={'unexplored','learned','other'}
+
+
+def test_new_sequences_share_only_with_same_shape_and_keep_legacy_fallback():
+    net=FakeNet();proj=net.project_row('game');fn=net.function()
+    rows=[('r','move $s0, $a0','move $s1, $a0')]
+    lineage=sequences.Lineage(net,proj,fn,'before',rows)
+    lineage.retain('before','middle','lifetime')
+    lineage.retain('middle','after','initialization',exact=True)
+    assert sequences.starting(net,proj,fn,rows)==['lifetime']
+    stack=[('s','lw $t0, 0x24($sp)','lw $t0, 0x2c($sp)')]
+    assert sequences.starting(net,proj,fn,stack)==[]
+    sequences.learn(net,lineage.profile,'register',['legacy','finish'])
+    assert sequences.starting(net,proj,fn,rows)==['lifetime','legacy']

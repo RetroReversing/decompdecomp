@@ -9,6 +9,7 @@ import contextvars
 import difflib
 import hashlib
 import json
+import logging
 import time
 from contextlib import contextmanager
 
@@ -167,10 +168,15 @@ class RepairFeedback:
         # Retain deterministic successes for regression analysis without proposing the installed
         # rule as new work. Agent explanations still cannot mark their own hypotheses implemented.
         automated = (evidence.get('provenance') or {}).get('kind') in ('deterministic draft repair','automatic agent local pass')
-        db.execute('INSERT INTO repair_examples(project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence,status,review_note) '
+        captured = db.execute('INSERT INTO repair_examples(project_id,function_id,attempt_id,before_attempt_id,agent_id,created_at,evidence,status,review_note) '
                    'VALUES(?,?,?,?,?,?,?,?,?)', (fn['project_id'], fn['id'], attempt_id, before['id'] if before else None,
                                              agent_id, time.time(), json.dumps(evidence), 'implemented' if automated else 'new',
                                              'Installed deterministic repair, verified by the normal judge.' if automated else ''))
+
+        from .app.repair_outcomes import schedule
+        try:schedule(self,captured.lastrowid,evidence['after']['source_sha256'])
+        except Exception as error:
+            logging.getLogger('decompdecomp').warning('Repair analysis scheduling failed: %s',error)
 
     def report(self, agent, slug, function, change, category='other', automation='', case_id=0):
         fn = self.net._function(function, slug)
@@ -275,7 +281,9 @@ class RepairFeedback:
             evidence.update(focused(old, new, evidence.get('symbol') or evidence['function']))
             from .repair_review import classify
             evidence['review_suggestion'] = classify({'evidence': evidence})
-        return result | {'evidence': evidence}
+        from .app.repair_outcomes import result as outcome
+        analysis = outcome(self,case_id,include_source=include_source)
+        return result | {'evidence': evidence, 'automatic_analysis':analysis}
 
     def review(self, slug, case_id, status, category='', note=None):
         if status not in STATES:
