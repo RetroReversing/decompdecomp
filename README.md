@@ -996,3 +996,15 @@ Unsuccessful trials are cached by their actual inputs, projects rotate fairly, a
 appear in the existing matches-from-other-games history. Better ROM drafts retain private declarations;
 only an exact destination verdict counts as a match. Assembly-only units and unsupported preprocessing
 or foreign helper/data definitions still need their existing setup/source-preparation adapters.
+
+### Export deep-permuter metrics
+
+In the deep-pass settings, expand **Rewrite performance** and select
+**Export metrics (CSV)**. The CSV contains one row per rewrite family across all
+search phases, in the table's selected sort order. It includes project slug, game
+platform, client platform, app version/build and UTC export time, plus totals,
+detailed measured outcomes and timing coverage. It contains no source code, ROM
+bytes or credentials. Missing older measurements are blank; `partial` timing must
+be compared using `measured_attempts` and measured gains, rather than all-time
+counts. Totals and newer outcome measurements overlap and must not be added.
+

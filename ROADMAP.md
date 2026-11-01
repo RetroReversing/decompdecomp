@@ -1373,6 +1373,12 @@ model/compiler rankings, and no family or unmatched function is automatically ex
 
 - Done: deep-pass sortable headings use the neutral Functions-table typography
   and ascending/descending arrows, with the active column highlighted in ink.
+- Done: one sortable Rewrite performance table replaces duplicate rewrite and
+  outcome summaries. Per-family details retain diagnostic counts; older missing
+  timing/outcome data stays unavailable, and partial timing is labelled. CSV export
+  includes every family in the selected order, detailed measured outcomes, timing
+  coverage, and project/platform/version/build metadata without source or ROM data.
+
 
 ### Same-name verified source reuse
 
@@ -1389,4 +1395,5 @@ model/compiler rankings, and no family or unmatched function is automatically ex
 - Planned: preprocessing adapters for drivers without a supported `-c` → `-E` mode, automatically
   supplying foreign static helpers/initialized data, and preparing assembly-only imported units from
   name-only leads. Those cases remain visible skips or need explicit existing source-preparation setup.
+
 
