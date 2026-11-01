@@ -30,6 +30,7 @@ function setupRepairReplay(dialog, scope) {
       summary.textContent = report.message;
       results.textContent = (report.examples || []).map(row => `#${row.id} ${row.function || ''}\n` +
         (row.skipped ? `Skipped: ${row.skipped}` : Object.entries(row.summary || {}).map(([key,value]) => `${key.replaceAll('_',' ')}: ${value}`).join(' · ')) +
+        (row.context_note ? `\n${row.context_note}` : '') +
         (row.minimization ? `\nEdit minimization: ${row.minimization.reverted} of ${row.minimization.edits} edits reverted; ${row.minimization.retained.length} retained${row.minimization.exhausted ? ' (budget reached)' : ''}. Compiler-output evidence only.` : '') +
         (row.compiler_diagnostics ? `\nCompiler phases: ${row.compiler_diagnostics.skipped || (row.compiler_diagnostics.output_unchanged ? 'output unchanged; ' : 'output changed; phase evidence is not comparable; ') + Object.keys(row.compiler_diagnostics.phases || {}).join(', ')}` : '') +
         (row.remaining ? `\n${row.remaining} candidates remain outside this budget.` : '')).join('\n\n');

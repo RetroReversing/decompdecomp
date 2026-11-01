@@ -1210,6 +1210,17 @@ for review; joint context/profile approval and automatic promotion remain future
   declarations/macros for review in ROM and imported-project workflows. Live headers
   remain unchanged; adopting context still requires compilation and the normal judge.
 
+## Typed pointer and paired declaration repairs
+
+Shared draft, agent-local and deep paths extend pointer call staging and word-zero-test reuse,
+add pointer-load inlining and CFG-safe pointer storage reuse, and offer a bounded declaration-order
+cross product without requiring an improving first edit. Distinct plain struct-field stores can
+swap only with memory-independent values. These ordinary C hypotheses reach ROM and imported
+projects through their existing judges; uncertain aliasing/volatility stays with the agent.
+Fixed-context replay distinguishes judge-only revisions from compiler/header changes. Private
+linked replay recovered three already solved pointer/zero-test controls; an existing MMIO family
+recovered a fourth. This is regression evidence, not new progress or measured token savings.
+
 ### Prepared source/profile review and data diagnostics
 
 - Exact private source/header/profile probes can be reviewed together in local ROM projects. Applying

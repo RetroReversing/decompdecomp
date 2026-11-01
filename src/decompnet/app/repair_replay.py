@@ -55,8 +55,14 @@ def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_ca
         expected = (stage.get('settings') or {}).get('context_sha256')
         if expected and digest(header) != expected:
             return report | {'skipped':'Captured header hash does not match.'}
-    if not evidence.get('comparable_settings') or before.get('settings') != settings or before['header'] != after['header']:
+    differences = {key for key in set(before.get('settings') or {}) | set(settings)
+                   if (before.get('settings') or {}).get(key) != settings.get(key)}
+    judge_only = differences == {'scoring_revision'} and before['header'] == after['header']
+    if (not evidence.get('comparable_settings') or differences or before['header'] != after['header']) and not judge_only:
         return report | {'skipped':'Compiler/build context changed; isolate that change before source replay.'}
+    if judge_only:
+        report['context_note'] = ('Captured judge revisions differ. Both sources are recompiled with the same '
+                                  'captured compiler and header; this compares compiler output, not historical scores or game matches.')
     profile = settings.get('compiler') or {}
     platform = consoles.get(settings.get('platform'))
     name = evidence['function']

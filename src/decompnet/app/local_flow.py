@@ -24,9 +24,9 @@ class Node:
 
 
 class Flow:
-    def __init__(self, part):
+    def __init__(self, part, declarations=None):
         self.part = part
-        self.locals = [decl for decl in locals_for(part)
+        self.locals = [decl for decl in (locals_for(part) if declarations is None else declarations)
                        if not re.search(rf'&\s*(?:\(\s*)*{decl["name"]}\b', part.body)]
         if len(self.locals) > MAX_LOCALS:
             raise ValueError('too many locals')
@@ -223,13 +223,13 @@ class Flow:
         return node is not None and variable not in node.live
 
 
-def analyze(source, name):
+def analyze(source, name, *, declarations=None):
     """Return conservative liveness, or no advice for extensions and escaped control flow."""
     part = view(source, name)
     if not part or re.search(r'\b(?:volatile|asm|__asm__|setjmp|_setjmp|sigsetjmp|longjmp)\b', part.clean):
         return None
     try:
-        return Flow(part)
+        return Flow(part, declarations)
     except (ValueError, RecursionError):
         return None
 

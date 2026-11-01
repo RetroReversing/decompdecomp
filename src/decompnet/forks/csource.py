@@ -89,11 +89,13 @@ def find(text: str, name: str) -> tuple[int, int] | None:
         if j >= len(clean) or clean[j] != "{":
             continue
         line_start = clean.rfind("\n", 0, m.start()) + 1
-        if clean[line_start:m.start()].strip().startswith(("#", "return", "if", "else")):
+        # A typedef/global/previous definition can share this line. Its declaration
+        # boundary must not become part of the requested function or its repair view.
+        start = max(line_start, boundary)
+        if clean[start:m.start()].strip().startswith(("#", "return", "if", "else")):
             continue
         # include the return type / storage class on preceding lines that belong to this declaration
-        start = line_start
-        prev_end = start - 1
+        prev_end = start - 1 if start == line_start else -1
         while prev_end > 0:
             prev_start = clean.rfind("\n", 0, prev_end) + 1
             prev = clean[prev_start:prev_end].strip()
