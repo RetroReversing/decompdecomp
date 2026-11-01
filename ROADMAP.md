@@ -1187,3 +1187,10 @@ prioritise these shapes. Search frontiers avoid expanding measured frame/code gr
 structural improvement, while retaining numeric improvements and ordinary exact judging. Generated
 compile errors reuse input-scoped caches; agent summaries include failures and regressions.
 Synthetic execution/search regressions are distinct from newly measured private-game recoveries.
+
+Latest-match follow-ups: grouped build activity in repair evidence; same-width copied zero-test lifetime and
+explicit pointer-return-call staging hypotheses in shared draft/local/deep search; actual multiline reference
+macro dependency preservation; reference by-value aggregate and whole-structure snapshot diagnostics.
+Unknown aggregate layouts/ABI shapes remain diagnostic-only. Macro invocations and original supporting types
+are preserved rather than hand-expanded. Synthetic MIPS compiler controls cover the new lifetime families;
+other processor/object judges retain the same shared dispatch and no acceptance criteria changed.

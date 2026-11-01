@@ -27,9 +27,24 @@ def is_stub(code: str) -> bool:
     return bool(re.match(r"\s*(?:#\s*pragma\s+)?(?:INCLUDE_ASM|GLOBAL_ASM|INCLUDE_RODATA_FN)\s*\(", code))
 
 
+def _code_only(text: str) -> str:
+    clean = _blank(text)
+    # Preprocessor logical lines can contain braces/loops that are not C function scopes.
+    # Keep offsets and line breaks so extraction and __LINE__ context remain exact.
+    lines = clean.splitlines(True)
+    continuation = False
+    for index, line in enumerate(lines):
+        directive = continuation or bool(re.match(r'^[ \t]*#', line))
+        continuation = directive and line.rstrip('\r\n').endswith('\\')
+        if directive:
+            lines[index] = re.sub(r'[^\n]', ' ', line)
+    clean = ''.join(lines)
+    return clean
+
+
 def find(text: str, name: str) -> tuple[int, int] | None:
     """(start, end) of the definition of `name`, or of its asm stub; None when absent."""
-    clean = _blank(text)
+    clean = _code_only(text)
     simple = name.split("::")[-1]
     if "::" in name:  # Class::method: match it exactly
         pat = re.compile(rf"(?<![\w:~]){re.escape(name)}\s*\(")

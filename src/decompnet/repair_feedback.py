@@ -204,12 +204,12 @@ class RepairFeedback:
 
     def listing(self, slug='', category='', status='', before=0, comparable=False):
         where, args = self._where(slug, category, status, comparable)
-        partition = "project_id,function_id,category,status,json_extract(evidence,'$.target_sha256'),json_extract(evidence,'$.after.source_sha256'),json_extract(evidence,'$.after.settings'),json_extract(evidence,'$.after.context_version')"
+        partition = "project_id,category,status,CASE WHEN json_extract(evidence,'$.via')='unit diff' THEN 'build:' || COALESCE(json_extract(evidence,'$.unit'),'') || ':' || CAST(created_at/60 AS INTEGER) ELSE 'function:' || function_id END,CASE WHEN json_extract(evidence,'$.via')!='unit diff' OR json_extract(evidence,'$.via') IS NULL THEN json_extract(evidence,'$.target_sha256') END,CASE WHEN json_extract(evidence,'$.via')!='unit diff' OR json_extract(evidence,'$.via') IS NULL THEN json_extract(evidence,'$.after.source_sha256') END,json_extract(evidence,'$.after.settings'),json_extract(evidence,'$.after.context_version')"
         prefix = ('WITH grouped AS (SELECT e.*,ROW_NUMBER() OVER (PARTITION BY ' + partition +
                   ' ORDER BY id DESC) AS position,COUNT(*) OVER (PARTITION BY ' + partition +
                   ') AS repetitions FROM repair_examples e WHERE ' + where + ') ')
         rows = self.store.all(prefix + 'SELECT e.id,e.created_at,e.category,e.explanation,e.automation,e.status,e.repetitions,'
-                              "CASE WHEN e.before_attempt_id IS NULL THEN 'no failed baseline' WHEN json_extract(e.evidence,'$.before.source_sha256')=json_extract(e.evidence,'$.after.source_sha256') THEN 'same source / settings' WHEN json_extract(e.evidence,'$.comparable_settings')=1 THEN 'source repair' ELSE 'settings also changed' END AS evidence_kind,"
+                              "CASE WHEN json_extract(e.evidence,'$.via')='unit diff' THEN 'build report' WHEN e.before_attempt_id IS NULL THEN 'no failed baseline' WHEN json_extract(e.evidence,'$.before.source_sha256')=json_extract(e.evidence,'$.after.source_sha256') THEN 'same source / settings' WHEN json_extract(e.evidence,'$.comparable_settings')=1 THEN 'source repair' ELSE 'settings also changed' END AS evidence_kind,"
                               "(json_extract(e.evidence,'$.provenance.kind') IN ('deterministic draft repair','automatic agent local pass') AND "
                               "(json_extract(e.evidence,'$.provenance.source_sha256') IS NULL OR "
                               "json_extract(e.evidence,'$.provenance.source_sha256')=json_extract(e.evidence,'$.after.source_sha256'))) AS automation_known,"

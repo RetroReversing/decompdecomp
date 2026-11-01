@@ -444,3 +444,23 @@ def test_converter_infrastructure_failure_does_not_consume_attempt_budget(setup,
         net.compile_and_diff(winner,'target','int target(void){return 1;}','demo')
     assert net.store.one('SELECT COUNT(*) n FROM attempts')['n'] == before
     assert net.store.one('SELECT attempts FROM functions WHERE id=?',fid)['attempts'] == 0
+
+
+def test_build_activity_groups_only_same_unit_minute_and_settings(setup):
+    net, _, _, pid, fid = setup
+    match(setup)
+    row = net.store.one('SELECT * FROM repair_examples ORDER BY id DESC LIMIT 1')
+    evidence = json.loads(row['evidence'])
+    with net.store.tx() as db:
+        for number, stamp in enumerate((600, 601, 660)):
+            other = db.execute('INSERT INTO functions(project_id,name,status,unit) VALUES(?,?,?,?)',
+                               (pid, f'build_{number}', 'matched', 'shared')).lastrowid
+            item = json.loads(json.dumps(evidence));item.update(via='unit diff', unit='shared', function=f'build_{number}', target_sha256=str(number))
+            item['after']['source_sha256']=str(number)
+            db.execute('INSERT INTO repair_examples(project_id,function_id,created_at,evidence) VALUES(?,?,?,?)',
+                       (pid, other, stamp, json.dumps(item)))
+    records = net.repair_feedback.listing('demo')['examples']
+    builds = [r for r in records if r['evidence_kind']=='build report']
+    assert sorted(r['repetitions'] for r in builds) == [1,2]
+    assert len([r for r in records if r['evidence_kind']!='build report']) == 1
+    assert net.store.one('SELECT COUNT(*) AS n FROM repair_examples')['n'] == 4

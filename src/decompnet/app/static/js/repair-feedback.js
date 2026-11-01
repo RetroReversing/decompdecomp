@@ -27,7 +27,7 @@ $("repairExamples").onclick = async () => {
     <p data-recovery-summary class="muted small" role="status"></p><div data-recovery-work></div></section>
     <section data-quality class="repair-list" aria-label="Candidate quality review"></section>
     <details class="repair-help"><summary>Metrics coverage · all projects</summary><p data-metrics class="small muted"></p></details>
-    <p data-count class="repair-count" role="status"></p><div data-list class="repair-list"></div>
+    <p data-count class="repair-count" role="status"></p><div data-list class="repair-list"></div><details class="repair-help" data-build-reports hidden><summary>Build activity · grouped by unit and one-minute window</summary><p class="muted small">Build reports are status captures, not isolated C repairs. Original records remain available; each card opens the latest representative.</p><div data-build-list class="repair-list"></div></details>
     <button data-more hidden type="button">Older examples</button>
     <details class="repair-help"><summary>How to use these examples</summary><p>Expand a card to compare the failed candidate with the match.
     Send promising examples to a coding agent, or export them for analysis. Review and test any proposed app changes: examples do not teach the permuter automatically.</p>
@@ -56,7 +56,7 @@ $("repairExamples").onclick = async () => {
     const title = document.createElement('span'); title.className = 'repair-card-title'; title.textContent = row.function;
     const meta = document.createElement('span'); meta.className = 'repair-card-meta'; meta.textContent = `#${row.id} · ${row.project}${row.agent ? ' · ' + row.agent : ''}`;
     const badges = document.createElement('span'); badges.className = 'repair-badges';
-    for (const value of [row.category.replaceAll('_', ' '), row.status, row.evidence_kind || 'source repair', ...(row.automation_known ? ['already automated'] : []), ...(row.repetitions > 1 ? [`${row.repetitions} equivalent captures`] : [])]) {
+    for (const value of [row.category.replaceAll('_', ' '), row.status, row.evidence_kind || 'source repair', ...(row.automation_known ? ['already automated'] : []), ...(row.repetitions > 1 ? [`${row.repetitions} ${row.evidence_kind === 'build report' ? 'build' : 'equivalent'} captures`] : [])]) {
       const badge = document.createElement('span'); badge.className = 'repair-badge'; badge.textContent = value; badges.append(badge);
     }
     summary.append(title, meta, badges);
@@ -163,7 +163,7 @@ $("repairExamples").onclick = async () => {
       const data = await api(`/api/repair-examples?${filters()}&before=${reset ? 0 : before}`);
       if (!dialog.isConnected) return;
       if (reset) {
-        list.replaceChildren();
+        list.replaceChildren(); get('[data-build-list]').replaceChildren(); get('[data-build-reports]').hidden = true;
         const quality = await api(`/api/repair-examples/quality?${scope()}`);
         const area = get('[data-quality]'); area.replaceChildren();
         for (const report of quality.reports || []) {
@@ -213,7 +213,11 @@ $("repairExamples").onclick = async () => {
       }
       get('[data-count]').textContent = data.groups.map((group) => `${group.count} captures · ${group.category.replaceAll('_', ' ')} (${group.status})`).join(' · ') || 'No examples for these filters.';
       if (reset && !data.examples.length) { const empty = document.createElement('p'); empty.className = 'repair-empty'; empty.textContent = 'No examples match these filters. Try another review state or clear “Comparable source repairs only” to include baseline and settings-only captures.'; list.append(empty); }
-      for (const row of data.examples) { list.append(card(row, data.states, data.categories)); before = row.id; }
+      for (const row of data.examples) {
+        const build = row.evidence_kind === 'build report';
+        if (build) get('[data-build-reports]').hidden = false;
+        (build ? get('[data-build-list]') : list).append(card(row, data.states, data.categories)); before = row.id;
+      }
       get('[data-more]').hidden = !data.more;
     } catch (error) { toast(esc(error.message), 'err'); }
     finally { done(); }
