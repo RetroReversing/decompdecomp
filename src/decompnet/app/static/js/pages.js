@@ -400,6 +400,7 @@ setInterval(() => checkUpdate(false, true), 10 * 60 * 1000);
 /* Manual clients have project-scoped credentials, independent of managed helper processes. */
 let manualMcpRead = 0;
 async function loadManualMcp() {
+  loadGlobalAgentTools();
   const select = $("mcpProject"), previous = select.value;
   select.innerHTML = S.projects.map(p => `<option value="${esc(p.slug)}">${esc(p.title || p.name || p.slug)}</option>`).join("");
   if (S.projects.some(p => p.slug === previous)) select.value = previous;
@@ -432,7 +433,7 @@ async function refreshManualMcp() {
     $("mcpStatus").innerHTML = `<p><b>Running locally</b> · ${esc(info.transport)} · Port ${esc(port)}</p>${cmdBox(info.url)}<p class="small muted">Local clients only (127.0.0.1). No public endpoint or OAuth sign-in. Choose a project to see its tools.</p>`;
     wireCopies($("mcpStatus"));
     $("mcpToolCount").textContent = `(${info.tools.length})`;
-    $("mcpTools").innerHTML = info.tools.map(t => `<details class="mcp-tool"><summary><code>${esc(t.name)}</code></summary><p>${esc(t.description || "")}</p><details><summary>Input schema</summary><pre class="joblog">${esc(JSON.stringify(t.inputSchema,null,2))}</pre></details></details>`).join("");
+    $("mcpTools").replaceChildren(toolCatalog(info.tools));
     $("mcpConnections").innerHTML = info.connections.length ? info.connections.map(c => `<div class="row mcp-connection"><code class="grow">${esc(c.name)} · ${esc(c.slug)}</code><button class="ghost small-btn" data-revoke-mcp="${c.id}" type="button">Revoke</button></div>`).join("") : `<p class="muted small">No manual connections yet.</p>`;
     $("mcpConnections").querySelectorAll("[data-revoke-mcp]").forEach(button => { button.onclick = async () => {
       button.disabled = true;

@@ -2,11 +2,12 @@
 const fs=require('node:fs'), vm=require('node:vm'), assert=require('node:assert/strict');
 const elements=new Map(), requests=[];
 const $=id=>{
-  if(!elements.has(id)) elements.set(id,{value:'',innerHTML:'',textContent:'',disabled:false,replaceChildren(){this.innerHTML='';},querySelectorAll(){return [];}});
+  if(!elements.has(id)) elements.set(id,{value:'',innerHTML:'',textContent:'',disabled:false,replaceChildren(...nodes){this.children=nodes;},querySelectorAll(){return [];}});
   return elements.get(id);
 };
 let completed=0;
 const ctx=vm.createContext({$,URL,JSON,Number,S:{projects:[{slug:'game',name:'Game'}]},
+  loadGlobalAgentTools:()=>{},toolCatalog:tools=>tools,
   esc:s=>String(s).replaceAll('<','&lt;'),cmdBox:s=>String(s),wireCopies:()=>{},
   beginWork:()=>()=>{completed++;},showJobError:(log,error)=>{log.textContent=error;},
   api:(url,options)=>new Promise((resolve,reject)=>requests.push({url,options,resolve,reject}))});
@@ -18,7 +19,7 @@ vm.runInContext(source.slice(source.indexOf('let manualMcpRead')),ctx);
   requests[0].resolve({url:'http://127.0.0.1:6464/mcp',transport:'Streamable HTTP',tools:[{name:'<unsafe>',description:'<script>',inputSchema:{type:'object'}}],connections:[]});
   await load;
   assert.match($('mcpStatus').innerHTML,/6464/);
-  assert.match($('mcpTools').innerHTML,/&lt;unsafe>/);
+  assert.equal($('mcpTools').children[0][0].name,'<unsafe>');
   const creating=$('mcpCreate').onclick();
   assert.equal(requests[1].options.body.slug,'game');
   requests[1].resolve({url:'http://127.0.0.1:6464/mcp',token:'dn_private',instructions:'Read project_info'});

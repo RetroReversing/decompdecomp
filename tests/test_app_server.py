@@ -130,6 +130,14 @@ def test_an_outside_agent_pairs_through_the_window(app):
                       json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         tools = json.loads(r.text.split("data: ", 1)[1].splitlines()[0])["result"]["tools"]
         assert tools and "claim_function" in {t["name"] for t in tools}
+        paired = net.authenticate(answer['token'])
+        net.set_selection('pair-demo', paired.name, {'disabled_tools':['guide']})
+        r = anon.post('/mcp', headers={**headers, 'Accept':'application/json, text/event-stream', 'Mcp-Session-Id':sid},
+                      json={'jsonrpc':'2.0','id':3,'method':'tools/list'})
+        filtered = json.loads(r.text.split('data: ',1)[1].splitlines()[0])['result']['tools']
+        assert 'guide' not in {t['name'] for t in filtered}
+        assert 'claim_function' in {t['name'] for t in filtered}
+
 
 
 def test_only_the_apps_own_window_gets_the_gui(app):
@@ -1589,3 +1597,38 @@ def test_metrics_export_route_uses_private_project_guard_and_returns_saved_path(
     assert response.status_code == 200 and response.json()['path'] == '/Downloads/metrics.csv'
     assert calls == [('example', 'metrics')]
     assert client.post('/api/permuter/pass', json={'slug':'example','action':'export-metrics','csv':'metrics'}).status_code == 403
+
+
+def test_agent_tool_controls_are_guarded_persistent_and_leave_core_tools_enabled(app):
+    from decompnet.app import tool_policy
+    client, net, _ = app
+    endpoint = '/api/agent-tools'
+    assert client.get(endpoint, headers={'User-Agent':'external'}).status_code == 401
+    payload = {'name':'guide','enabled':False}
+    assert client.post(endpoint, json=payload).status_code == 403
+    result = client.post(endpoint, json=payload, headers={'X-Decomp':'1'})
+    assert result.status_code == 200
+    guide = next(t for t in result.json()['tools'] if t['name']=='guide')
+    assert not guide['enabled'] and guide['global_disabled'] and guide['calls'] >= 0
+    assert 'Older unrecorded calls' in result.json()['coverage']
+    assert 'guide' in tool_policy.disabled(net)
+    assert client.post(endpoint, json={'name':'claim_function','enabled':False}, headers={'X-Decomp':'1'}).status_code == 400
+    assert client.post(endpoint, json={'helper':'missing','name':'guide','enabled':True}, headers={'X-Decomp':'1'}).status_code == 400
+    assert client.post(endpoint, json={'name':'guide','enabled':True}, headers={'X-Decomp':'1'}).status_code == 200
+
+
+def test_agent_tool_controls_update_only_the_selected_helper(app, tmp_path):
+    from decompnet.app.agents import Session
+    client, net, manager = app
+    with net.store.tx() as db:
+        db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                   ('tool-control-demo','Tool control demo','mips',str(tmp_path),'{}'))
+    session = Session('tool-control', 'codex', 'tool-reader', 'tool-control-demo', 'tool-reader', {})
+    manager.sessions[session.id] = session
+    response = client.post('/api/agent-tools', json={'helper':session.id,'name':'guide','enabled':False}, headers={'X-Decomp':'1'})
+    assert response.status_code == 200
+    assert not next(t for t in response.json()['tools'] if t['name']=='guide')['enabled']
+    assert net.selection('tool-control-demo','tool-reader')['disabled_tools'] == ['guide']
+    from decompnet.app.tool_policy import disabled
+    assert 'guide' not in disabled(net)
+    manager.sessions.pop(session.id)

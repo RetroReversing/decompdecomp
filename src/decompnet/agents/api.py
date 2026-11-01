@@ -93,7 +93,7 @@ class Api(Agent):
         headers = {"Content-Type": "application/json"}
         if s.options.get("api_key"):
             headers["Authorization"] = f"Bearer {s.options['api_key']}"
-        schema = api_tool_schemas(fork=bool(net.fork_slug(s.slug)), names=tools.project_tools(net, s.slug))
+        schema = api_tool_schemas(fork=bool(net.fork_slug(s.slug)), names=tools.project_tools(net, s.slug, agent))
         messages = [{"role": "system", "content": tools.INSTRUCTIONS},
                     {"role": "user", "content": manager.prompt(s)}]
         if s.record:
