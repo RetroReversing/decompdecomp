@@ -79,18 +79,25 @@ class OwnCompilers(Kit):
         for tid, (program, name, runs, _) in packs(self.platform).items():
             if (exe := find(folder, program)) is not None:
                 by_program.setdefault(exe, []).append((tid, name, runs))
-        out = []
+        read = {}  # program -> (its hash, its version record, the kinds whose version it names)
         for exe, kinds in by_program.items():
             versions = {tid: v.group() for tid, _, _ in kinds if (v := _VERSION.search(tid))}
             stat = exe.stat()
             built = file_version(exe) if exe.suffix.lower() == ".exe" else ""  # (CodeWarrior's says 3.0.1.145)
             digest, seen = _read(str(exe), stat.st_mtime_ns, stat.st_size, str(folder), built, tuple(versions.values()))
-            alike = {runs: (tid, name) for tid, name, runs in reversed([k for k in kinds if versions.get(k[0]) in seen]
-                                                                       or kinds[:1])}  # (the first of those alike)
-            for tid, name in alike.values():  # (its id starts with the pack's: what a console's flags go by, "mwcps2")
-                out.append(OwnCompiler(f"{tid}-own-{digest}", f"{name}, your copy in {folder.name}", exe, (),
-                                       runner="", build=built, root=folder.resolve(),
-                                       flags=packs(self.platform)[tid][3], like=tid))
+            read[exe] = (digest, built, [k for k in kinds if versions.get(k[0]) in seen])
+        # the kinds whose version the folder names; none named: the first. (A PSP GCC 1.3.1 also holds psp/bin/gcc,
+        # which 1.7.1 runs: named nowhere, it isn't offered.)
+        named = [(exe, k) for exe, (*_, ks) in read.items() for k in ks]
+        if not named and by_program:
+            exe, kinds = next(iter(by_program.items()))
+            named = [(exe, kinds[0])]
+        alike = {runs: (exe, tid, name) for exe, (tid, name, runs) in reversed(named)}  # (the first of those alike)
+        out = []
+        for exe, tid, name in alike.values():  # (its id starts with the pack's: what a console's flags go by, "mwcps2")
+            digest, built, _ = read[exe]
+            out.append(OwnCompiler(f"{tid}-own-{digest}", f"{name}, your copy in {folder.name}", exe, (), runner="",
+                                   build=built, root=folder.resolve(), flags=packs(self.platform)[tid][3], like=tid))
         return out
 
 

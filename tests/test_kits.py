@@ -333,6 +333,10 @@ def test_your_own_compiler_is_a_card_per_console_and_runs_like_the_pack_its_vers
     # KMC's way on the N64, PSY-Q's on the PS1, each console its own
     assert [c.split("-own-")[0] for c in ids("n64")] == ["gcc-2.7.2-kmc"]
     assert len(ids("ps")) == 2 and all("-psx-own-" in c for c in ids("ps")) and not ids("gba")
+    # a PSP GCC 1.3.1 holds psp/bin/gcc too, the program 1.7.1 runs: the version its folder names decides, not each
+    # program on its own
+    psp = _own(_own(tmp_path / "psp131", "bin/psp-gcc", b"psp-gcc 1.3.1"), "psp/bin/gcc", b"gcc")
+    assert [c.like for c in kits.get(own["psp"]).compilers(psp)] == ["psp-gcc-1.3.1"]
 
 
 @pytest.mark.parametrize("pack", ["gcc-2.7.2-kmc", "gcc-2.7.2-psx", "ee-gcc-2.96", "mwcps2-2.3.3", "ido-5.3", "agbcc"])
@@ -365,7 +369,21 @@ def test_your_copy_of_a_packs_compiler_builds_the_same_object_from_your_folder(t
     assert all(r.ok for r in built), [r.log for r in built]
     cfg = compiler_config(tmp_path, {"compiler": {"toolchain": own.version, "flags": flags}})
     assert any(str(mine.resolve()) in a for a in cfg.cmd) and str(mine.resolve()) in cfg.ro_paths
-    assert built[0].obj == built[1].obj
+    assert _code(built[0].obj) == _code(built[1].obj)
+
+
+def _code(obj: bytes) -> dict:
+    """An object's code and data, and its symbols' names: what a match is judged on. (Not the whole file: without a
+    sandbox, CI's, each compile's folder has a name of its own, which GCC writes into the object.)"""
+    from io import BytesIO
+
+    from elftools.elf.elffile import ELFFile
+
+    elf = ELFFile(BytesIO(obj))
+    out = {s.name: s.data() for s in elf.iter_sections() if s.name in (".text", ".data", ".rodata", ".sdata")}
+    out["symbols"] = sorted(s.name for s in elf.get_section_by_name(".symtab").iter_symbols()
+                            if s["st_info"]["type"] in ("STT_FUNC", "STT_OBJECT"))
+    return out
 
 
 def test_each_installed_pack_is_known_as_itself():
