@@ -1450,3 +1450,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
   deliberately rejected rather than assigned speculative bounds.
 - Planned: train recipes from reviewed historical repair examples only after a fresh ordinary
   exact verdict. Frozen-control replay alone must not train acceptance evidence.
+
+- Done: Repair examples puts compact source-repair cards and filters first, with candidate concerns, local testing/analysis and exports in separate disclosures. Cards preview the captured explanation and open directly onto source changes; coding-agent setup loads only when its investigation section is expanded. Review statuses use plain labels, form controls stack on narrow windows, and per-example tests reveal their progress section automatically.
