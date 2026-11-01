@@ -281,8 +281,11 @@ class GuiMixin:
             "WHERE t.function_id=? ORDER BY t.id", fn["id"])
         latest = self.store.one("SELECT source, score FROM attempts WHERE function_id=? AND source IS NOT NULL "
                                 "ORDER BY id DESC LIMIT 1", fn["id"])
+        from ...search_notes import useful
         notes = self.store.all("SELECT n.text, n.created_at, a.name AS agent FROM notes n LEFT JOIN agents a "
-                               f"ON a.id=n.agent_id WHERE n.function_id=? ORDER BY n.id DESC LIMIT {FUNCTION_NOTES}", fn["id"])
+                               f"ON a.id=n.agent_id WHERE n.function_id=? "
+                               f"AND n.text != 'Deep permutation turn ended; improvements shared.' "
+                               f"ORDER BY n.created_at DESC,n.id DESC LIMIT {FUNCTION_NOTES}", fn["id"])
         x = self.xrefs(proj)
         syms = self.symbols(proj["id"])
         if not (fn["matched_source"] or fn["best_source"] or latest) and fn["status"] == "open":
@@ -300,7 +303,7 @@ class GuiMixin:
             "source_kind": "matched" if fn["matched_source"] else "best" if fn["best_source"] else
                            "latest" if latest else "draft" if fn["seed"] else None,
             "scores": [{"score": a["score"], "t": a["created_at"], "agent": a["agent"]} for a in attempts],
-            "notes": [dict(n) for n in notes],
+            "notes": [dict(n) for n in useful(notes)],
             "calls": [syms.label(a) for a in sorted(x["calls"].get(fn["vram"], ()))],
             "called_by": [syms.label(a) for a in sorted(x["called_by"].get(fn["vram"], ()))],
             "cross_game_hints": self.twins.suggestions(slug, fn["name"]) if fn["status"] == "open" else [],

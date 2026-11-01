@@ -450,6 +450,7 @@ def test_room_claims_renew_release_and_host_rejection(monkeypatch):
         search._accept_candidate(AGENT, net.project_row('game'), net.function(), 'draft', SimpleNamespace(bytes_match=True))
     search._let_go(AGENT, net.function())
     assert calls[-1][0] == '/collab/release'
+    assert calls[-1][1]['notes'] == ''
     assert not net.store.one('SELECT 1 FROM claims')
     assert search._hold(AGENT, net.function())
     def offline(*args, **kwargs):
@@ -488,3 +489,24 @@ def test_deep_search_does_not_rotate_background_permuter_credentials(monkeypatch
     deep_permuter.run(net, 'game', 'f', 1, 1, Log())
     assert names == [f'permuter-{net.function()["id"]}']
     assert names[0] != 'permuter'
+
+
+@pytest.mark.parametrize('note_offline', [False, True])
+def test_room_search_publishes_one_result_note_not_lease_notes(monkeypatch, note_offline):
+    net = setup(monkeypatch)
+    calls = []
+    class Link:
+        def claim(self, agent, function, strategy):
+            return function
+        def call(self, route, agent, **kwargs):
+            calls.append((route, kwargs))
+            if route == '/collab/note' and note_offline:
+                raise NetworkError('host offline')
+    net.links = {'game': Link()}
+    monkeypatch.setattr(Permuter, '_score', lambda *args: 40)
+    deep_permuter.run(net, 'game', 'f', 1, 1, Log())
+    summaries = [d['text'] for route, d in calls if route == '/collab/note']
+    assert len(summaries) == 1
+    assert summaries[0].startswith('Deep permuter: score 40 → 40; 0 improvements; 1 candidates tested;')
+    assert 'elapsed' in summaries[0] and 'Variant limit reached' in summaries[0]
+    assert all(not d['notes'] for route, d in calls if route == '/collab/release')
