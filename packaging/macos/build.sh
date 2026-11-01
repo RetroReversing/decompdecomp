@@ -22,6 +22,8 @@ ditto "$(dirname "$(dirname "$PYTHON")")" "$CONTENTS/Runtime"
 "$CONTENTS/Runtime/bin/python3.12" -c 'import sys; assert sys.prefix.endswith("Runtime") and sys.prefix == sys.base_prefix'
 uv pip install --break-system-packages --python "$CONTENTS/Runtime/bin/python3.12" "$WORK"/wheel/*.whl >/dev/null
 
+"$CONTENTS/Runtime/bin/python3.12" "$ROOT/packaging/stamp_build.py" "$ROOT"
+
 cat > "$CONTENTS/MacOS/decompdecomp" <<'LAUNCH'
 #!/bin/sh
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -51,5 +53,11 @@ EOF
 # Test the path that Finder invokes before archiving. It must work after moving the app.
 "$CONTENTS/MacOS/decompdecomp" --help >/dev/null
 "$CONTENTS/Runtime/bin/python3.12" -c 'import Cocoa, WebKit, decompnet.app.server'
-ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT/decompdecomp_${VERSION}_macos_${ARCH}.zip"
-echo "Built $OUT/decompdecomp_${VERSION}_macos_${ARCH}.zip"
+# Keep the app for direct sharing. Archives remain available for release builds.
+rm -rf "$OUT/decompdecomp.app"
+ditto "$APP" "$OUT/decompdecomp.app"
+echo "Built $OUT/decompdecomp.app"
+if [ "${1:-}" != "--app-only" ]; then
+  ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT/decompdecomp_${VERSION}_macos_${ARCH}.zip"
+  echo "Built $OUT/decompdecomp_${VERSION}_macos_${ARCH}.zip"
+fi

@@ -33,7 +33,8 @@ from .support import Jobs, Settings, session_options
 
 def build(net: RomNetwork, home: Path, port: int, secret: str):
     mcp_url = f"http://127.0.0.1:{port}/mcp"
-    build_id = (updates.installed().get("commit") or "")[:12]  # a branch install: the commit it came from
+    from . import build_info
+    build_id = (build_info.commit() or updates.installed().get("commit") or "")[:12]  # a branch install: the commit it came from
     manager = agents.Manager(net, home, mcp_url)
     jobs = Jobs(home / "logs" / "decomp.log")
     from .deep_sweep import Sweeps

@@ -38,6 +38,14 @@ repair pipeline. A function match now carries a separate MIPS export-layout chec
 
 ## Automatic repairs before paid agents
 
+Local repairs now include same-type scalar-to-record forwarding, definition-scoped halfword
+lifetimes and definite-assignment zero placement. Structured back edges support nested switches
+and safe internal/outgoing gotos. Register-only near misses prioritize these candidates; the
+normal exact judge decides every match. Random search retains its starting C as an explicitly
+quality-unverified checkpoint, available through `get_function(section="quality")`, and rejects
+new compound-update chains that can change meaning. Imported best drafts that become exact are
+published under `src/` with their matched manifest before the save is acknowledged.
+
 The bounded repair pass also tries equal-type chained local assignments in either order, final void calls as explicit returns, and terminal scalar bounds checks as ordered early returns. Empty polling loops can use an explicit entry guard, including in combination with the final-call rewrite. Each candidate is compiled and judged normally.
 
 Candidate-quality reports are advisory: agents, autopilot and the deep permuter can keep working while a concern awaits review. Repair examples retains the warning and saved alternatives; exact matches still require the normal byte or objdiff judge.
@@ -108,6 +116,15 @@ In **Settings → Local source preparation → Try a source body and header dire
 separately and optionally enter a complete flag profile. A fresh byte/data judgment saves an exact
 source/header/profile bundle together; misses keep the working candidate. Prepared profile reviews
 can explicitly recheck old evidence against current inputs before applying anything.
+
+Source extraction preserves file-level `static` declarations as well as function-local storage.
+Source-lead notes flag a lost local static, extra compiled address-high loads around extern objects,
+and explicit narrow MIPS prototypes where the target passes adjacent word pairs. These are review
+leads, not automatic type or data-definition changes. Preserve authorized original initializers.
+
+Saved-draft compiler preflight now resumes each completed profile across later bounded passes,
+including after a stop. Improved source or changed judge inputs starts a fresh search. Exact results
+still pass the normal compiler-change gate; partial results never change settings automatically.
 
 ## Changing a ROM project's compiler
 
@@ -748,6 +765,15 @@ new candidates permanently.
 
 ### Permuter budgets
 
+Room members can run deep passes too. Each active function gets a host claim that
+is renewed during the search and released when the turn stops. ROM-room clients
+compile candidates locally and share improvements; exact matches must also pass
+the host's judge before they are accepted locally. For imported-project rooms,
+the host builds and judges each draft, so this does not offload compilation from
+the host. Compiler-setting changes remain on the host. A disconnected or refusing
+host stops the affected search; its claims can expire normally if release cannot
+reach it. No AI tokens are used by these searches.
+
 For a longer search of one function, open its drawer and expand **Deep permuter · this function**.
 Choose a time limit and maximum candidate compiles, then select **Run deep permuter**.
 The scorecard shows the freshly measured starting score and percentage, the current best, and how many
@@ -960,3 +986,42 @@ flags (including debug levels). No includes, inline assembly or attributes in su
 commands, files, automatic claims or room joins. Imported object projects need a separate adapter.
 Browser localhost permission/CORS failures should be resolved by pairing the exact displayed origin;
 there is no wildcard CORS enablement for existing private APIs.
+
+### Choose a fork for app updates
+
+In **Settings → About → Update from a GitHub fork**, enter the public GitHub
+repository URL and branch, then select **Save update source**. The app checks the
+source before saving it; invalid or unreachable forks leave the old source intact.
+Explicitly choosing `main` follows that branch's commits. Saving does not install
+code or restart the app. **Check now** reviews the available update; if automatic
+updates are enabled, future checks may install from the chosen fork automatically.
+Only select a fork you trust, since updating runs its code. Packaged editions keep
+their existing platform update restrictions. This changes the app's update source,
+not any imported game's repository.
+
+### Reuse verified C by function name
+
+Autopilot also tries meaningfully named, matched functions from compatible imported games,
+including ROM → repository, repository → ROM and repository → repository leads. This can reuse
+SDK C even when compiler differences prevent a byte fingerprint match. Run Autopilot with both
+projects imported; enabled cross-project cascades also try these leads after new matches.
+
+Names select hypotheses, never matches. Imported C brings a bounded local header closure through
+the destination's pinned preprocessor where supported; imported destinations keep their own build
+headers. One explicit numeric version boundary from the source may be tried alongside its defaults.
+Each candidate and a few deterministic repairs use the ordinary destination judge, with no AI calls.
+Unsuccessful trials are cached by their actual inputs, projects rotate fairly, and attributed results
+appear in the existing matches-from-other-games history. Better ROM drafts retain private declarations;
+only an exact destination verdict counts as a match. Assembly-only units and unsupported preprocessing
+or foreign helper/data definitions still need their existing setup/source-preparation adapters.
+
+### Export deep-permuter metrics
+
+In the deep-pass settings, expand **Rewrite performance** and select
+**Export metrics (CSV)**. The CSV contains one row per rewrite family across all
+search phases, in the table's selected sort order. It includes project slug, game
+platform, client platform, app version/build and UTC export time, plus totals,
+detailed measured outcomes and timing coverage. It contains no source code, ROM
+bytes or credentials. Missing older measurements are blank; `partial` timing must
+be compared using `measured_attempts` and measured gains, rather than all-time
+counts. Totals and newer outcome measurements overlap and must not be added.

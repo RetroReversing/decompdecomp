@@ -386,3 +386,33 @@ def test_combined_checkout_restores_verified_work_without_building(worked, tmp_p
     assert Path(config['progress_folder']) == checkout / 'progress'
     if public_import:
         assert config['repo_url'] == 'https://example.com/repo'
+
+
+@pytest.mark.parametrize('error,advice', [(PermissionError('denied'), 'write permission'),
+                                         (FileNotFoundError('gone'), 'disk is connected'),
+                                         (OSError(28, 'disk full'), 'Free disk space'),
+                                         (RuntimeError('invalid manifest'), 'complete traceback')])
+def test_autosave_errors_show_cause_folder_build_and_retry_other_projects(tmp_path, caplog, monkeypatch, error, advice):
+    from types import SimpleNamespace
+
+    clock = [100.0]
+    monkeypatch.setattr(saves.time, 'monotonic', lambda: clock[0])
+    rows = [{'slug': 'bad', 'root': str(tmp_path), 'config': '[]'},
+            {'slug': 'good', 'root': str(tmp_path), 'config': '{}'}]
+    calls = []
+    def sync(slug, **kwargs):
+        calls.append(slug)
+        if slug == 'bad':
+            raise error
+        return True
+    net = SimpleNamespace(store=SimpleNamespace(all=lambda *_: rows), progress=SimpleNamespace(sync=sync))
+    auto = saves.Autosave(net)
+    assert auto.run_once() == ['good']
+    assert advice in caplog.text and type(error).__name__ in caplog.text
+    assert str(tmp_path / 'progress') in caplog.text
+    assert 'RetroReversing fork' in caplog.text
+    auto.run_once()
+    assert calls == ['bad', 'good', 'good']
+    clock[0] += 31
+    auto.run_once()
+    assert calls.count('bad') == 2

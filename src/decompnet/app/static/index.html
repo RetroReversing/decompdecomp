@@ -414,19 +414,33 @@
         <p class="small muted">Give each function a longer turn through local repairs and random permutations. Completed passes are saved. After restarting the app, start the deep pass again to continue. Changed source, headers or compiler inputs make a function eligible again.</p>
         <div class="row"><label>Maximum minutes per function<input id="deepSweepMinutes" type="number" min="1" max="120" value="5"></label><label>Variants per function<input id="deepSweepVariants" type="number" min="1" max="1000000" value="10000"></label><label title="Functions searched at once. Empty: as many as this computer can spare. More threads finish sooner and leave the app slower to respond.">Threads<input id="deepSweepThreads" type="number" min="1" placeholder="auto"></label></div>
         <label class="check"><input id="deepSweepRepeat" type="checkbox"><span>Repeat previously completed passes</span></label>
-        <div class="row"><button id="deepSweepStart" type="button" class="primary">Deep permute untested functions</button><button id="deepSweepStop" type="button" class="ghost" hidden>Stop deep pass</button></div>
+        <div class="row"><button id="deepSweepStart" type="button" class="primary">Deep permute untested functions</button><button id="deepSweepStop" type="button" class="primary" hidden>Stop deep pass</button><button id="deepSweepReset" type="button" class="ghost small-btn">Reset metrics…</button></div>
         <p class="small muted">Each thread picks a different eligible function in random order. Turns start with half the time allowance and extend after improvements, up to your maximum. Repeated identical output can rotate sooner; rotated functions remain eligible next run. Busy functions and those without scored C wait for their agent or draft. Only the ordinary byte judge can save a match. A completed pass means its bounded turn finished, not that every possible rewrite was tried.</p>
         <div class="deep-sweep-counts" id="deepSweepCounts" aria-label="Deep pass progress">
+          <div><b id="deepSweepMatched">0</b><span>functions matched</span></div>
+          <div><b id="deepSweepImproved">0</b><span>functions improved</span></div>
+          <div><b id="deepSweepActive">0</b><span>working now</span></div>
           <div><b id="deepSweepDone">0</b><span>functions done</span></div>
           <div><b id="deepSweepLeft">0</b><span>functions left with scored C</span></div>
           <div><b id="deepSweepWaiting">0</b><span>waiting for scored C</span></div>
         </div>
         <progress class="deep-sweep-bar" id="deepSweepBar" max="1" value="0" aria-label="Deep pass functions completed"></progress>
         <p class="small" id="deepSweepStatus" role="status"></p>
-        <button id="deepSweepReset" type="button" class="ghost small-btn">Reset deep permuter metrics…</button>
         <div id="deepSweepRecipes"></div>
         <div id="deepSweepResults" aria-live="polite"></div>
-        <div id="deepSweepLog"></div>
+        <h3>Function activity <span class="muted small" id="deepActivityCount"></span></h3>
+        <div class="deep-activity-controls">
+          <label><input id="deepActivityOnlyActive" type="checkbox" checked> Active only</label>
+          <label>Sort by <select id="deepActivitySort">
+            <option value="function">Function</option>
+            <option value="improvements">Most improvements</option>
+            <option value="best_percent">Best match</option>
+            <option value="elapsed_seconds">Longest running</option>
+            <option value="tested">Most candidates tested</option>
+          </select></label>
+        </div>
+        <div id="deepActivity" class="deep-activity"></div>
+        <details><summary>Combined technical log</summary><div id="deepSweepLog"></div></details>
       </div>
     </details>
 
@@ -757,6 +771,8 @@
 <script src="/assets/js/repair-replay.js"></script>
 <script src="/assets/js/repair-feedback.js"></script>
 <script src="/assets/js/deep-progress.js"></script>
+<script src="/assets/js/deep-activity.js"></script>
+<script src="/assets/js/rewrite-performance.js"></script>
 <script src="/assets/js/function.js"></script>
 <script src="/assets/js/compiler-progress.js"></script>
 <script src="/assets/js/compiler-groups.js"></script>

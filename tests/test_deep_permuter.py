@@ -421,3 +421,56 @@ def test_source_recipe_lineage_and_old_diff_are_reset_when_a_profile_changes(mon
     assert search.local_repairs(AGENT,net.project_row('game'),net.function(),40,None)[0]==0
     repair_sequences.prepare(net)
     assert not net.store.one('SELECT 1 FROM repair_sequences')
+
+
+def test_room_claims_renew_release_and_host_rejection(monkeypatch):
+    import time
+    from types import SimpleNamespace
+
+    net = setup(monkeypatch)
+    calls = []
+    class Link:
+        def claim(self, agent, function, strategy):
+            calls.append(('claim', function))
+            return function
+        def call(self, route, agent, **kwargs):
+            calls.append((route, kwargs))
+        def attempt(self, agent, function, source):
+            return {'matched': False, 'score': 10}
+    monkeypatch.setattr(net, 'links', {'game': Link()})
+    search = deep_permuter.Search(net, 1, 10, Log(), net.function())
+    assert search._hold(AGENT, net.function())
+    link, agent, name, _ = search.room_holds[1]
+    search.room_holds[1] = (link, agent, name, time.monotonic()-31)
+    search.check()
+    assert len([c for c in calls if c[0] == 'claim']) == 2
+    search._accept_candidate(AGENT, net.project_row('game'), net.function(), 'draft', SimpleNamespace(bytes_match=False, score=20))
+    assert calls[-1][0] == '/collab/best'
+    with pytest.raises(NetworkError, match='host could not confirm'):
+        search._accept_candidate(AGENT, net.project_row('game'), net.function(), 'draft', SimpleNamespace(bytes_match=True))
+    search._let_go(AGENT, net.function())
+    assert calls[-1][0] == '/collab/release'
+    assert not net.store.one('SELECT 1 FROM claims')
+    assert search._hold(AGENT, net.function())
+    def offline(*args, **kwargs):
+        raise NetworkError('host offline')
+    monkeypatch.setattr(link, 'call', offline)
+    with pytest.raises(NetworkError, match='host offline'):
+        search._let_go(AGENT, net.function())
+    assert not net.store.one('SELECT 1 FROM claims')
+
+
+def test_imported_room_search_uses_host_build_and_syncs_improvements(monkeypatch):
+    net = setup(monkeypatch, imported=True)
+    calls = []
+    class Link:
+        def attempt(self, agent, name, source):
+            calls.append(('judge', name, source))
+            return {'score': 20, 'matched': False}
+        def sync(self):
+            calls.append(('sync',))
+    monkeypatch.setattr(net, 'links', {'game': Link()})
+    search = deep_permuter.Search(net, 1, 10, Log(), net.function())
+    assert search._score_work(AGENT, net.project_row('game'), net.function(), 'draft', 40, 'fork') == 20
+    assert calls == [('judge', 'f', 'draft'), ('sync',)]
+    assert search._compiler_preflight(net.project_row('game'), net.function(), None, None) == {'tested': 0}

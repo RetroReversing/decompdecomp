@@ -1563,3 +1563,18 @@ def test_manual_mcp_connections_require_window_and_write_header(app, tmp_path):
     assert connection['token'] not in json.dumps(snapshot)
     assert client.post(endpoint, json={'action': 'revoke', 'id': connection['id']}, headers=headers).status_code == 200
     assert all(c['id'] != connection['id'] for c in client.get(endpoint).json()['connections'])
+
+
+def test_update_source_selection_is_guarded_and_does_not_install(app, monkeypatch):
+    from decompnet.app import updates
+    client, *_ = app
+    requests = []
+    monkeypatch.setattr(updates, 'configure_source', lambda repo, branch: requests.append((repo, branch)) or
+                        {'repo': 'another/fork', 'branch': branch, 'channel': 'branch'})
+    monkeypatch.setattr(updates.Updater, 'apply', lambda *args: pytest.fail('Saving a source must not install'))
+    data = {'action': 'source', 'repo': 'https://github.com/another/fork', 'branch': 'main'}
+    assert client.post('/api/update', json=data).status_code == 403
+    response = client.post('/api/update', json=data, headers={'X-Decomp': '1'})
+    assert response.status_code == 200
+    assert response.json()['current']['repo'] == 'another/fork'
+    assert requests == [(data['repo'], 'main')]

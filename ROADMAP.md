@@ -1,5 +1,10 @@
 # Roadmap
 
+Implemented: original object storage preservation, advisory local-static scope and extern-load
+diagnostics, narrow-prototype/paired-word MIPS call evidence, and resumable per-profile saved-draft
+preflight. The prototype reader is MIPS-only; equivalent evidence for other architectures is planned.
+Imported projects retain their own build/profile workflow.
+
 Implemented: bounded same-project verified-neighbour context hypotheses, direct separate body/header
 checks, and explicit fresh rechecks of saved exact profile bundles for ROM projects. Imported-project
 context reuse/pair submission needs an adapter for its own build headers; planned. MIPS internal
@@ -1321,6 +1326,20 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   project-specific tool descriptions/schemas. Manual clients can create copyable,
   persistent project-scoped credentials and revoke them without exposing the GUI
   secret or saving plaintext bearer tokens. External sessions remain client-managed.
+
+### Structured lifetime repair and durable match promotion
+
+- Done: shared bounded repairs forward a scalar through an existing same-type record field,
+  separate one explicitly narrowed definition from later full-width uses, and sink a zero into
+  the non-assigning arm of a simple branch. ROM and imported-project C repair pipelines share
+  these candidates; unsupported/ambiguous syntax is skipped. Register-only diffs prioritize them.
+- Done: conditional back-edge recovery handles nested switches and internal/outgoing gotos,
+  refusing external entries and changed break/continue targets. Every candidate uses the usual judge.
+- Done: random search retains quality-unverified starting checkpoints in explicit quality evidence
+  and filters newly introduced nested compound-update chains. This is not an equivalence checker.
+- Done: ROM progress import publishes a newly matched best draft's source and manifest together
+  before acknowledging dirty writes; concurrent editor contributions retain precedence. Imported
+  repository projects already edit their source tree directly and do not use this ROM save format.
 - Done: public imports recognise portable progress bundled with standalone builds.
   ROM selection restores and reverifies saved work through the existing save
   pipeline, preserving the checkout and following the restored project identity.
@@ -1330,3 +1349,56 @@ Local browser workers can explicitly pair for manual KMC ROM tasks and host-reju
 The bridge is origin/project scoped with expiring capabilities, one-use tasks and transaction-time stale/revoked
 checks. Imported object projects, automatic room claims, richer source preprocessing and non-KMC compilers
 remain planned: the initial browser toolchain has no matching build-context adapter for them.
+
+- Done: concurrent deep passes publish function-attributed activity snapshots with
+  bounded recent output and eight recent completions. Settings shows stable,
+  clickable function cards with phase, rewrite family, match changes, trial budgets
+  and improvements; combined diagnostics remain available in a collapsible log.
+- Done: room members can run function-level and project-wide deep passes, taking
+  and renewing host claims with separate identities for concurrent functions.
+  ROM candidates compile locally; improvements use the existing room protocol and
+  exact matches require host confirmation before local acceptance. Imported-room
+  candidates use the host's build/judge. Compiler-profile changes remain host-owned.
+
+- Done: RetroReversing fork builds show version and source commit in the sidebar,
+  settings, bug-report text and startup logs. macOS/Linux/Windows packages embed
+  their source identity and reject packaging uncommitted tracked changes.
+- Done: autosave diagnostics put the actual exception, progress path, repair advice
+  and fork build on the first log line, retaining the full traceback. Failed
+  projects back off for 30 seconds while other projects continue synchronizing.
+- Done: Settings accepts a GitHub fork URL and branch as the update source,
+  validates it before saving, and displays the selected repository. Explicit main
+  follows commits; existing release installs retain their previous behavior.
+  Saving changes no code and does not restart; updates retain normal review and
+  package/platform restrictions. Invalid sources leave the working source intact.
+- Done: deep-pass summary includes matched, improved and active function counts;
+  start/stop share one visible action with reset beside it. Improvement columns
+  sort numerically or by name, retain order during refreshes, and show adjacent
+  before/after scores plus score reduction. Local macOS builds can deliver a
+  verified .app directly with --app-only instead of making an archive.
+
+- Done: deep-pass sortable headings use the neutral Functions-table typography
+  and ascending/descending arrows, with the active column highlighted in ink.
+- Done: one sortable Rewrite performance table replaces duplicate rewrite and
+  outcome summaries. Per-family details retain diagnostic counts; older missing
+  timing/outcome data stays unavailable, and partial timing is labelled. CSV export
+  includes every family in the selected order, detailed measured outcomes, timing
+  coverage, and project/platform/version/build metadata without source or ROM data.
+
+- Done: deep-pass activity cards default to active only, retain expandable output when sorted, and show measured elapsed duration for active and completed functions.
+
+### Same-name verified source reuse
+
+- Done: a shared bounded Autopilot/cascade phase tries meaningful same-name matched C across
+  compatible ROM and imported projects before broader similarity search. Names are discovery hints,
+  not identity/ABI or match proofs. Generated address names are excluded; targets and donor projects rotate.
+- Done: imported donors use read-only, checkout-bounded includes and literal build hints. Missing
+  conditional headers become preprocessor errors rather than guessed declarations. Supported pinned
+  destination compilers produce a compact declaration closure and can try one source-declared numeric
+  version boundary coherently across headers/body. No make/configure or model calls are introduced.
+- Done: candidate/context/profile/target/linker/build inputs scope cached trials. ROM header promotion
+  does not repeat an unchanged self-contained donor trial; imported destinations retain their native
+  headers and normal objdiff build. Only the normal exact verdict creates a match.
+- Planned: preprocessing adapters for drivers without a supported `-c` → `-E` mode, automatically
+  supplying foreign static helpers/initialized data, and preparing assembly-only imported units from
+  name-only leads. Those cases remain visible skips or need explicit existing source-preparation setup.

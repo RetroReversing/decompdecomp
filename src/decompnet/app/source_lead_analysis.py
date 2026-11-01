@@ -17,9 +17,9 @@ def destination(net, proj, fn):
     if getattr(net,'fork_slug',lambda slug:None)(proj['slug']):
         from ..candidate_scope import key
         return key(net,proj,fn)
-    context=net._context(proj['id'],fn['unit'])
+    context=net._context(proj['id'],fn['unit']) or {'header':''}
     symbols=[tuple(r) for r in net.store.all('SELECT name,address,size,kind FROM symbols WHERE project_id=? ORDER BY name',proj['id'])]
-    return hashlib.sha256(repr((compiler_for(cfg,fn['vram']),cfg.get('gp'),proj['arch'],
+    return hashlib.sha256(repr((compiler_for(cfg,fn['vram']) if cfg.get('compiler') else {},cfg.get('gp'),proj['arch'],
                                fn['target'],fn['relocs'],fn['size'],fn['vram'],context['header'],symbols,build_state(proj))).encode()).hexdigest()
 
 
@@ -94,6 +94,11 @@ def record(net, proj, fn, source, header, score, rows, lead=None, elapsed_ms=0, 
     comparison=compare(rows,proj['arch'],source,fn['name'])
     from .source_next_steps import recommendations
     comparison['next_steps']=recommendations(source,dict(fn).get('best_source') or '',comparison)
+    from .source_storage import object_hints, scope_hints
+    comparison['next_steps']+=scope_hints(dict(fn).get('best_source') or '',source,header,fn['name'])+object_hints(rows,header)
+    if proj['arch']=='mips':
+        from .source_storage import wide_argument_hints
+        comparison['next_steps']+=wide_argument_hints(fn['asm'] or '',header)
     if proj['arch']=='mips':
         from ..arch.mips_runtime import incoming_arguments
         comparison['entry']=incoming_arguments(fn['asm'] or '')

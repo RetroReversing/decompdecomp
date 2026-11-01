@@ -1157,7 +1157,7 @@ details.more[open] > summary::before { content: "− "; }
   .deep-scores dd { font-size: 22px; }
 }
 
-.deep-sweep-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin-top: 16px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.deep-sweep-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px; margin-top: 16px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
 .deep-sweep-counts div { padding: 12px 14px; background: var(--panel); display: grid; gap: 4px; }
 .deep-sweep-counts b { font-size: 22px; line-height: 1.1; }
 .deep-sweep-counts span { color: var(--muted); font-size: 12px; }
@@ -1296,3 +1296,27 @@ details.more[open] > summary::before { content: "− "; }
 .manual-mcp .cmd code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .manual-mcp details { border-top: 1px solid var(--line-soft); padding-top: 12px; }
 .manual-mcp .mcp-tool, .mcp-connection { padding: 12px 0; }
+
+.deep-activity { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; margin:16px 0; }
+.deep-worker { border:1px solid var(--line); border-radius:var(--r); padding:14px; min-width:0; }
+.deep-worker[data-active="true"] { border-top:3px solid var(--hl); }
+.deep-worker header { display:flex; justify-content:space-between; gap:10px; }
+.deep-worker header span { font-size:12px; color:var(--muted); }
+.deep-worker p { margin:10px 0; overflow-wrap:anywhere; }
+.deep-worker progress { width:100%; margin-top:10px; accent-color:var(--match); }
+.deep-worker .joblog { max-height:180px; overflow:auto; white-space:pre-wrap; }
+.deep-worker-metrics { font-size:13px; font-weight:600; }
+
+.deep-worker [data-latest] { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+
+#navVersion { min-width:0; overflow-wrap:anywhere; line-height:1.5; }
+
+/* Sortable headings use the Functions table typography, rather than link colours. */
+.table-sort { background:none; border:0; padding:0; text-align:left; cursor:pointer; white-space:nowrap;
+  font:500 11px/1 var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.table-sort:hover, .table-sort:focus-visible,
+th[aria-sort="ascending"] .table-sort, th[aria-sort="descending"] .table-sort { color:var(--ink); }
+
+.deep-activity-controls { display:flex; flex-wrap:wrap; align-items:center; gap:20px; margin:12px 0; }
+.deep-activity-controls label { display:flex; align-items:center; gap:8px; }
+.deep-worker[hidden] { display:none; }

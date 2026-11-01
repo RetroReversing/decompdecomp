@@ -2,7 +2,7 @@
 const fs = require("fs"), vm = require("vm"), assert = require("assert");
 const elements = new Map(), buttons = [], opened = [];
 const get = id => {
-  if (!elements.has(id)) elements.set(id, {innerHTML:"", querySelectorAll(selector) {
+  if (!elements.has(id)) elements.set(id, {dataset:{}, innerHTML:"", querySelector:()=>null, querySelectorAll(selector) {
     if (selector === "[data-deep-win]" && this.innerHTML.includes("data-deep-win")) {
       const button = {dataset:{deepWin:"0"}}; buttons.push(button); return [button];
     }
@@ -15,6 +15,7 @@ const ctx = {$:get, esc:String, openFn:name=>opened.push(name), S:{slug:"game"},
   confirm:()=>confirmed, beginWork:()=>()=>finished++, showJobError:()=>{},
   api:async (url,options)=>{posts.push([url,options.body]);return {};}};
 vm.createContext(ctx);
+vm.runInContext(fs.readFileSync("src/decompnet/app/static/js/rewrite-performance.js","utf8"),ctx);
 const source=fs.readFileSync("src/decompnet/app/static/js/steering.js","utf8");
 vm.runInContext(source.slice(source.indexOf("function renderDeepSweepResults"),source.indexOf("async function renderDeepSweep()")),ctx);
 vm.runInContext(source.slice(source.indexOf('$("deepSweepReset").onclick')),ctx);

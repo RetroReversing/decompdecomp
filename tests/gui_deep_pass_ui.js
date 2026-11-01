@@ -3,12 +3,12 @@ const fs = require("fs"), vm = require("vm"), assert = require("assert");
 const elements = new Map();
 function element(id) {
   if (!elements.has(id)) {
-    let html = "", tables = [];
+    let html = "", tables = [], sorts = [];
     elements.set(id, {dataset:{}, textContent:"", value:0, hidden:false, disabled:false,
       get innerHTML() { return html; }, set innerHTML(value) {
-        html = value; tables = Array.from(value.matchAll(/class="compiler-table"/g), () => ({scrollTop:0, scrollLeft:0}));
+        html = value; sorts = Array.from(value.matchAll(/data-deep-sort="([^"]+)"/g), m => ({dataset:{deepSort:m[1]}})); tables = Array.from(value.matchAll(/class="compiler-table"/g), () => ({scrollTop:0, scrollLeft:0}));
       },
-      querySelectorAll(selector) { return selector === ".compiler-table" ? tables : []; },
+      querySelector:()=>null, querySelectorAll(selector) { return selector === ".compiler-table" ? tables : selector === "[data-deep-sort]" ? sorts : []; },
       replaceChildren() { this.innerHTML = ""; this.textContent = ""; },
       append() {},
     });
@@ -16,7 +16,7 @@ function element(id) {
   return elements.get(id);
 }
 let follower, finished = 0;
-const ctx = {$:element, S:{slug:"game-a"}, esc:String, openFn(){},
+const ctx = {renderDeepActivity:()=>{}, $:element, S:{slug:"game-a"}, esc:String, openFn(){},
   document:{createElement:()=>({})},
   beginWork:()=>()=>finished++, showJobError:()=>{},
   followJob:(job, log, callback, active)=>new Promise(resolve=>{follower={job,callback,active,resolve};}),
@@ -24,17 +24,40 @@ const ctx = {$:element, S:{slug:"game-a"}, esc:String, openFn(){},
     errors:0,completed:0,improvements:[{function:"one",starting_score:10,starting_percent_text:"90%",new_score:5,new_percent_text:"95%"}]}),
 };
 vm.createContext(ctx);
+vm.runInContext(fs.readFileSync("src/decompnet/app/static/js/rewrite-performance.js","utf8"),ctx);
 const source = fs.readFileSync("src/decompnet/app/static/js/steering.js", "utf8");
 vm.runInContext(source.slice(source.indexOf("let deepSweepFollowing"), source.indexOf('$("deepSweepStart").onclick')), ctx);
 (async()=>{
   await ctx.renderDeepSweep();
   assert.equal(element("deepSweepStop").hidden, false);
+  assert.equal(element("deepSweepStart").hidden, true);
   const oldFollower=follower;
   const table=element("deepSweepResults").querySelectorAll(".compiler-table")[0];
   table.scrollTop=177; table.scrollLeft=23;
   ctx.renderDeepSweepResults({improvements:[{function:"one",starting_score:10,starting_percent_text:"90%",new_score:5,new_percent_text:"95%"}]});
   const rebuilt=element("deepSweepResults").querySelectorAll(".compiler-table")[0];
   assert.equal(rebuilt.scrollTop,177); assert.equal(rebuilt.scrollLeft,23);
+  const status={improved:3,improvements:[
+    {function:"a",starting_score:10,new_score:0,starting_percent_text:"90%",new_percent_text:"100%"},
+    {function:"b",starting_score:100,new_score:50,starting_percent_text:"40%",new_percent_text:"70%"},
+    {function:"c",starting_score:20,new_score:15,starting_percent_text:"80%",new_percent_text:"85%"}]};
+  ctx.renderDeepSweepResults(status);
+  assert.equal(element("deepSweepMatched").textContent,"1");
+  assert.equal(element("deepSweepImproved").textContent,"3");
+  const order=()=>Array.from(element("deepSweepResults").innerHTML.matchAll(/data-deep-result="\d+">([^<]+)/g),m=>m[1]);
+  assert.deepEqual(order(),["b","a","c"]);
+  const sort=key=>element("deepSweepResults").querySelectorAll("[data-deep-sort]").find(b=>b.dataset.deepSort===key).onclick();
+  sort("new_score"); assert.deepEqual(order(),["b","c","a"]);
+  sort("new_score"); assert.deepEqual(order(),["a","c","b"]);
+  ctx.renderDeepSweepResults(status); assert.deepEqual(order(),["a","c","b"]);
+  sort("function"); assert.deepEqual(order(),["a","b","c"]);
+  assert.match(element("deepSweepResults").innerHTML,/Score difference/);
+  assert.match(element("deepSweepResults").innerHTML,/class="table-sort"/);
+  assert.doesNotMatch(element("deepSweepResults").innerHTML,/class="link-btn"[^>]*data-deep-sort/);
+  assert.ok(element("deepSweepResults").innerHTML.indexOf("Starting score") < element("deepSweepResults").innerHTML.indexOf("New score"));
+  oldFollower.callback([], {progress:{workers:[{},{}],functions_tested:156,matches:0}});
+  assert.equal(element("deepSweepActive").textContent,"2");
+  assert.doesNotMatch(element("deepSweepStatus").textContent,/functions active|functions tested/);
   ctx.S.slug="game-b";
   const pending=ctx.renderDeepSweep();
   assert.equal(element("deepSweepStop").hidden,true);
@@ -42,6 +65,7 @@ vm.runInContext(source.slice(source.indexOf("let deepSweepFollowing"), source.in
   assert.equal(finished,1);
   await pending;
   assert.equal(element("deepSweepStart").disabled,false);
+  assert.equal(element("deepSweepStart").hidden,false);
   assert.equal(element("deepSweepStop").hidden,true);
   oldFollower.callback([], {progress:{function:"wrong-game"}});
   assert.doesNotMatch(element("deepSweepStatus").textContent,/wrong-game/);

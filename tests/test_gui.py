@@ -355,12 +355,13 @@ def test_deep_trial_outcomes_and_followup_summary_are_visible():
     source = (Path(__file__).parents[1] / 'src/decompnet/app/static/js/steering.js').read_text()
     function = source[source.index('function renderDeepSweepResults('):source.index('async function renderDeepSweep(')]
     script = """const assert=require('node:assert/strict');
-const boxes={}; function $(id) { return boxes[id] ||= {innerHTML:'',querySelectorAll:()=>[]}; }
+const S={slug:'game'}, boxes={}; function $(id) { return boxes[id] ||= {dataset:{},innerHTML:'',querySelector:()=>null,querySelectorAll:()=>[]}; }
 function esc(x){return String(x)}; function openFn(){};
-""" + function + """
+""" + (Path(__file__).parents[1] / "src/decompnet/app/static/js/rewrite-performance.js").read_text() + function + """
 renderDeepSweepResults({measurements:[{family:'typed_temporary',phase:'local repairs after random improvement',attempted:5,compile_failed:1,unscored:1,unchanged:1,worse:0,improved:2,matched:1,elapsed_ms:1500,score_gain:40}]});
 assert.match(boxes.deepSweepRecipes.innerHTML,/typed temporary/);
-assert.match(boxes.deepSweepRecipes.innerHTML,/5 attempted, 2 improved, 1 matched, 40 score reduction; 1.5s/);
+assert.match(boxes.deepSweepRecipes.innerHTML,/Rewrite performance/);
+assert.match(boxes.deepSweepRecipes.innerHTML,/1.5s/);
 """
     subprocess.run([NODE, '-e', script], check=True, capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
 
@@ -410,3 +411,36 @@ def test_manual_mcp_setup_shows_server_tools_and_copyable_configuration():
         pytest.skip('needs node')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_manual_mcp.js'))], check=True,
                    capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_parallel_deep_activity_keeps_cards_logs_and_expansion_scoped():
+    if NODE is None:
+        pytest.skip('needs node')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_deep_activity.js'))], check=True,
+                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_fork_update_source_ui_saves_validated_source_and_handles_errors():
+    if NODE is None:
+        pytest.skip('needs node')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_update_source.js'))], check=True,
+                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_rewrite_metrics_merge_sort_and_csv_round_trip():
+    import csv
+    import io
+
+    if NODE is None:
+        pytest.skip('needs node')
+    result = subprocess.run([NODE, str(Path(__file__).with_name('gui_rewrite_performance.js'))], check=True,
+                            capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+    rows = list(csv.DictReader(io.StringIO(result.stdout)))
+    assert len(rows) == 2
+    assert rows[0]['family'] == 'comma,"quote"\nnext'
+    assert rows[0]['elapsed_ms'] == '' and rows[0]['compile_failed'] == ''
+    assert rows[0]['tested'] == '100'
+    assert rows[1]['family'] == "'=SUM(A1)"
+    assert rows[1]['timing_coverage'] == 'partial'
+    assert rows[1]['mean_ms'] == '125'
+    assert rows[1]['project'] == 'example' and rows[1]['build'] == 'abc123'

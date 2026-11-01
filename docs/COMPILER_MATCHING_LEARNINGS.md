@@ -1041,6 +1041,42 @@ preprocessor patterns must use horizontal whitespace, not `\s*` that can rescan 
 lines. Padded-source regressions retain original source layout. Preparation now explains when its
 round ends before compilation rather than silently reporting zero attempts.
 
+### Structured loops and existing record fields under KMC GCC 2.7.2
+
+A 773-instruction N64 function matched with `gcc-2.7.2-kmc` and
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. Compiler settings stayed fixed. A private,
+fixed-context replay measured two independently generated changes:
+
+- Recovering a single-entry conditional back edge as `do/while`, while retaining
+  nested switch exits and existing outgoing gotos, improved score **5950 → 4770**.
+  Later manual work could remove explicit caller-save scaffolding after structured
+  loop recovery; that combined observation is not a separate automated ablation.
+- Computing a signed word directly into an existing same-type record member, removing
+  its later scalar-to-member copy and forwarding the member into subsequent arithmetic,
+  recovered the final **15 → 0**, with an ordinary linked exact verdict. Of two generated
+  member-forwarding candidates, the other stayed at 15. No record or padding was invented.
+
+Earlier experiments with declaration order, `register` and caller-save switches were
+mostly neutral; different compiler/CPU options did not recover the match. Source shape
+and liveness deserve targeted trials before broad flag searches for register-only misses.
+
+New bounded hypotheses also split one explicitly narrowed definition from a later wide
+index lifetime, and sink a zero initialization into the other arm of a definitely assigning
+branch. These have synthetic execution and rejection controls; no new game match is
+claimed for them. Width changes exclude unsigned-word arithmetic, `sizeof`, escaped locals,
+updates and ambiguous control boundaries. Loop recovery rejects external entries and breaks
+or continues whose target would change. All proposals use the normal judge.
+
+Random rewrites can reduce score while changing meaning: nesting formerly independent
+compound updates changes the values added by outer assignments. Newly introduced multi-update
+expressions are filtered, and pre-random-search checkpoints remain separately available in
+candidate-quality evidence. They are explicitly quality-unverified; neither this filter nor
+similarity proves C equivalence. Exact match acceptance is unchanged.
+
+A save audit also found that an imported best draft could become matched after the initial
+publish while its file remained under `best/`. Promotion now publishes `src/` and its manifest
+before acknowledging dirty writes, checks for concurrent edits, and retains an edited
+counterpart for the next import. Save/no-op/restart and concurrent-edit regressions cover this.
 
 ### Reuse verified context without merging compilation units blindly
 
@@ -1059,3 +1095,71 @@ Source/header concatenation also inflated scratch padding. A direct local body/h
 form preserve their separation and source layout. Historical exact source/header/profile bundles can be
 explicitly recompiled against fresh inputs and published atomically only after current byte/data checks.
 Synthetic tests cover these paths separately from the manual game results.
+
+### Storage scope, object definitions and resumable profile checks
+
+A source-assisted live MIPS batch recovered a local cache function at IDO 5.3 `-O3`
+with `-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul` only after retaining
+function-local static declarations. Moving the objects to extern/global context changed
+address loads and register reuse. A scheduler entry at `-O2` needed an original wide
+buffer-size argument and original timing-object definitions rather than extern-only substitutes.
+These are manual byte-verified observations from the preceding batch, not new automated matches.
+
+Extraction now retains file-level `static`; advisory comparisons call out lost local statics,
+extra address-high loads for declared externs and adjacent target word loads against explicitly
+narrow MIPS prototypes. None moves storage, synthesizes initializers or infers an ABI automatically.
+Synthetic controls cover preserved storage, narrow/wide declarations, overwritten and nonadjacent loads.
+
+Saved-draft flag preflight used to cache the first bounded subset as a complete search.
+It now caches each completed profile under the full judge-input scope and resumes unvisited
+choices on later passes. A controlled fake-judge regression reaches a later `-O3` exact result
+with one new probe per round, retains completed work after interruption and resets on source change.
+This test demonstrates search coverage, not an additional game match. Exact revalidation and
+compiler-setting approval gates remain unchanged.
+
+A subsequent ten-candidate source-assisted live-API batch passed ten byte judgments
+(4,424 function bytes): eight at IDO 5.3 `-O3` and the scheduler/model selector at `-O2`, with
+`-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul`. The batch is manual evidence;
+none of these matches is attributed to the new diagnostics automatically fixing code.
+
+- Two animation readers required the original indexed-block **macro**, forwarding both
+  the set and its data pointer before the index. Declaring that API as a two-argument
+  function gave incorrect call registers. Original aggregate returns and frame records
+  then matched at `-O3`.
+- A static-instance initializer needed the original short-float conversion helper and
+  the matrix conversion macro's address-of operation, not an invented scalar conversion.
+- A particle-system initializer's static-helper version remained at score 860. Explicitly
+  expanding the original four initialization statements in its loop reached zero at
+  `-O3`; instruction order differed around unrolled-loop stores. This is a tested source
+  hypothesis, not a claim that macros always reproduce same-unit inlining.
+- A static renderer reached score 660 with byte-array application access. A typed view
+  of the same original object, retaining its large field offsets, plus original display-list
+  expression order reached zero. IDO had otherwise folded the address into a different
+  base symbol. Large object identity can matter even when addresses are arithmetically equal.
+- One model-selection switch needed an extra independent return-zero arm confirmed by
+  the retail jump table. Archived source was not the final authority for the retail cases.
+- Parenthesized `case (...)` labels exposed a source-import bug: a keyword was treated as
+  a private helper name. The importer now excludes `case`, with a regression test. The
+  installed app was not restarted; a local macro workaround kept the live trial moving.
+
+### Named SDK source can be useful without a matching machine fingerprint
+
+A private N64 replay used `guS2DInitBg` reported matched in an imported repository as a same-name
+source lead for a ROM project. Under the destination's unchanged KMC GCC 2.7.2 profile
+(`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`), the automatic pass improved score **2545 → 1160**.
+It remains non-matching. Fourteen destination trials and two preprocessing probes were used;
+the bounded local repairs did not improve the best donor version further. This is measured
+partial progress, not an additional exact match or a claim that names prove SDK identity.
+
+The donor default branch scored 2245. A source-declared `BUILD_VERSION >= VERSION_J` boundary,
+with `VERSION_J` explicitly defined as 7 by the donor headers, scored 1160. Its override is
+supplied before both headers and body; mixed header/body revision guesses are not intended.
+The destination preprocessor resolves compiler conditionals and macros. Its required declaration
+closure is about 1 KB rather than retaining the roughly 1.3 MB expanded include tree.
+
+Source/default-width, layout and version evidence can therefore bootstrap a better candidate
+before token-consuming work even across project modes. Destination compiler settings stay fixed;
+unknown globals/helper definitions and unsupported preprocessing remain explicit limitations.
+A repeated unchanged pass used zero additional preprocessing or destination compiles after
+input-scoped caching. Synthetic tests cover donor modes, failed-trial renewal, cancellation,
+claims, donor rotation, include bounds and exact destination acceptance separately from this replay.

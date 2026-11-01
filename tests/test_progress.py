@@ -1065,3 +1065,42 @@ def test_pause_keeps_ui_snapshot_readable_and_gates_mutations(project):
     net.progress.resume('game')
     assert not net.progress.status('game')
     net.progress.sync('game', force=True)
+
+
+def test_imported_best_promotes_source_and_manifest_together(project):
+    net, folder, judged = project
+    (folder/'best').mkdir()
+    (folder/'best/f.c').write_text('good new draft')
+    assert net.progress.sync('game',force=True)
+    assert net._function('f','game')['status']=='matched'
+    assert (folder/'src/f.c').read_text()=='good new draft\n'
+    assert not (folder/'best/f.c').exists()
+    data=json.loads((folder/saves.MANIFEST).read_text())
+    assert 'matched_by' in data['functions']['f']
+    assert net.progress.results['game']['matched']==1
+    assert net.progress.results['game']['best']==0
+    # A no-op save and a fresh Progress instance must not reopen or lose the match.
+    net.progress.sync('game',force=True)
+    net.progress=Progress(net)
+    net.progress.sync('game',force=True)
+    assert net._function('f','game')['matched_source']=='good new draft'
+    assert (folder/'src/f.c').read_text()=='good new draft\n'
+
+
+def test_post_judge_promotion_does_not_overwrite_concurrent_editor(project,monkeypatch):
+    net,folder,_=project
+    (folder/'best').mkdir()
+    best=folder/'best/f.c'
+    best.write_text('good new draft')
+    publish=saves._publish
+    def racing(folder,files,*args,**kwargs):
+        if 'src/f.c' in files and kwargs.get('expected',{}).get('best/f.c')=='good new draft':
+            best.write_text('new editor contribution')
+        return publish(folder,files,*args,**kwargs)
+    monkeypatch.setattr(saves,'_publish',racing)
+    net.progress.sync('game',force=True)
+    assert best.read_text()=='new editor contribution'
+    assert not (folder/'src/f.c').exists()
+    monkeypatch.setattr(saves,'_publish',publish)
+    net.progress.sync('game',force=True)
+    assert net._function('f','game')['best_source']=='new editor contribution'

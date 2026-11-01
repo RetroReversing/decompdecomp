@@ -430,10 +430,12 @@ class Permuter:
         st.add(tried=1)
         st.holding(fn["name"], True)
         fork = self.net.fork_slug(proj["slug"])
+        from . import random_safety
         rng = random.Random(f"{fn['id']}-{fn['permuted']}")
         gen = None
         header = ''
         try:
+            random_safety.checkpoint(self.net,fn)
             if available():
                 # (as m2c reads it: what's only for C++ made pycparser refuse GTA San Andreas's whole header)
                 header = seeds.c_only(self.net.forks.permuter_header(fork, fn["name"]) if fork else
@@ -520,6 +522,8 @@ class Permuter:
                 for cand in batch:
                     if cand is None or time.monotonic() >= deadline or st.stop.is_set():
                         break
+                    if random_safety.unsafe_update(fn['best_source'], cand):
+                        continue  # do not promote a newly nested compound-update chain
                     lineage = getattr(cand, 'lineage', None)
                     cand = m2cfix.static_helpers(cand)  # (a global helper would not link: m2cfix.py)
                     st.add(variants=1)
@@ -667,6 +671,9 @@ class Permuter:
             from .experiment_evidence import measured
             return measured(self, agent, proj, fn, source, best, fork)
 
+    def _accept_candidate(self, agent, proj, fn, source, diff):
+        """A deep room search shares/validates a winning candidate before local acceptance."""
+
     def _score_work(self, agent, proj, fn, source: str, best: int, fork: str | None) -> int | None:
         self._trial_outcome = 'unscored'
         if fork:
@@ -698,5 +705,6 @@ class Permuter:
             self.net._agent_outcomes = {}
         self.net._agent_outcomes[agent.id, fn['id']] = {'source': source, 'score': d.score, 'rows': d.rows}
         if d.score < best or (d.bytes_match and fn['status'] != 'matched'):
+            self._accept_candidate(agent, proj, fn, source, d)
             self.net._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match, via="permuter", effective_settings=getattr(result,"effective_settings",None))
         return 0 if d.bytes_match else max(1, d.score)
