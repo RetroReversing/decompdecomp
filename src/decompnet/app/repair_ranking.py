@@ -6,8 +6,11 @@ def order(families, rows):
     rows = normalized(rows)
     focus = classify(rows)
     markers = {row[0] for row in rows if row[0] != ' '}
+    from .matching_investigations import paired_loads
     from .normalization_repairs import frame_gap
-    if markers and markers <= {'s'}:
+    if paired_loads(rows):
+        preferred = ('paired_load_order','scalar_schedule_order','local_declaration_order','small_helper_expansion','combined_scheduling')
+    elif markers and markers <= {'s'}:
         preferred = ('modular_guard_width', 'local_width', 'spill_normalization', 'unused_scalar_local',
                      'local_storage', 'parameter_storage', 'local_declaration_order', 'stack_padding')
     elif frame_gap(rows):
