@@ -1430,3 +1430,4 @@ remain planned: the initial browser toolchain has no matching build-context adap
   compilers before enabling these compiler-facing source families there. Diagnostics
   and frontier retention already apply across processors; the MIPS replay is not a
   claim of matching gains on other architectures.
+- Done: agent cards show one reported-usage line (unknown usage is not zero), one agent-scoped compile total, current function match/instruction metadata, and a clickable distinct-functions-worked-on total that respects metric resets.

@@ -316,12 +316,12 @@ class GuiMixin:
         pid = self._project(slug)["id"]
         now = time.time()
         rows = self.store.all(
-            "SELECT a.name AS agent, COUNT(t.id) AS compiles, MAX(t.created_at) AS last FROM attempts t "
+            "SELECT a.name AS agent, COUNT(t.id) AS compiles, COUNT(DISTINCT t.function_id) AS worked, MAX(t.created_at) AS last FROM attempts t "
             "JOIN functions f ON f.id=t.function_id JOIN agents a ON a.id=t.agent_id WHERE f.project_id=? GROUP BY a.id", pid)
         matched = {r["agent"]: r["n"] for r in self.store.all(
             "SELECT a.name AS agent, COUNT(*) AS n FROM functions f JOIN agents a ON a.id=f.matched_agent_id "
             "WHERE f.project_id=? AND f.status='matched' GROUP BY a.id", pid)}
-        board = [{"agent": r["agent"], "compiles": r["compiles"], "matched": matched.pop(r["agent"], 0), "last": r["last"]}
+        board = [{"agent": r["agent"], "compiles": r["compiles"], "worked": r["worked"], "matched": matched.pop(r["agent"], 0), "last": r["last"]}
                  for r in rows]
         board += [{"agent": a, "compiles": 0, "matched": n, "last": None} for a, n in matched.items()]
         # Only accepted rewrites emit readable events, in ROM and project mode alike.
@@ -358,13 +358,17 @@ class GuiMixin:
     def agent_results(self, slug, agent, kind='matched', before=0, after=0):
         """Paged functions behind the agent card's counters, using the same attribution as stats."""
         from ...network import NetworkError
-        if kind not in ('matched','improved'):
-            raise NetworkError('Choose matched or improved functions.')
+        if kind not in ('matched','improved','worked'):
+            raise NetworkError('Choose matched, improved or worked functions.')
         pid=self._project(slug)['id']
         before=max(0,int(before))
         after=max(0,int(after))
         fields='f.id,f.name,f.status,f.best_score,f.n_insns'
-        if kind=='matched':
+        if kind=='worked':
+            rows=self.store.all('SELECT DISTINCT '+fields+' FROM attempts t JOIN functions f ON f.id=t.function_id '
+                                'JOIN agents a ON a.id=t.agent_id WHERE f.project_id=? AND a.name=? '
+                                'AND t.id>? AND (?=0 OR f.id<?) ORDER BY f.id DESC LIMIT 101',pid,agent,after,before,before)
+        elif kind=='matched':
             rows=self.store.all('SELECT '+fields+' FROM functions f JOIN agents a ON a.id=f.matched_agent_id '
                                 "WHERE f.project_id=? AND a.name=? AND f.status='matched' AND (?=0 OR f.id<?) "
                                 'AND (?=0 OR EXISTS (SELECT 1 FROM attempts t WHERE t.function_id=f.id AND t.agent_id=a.id '

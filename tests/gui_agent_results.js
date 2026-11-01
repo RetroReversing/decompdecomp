@@ -36,7 +36,11 @@ vm.runInContext(source.slice(source.indexOf('async function showAgentResults'),s
  assert(metrics.includes('data-result-kind="matched"') && metrics.includes('data-result-kind="improved"'));
  assert(metrics.includes('View 3 improved functions'));
  const usage=context.agentUsage({tokens:123456});
- assert(usage.includes('123,456 reported tokens') && usage.includes('including cache reads and writes'));
+ assert(usage.includes('123.5k reported tokens') && usage.includes('Includes cache reads and writes'));
+ await context.showAgentResults({agent:'worker',label:'Worker'},'worked');
+ assert(calls.at(-1).includes('kind=worked'));
+ assert(body.children.at(-1).innerHTML.includes('Functions worked on'));
+ assert(body.children.at(-1).innerHTML.includes('Repeated submissions count once'));
  assert(metrics.includes('Last improvement') && metrics.includes('2m'));
  console.log('Agent metric links, paged results, safe names and function navigation passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

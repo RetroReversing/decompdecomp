@@ -48,7 +48,12 @@ const hhmm = (t) => clock(t).slice(0, 5);
 const sentence = (text) => (text ? text[0].toUpperCase() + text.slice(1) : "");
 
 function helperState(s, claim) {
-  if (s.state === "working") return claim ? `Working on ${fnLink(claim.name)} · ${claim.attempts ? plural(claim.attempts, "compile") : reading(claim)}` : "Working: picking its next function";
+  if (s.state === "working") {
+    if (!claim) return "Working: picking its next function";
+    const pct = claim.n_insns > 0 ? pctOf(claim.best_score, claim.n_insns) : null;
+    const facts = [pct == null ? "match unknown" : `${pctText(pct)} match`, claim.n_insns == null ? "instruction count unknown" : `${Number(claim.n_insns).toLocaleString()} instructions`];
+    return `Working on ${fnLink(claim.name)} (${facts.join(" · ")})${claim.attempts ? "" : ` · ${reading(claim)}`}`;
+  }
   if (s.state === "starting") return s.why ? `Starting: ${esc(s.why)}` : "Starting…";
   if (s.state === "waiting") return `Waiting: ${esc(s.why || "a moment")}${s.until ? ` · carries on at ${hhmm(s.until)}` : ""}`;
   if (s.state === "paused") return `Paused: ${esc(s.why)}`;
@@ -141,9 +146,9 @@ async function showAgentResults(session, kind) {
   const slug = S.slug, panel = document.createElement('dialog');
   panel.className = 'transcript-dialog agent-results-dialog';
   panel.setAttribute('aria-labelledby', 'agent-results-title');
-  panel.innerHTML = `<header><div><h2 id="agent-results-title">${kind === 'matched' ? 'Matched' : 'Improved'} functions</h2>
+  panel.innerHTML = `<header><div><h2 id="agent-results-title">${kind === 'worked' ? 'Functions worked on' : kind === 'matched' ? 'Matched functions' : 'Improved functions'}</h2>
     <p>${esc(session.label || session.agent)}</p></div><button data-close type="button" class="ghost">Close</button></header>
-    <p class="muted small">${kind === 'matched' ? 'Current matches credited to this agent.' : 'Distinct functions where this agent beat the previous best. Includes matches, even if another agent finished them. Current match is the function’s total match now, including later work by other agents; it is not the percentage gained by this agent.'} Click a function to inspect it.</p>
+    <p class="muted small">${kind === 'worked' ? 'Distinct functions with candidate submissions by this agent, including compile errors, current work and matches. Repeated submissions count once. This is not a count of fully matched functions.' : kind === 'matched' ? 'Current matches credited to this agent.' : 'Distinct functions where this agent beat the previous best. Includes matches, even if another agent finished them. Current match is the function’s total match now, including later work by other agents; it is not the percentage gained by this agent.'} Click a function to inspect it.</p>
     <div data-results></div><button data-more type="button" class="ghost" hidden>More functions</button>`;
   document.body.append(panel); panel.showModal();
   panel.querySelector('[data-close]').onclick = () => panel.close();
@@ -183,11 +188,11 @@ function compactAgentNumber(value) {
 function agentMetrics(s, stats) {
   const elapsed = agentRuntime(s);
   const runtime = LIVE.includes(s.state) ? `${Math.floor(elapsed / 3600)}h ${Math.floor(elapsed % 3600 / 60)}m` : "Not running";
-  const metric = (kind,count) => `<button type="button" class="agent-metric-link" data-agent-results="${esc(s.id)}" data-result-kind="${kind}" ${count ? '' : 'disabled'} aria-label="View ${count} ${kind} functions for ${esc(s.label)}"><strong>${count}</strong><span>${kind} <span aria-hidden="true">↗</span></span></button>`;
+  const metric = (kind,count) => `<button type="button" class="agent-metric-link" data-agent-results="${esc(s.id)}" data-result-kind="${kind}" ${count ? '' : 'disabled'} aria-label="View ${count} ${kind} functions for ${esc(s.label)}"><strong>${count}</strong><span>${kind === "worked" ? "worked on" : kind} <span aria-hidden="true">↗</span></span></button>`;
   const last = stats?.last_improvement;
   const seconds = last ? Math.max(0, Date.now() / 1000 - last) : null;
   const ago = seconds == null ? "None yet" : seconds < 60 ? `${Math.floor(seconds)}s` : seconds < 3600 ? `${Math.floor(seconds / 60)}m` : `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m`;
-  return `<div class="agent-results-summary">${s.task === 'readable' ? `<span><strong>${stats?.polished || 0}</strong> polished</span>` : metric('matched',stats?.matched || 0)}${metric('improved',stats?.improved || 0)}</div>
+  return `<div class="agent-results-summary">${s.task === 'readable' ? `<span><strong>${stats?.polished || 0}</strong> polished</span>` : metric('matched',stats?.matched || 0)}${metric('improved',stats?.improved || 0)}${metric('worked',stats?.worked || 0)}</div>
     <div class="agent-timing"><span>${runtime} <span class="muted">since latest start</span></span><span><span class="muted">Last improvement</span> ${ago === 'None yet' ? ago : ago + ' ago'}</span></div>`;
 }
 function agentEfficiency(s) {
@@ -200,7 +205,8 @@ function agentEfficiency(s) {
 }
 
 function agentUsage(s) {
-  return `<div class="agent-usage"><span title="${Number(s.tokens || 0).toLocaleString()} reported tokens, including cache reads and writes">${compactAgentNumber(s.tokens)} tokens</span>${s.estimated_cost != null ? `<span title="Estimate at standard API rates, not your subscription bill">≈ ${money(s.estimated_cost)} API-equivalent</span>` : s.usd ? `<span>${money(s.usd)} reported cost</span>` : ''}</div>`;
+  const tokens=Number(s.tokens || 0);
+  return `<div class="agent-usage"><span title="Reported usage only; some agents report tokens at session end. Includes cache reads and writes when reported.">${tokens > 0 ? `${compactAgentNumber(tokens)} reported tokens` : 'Token usage not reported yet'}</span>${tokens > 0 && s.estimated_cost != null ? `<span title="Estimate at standard API rates, not your subscription bill">≈ ${money(s.estimated_cost)} API-equivalent</span>` : s.usd ? `<span>${money(s.usd)} reported cost</span>` : ''}</div>`;
 
 }
 document.addEventListener('click', event => {
@@ -235,7 +241,7 @@ function renderSessions(sessions) {
     const claim = S.claims.find((c) => c.agent === s.agent);
     const dot = s.state === "paused" ? "err" : s.state === "working" ? "on" : s.state === "stopped" ? "" : "work";
     const live = LIVE.includes(s.state), id = esc(s.id), b = s.metrics || board.get(s.agent);
-    const facts = [s.task === "readable" ? `<b>polishing</b>` : "", esc(s.kind_name), s.model ? esc(s.model) : "its default model", s.task === "readable" ? helperResults(b, s.task) : "", b ? plural(b.compiles, "compile") : "",
+    const facts = [s.task === "readable" ? `<b>polishing</b>` : "", esc(s.kind_name), s.model ? esc(s.model) : "its default model", s.task === "readable" ? helperResults(b, s.task) : "", b ? `${plural(b.compiles, "compile")} submitted by this agent` : "",
       s.usd ? money(s.usd) : "", s.runs ? plural(s.runs, "session") : "",
       s.restarts ? `started again ${plural(s.restarts, "time")}` : "", live && s.started_at ? `since ${hhmm(s.started_at)}` : ""].filter(Boolean);
     const todo = s.todo ? `${sentence(s.todo.replace(/\.$/, ""))}.${s.state === "paused" ? " Then press Start again." : ""}` : "";
@@ -253,7 +259,7 @@ function renderSessions(sessions) {
       ${agentUsage(s)}
       <details class="agent-details" data-agent-details="${id}" ${agentDetailsOpen.has(s.id) ? 'open' : ''}><summary>Details</summary><div class="agent-details-body">
       <span class="facts-line">${facts.join(' · ')}</span>
-      <span class="small muted">${Number(s.tokens || 0).toLocaleString()} total tokens used · ${rate == null ? '—' : compactAgentNumber(rate)} tokens / match${s.estimated_cost != null && b?.matched ? ` · ≈ ${money(s.estimated_cost / b.matched)} / match` : ''}</span>
+      ${rate == null ? '' : `<span class="small muted">${compactAgentNumber(rate)} reported tokens / match${s.estimated_cost != null && b?.matched ? ` · ≈ ${money(s.estimated_cost / b.matched)} / match` : ''}</span>`}
       ${agentEfficiency(s)}
       ${s.metrics_since ? `<span class="small muted">Metrics since reset · ${new Date(s.metrics_since * 1000).toLocaleString()}</span>` : ''}
       <span class="small muted">Work settings · ${s.per_session || 8} functions/session${s.task === "readable" ? "" : ` · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.model_untried ? " · never checked by this model" : ""}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.stall_compiles ? ` · move on after ${esc(s.selection.stall_compiles)} without improvement` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}`}</span>
