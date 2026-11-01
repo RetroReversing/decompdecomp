@@ -36,7 +36,7 @@ class Transcripts:
         with self.store.tx() as db:
             db.execute('INSERT INTO helper_messages(session_id,created_at,kind,text) VALUES(?,?,?,?)',
                        (session, time.time(), kind, text))
-            if kind == 'tool_response':
+            if kind == 'tool_response' and db.execute("SELECT 1 FROM sqlite_master WHERE name='helper_sessions'").fetchone():
                 changes = db.execute('SELECT t.id,t.score_before,t.score,t.created_at,f.name FROM attempts t '
                                      'JOIN functions f ON f.id=t.function_id JOIN projects p ON p.id=f.project_id '
                                      'JOIN agents a ON a.id=t.agent_id JOIN helper_sessions s ON s.agent=a.name AND s.project=p.slug '
