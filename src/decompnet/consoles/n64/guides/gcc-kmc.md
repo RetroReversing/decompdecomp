@@ -118,3 +118,9 @@ helper instead enlarged the frame and reordered instructions. Try the combined l
 when a shared tail keeps a converted coordinate in the wrong saved register; preserve every call,
 argument value and side effect. Braces alone are not a general fix. See the matching learning log
 for the measured case and failed alternatives; every candidate still needs the ordinary exact judge.
+
+The local families `branch_tail_lifetimes`, `staged_call_arguments` and
+`combined_call_lifetimes` automate a bounded subset of this experiment. Use them when offered
+for register-only misses; unsupported shapes still need a manual edit. Compare frame size and
+instruction count before pursuing helper-based detours, and consult current-input local search
+evidence before repeating failed variants. A linked exact verdict overrides symbolic annotations.

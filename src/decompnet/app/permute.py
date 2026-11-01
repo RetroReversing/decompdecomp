@@ -534,7 +534,7 @@ class Permuter:
                     if score is None:
                         continue
                     measured_rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
-                    frontier.offer(cand, score, measured_rows)
+                    frontier.offer(cand, score, measured_rows, arch=proj['arch'], baseline=rows, baseline_score=best)
                     if score < best:
                         best, best_src = score, cand
                         st.add(improved=1)

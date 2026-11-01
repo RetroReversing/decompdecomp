@@ -17,13 +17,33 @@ def structure(rows):
     return sum(1 if marker in {'r', 's', 'o'} else 3 for marker, _, _ in rows if marker != ' ')
 
 
+def unhelpful_detour(arch, baseline, rows):
+    """Prune expansion, never judging: a register-only parent gained both frame and code size.
+
+    The candidate has already had its ordinary judge. Unknown layouts and improvements in
+    instruction structure stay eligible; a later explicit experiment can still try this source.
+    """
+    if not arch or permuter_focus.classify(baseline) != 'register':
+        return False
+    from .stack_layout import diagnose
+    before = diagnose(arch, baseline)
+    after = diagnose(arch, rows)
+    if not before or not after or before['frame_delta'] != 0 or after['frame_delta'] is None:
+        return False
+    target_count = sum(bool(r[1]) for r in rows)
+    candidate_count = sum(bool(r[2]) for r in rows)
+    return after['frame_delta'] < 0 and candidate_count > target_count and structure(rows) >= structure(baseline)
+
+
 class Frontier:
     def __init__(self):
         self.nodes = []
 
-    def offer(self, source, score, rows):
+    def offer(self, source, score, rows, *, arch=None, baseline=None, baseline_score=None):
         """Keep the numeric winner and distinct structural shapes, with bounded source/output counts."""
         if score is None or score <= 0:
+            return
+        if (baseline_score is None or score >= baseline_score) and unhelpful_detour(arch, baseline, rows):
             return
         rows = permuter_focus.normalized(rows)
         node = {'source': source, 'score': score, 'fitness': structure(rows),

@@ -520,3 +520,38 @@ def test_no_effect_streak_suggests_applicable_untried_family(tmp_path):
     for _ in range(3):
         text=agent_tokens.feedback(net,a,'game','f','score 10\nmarkers: i=operand',rows)
     assert 'Next valid local experiment' in text and 'family="signedness"' in text and 'target="next"' in text
+
+
+@pytest.mark.parametrize('mode', ['rom','fork'])
+def test_generated_compile_errors_are_cached_under_exact_build_inputs(tmp_path, monkeypatch, mode):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    source = 'int f(){return 1;}'
+    bad = 'int f(){return missing;}'
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=?',(json.dumps({'kind':mode}),))
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    net.claim_row(a,'game','f');_,rev=agent_tokens.candidate(net,a,'game','f')
+    monkeypatch.setattr('decompnet.app.agent_evidence.preflight',lambda *args:None)
+    monkeypatch.setattr(tools,'_compile',lambda *args:'❌ COMPILE ERROR\nunknown identifier missing')
+    agent_tokens.variants(net,a,'game','f',rev,[{'old':source,'new':bad}], 'local repairs')
+    fn=net._function('f','game')
+    assert agent_tokens.compiled_before(net,fn,bad)
+    assert not agent_tokens.compiled_before(net,fn,bad+' ')
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET target=?',(b'new target',))
+    assert not agent_tokens.compiled_before(net,net._function('f','game'),bad)
+
+
+def test_infrastructure_errors_are_not_cached_as_bad_source(tmp_path, monkeypatch):
+    net,_=_game(tmp_path,[('f',10,'open')]);a,_=net.local_agent('a')
+    source = 'int f(){return 1;}'
+    bad = 'int f(){return 2;}'
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET best_source=?',(source,))
+    net.claim_row(a,'game','f');_,rev=agent_tokens.candidate(net,a,'game','f')
+    def broken(*args):
+        raise NetworkError('Toolchain infrastructure failure')
+    monkeypatch.setattr(tools,'_compile',broken)
+    agent_tokens.variants(net,a,'game','f',rev,[{'old':source,'new':bad}], 'local repairs')
+    assert not agent_tokens.compiled_before(net,net._function('f','game'),bad)

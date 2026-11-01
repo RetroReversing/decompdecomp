@@ -16,7 +16,7 @@ WIDTH, DEPTH, PER_FUNCTION = 3, 3, 8
 DETOUR_RATIO = 1.25
 
 
-def advance(state, evaluate, variants, stopped):
+def advance(state, evaluate, variants, stopped, *, arch=None):
     """Resume a bounded beam with one reserved slot for a temporarily worse source shape.
 
     Detours spend the same phase budget and never replace saved best C. A later repair may need
@@ -31,7 +31,8 @@ def advance(state, evaluate, variants, stopped):
         if report.get('matched'):
             return True
         score = report.get('score')
-        if isinstance(score, (int, float)) and 0 < score <= node['ceiling'] * DETOUR_RATIO:
+        if (isinstance(score, (int, float)) and 0 < score <= node['ceiling'] * DETOUR_RATIO
+                and (score < node['ceiling'] or not search_frontier.unhelpful_detour(arch, node.get('baseline_rows'), report.get('rows') or []))):
             # Keep two source shapes per identical output: a later source edit can distinguish them.
             # This only prunes search branches, never supplies a match verdict.
             output = output_key(report)
@@ -60,7 +61,7 @@ def advance(state, evaluate, variants, stopped):
                     state['seen'].append(source)
                     state['pending'].append(dict(source=source, depth=parent['depth'] + 1,
                                                  ceiling=min(parent['ceiling'], parent['score']),
-                                                 region_baseline=parent.get('regions')))
+                                                 region_baseline=parent.get('regions'), baseline_rows=parent['report'].get('rows')))
     return False
 
 
@@ -172,7 +173,7 @@ def run(twins, slug, job):
             return list(dict.fromkeys(item for group in zip_longest(*pools)
                                       for item in group if item is not None))
 
-        if advance(state, evaluate, variants, stopped):
+        if advance(state, evaluate, variants, stopped, arch=proj['arch']):
             with guard:
                 matched[0] += 1
                 job.reuse_matched += 1
