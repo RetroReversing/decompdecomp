@@ -1188,6 +1188,17 @@ structural improvement, while retaining numeric improvements and ordinary exact 
 compile errors reuse input-scoped caches; agent summaries include failures and regressions.
 Synthetic execution/search regressions are distinct from newly measured private-game recoveries.
 
+Latest-match follow-ups: grouped build activity in repair evidence; same-width copied zero-test lifetime and
+explicit pointer-return-call staging hypotheses in shared draft/local/deep search; actual multiline reference
+macro dependency preservation; reference by-value aggregate and whole-structure snapshot diagnostics.
+Unknown aggregate layouts/ABI shapes remain diagnostic-only. Macro invocations and original supporting types
+are preserved rather than hand-expanded. Synthetic MIPS compiler controls cover the new lifetime families;
+other processor/object judges retain the same shared dispatch and no acceptance criteria changed.
+
+Private-context profile probes also cover prepared candidates that fail to improve under the current
+flags (two probes within the existing shared budget). Their source/header/profile evidence is retained
+for review; joint context/profile approval and automatic promotion remain future work.
+
 - Done: bounded adjacent scalar prefix-result and postfix-store hypotheses feed shared
   draft, agent-local and deep-repair families. Pinned-compiler controls verify generated
   shapes; nonadjacent increment motion and automatic narrowing remain unsupported pending
@@ -1203,3 +1214,16 @@ projects through their existing judges; uncertain aliasing/volatility stays with
 Fixed-context replay distinguishes judge-only revisions from compiler/header changes. Private
 linked replay recovered three already solved pointer/zero-test controls; an existing MMIO family
 recovered a fourth. This is regression evidence, not new progress or measured token savings.
+
+### Prepared source/profile review and data diagnostics
+
+- Exact private source/header/profile probes can be reviewed together in local ROM projects. Applying
+  rechecks the ordinary byte/data judge, claims and stale inputs, then saves a private header and
+  function-only profile atomically. Imported builds retain their own header/profile ownership.
+- MIPS link diagnostics distinguish exact linked instructions from differing initialized data and show
+  the differing address range. Other linker adapters retain their current exact verdict; structured
+  instruction/data detail remains an adapter gap.
+- Original typed preparation still runs before broad permutation. At most two named-array copy
+  hypotheses require an existing plain-int-array declaration, exact extent and verified ROM values.
+- Private preparation history retains source/header hashes, profiles and failure categories, with
+  source/header/profile/target/symbol/build scoped invalidation; it is review evidence, not progress.

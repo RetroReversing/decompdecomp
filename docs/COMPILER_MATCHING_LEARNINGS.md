@@ -766,6 +766,34 @@ advisory tie-breaker. The iterative beam's allowance of two source shapes with i
 output applies at each depth rather than being consumed across the whole search. Width, depth,
 compile/time budgets, exact-output evidence and normal linked-byte acceptance remain mandatory.
 
+### Same-width zero-test reuse and pointer-return staging
+
+Recent same-settings KMC GCC 2.7.2 captures (`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`) motivated two bounded
+hypotheses: reuse an unused signed/unsigned 32-bit local only for a copied pre-decrement value's zero test;
+and stage a nested no-argument call only with an actual pointer-return prototype and an unused pointer local.
+The latter capture also moved declarations, so staging alone is not claimed to be the sole cause.
+Synthetic pinned KMC `-O2` controls verify generated function bytes. These controls are not new game matches.
+Macro calls and qualified code are excluded from staging; no pointer return type is inferred.
+
+Source-assisted aggregate-parameter, whole-struct snapshot and graphics-macro findings remain reference
+context evidence. Preserve real source/header pairs and macro single-evaluation shapes; do not synthesize
+aggregate layouts or flatten side-effecting macro invocations into presumed equivalent stores.
+
+Private isolated replay of the zero-test capture recovered its recorded successful compiler output using
+`word_zero_test_reuse`. The pointer-call capture was not recovered by staging alone within the sampled
+budget and remains unresolved. Both results are replay evidence against recorded controls, not new ROM
+matches or claims that the complete historical edit has been automated.
+
+### Prepared context may need flags before it improves
+
+A source-assisted MIPS/IDO session found original typed candidates that were worse under the working
+`-O2` profile but byte-identical under `-O3`. Do not restrict profile probes to already promoted
+source/context improvements. Preparation now spends at most two remaining compile-budget slots on
+private-context profiles even when the current-profile candidate loses. It stores source, header,
+profile and the ordinary link/data verdict together as review evidence; it does not silently promote
+that context or change compiler settings. A synthetic regression verifies an exact alternate-profile
+verdict with unchanged working settings. This test establishes the control flow, not a new game match.
+
 ### Constant indices, reference balancing and evidence reduction (1 November 2026)
 
 Further controlled replays from the same private KMC checkpoint support two additional shapes:
@@ -839,3 +867,17 @@ Compiler-output replay can now handle captures differing only in judge revision:
 both under one compiler/header and labels the comparison explicitly. Other context changes still
 block replay, and compiler-output recovery never adopts a game match. The linked replays above
 are stronger, separate evidence. No full-image rebuild or live adoption was performed here.
+
+### Review prepared source and compiler settings as one unit
+
+Typed reference candidates may lose under the current optimization profile and become exact under a
+neighboring one. Local ROM projects can now explicitly recheck and approve the complete private source,
+header and function-only compiler profile. Compilation happens outside the transaction; stale inputs,
+claims, overlapping entries and a non-exact verdict prevent publication. A synthetic regression tests
+atomic publication and the saved verification header. This is not a new game-match claim.
+
+When linked instructions match but initialized data differs, report the data object and differing
+address range separately. Anonymous local-array initialization may emit padding that disagrees with
+the following ROM object. A bounded preparation hypothesis may copy an existing named array through an
+aggregate record only when its declared int extent and ROM values agree exactly. The unchanged byte/data
+judge and the complete repository rebuild decide acceptance; do not trim padding checks to gain matches.

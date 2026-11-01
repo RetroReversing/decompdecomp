@@ -58,3 +58,48 @@ def test_same_file_object_alias_and_existing_header_definition(tmp_path):
     assert 'D_80001000=9;' in pairs[0][0]
     pairs=prep.prepare_variants(prep.Reader(cfg),cfg,('dest','original','f.c'),{'original':'dest'},'unsigned clock=9;')
     assert len(pairs)==1 and 'clock=9' not in pairs[0][0]
+
+
+def test_private_profile_keeps_unpromoted_context_without_changing_working_settings(monkeypatch):
+    import json
+    import time
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    from decompnet import toolchains
+    from decompnet.app import profile_hypotheses
+    from decompnet.rom import export
+    evidence=[]
+    class Store:
+        def one(self,sql,*args):return fn if sql.startswith('SELECT *') else None
+        @contextmanager
+        def tx(self):yield self
+        def execute(self,sql,args):evidence.append(json.loads(args[-1]))
+    class Net:
+        store=Store()
+        def is_rom(self,p):return True
+        def project_row(self,slug):return proj
+        def flag_variants(self,*args):return [['-O2'],['-O3']]
+        def _compile(self,p,h,s,f):
+            assert h=='private typedefs' and s=='original source'
+            assert json.loads(p['config'])['compiler']['flags']==['-O3']
+            assert json.loads(proj['config'])['compiler']['flags']==['-O2']
+            return SimpleNamespace(ok=True,obj=b'object')
+        def _evaluate(self,*args):return object(),True,[]
+        def _target_obj(self,*args):return object()
+    proj={'slug':'sample','root':'.','config':json.dumps({'compiler':{'toolchain':'ido-5.3','flags':['-O2']}})}
+    fn={'id':1,'vram':0x80001000,'name':'example','best_score':10}
+    monkeypatch.setattr(prep,'inputs',lambda *args:('unchanged',))
+    monkeypatch.setattr(toolchains,'installed',lambda *args:True)
+    monkeypatch.setattr(profile_hypotheses,'prioritized',lambda *args:[['-O3']])
+    monkeypatch.setattr(export,'_single_definition',lambda *args:True)
+    monkeypatch.setattr(prep.scoring,'diff',lambda *args:SimpleNamespace(score=4,bytes_match=False))
+    st=SimpleNamespace(stop=SimpleNamespace(is_set=lambda:False),add=lambda **kw:None)
+    report={'tested':1};messages=[]
+    prep.private_profiles(Net(),proj,fn,'original source','private typedefs',st,report,messages.append,3,time.monotonic()+20)
+    assert report['tested']==2 and evidence[0]['exact'] and evidence[0]['score']==0
+    assert evidence[0]['header']=='private typedefs' and evidence[0]['review_required']
+    assert 'Working settings unchanged' in messages[0]
+    report={'tested':3}
+    prep.private_profiles(Net(),proj,fn,'original source','private typedefs',st,report,messages.append,3,time.monotonic()+20)
+    assert len(evidence)==1

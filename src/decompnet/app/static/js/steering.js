@@ -1143,3 +1143,23 @@ $("repositorySyncGo").onclick = async () => {
   } catch (error) { showJobError(log, error.message); }
   finally { repositorySyncJob = null; stop.hidden = true; finish(); }
 };
+
+
+$("sourcePrepReviewsRefresh").onclick = async () => {
+  const panel = $("sourcePrepReviews"), button = $("sourcePrepReviewsRefresh"), slug = S.slug;
+  const finish = beginWork(panel, "Loading prepared profile evidence", [button], "Evidence loaded.");
+  try {
+    const {reviews} = await api("/api/source-preparation", {method:"POST", body:{slug, action:"reviews"}});
+    panel.innerHTML = reviews.length ? reviews.map((r, i) => `<div class="card"><strong>${esc(r.function)}</strong> · ${esc(r.toolchain || "")} ${esc(r.flags.join(" "))}<p>${r.exact ? "Exact when tested" : `Score ${r.score ?? "unavailable"}`} · ${esc(r.category)}</p>${r.source ? `<details><summary>Prepared C and private header</summary><pre>${esc(r.source)}</pre><pre>${esc(r.header)}</pre></details>` : ""}${r.diagnostic ? `<pre>${esc(r.diagnostic)}</pre>` : ""}${r.reviewable ? `<button data-prepared-review="${i}">Recheck and apply source, header & flags</button>` : "<span class=muted>Run preparation again if inputs changed.</span>"}<div data-prepared-log></div></div>`).join("") : "No prepared profile evidence yet. Run a preparation pass first.";
+    panel.onclick = async (event) => {
+      const apply = event.target.closest("[data-prepared-review]");
+      if (!apply || S.slug !== slug) return;
+      const row = reviews[Number(apply.dataset.preparedReview)], log = apply.parentElement.querySelector("[data-prepared-log]");
+      const done = beginWork(log, "Rechecking complete prepared bundle", [apply], "Bundle rechecked.");
+      try {
+        const {job} = await api("/api/source-preparation", {method:"POST", body:{slug, action:"apply-review", id:row.id}});
+        await followJob(job, log); apply.hidden = true; refreshMap();
+      } catch (error) { showJobError(log, error.message); } finally { done(); }
+    };
+  } catch (error) { showJobError(panel, error.message); } finally { finish(); }
+};

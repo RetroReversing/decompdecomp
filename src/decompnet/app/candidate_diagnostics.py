@@ -47,6 +47,8 @@ def export_layout(obj, name, exact, placements):
 
 def text(checks):
     parts = [checks['link']['message']] if checks.get('link') else []
+    if checks.get('instructions', {}).get('exact') and checks.get('data'):
+        parts.append('Instructions match; constant data differs. Check initializer values, object sizes and anonymous-array padding before changing control flow.\n'+'\n'.join(checks['data']))
     if checks.get('linked_bytes', {}).get('exact'):
         parts.append('Linked bytes verified identical. Symbolic relocation labels or displayed diff annotations do not override this verdict; do not repair those annotations.')
     if checks.get('export', {}).get('state') not in (None, 'unmatched'):

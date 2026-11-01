@@ -46,20 +46,24 @@ def capture(net,fn,agent,notes,progress):
 def brief(net,fn):
     if fn['status']=='matched':
         return []
+    from .app.source_match_context import aggregate_hints
+    source = fn['best_source'] or fn['seed'] or ''
+    abi = aggregate_hints(source, fn['name'], source)
+    prefix = ['### Aggregate ABI checks (advisory)', *abi] if abi else []
     current=hashlib.sha256((fn['best_source'] or '').encode()).hexdigest()
     saved=[r for r in records(net,fn) if r['source_hash']==current]
     if saved:
-        return ['### Candidate quality (agent report, not proven)',saved[-1]['warning'][:300],
+        return prefix + ['### Candidate quality (agent report, not proven)',saved[-1]['warning'][:300],
                 ('Work continues while this concern awaits review. ' if saved[-1].get('review','pending') == 'pending' else 'User reviewed this candidate; the historical warning is retained. ')+
                 'Compiled alternatives and evidence: get_function(section="quality"). Rejudge before using; '
                 'a lower score alone does not establish valid C.']
     # Older notes remain discoverable; do not falsely anchor them to today's source.
     notes=net.store.all('SELECT text FROM notes WHERE function_id=? ORDER BY id DESC LIMIT 20',fn['id'])
     if any(CONCERN.search(r['text'] or '') for r in notes):
-        return ['### Candidate quality (historical, unanchored report)',
+        return prefix + ['### Candidate quality (historical, unanchored report)',
                 'An earlier agent reported a candidate-quality concern. Check get_function(section="quality"); '
                 'the warning may concern older C.']
-    return []
+    return prefix
 
 
 def view(net,fn):
