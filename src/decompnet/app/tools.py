@@ -536,6 +536,11 @@ def _dispatch(net,agent,slug,name,args):
                 return result
         result=HANDLERS[name](net,agent,slug,**named)
         result=after_tool(net,agent,slug,name,named,result)
+        if name in {'compile_patch','compile_and_diff','try_local_repairs','compile_family'}:
+            function=named.get('function','')
+            if function and ',' not in function:
+                from .efficiency_feedback import continuation
+                result+='\n'+continuation(net,agent,slug,function)
         return result
     finally:
         if budget:

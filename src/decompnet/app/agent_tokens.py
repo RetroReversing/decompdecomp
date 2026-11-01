@@ -316,6 +316,8 @@ def feedback(net, agent, slug, function, text, previous):
     if 'markers:' not in text:
         return text
     head = text.split('markers:', 1)[0]
+    from .efficiency_feedback import mismatch
+    head += mismatch(rows)+'\n'
     positions = [text.index(marker) for marker in ('\ncompiler output:', '\nwhen linking your code') if marker in text]
     warn = text[min(positions):] if positions else ''
     if previous == rows:
@@ -672,6 +674,9 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
                 if 'Max tries reached' in result or 'Unchanged-output limit reached' in result:
                     summary += '; '+('Unchanged-output limit reached' if 'Unchanged-output limit reached' in result else 'Max tries reached')
                 groups[key] = ([i], summary)
+            if 'Low-progress handoff' in result:
+                results.append('Low-progress handoff; no further variants submitted.')
+                break
             if 'Max tries reached' in result or 'Unchanged-output limit reached' in result:
                 results.append(('Unchanged-output limit reached' if 'Unchanged-output limit reached' in result else 'Max tries reached')+'; no further variants submitted.')
             if net._function(function, slug)['status'] != 'open' or 'Max tries reached' in result or 'Unchanged-output limit reached' in result:
@@ -689,7 +694,8 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             db.execute('INSERT INTO agent_variant_runs(function_id,family,revision,trials,best_score,created_at) VALUES(?,?,?,?,?,?)',
                        (fn['id'],family,revision,last or 0,min(scores) if scores else None,time.time()))
         selected_index = None
-        if last is not None and choices and net._function(function,slug)['status']=='open':
+        if (last is not None and choices and net._function(function,slug)['status']=='open'
+                and net.store.one('SELECT 1 FROM claims WHERE function_id=? AND agent_id=?',fn['id'],agent.id)):
             # Stable min keeps the baseline on ties. This selects an agent continuation, never a new
             # judge verdict, attempt, file write or match. The next compile still uses the normal judge.
             _,selected,measurement,selected_index = min(choices,key=lambda choice:choice[0])
@@ -719,4 +725,9 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
         current_index = next((i for i, src in enumerate(candidates, 1) if src == current_source), None)
         results.append(f'Current candidate revision {current}; last submitted variant {last}; current source variant {current_index or "retained candidate"}. '
                        'Patch this continuation. last_diff follows it when available; get_candidate recovers C.')
+        from .efficiency_feedback import continuation, mismatch
+        results.append(continuation(net,agent,slug,function,applied=[current_index] if current_index and current_source!=source else [],base=revision))
+        kept=net._last_diffs.get((agent.id,fn['id']))
+        if kept:
+            results.append(mismatch(kept[0]))
         return '\n'.join(results)

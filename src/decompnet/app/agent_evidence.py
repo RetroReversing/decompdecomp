@@ -105,6 +105,10 @@ def track(net,agent,slug,fn):
     measured=getattr(net,'_agent_outcomes',{}).get((agent.id,fn['id']))
     if not measured or measured.get('rows') is None or measured.get('score') is None:
         return None
+    from .progress_rate import track as progress_rate
+    moved=progress_rate(net,agent,slug,fn)
+    if moved:
+        return moved
     key=scope(net,agent,fn)
     states=getattr(net,'_unchanged_output',{})
     net._unchanged_output=states

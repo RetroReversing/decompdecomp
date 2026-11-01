@@ -186,6 +186,7 @@ def test_independent_variants_use_normal_judge_and_select_best_candidate(tmp_pat
         {'old':'return 1','new':'return 2'}, {'old':'return 1','new':'return 3'}]})
     assert seen==['int f(){return 2;}','int f(){return 3;}']
     assert 'last submitted variant 2' in result
+    assert 'Continuation state:' in result and 'applied_patch_ids=1' in result
     assert agent_tokens.candidate(net,a,'game','f')[0]==seen[0]
     with pytest.raises(NetworkError,match='Candidate changed'):
         agent_tokens.variants(net,a,'game','f',rev,[{'old':'return 1','new':'return 5'}])
