@@ -1,5 +1,12 @@
 # Roadmap
 
+Implemented: bounded mapped-source CPU recovery, actual ABI/call declarations, verified record transfer,
+measured record-gap and coherent constant/extent trials, MIPS table-supported label/arm hypotheses,
+focused stack/declaration/helper follow-ups, and opt-in atomic promotion after a fresh linked-byte/data
+recheck. Cached measurements resume before broad profile searches. Private context/profile publication
+remains ROM-only: imported-build adapters and non-MIPS operand/table readers are planned; unknown
+source types, arbitrary missing arm bodies and ambiguous debug lines are never inferred.
+
 Implemented: compact claims prioritize verified mismatch regions while keeping complete candidates; last_diff
 can reuse an exact scoped baseline without compiling. Unchanged-output advice starts earlier with recent
 change history and respects exhausted/released claims. Compiler failures include bounded declaration/context

@@ -503,6 +503,7 @@ async function renderProjectSettings() {
   }
   const prep = ov.source_preparation || {};
   $("sourcePrepEnabled").checked = !!prep.enabled;
+  $("sourcePrepAutoExact").checked = !!prep.auto_exact;
   for (const [id, key] of [["Root", "root"], ["Header", "header"], ["Includes", "include_roots"], ["Mappings", "mappings"], ["Overrides", "overrides"], ["Aliases", "aliases"], ["Definitions", "definitions"], ["Contexts", "contexts"], ["Helpers", "helpers"]]) $("sourcePrep" + id).value = prep[key] || "";
   await renderSdkSelection();
   const facts = [["Platform", ov.platform_name], ["Game", ov.rom?.title || ov.title], [fork ? "Version" : "Game code", ov.rom?.game_code || ov.version],
@@ -956,7 +957,7 @@ $("sourcePrepSave").onclick = async () => {
   const log = $("sourcePrepLog"), button = $("sourcePrepSave");
   const finish = beginWork(log, "Saving reference source settings", [button], "Reference source settings saved.");
   try {
-    const body = { slug: S.slug, enabled: $("sourcePrepEnabled").checked };
+    const body = { slug: S.slug, enabled: $("sourcePrepEnabled").checked, auto_exact: $("sourcePrepAutoExact").checked };
     for (const [id, key] of [["Root", "root"], ["Header", "header"], ["Includes", "include_roots"], ["Mappings", "mappings"], ["Overrides", "overrides"], ["Aliases", "aliases"], ["Definitions", "definitions"], ["Contexts", "contexts"], ["Helpers", "helpers"]]) body[key] = $("sourcePrep" + id).value;
     const saved = await api("/api/source-preparation", { method: "POST", body });
     if (S.ov) S.ov.source_preparation = saved;

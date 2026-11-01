@@ -381,6 +381,8 @@
       <div class="pad">
         <p class="small muted">Have reference source you want to use? Map its functions explicitly. The app reads it without changing it, preserves line breaks and tries the ordinary compiler/link judge. A mapping alone never counts as a match.</p>
         <label class="check"><input id="sourcePrepEnabled" type="checkbox"><span>Use this local source before permuting unmatched functions</span></label>
+        <label class="check"><input id="sourcePrepAutoExact" type="checkbox"><span>Automatically recheck and save exact source/header/compiler bundles (local ROM projects only)</span></label>
+        <p class="small muted">CPU trials can test measured record gaps, retail constants, supported switch arms and actual call declarations. Exact bundles are compiled again before saving; approximate results never change compiler settings.</p>
         <label>Reference source folder<input id="sourcePrepRoot" placeholder="/path/to/local/source"></label>
         <label>Declarations header (optional, inside a selected folder)<input id="sourcePrepHeader" placeholder="/path/to/local/source/context.h"></label>
         <label>Additional include folders (one per line)<textarea id="sourcePrepIncludes" rows="2"></textarea></label>
@@ -388,7 +390,7 @@
         <label>Other symbol aliases (reference name = destination name)<textarea id="sourcePrepAliases" rows="2" placeholder="gObjects = D_80010000"></textarea></label>
         <label>Original object definitions (optional: reference_symbol @ relative/file.c)<textarea id="sourcePrepDefinitions" rows="2" placeholder="gManager @ manager.c"></textarea></label>
         <label>Coherent source/header alternatives (optional: destination = symbol @ file.c | header.h)<textarea id="sourcePrepContexts" rows="2"></textarea></label>
-        <p class="muted">Use complete matching SDK revisions. Up to two alternatives per function share the pass budget; the app never invents missing fields or combines revisions.</p>
+        <p class="muted">Use complete matching SDK revisions. Up to two alternatives per function share the pass budget; record gaps are bounded private hypotheses and are never written into your reference source.</p>
         <label>Original static helpers (optional: helper_name @ relative/file.c)<textarea id="sourcePrepHelpers" rows="2"></textarea></label>
         <p class="muted">Only referenced, explicitly selected static helpers are retained for inlining. Extra emitted functions are rejected by the existing export guard. Selected object definitions keep their original bit patterns and expression order.</p>
 
