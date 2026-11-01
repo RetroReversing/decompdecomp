@@ -1187,3 +1187,7 @@ prioritise these shapes. Search frontiers avoid expanding measured frame/code gr
 structural improvement, while retaining numeric improvements and ordinary exact judging. Generated
 compile errors reuse input-scoped caches; agent summaries include failures and regressions.
 Synthetic execution/search regressions are distinct from newly measured private-game recoveries.
+
+Private-context profile probes also cover prepared candidates that fail to improve under the current
+flags (two probes within the existing shared budget). Their source/header/profile evidence is retained
+for review; joint context/profile approval and automatic promotion remain future work.

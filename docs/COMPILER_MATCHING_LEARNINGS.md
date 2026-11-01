@@ -765,3 +765,13 @@ error without reducing the mismatch count. The frontiers now use stack-offset di
 advisory tie-breaker. The iterative beam's allowance of two source shapes with identical compiler
 output applies at each depth rather than being consumed across the whole search. Width, depth,
 compile/time budgets, exact-output evidence and normal linked-byte acceptance remain mandatory.
+
+### Prepared context may need flags before it improves
+
+A source-assisted MIPS/IDO session found original typed candidates that were worse under the working
+`-O2` profile but byte-identical under `-O3`. Do not restrict profile probes to already promoted
+source/context improvements. Preparation now spends at most two remaining compile-budget slots on
+private-context profiles even when the current-profile candidate loses. It stores source, header,
+profile and the ordinary link/data verdict together as review evidence; it does not silently promote
+that context or change compiler settings. A synthetic regression verifies an exact alternate-profile
+verdict with unchanged working settings. This test establishes the control flow, not a new game match.
