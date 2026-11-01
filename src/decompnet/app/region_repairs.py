@@ -33,3 +33,10 @@ def gain(before, after):
         return 0
     return sum(old - after['losses'].get(region, 0) for region, old in before['losses'].items()
                if old > after['losses'].get(region, 0))
+
+
+def damage(before, after):
+    """Count new mismatches in previously correct target blocks; advisory, never a veto."""
+    if not before or not after or before['target'] != after['target']:
+        return 0
+    return sum(loss for region, loss in after['losses'].items() if not before['losses'].get(region))
