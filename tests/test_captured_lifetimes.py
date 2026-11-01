@@ -25,6 +25,7 @@ def test_generated_candidates_preserve_neighbours_and_are_bounded(before, family
 def test_shift_requires_dead_unsigned_local_and_never_rewrites_volatile_or_loops():
     for source in (
         'void demo(u8 *p) { u32 x; x = 99; *(u16 *)p = x >> 16; use(x); }',
+        'extern u32 x; void demo(u8 *p) { *(u16 *)p = x >> 16; }',
         'void demo(u8 *p) { s32 x; x = 99; *(u16 *)p = x >> 16; }',
         'void demo(volatile u8 *p) { u32 x; x = 99; *(u16 *)p = x >> 16; }',
         'void demo(u8 *p) { u32 x; x = 99; while(test()) { *(u16 *)p = x >> 16; } }',

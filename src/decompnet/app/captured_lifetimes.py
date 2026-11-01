@@ -29,7 +29,7 @@ def variants(source, name):
     # scalar and no later references; changing a live value would corrupt subsequent computations.
     for hit in list(re.finditer(rf'(?P<dest>\*\s*\(\s*u(?:8|16|32)\s*\*\s*\)\s*{ID})\s*=\s*(?P<v>{ID})\s*>>\s*(?P<n>\d+)\s*;', body))[:3]:
         v = hit['v']
-        declarations = re.findall(r'\b(?:u32|unsigned int)\s+'+re.escape(v)+r'\s*(?:;|=)', clean[:opening+1+hit.start()])
+        declarations = re.findall(r'\b(?:u32|unsigned int)\s+'+re.escape(v)+r'\s*(?:;|=)', body[:hit.start()])
         if re.search(r'\b(?:for|while|do|goto)\b', body) or len(declarations) != 1 or int(hit['n']) > 31 or re.search(r'\b'+re.escape(v)+r'\b', body[hit.end():]) or re.search(r'&\s*'+re.escape(v)+r'\b', clean):
             continue
         emit('shift_store_lifetime', hit, f"{v} >>= {hit['n']};\n{hit['dest']} = {v};")
@@ -37,7 +37,7 @@ def variants(source, name):
     # Parenthesized loads are allowed; calls, increments, assignments and volatile code are not.
     for hit in list(re.finditer(rf'\b(?P<v>{ID})\s*=\s*(?P<rhs>[^;{{}}]+);', body))[:20]:
         v = hit['v']
-        typ = re.search(r'\b(f32|f64|float|double)\s+'+re.escape(v)+r'\s*;', clean[:opening+1+hit.start()])
+        typ = re.search(r'\b(f32|f64|float|double)\s+'+re.escape(v)+r'\s*;', body[:hit.start()])
         if not typ:
             continue
         rhs = hit['rhs'].strip()
