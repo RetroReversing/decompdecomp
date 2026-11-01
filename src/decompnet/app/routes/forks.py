@@ -112,7 +112,10 @@ def register(app: App) -> None:
                 res = net.forks.setup(slug, tmp, name, log=log, move=True)
             finally:
                 tmp.unlink(missing_ok=True)
-            autopilot(slug)
+            active = res.get("slug", slug)
+            settings.data["last_project"] = active
+            settings.save()
+            autopilot(active)
             return res
         return JSONResponse({"job": jobs.start("fork-setup", work)})
 
@@ -154,7 +157,10 @@ def register(app: App) -> None:
 
         def work(log):
             res = net.forks.setup(slug, src, src.name, log=log) if path else net.forks.setup(slug, None, log=log)
-            autopilot(slug)
+            active = res.get("slug", slug)
+            settings.data["last_project"] = active
+            settings.save()
+            autopilot(active)
             return res
         return JSONResponse({"job": jobs.start("fork-setup", work)})
 

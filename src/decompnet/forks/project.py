@@ -392,8 +392,31 @@ class ForkProject:
         out = Path(os.path.relpath(p, self.root.resolve())).as_posix()
         return out + "/" if rel.endswith("/") else out
 
+    def progress_save(self) -> tuple[Path, dict] | None:
+        """A portable save at the root or beside a standalone rebuild, never through links."""
+        for folder in (self.root, self.root / "progress"):
+            manifest = folder / "decompdecomp.json"
+            if not manifest.exists():
+                continue
+            if folder.is_symlink() or manifest.is_symlink():
+                raise ForkError("Saved progress must be a regular folder and manifest, not symbolic links.")
+            try:
+                data = json.loads(manifest.read_text(encoding="utf-8"))
+                if data.get("format") != 1 or not re.fullmatch(r"[0-9a-fA-F]{40}", data["game"]["sha1"]):
+                    raise ValueError("unsupported progress manifest")
+            except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+                raise ForkError(f"Fix the saved progress manifest at {manifest}: {e}") from None
+            return folder, data
+        return None
+
     def needs(self, version: str | None = None) -> dict:
         """What the user has to provide: {"what", "path" (None: set up by hand), "sha1", "help", "auto"}."""
+        saved = self.progress_save()
+        if saved:
+            _, manifest = saved
+            return {"what": "your copy of the game for this saved progress", "path": "baserom.z64",
+                    "sha1": manifest["game"]["sha1"], "auto": True, "saved_progress": True,
+                    "help": "decompdecomp will restore the bundled sources, drafts, names, notes and compiler settings, and verify saved matches against your game."}
         kind = self.kind()
         manual = {"what": "your copy of the game", "path": None, "sha1": None, "auto": False,
                   "help": "This project has its own setup. Follow its README in a terminal, in the project folder; "

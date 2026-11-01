@@ -1321,3 +1321,7 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   project-specific tool descriptions/schemas. Manual clients can create copyable,
   persistent project-scoped credentials and revoke them without exposing the GUI
   secret or saving plaintext bearer tokens. External sessions remain client-managed.
+- Done: public imports recognise portable progress bundled with standalone builds.
+  ROM selection restores and reverifies saved work through the existing save
+  pipeline, preserving the checkout and following the restored project identity.
+  Open a saved project also accepts a repository root containing progress/.

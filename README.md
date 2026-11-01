@@ -432,6 +432,16 @@ judged tools. Reported input, output and cache tokens are tracked; missing usage
 costs remain unknown. Live MCP, compile-and-match and permission checks were tested on
 macOS; Linux and Windows launch settings have automated coverage.
 
+### Repositories with bundled decompdecomp progress
+
+**Continue a public decomp** recognises a portable `decompdecomp.json` save at the
+repository root or under `progress/`, even when the repository also has a
+standalone `build.py` and `objdiff.json`. Supply the matching game copy to restore
+sources, drafts, names, notes, headers and compiler settings. Saved matches are
+verified again; cloning alone does not establish a match. The checkout stays on
+disk and its progress folder remains linked to the restored project.
+**Open a saved project** accepts the repository root too.
+
 ### Connect another AI tool
 
 In **Agents & models → Connect another AI tool with MCP**, choose a project and
