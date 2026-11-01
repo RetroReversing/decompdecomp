@@ -1,5 +1,16 @@
 # Roadmap
 
+Implemented: compact claims prioritize verified mismatch regions while keeping complete candidates; last_diff
+can reuse an exact scoped baseline without compiling. Unchanged-output advice starts earlier with recent
+change history and respects exhausted/released claims. Compiler failures include bounded declaration/context
+guidance, and stale edits include current C near the requested anchor without fuzzy replacements. Claude
+partial-message usage is deduplicated and reconciled with final totals; interrupted coverage remains explicit.
+Implemented: private original range-predicate helpers and bounded mask-signedness context trials in
+mapped ROM preparation; focused two-load repair ranking; MIPS candidate-only epilogue boundary
+warnings; concrete comparison/immediate revision leads; current-source/build-scoped unsuccessful
+probe summaries. Shared diagnostics/ranking reach applicable imported builds. Private predicate/field
+header context requires imported-build adapters; cross-architecture epilogue readers remain planned.
+
 Implemented: session transcripts auto-refresh incrementally with a pause toggle, preserve expanded entries,
 and follow the bottom only when already there. New judge-recorded improvements appear as score timeline
 markers; historical attempts without saved improvement evidence are not inferred from agent prose.
@@ -1543,3 +1554,7 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Planned: copied-build replay adapters for imported projects and phase diagnostics for other compiler
   backends. They explicitly skip instead of using guessed standalone build settings. Timing currently
   measures summed trial elapsed time; per-child CPU accounting across compiler runtimes remains planned.
+
+- Done: selective branch pointer lifetime combinations and declaration-order bridges in shared C candidate
+  repairs, with guarded terminal switch-tail distribution and advisory repeated-call shortfall clues.
+  ROM and imported candidates use their unchanged ordinary judge. Unsupported control/macros stay unchanged.

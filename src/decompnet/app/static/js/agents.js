@@ -206,7 +206,7 @@ function agentEfficiency(s) {
 
 function agentUsage(s) {
   const tokens=Number(s.tokens || 0);
-  return `<div class="agent-usage"><span title="Reported usage only; some agents report tokens at session end. Includes cache reads and writes when reported.">${tokens > 0 ? `${compactAgentNumber(tokens)} reported tokens` : 'Token usage not reported yet'}</span>${tokens > 0 && s.estimated_cost != null ? `<span title="Estimate at standard API rates, not your subscription bill">≈ ${money(s.estimated_cost)} API-equivalent</span>` : s.usd ? `<span>${money(s.usd)} reported cost</span>` : ''}</div>`;
+  return `<div class="agent-usage"><span title="Reported usage only; some agents report tokens at session end. Includes cache reads and writes when reported.">${tokens > 0 ? `${compactAgentNumber(tokens)} reported tokens${s.current_usage_coverage === "partial" ? " · current session incomplete" : ""}` : 'Token usage not reported yet'}</span>${tokens > 0 && s.estimated_cost != null ? `<span title="Estimate at standard API rates, not your subscription bill">≈ ${money(s.estimated_cost)} API-equivalent</span>` : s.usd ? `<span>${money(s.usd)} reported cost</span>` : ''}</div>`;
 
 }
 document.addEventListener('click', event => {
