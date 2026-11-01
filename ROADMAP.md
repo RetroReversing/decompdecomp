@@ -1187,3 +1187,8 @@ prioritise these shapes. Search frontiers avoid expanding measured frame/code gr
 structural improvement, while retaining numeric improvements and ordinary exact judging. Generated
 compile errors reuse input-scoped caches; agent summaries include failures and regressions.
 Synthetic execution/search regressions are distinct from newly measured private-game recoveries.
+
+- Done: bounded adjacent scalar prefix-result and postfix-store hypotheses feed shared
+  draft, agent-local and deep-repair families. Pinned-compiler controls verify generated
+  shapes; nonadjacent increment motion and automatic narrowing remain unsupported pending
+  liveness and range evidence. No new full-game matches are attributed to this rule.

@@ -790,3 +790,21 @@ for the successful output in the tested decomposition. Native GCC diagnostic out
 output across thirteen captured phases. Neither phase statistics nor ablation results replace the linked
 judge; allocated static helper code, initialized data, BSS sizes and named relocations are included in the
 frozen-output comparison. See `docs/repair-replay.md` for limits and controls.
+
+### Narrow increment expression shapes (1 November 2026)
+
+During an unfinished large MIPS routine investigation with KMC GCC 2.7.2 and
+`-G0 -mips3 -mgp32 -mfp32 -O2 -fno-strength-reduce -msoft-float`, a short-counter
+prefix increment recovered a target loop-tail register pattern. A postincrement
+embedded in a field store and one in an address expression recovered additional
+register choices. Reviewed live candidates improved from displayed score 667 to
+622 across several edits; the routine is still unmatched. This is partial evidence,
+not a new exact function match or proof of the original source spelling.
+
+The shared generator now proposes adjacent `i += 1; v = i;` as `v = ++i;` and
+`p->field = i; i += 1;` as `p->field = i++;`, with unescaped local scalar counters.
+It rejects volatile code, ambiguous statement boundaries and side-effecting lvalues.
+Synthetic pinned-compiler controls verify generated shapes independently of the
+private investigation. Nonadjacent motion, bucket-address postincrements, automatic
+counter narrowing and frame padding are deliberately not inferred by this rule:
+those need additional liveness/range evidence. Normal budgets and exact judges apply.
