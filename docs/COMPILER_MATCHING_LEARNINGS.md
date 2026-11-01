@@ -568,3 +568,18 @@ at 275; adding dead-result reuse, field-value lifetimes and target-observed load
 the remaining steps. This is a private regression replay of an already-known match, not a
 claim that Autopilot finds every comparable routine within that budget. No global search
 budget, beam depth or compiler setting was enlarged for this change.
+
+### Captured scalar and floating lifetime repairs
+
+Private isolated replays of two same-settings captures recovered their recorded successful compiler output
+with `cast_bitwise_lifetime` and `float_cast_lifetime`: SN64 GCC 2.8.1 (`sn-n64-281`),
+`-G8 -mips3 -O2 -mgas -meb -mcpu=VR4300 -mhard-float -mfp64`. Separating an integer cast from
+its constant bitwise operation and explicitly assigning a floating cast before the first multiplication can
+change register allocation. Preserve factor order; neither float reassociation nor semantic equivalence is
+assumed. An alternative floating split regressed, so the exact judge must select candidates.
+
+A selected unsigned shift/store capture was already recovered by `typed_temporary` with KMC GCC 2.7.2,
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. Do not attribute that recovery to the new restricted shift-store family.
+That new family excludes live locals, loops/gotos and volatile code. Synthetic KMC `-O2` output controls
+cover all three families. These are compiler-output regression recoveries, not additional verified game
+matches; game source and exports remain private.
