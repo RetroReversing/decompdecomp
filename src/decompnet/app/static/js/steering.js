@@ -1014,7 +1014,7 @@ function renderDeepSweepResults(status) {
     return (descending ? -comparison : comparison) || a.function.localeCompare(b.function);
   });
   const columns = [["function", "Function"], ["starting_score", "Starting score"], ["new_score", "New score"], ["difference", "Score difference"], ["starting_percent_text", "Starting match"], ["new_percent_text", "New match"]];
-  const headings = columns.map(([key,label]) => `<th aria-sort="${sortKey === key ? descending ? "descending" : "ascending" : "none"}"><button class="link-btn" type="button" data-deep-sort="${key}">${label}${sortKey === key ? descending ? " ▼" : " ▲" : ""}</button></th>`).join("");
+  const headings = columns.map(([key,label]) => `<th aria-sort="${sortKey === key ? descending ? "descending" : "ascending" : "none"}"><button class="table-sort" type="button" data-deep-sort="${key}">${label}${sortKey === key ? descending ? " ↓" : " ↑" : ""}</button></th>`).join("");
   $("deepSweepMatched").textContent = (status.improvements || []).filter(r => r.new_score === 0).length.toLocaleString();
   $("deepSweepImproved").textContent = (status.improved || (status.improvements || []).length || 0).toLocaleString();
   $("deepSweepResults").innerHTML = `<p><b>${status.improved || rows.length} functions improved</b> by deep permutation</p>`

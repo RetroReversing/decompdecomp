@@ -1310,3 +1310,9 @@ details.more[open] > summary::before { content: "− "; }
 .deep-worker [data-latest] { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
 
 #navVersion { min-width:0; overflow-wrap:anywhere; line-height:1.5; }
+
+/* Sortable headings use the Functions table typography, rather than link colours. */
+.table-sort { background:none; border:0; padding:0; text-align:left; cursor:pointer; white-space:nowrap;
+  font:500 11px/1 var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.table-sort:hover, .table-sort:focus-visible,
+th[aria-sort="ascending"] .table-sort, th[aria-sort="descending"] .table-sort { color:var(--ink); }

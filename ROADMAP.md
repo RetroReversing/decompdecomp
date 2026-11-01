@@ -1370,3 +1370,6 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   sort numerically or by name, retain order during refreshes, and show adjacent
   before/after scores plus score reduction. Local macOS builds can deliver a
   verified .app directly with --app-only instead of making an archive.
+
+- Done: deep-pass sortable headings use the neutral Functions-table typography
+  and ascending/descending arrows, with the active column highlighted in ink.
