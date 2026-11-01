@@ -95,3 +95,9 @@ A target-supported math alias must also have its correct float/double prototype;
 calling convention. If only an allocation immediate differs, compare the ROM's requested extent with reference
 sizeof before changing any types. A different allocation extent does not prove a missing field. Prepared-source
 improvements merit bounded compiler-profile probes with that source's private header before further permutation.
+
+SDK I/O near-matches may need `-O1` with original `register` locals and byte-aligned response records. Keep the
+original volatile MMIO access shape: replacing a proven numeric register address with an address-of-symbol or
+scalar-symbol expression can change IDO 5.3's address setup/register selection. Only use addresses proven by the
+target; rejudge linked bytes rather than symbolic diff spelling. Inspect retail polling masks, error constants
+and recovery paths when an SDK revision differs. Changing optimization alone does not establish compatibility.

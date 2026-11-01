@@ -36,6 +36,14 @@ def find(text: str, name: str) -> tuple[int, int] | None:
     else:  # plain name: also match a definition written as Class::name
         pat = re.compile(rf"(?<![\w:~])(?:[\w~<>]+::)*{re.escape(name)}\s*\(")
     for m in pat.finditer(clean):
+        # A call inside a for increment can be followed by a brace too. Require a
+        # declaration prefix, not an expression, while allowing K&R and C++ forms.
+        boundary = max(clean.rfind(";", 0, m.start()), clean.rfind("{", 0, m.start()),
+                       clean.rfind("}", 0, m.start())) + 1
+        prefix = clean[boundary:m.start()]
+        prefix = re.sub(r"(?m)^\s*#[^\n]*", "", prefix).strip()
+        if re.search(r"[=()+/!|%]", prefix) or re.search(r"\b(?:for|while|return|if|switch)\b", prefix):
+            continue
         # walk to the end of the parameter list
         depth, i = 0, m.end() - 1
         while i < len(clean):
