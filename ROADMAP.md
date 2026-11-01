@@ -1439,3 +1439,14 @@ remain planned: the initial browser toolchain has no matching build-context adap
 
 - Done: the C editor marks differing/extra/moved instructions red and operand changes yellow, with line-number buttons showing target/compiled instructions. Compile responses give agents bounded evidence from the same source map. Associations come from the exact scored object, with unchanged compiler flags; edits and function navigation invalidate editor highlights. Shared ELF DWARF 1/2+ and ECOFF readers serve ROM and imported projects; imported file lines are translated to the displayed function fragment and stale objects are rejected.
 - Planned: CodeView/COFF, STABS and relocatable debug tables with overlapping executable sections. Unsupported or absent line information is shown explicitly; target-only instructions are never assigned a guessed C line. Optimized line associations are advisory, not causal proof.
+### Expression recipes and bounded value proofs
+
+- Done: token-level frozen-output ablation separates independent edits on the same line.
+- Done: private compiler-profile expression recipes learned from exact connected deep-search
+  edges, accepted local experiments and iterative-search victories; reused in deep/local search and optional iterative repairs.
+- Done: shared draft repairs prove intervals for straight-line signed integer locals before
+  proposing narrower storage, with compiler ABI checks and the ordinary exact judge.
+- Planned: CFG-aware interval joins and loop invariants. Branches and unknown statements are
+  deliberately rejected rather than assigned speculative bounds.
+- Planned: train recipes from reviewed historical repair examples only after a fresh ordinary
+  exact verdict. Frozen-control replay alone must not train acceptance evidence.

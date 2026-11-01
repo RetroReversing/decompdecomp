@@ -9,7 +9,7 @@ import time
 
 from ..match_bundle import compiler_identity
 from ..project import compiler_for
-from . import adaptive_repairs, permuter_focus
+from . import adaptive_repairs, expression_recipes, permuter_focus
 
 MAX_STEPS = 4
 SCHEMA = '''CREATE TABLE IF NOT EXISTS repair_sequences(
@@ -70,6 +70,7 @@ class Lineage:
             self.paths[source] = path
             if exact:
                 learn(self.net,self.profile,self.focus,path)
+                expression_recipes.learn(self.net,self.profile,parent,source)
 
     def preferred(self, source):
         return next_families(self.net,self.profile,self.focus,self.paths[source]) if source in self.paths else []

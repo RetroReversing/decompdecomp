@@ -78,3 +78,9 @@ compiler's integer/narrowing contract. The demonstrated KMC result is a controll
 replay of one known match. Never add observable calls, reads, stale captures or
 undefined arithmetic to manufacture a frame. Mismatch categories and rendered
 position counts guide investigation; the ordinary exact judge still accepts C.
+
+`proven_local_width` tries narrower signed storage only after proving bounds across all
+assignments in a straight-line function. Branches and unknown expressions are skipped.
+`learned_expression` reuses small templates from exact results under the same compiler
+profile. Local repair batches and deep search spend their normal compile allowance on these
+hypotheses; no model call is needed to generate them. They still require an exact judge.

@@ -7,7 +7,7 @@ Goal: C that the game's own compiler turns into exactly the bytes in the ROM. No
 2. Read `get_context`: the shared header every compile includes (types, structs, prototypes).
 3. Write the function, then `compile_and_diff`. Your object is linked at the function's real address
    and compared with the ROM. Score 0 = byte-identical = matched and saved.
-4. Iterate. Change one thing at a time and watch the score; keep what lowers it.
+4. Iterate. Change one thing at a time and watch the score. Keep the best saved draft, but retain a small alternative when its frame, spill offsets or register mapping improves despite a worse score.
 5. Matched: add what you learned to the codebase so others benefit:
    - prototypes and structs you worked out -> `edit_context` (accepted only if every matched function
      still matches);
@@ -54,3 +54,28 @@ families include `local_widening`, `callee_parameter_width`, `callee_return_widt
 unwanted call conversions, integer register lifetimes and alternative dispatch layouts without model-written
 source variants. Candidate-owned prototypes change only in that candidate; confirm a discovered signature
 before suggesting a shared header edit. A lower score is useful evidence, not a proof of correctness.
+
+## Register and spill plateaus
+
+Read the compact allocation clues and current-input trial history before requesting another full diff.
+A consistent register substitution suggests lifetime work; different stack offsets suggest spill/layout
+work; the same displayed instruction multiset suggests scheduling. These are hypotheses, never verdicts.
+An explicitly addressed local stack field can use different reload registers from a compiler-spilled scalar.
+
+Use `pointer_argument_alias` to try a separately named pointer for repeated call arguments while leaving
+aggregate copies direct. `spill_declaration_order` moves plain uninitialized pointers within mixed
+scalar/pointer declaration groups. `byte_fill_constant` tests a representable byte constant in a fill loop.
+`allocation_initialization_order` swaps adjacent independent literal/address local assignments.
+`allocation_schedule_bridge` combines a lifetime/constant hypothesis with bounded declaration ordering.
+The shared integer/pointer split-reuse families handle phase boundaries; unsupported shapes need manual work.
+These repairs reach the shared draft/permuter pipeline, including imported projects where candidate C is supported.
+
+Iterative autopilot retains its separate opt-in budget and fair function rotation. It can now follow four
+edits and retains different register/spill shapes rather than choosing every parent by numeric score alone.
+The normal per-function compile allowance is unchanged. The MIPS ROM iterative phase remains narrower than
+the shared local repair pipeline; imported projects use local/deep repairs, not that phase.
+
+Consult the current-parent failed-trial history: unchanged inputs need not repeat hundreds of setup orders
+or flag combinations. A changed source lifetime, header, target or compiler profile is a new experiment.
+Do not infer original source spelling from an exact generating expression, or count a replay of an already
+matched source as a new match. Only the ordinary judge accepts a match.
