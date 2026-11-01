@@ -190,6 +190,15 @@ function agentMetrics(s, stats) {
   return `<div class="agent-results-summary">${s.task === 'readable' ? `<span><strong>${stats?.polished || 0}</strong> polished</span>` : metric('matched',stats?.matched || 0)}${metric('improved',stats?.improved || 0)}</div>
     <div class="agent-timing"><span>${runtime} <span class="muted">since latest start</span></span><span><span class="muted">Last improvement</span> ${ago === 'None yet' ? ago : ago + ' ago'}</span></div>`;
 }
+function agentEfficiency(s) {
+  return (s.efficiency || []).slice(-3).map(e => {
+    const per = e.tokens_per_match;
+    const ratios = e.matches ? `${e.compiles_per_match.toFixed(1)} compiles / match · ${Math.round(e.seconds_per_match)} helper seconds / match` : 'No matches in this cohort yet';
+    const usage = per ? `${Math.round(per.input_tokens).toLocaleString()} uncached input · ${Math.round(per.cache_read_tokens).toLocaleString()} cache reads · ${Math.round(per.cache_write_tokens).toLocaleString()} cache writes · ${Math.round(per.output_tokens).toLocaleString()} output tokens / match` : 'Token averages unavailable: no matches or incomplete usage reporting';
+    return `<div class="small muted" title="${esc(e.note)}"><b>Completed sessions · ${esc(e.model || e.kind)} · ${esc(e.compiler)} · cohort ${esc(e.cohort)}</b><br>${e.sessions} sessions · ${e.matches} matches · ${ratios}<br>${usage}${e.average_function_instructions != null ? `<br>${Math.round(e.average_function_instructions)} instructions / attempted function` : ''}<br>Averages include unsuccessful work; compare the same cohort, model and similar function sizes.</div>`;
+  }).join('');
+}
+
 function agentUsage(s) {
   return `<div class="agent-usage"><span title="${Number(s.tokens || 0).toLocaleString()} reported tokens, including cache reads and writes">${compactAgentNumber(s.tokens)} tokens</span>${s.estimated_cost != null ? `<span title="Estimate at standard API rates, not your subscription bill">≈ ${money(s.estimated_cost)} API-equivalent</span>` : s.usd ? `<span>${money(s.usd)} reported cost</span>` : ''}</div>`;
 
@@ -245,6 +254,7 @@ function renderSessions(sessions) {
       <details class="agent-details" data-agent-details="${id}" ${agentDetailsOpen.has(s.id) ? 'open' : ''}><summary>Details</summary><div class="agent-details-body">
       <span class="facts-line">${facts.join(' · ')}</span>
       <span class="small muted">${Number(s.tokens || 0).toLocaleString()} total tokens used · ${rate == null ? '—' : compactAgentNumber(rate)} tokens / match${s.estimated_cost != null && b?.matched ? ` · ≈ ${money(s.estimated_cost / b.matched)} / match` : ''}</span>
+      ${agentEfficiency(s)}
       ${s.metrics_since ? `<span class="small muted">Metrics since reset · ${new Date(s.metrics_since * 1000).toLocaleString()}</span>` : ''}
       <span class="small muted">Work settings · ${s.per_session || 8} functions/session${s.task === "readable" ? "" : ` · ${esc(QUEUE_STRATEGIES.find(([v]) => v === (s.selection?.strategy || ""))?.[1] || "Automatic")}${s.selection?.model_untried ? " · never checked by this model" : ""}${s.selection?.match_below != null ? ` · below ${esc(s.selection.match_below)}%` : ""}${s.selection?.stall_compiles ? ` · move on after ${esc(s.selection.stall_compiles)} without improvement` : ""}${s.selection?.max_tries ? ` · max ${esc(s.selection.max_tries)} tries` : ""}`}</span>
       ${s.last_message ? `<div class="agent-message"><b class="small">Latest update</b><q class="said">${esc(s.last_message)}</q></div>` : ''}

@@ -899,6 +899,8 @@ class Manager:
             baseline = s.options.get('_metrics', {})
             row['metrics'] = board.get(s.agent_name, {})
             row['metrics_since'] = baseline.get('at')
+            from .session_efficiency import for_sessions
+            row['efficiency']=for_sessions(self.net,[r for r in records if r['started_at']>=baseline.get('at',0)])
             row['metrics_after'] = baseline.get('attempt', 0)
             row['lifetime_tokens'] = s.tokens
             for key in ('tokens', 'usd', 'runs', 'restarts'):
@@ -1184,6 +1186,10 @@ class Manager:
             row = db.execute("INSERT INTO helper_sessions(helper_id, project, kind, model, agent, started_at, task) "
                               "VALUES(?,?,?,?,?,?,?)", (s.id, s.slug, s.kind, s.model or agents.get(s.kind).config_model() or "",
                                                       s.agent_name, time.time(), s.options.get("task") or "")).lastrowid
+        from .session_efficiency import context
+        snapshot=context(self.net,s.slug,s.options)
+        with self.net.store.tx() as db:
+            db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',('session-efficiency:'+str(row),json.dumps(snapshot)))
         s.session_id = row
         from .session_budget import start
         agent_row=self.net.store.one('SELECT id FROM agents WHERE name=?',s.agent_name)
@@ -1206,6 +1212,9 @@ class Manager:
                     result['session'][key + '_tokens'] = live.usage[key]
                 result['session']['usd'] = live.usage['usd']
                 result['session']['tokens'] = live.usage['tokens']
+        if result.get('session'):
+            from .session_efficiency import for_sessions
+            result['efficiency']=for_sessions(self.net,[result['session']]) if result['session']['ended_at'] else []
         return result
 
     def _session_end(self, s: Session, row: int, agent, began: float, outcome: str) -> None:
@@ -1225,6 +1234,8 @@ class Manager:
                        "matches=? WHERE id=?", (time.time(), outcome, u["usd"], u["input"], u["output"],
                                                 u["cache_read"], u["cache_write"], u["tokens"], u["turns"],
                                                 u["tool_calls"], compiles, matches, row))
+        from .session_efficiency import finish
+        finish(self.net,agent,s.slug,row,began)
         spent = f", ${u['usd']:.2f}" if u["usd"] else f", {u['tokens'] // 1000}k tokens" if u["tokens"] else ""
         s.push("info", f"session {s.runs} done: {u['tool_calls']} tool calls, {compiles} compiles, {matches} "
                        f"matched{spent}")

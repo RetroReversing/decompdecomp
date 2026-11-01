@@ -969,3 +969,48 @@ four singles and six independent pairs even when singles leave similarity unchan
 The shared draft/local/deep repair pipeline and cached autopilot address feedback
 can propose these trials; only the ordinary compiler/link judge accepts them.
 Other processors remain unchanged; raw MIPS decoding is not evidence for their ABIs.
+
+### Sustained progress and comparable efficiency windows
+
+A few tiny score reductions should not extend a paid matching session indefinitely.
+The new progress window counts fresh scored attempts in one claim/build scope,
+persists across restarts, and only considers handing work back after 24 trials.
+If the best score of the later half of the latest 12 trials improves by at most
+1% over the first half, retain best C and write an evidence-led handoff. Exact
+matches and missing/error scores cannot trigger this heuristic. Explicit larger
+work budgets extend the minimum. This is scheduling advice, never proof that a
+function is impossible; ordinary source/build changes and future agents can resume.
+
+Compile feedback supplies the first target/candidate mismatch and an advisory
+category. Batches retain the exact selected continuation and report applied patch
+IDs rather than requiring agents to infer the winner from the final submitted
+trial. Existing profile/focus-specific repair priorities now also account for mean
+measured trial duration, bounded to preserve exploration; cached trials do not
+train the policy.
+
+Completed-session efficiency cohorts retain model, initial build/work-selection
+snapshot and observed function instruction sizes. Ratios include failed work and
+separate uncached input, cache reads/writes and output. Missing usage produces an
+unknown token average, not zero-cost work. Session-start cohorts can contain
+multiple compiler ranges; compare similar workloads and collection windows.
+These are helper-time/session averages, not exact per-function token attribution
+or subscription bills. No speed or token-saving benchmark is claimed yet.
+
+### Distinguish source identity, retail differences and helper entry context
+
+A source-assisted MIPS/IDO continuation recovered three functions through original record types and
+verified retail branches. It also corrected a misleading nearest-neighbour source identity. Call sequence,
+field offsets and branch/exit shape are now retained as advisory source-lead support, with the original
+symbol/file alternatives and rejected reasons. Exact byte evidence outranks heuristic support; no name is
+made canonical by this score. Compiled differences may also come from inlining or optimization, so the
+comparison view does not generate automatic retail patches.
+
+Small SDK helpers may receive an incoming float in `f12` alongside an integer or pointer in `a0`.
+An exposed ordinary-C signature can shift integer argument slots. Incoming-register diagnostics and
+caller excerpts now point workers toward original static-helper context. `mtc1` into `f12` is a definition,
+not an incoming float; stack slots are ABI locations rather than an inferred number of C parameters.
+
+Distinct source/header/profile trials retain their mismatch family and elapsed time. Repeated register-only
+misses suggest original type/call-context and declaration-lifetime experiments before equivalent rewrites.
+Private local family yields can affect preparation ordering after a minimum sample, while exploration and
+ordinary judging remain. Synthetic tests verify these controls; they do not claim new game matches.

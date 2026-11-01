@@ -252,6 +252,12 @@ def register(app: App) -> None:
         proj = net.project_row(slug)
         if request.method == "GET":
             return source_preparation.settings(net, proj)
+        if data.get('action') == 'analysis':
+            from ..source_lead_analysis import listing
+            return listing(net, proj)
+        if data.get('action') == 'reject-lead':
+            from ..source_lead_analysis import reject
+            return reject(net,proj,str(data.get('id','')),data.get('reason',''))
         if data.get('action') == 'reviews':
             from ..prepared_evidence import listing
             return {'reviews': listing(net, proj)}

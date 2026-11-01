@@ -1163,3 +1163,26 @@ $("sourcePrepReviewsRefresh").onclick = async () => {
     };
   } catch (error) { showJobError(panel, error.message); } finally { finish(); }
 };
+
+
+$("sourcePrepAnalysisRefresh").onclick = async () => {
+  const slug = S.slug, button = $("sourcePrepAnalysisRefresh"), log = $("sourcePrepAnalysisLog");
+  const finish = beginWork(log, "Loading source leads and measured results", [button], "Source evidence loaded.");
+  try {
+    const data = await api("/api/source-preparation", {method:"POST", body:{slug, action:"analysis"}});
+    if (S.slug !== slug) return;
+    const panel = $("sourcePrepAnalysis");
+    panel.innerHTML = `<p class="muted">${esc(data.scope)}</p><div class="compiler-table"><table><thead><tr><th>Family / profile</th><th>Tested</th><th>Improved</th><th>Exact trials (functions)</th><th>Trial time</th></tr></thead><tbody>${data.families.map(r => `<tr><td>${esc(r.family)}<br>${esc(JSON.stringify(r.profile))}</td><td>${r.tested}</td><td>${r.improved}</td><td>${r.matched}</td><td>${(r.elapsed_ms/1000).toFixed(1)}s</td></tr>`).join("")}</tbody></table></div><p>Leads are ranked by compiled call, field-offset and control-flow agreement. These scores do not establish identity. An exact byte verdict still decides matching.</p>` + data.leads.map((r, i) => `<details class="card"><summary>${esc(r.function)} · ${esc(r.lead.symbol || "prepared context")} · support ${r.comparison.support}/100 · ${r.rejected ? "rejected" : r.exact ? "exact trial" : `score ${r.score ?? "unavailable"}`}</summary><p>${esc(r.lead.file || "")} · ${esc(r.family)} · ${esc(JSON.stringify(r.profile))}</p><p>${esc(r.comparison.note)}</p><pre>${esc(JSON.stringify({target:r.comparison.target,candidate:r.comparison.candidate,missing_calls:r.comparison.missing_calls,extra_calls:r.comparison.extra_calls,source_parameters:r.comparison.source_parameters,source_alternatives:r.lead.alternatives,incoming_entry:r.comparison.entry},null,2))}</pre><p class="muted">Incoming register/stack slots are ABI locations, not a count of C parameters. Check wide arguments, aggregates and original callers.</p><pre>${esc(r.comparison.rows.map(row => row.join(" | ")).join("\n"))}</pre>${r.error ? `<pre>${esc(r.error)}</pre>` : ""}${r.rejected ? `<p>Rejected lead: ${esc(r.rejected)}</p>` : `<label>Reason to reject this source lead<input data-lead-reason placeholder="Explain the contradictory evidence"></label><button data-reject-lead="${i}" class="ghost">Retain as rejected lead</button>`}<div data-lead-log></div></details>`).join("");
+    panel.onclick = async (event) => {
+      const reject = event.target.closest("[data-reject-lead]");
+      if (!reject || S.slug !== slug) return;
+      const card = reject.parentElement, reason = card.querySelector("[data-lead-reason]").value.trim(), output = card.querySelector("[data-lead-log]");
+      if (!reason) { output.textContent = "Give the contradictory evidence first."; return; }
+      const done = beginWork(output, "Saving rejected source lead", [reject], "Rejection retained.");
+      try {
+        await api("/api/source-preparation", {method:"POST",body:{slug,action:"reject-lead",id:data.leads[Number(reject.dataset.rejectLead)].id,reason}});
+        output.textContent = `Rejected lead retained: ${reason}`; reject.hidden = true;
+      } catch (error) { showJobError(output,error.message); } finally { done(); }
+    };
+  } catch (error) { showJobError(log,error.message); } finally { finish(); }
+};

@@ -6,6 +6,7 @@ must not be attributed to today's settings. These weights choose work, never a m
 import hashlib
 import json
 import math
+import statistics
 import time
 from itertools import zip_longest
 
@@ -62,12 +63,19 @@ def record(net, key, focus, family, baseline, score, elapsed_ms=0, origin="local
 def factors(net, key, focus):
     prepare(net)
     result = {}
-    for row in net.store.all('SELECT * FROM repair_policy WHERE profile=? AND focus=?', key, focus):
+    rows=net.store.all('SELECT * FROM repair_policy WHERE profile=? AND focus=?', key, focus)
+    times=[r['elapsed_ms']/r['attempted'] for r in rows if r['attempted']>=MIN_TRIALS and r['elapsed_ms']>0]
+    typical=statistics.median(times) if times else None
+    for row in rows:
         if row['attempted'] < MIN_TRIALS:
             continue
         # Smooth sparse evidence, favour verified wins, and never remove an applicable mutation.
         rate = (row['improved'] + 3 * row['matched'] + 1) / (row['attempted'] + MIN_TRIALS)
-        result[row['family']] = max(MIN_FACTOR, min(MAX_FACTOR, math.sqrt(rate * MIN_TRIALS)))
+        # Prefer wins per unit of observed compiler time within this exact profile/focus.
+        # Unknown durations are neutral; bounded factors and queue interleaving keep exploration.
+        elapsed=row['elapsed_ms']/row['attempted']
+        speed=max(.5,min(2,math.sqrt(typical/elapsed))) if typical and elapsed>0 else 1
+        result[row['family']] = max(MIN_FACTOR, min(MAX_FACTOR, math.sqrt(rate * MIN_TRIALS)*speed))
     return result
 
 
