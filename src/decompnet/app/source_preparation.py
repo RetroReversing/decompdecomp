@@ -396,6 +396,17 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                 if time.monotonic() >= deadline:
                     log_line(fn['name'] + ': source preparation used this round’s time allowance before compilation. Use a smaller coherent header before retrying.')
                     break
+                if not fork:
+                    from .related_source_context import candidates as related_contexts
+                    for body, context in list(variants):
+                        for related in related_contexts(net, fresh, fn, body, context):
+                            pair=(body,related['header'])
+                            if pair not in variants:
+                                variants.append(pair)
+                                reader.origins[pair]={**reader.origins[(body,context)],'family':'verified-neighbour-context',
+                                                      'context_from':related['function'],'shared_types':related['types'],
+                                                      'shared_calls':related['calls']}
+                                log_line(fn['name']+': trying private context from exact '+related['function']+'; each candidate is judged separately.')
                 if not fork and hasattr(net, 'reader'):
                     from .named_array_context import variants as named_arrays
                     for body, context in list(variants):
@@ -519,14 +530,14 @@ def private_profiles(net, proj, fn, source, header, st, report, log_line, budget
     from .. import toolchains
     from ..project import compiler_for
     from ..rom.export import _single_definition
-    from .profile_hypotheses import prioritized
+    from .profile_hypotheses import neighbours, prioritized
     if not hasattr(net, 'is_rom') or not net.is_rom(proj):return
     cfg=json.loads(proj['config'])
     own=compiler_for(cfg,fn['vram'])
     if own.get('cmd') or not own.get('toolchain') or toolchains.installed(own['toolchain']) is None:return
     expected=inputs(net,proj,fn)
     choices=[]
-    for flags in prioritized(proj,fn,own)+net.flag_variants(own['toolchain'],list(own['flags'])):
+    for flags in prioritized(proj,fn,own)+(neighbours(net,proj,fn,own) if hasattr(net,'cfg') else [])+net.flag_variants(own['toolchain'],list(own['flags'])):
         if list(flags)!=list(own['flags']) and list(flags) not in choices:choices.append(list(flags))
     from .source_next_steps import untested_profiles
     def signature(flags):

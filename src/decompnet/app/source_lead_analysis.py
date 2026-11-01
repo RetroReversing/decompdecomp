@@ -156,6 +156,16 @@ def brief(net, proj, fn):
                     if row:
                         code=(row['asm'] or '').splitlines();at=next((i for i,line in enumerate(code) if re.search(r'\bjal\s+'+re.escape(fn['name'])+r'\b',line)),None)
                         lines.append('Caller '+row['name']+(':\n'+'\n'.join(code[max(0,at-3):at+2]) if at is not None else ' (inspect its call-site argument setup).'))
+    if proj['arch']=='mips' and hasattr(net,'xrefs'):
+        from ..arch.mips_runtime import specialized_argument_setup
+        for address in sorted(net.xrefs(proj)['called_by'].get(fn['vram'],()))[:8]:
+            caller=net.store.one('SELECT name,asm FROM functions WHERE project_id=? AND vram=?',proj['id'],address)
+            evidence=specialized_argument_setup(fn['asm'] or '',caller['asm'] or '',fn['name']) if caller else None
+            if evidence:
+                lines.append('Specialized internal argument lead: '+', '.join(evidence['registers'])+
+                             ' read before definition in this helper and set by '+caller['name']+':\n'+'\n'.join(evidence['setup']+[evidence['call']])+
+                             '\nInspect the original same-unit helper/caller before broad body permutation. This does not assign registers or change a prototype.')
+                break
     scope=destination(net,proj,fn)
     misses=[];next_steps=[]
     for row in net.store.all('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature LIKE ? ORDER BY rowid DESC LIMIT 80',fn['id'],PREFIX+'%'):

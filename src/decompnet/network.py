@@ -14,6 +14,7 @@ import re
 import secrets
 import threading
 import time
+import uuid
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -427,6 +428,64 @@ class Network:
         with self.store.tx() as db:
             db.execute("UPDATE agents SET last_seen=? WHERE id=?", (time.time(), row["id"]))
         return Agent(row["id"], row["name"], row["owner"], bool(row["trusted"]))
+
+    # ---------------------------------------------------------------- pairing (an outside agent asks; the user approves)
+
+    PAIR_SECRET_CHARS = 16  # the requester's own secret, so only it can read the answer
+
+    def pair_request(self, name: str, secret: str) -> str:
+        """An agent outside the app asks to work one of its projects: a request the user sees and approves (or not)
+        in the window. The secret stays the requester's: without it, the answer (the token) can't be read."""
+        name = name.strip()
+        if not name or len(name) > 40 or not all(c.isalnum() or c in "-_." for c in name):
+            raise NetworkError("agent name must be 1-40 chars of [A-Za-z0-9-_.]")
+        if not isinstance(secret, str) or len(secret) < self.PAIR_SECRET_CHARS:
+            raise NetworkError(f"secret must be at least {self.PAIR_SECRET_CHARS} characters")
+        with self.store.tx() as db:
+            pending = db.execute("SELECT COUNT(*) FROM pairings WHERE state='pending'").fetchone()[0]
+            if pending >= 10:
+                raise NetworkError("too many pending pairing requests: decide them in the window first")
+            id = uuid.uuid4().hex
+            db.execute("INSERT INTO pairings(id,name,secret_hash,created_at) VALUES(?,?,?,?)",
+                       (id, name, hash_token(secret), time.time()))
+        return id
+
+    def pairings(self) -> list[dict]:
+        """The requests waiting for the user's decision."""
+        return [dict(r) for r in self.store.all("SELECT id,name,created_at FROM pairings WHERE state='pending'")]
+
+    def pair_decide(self, id: str, approve: bool, project: str | None) -> dict:
+        """Approve (with the one project the agent may work) or refuse a pairing. Approving mints the agent now; the
+        token reaches the requester when it asks again with its secret."""
+        if approve and (not project or self.store.one("SELECT 1 FROM projects WHERE slug=?", project) is None):
+            raise NetworkError(f"no project called {project!r}")
+        with self.store.tx() as db:
+            row = db.execute("SELECT name,state FROM pairings WHERE id=?", (id,)).fetchone()
+            if row is None or row["state"] != "pending":
+                raise NetworkError("no such pending pairing")
+            if approve:
+                token = self.register_agent(row["name"], "you", origin="paired")
+                agent_id = self.store.one("SELECT id FROM agents WHERE token_hash=?", hash_token(token))["id"]
+                db.execute("UPDATE pairings SET state='approved',agent_id=?,project=?,token=?,decided_at=? WHERE id=?",
+                           (agent_id, project, token, time.time(), id))
+            else:
+                db.execute("UPDATE pairings SET state='denied',decided_at=? WHERE id=?", (time.time(), id))
+        return {"state": "approved" if approve else "denied"}
+
+    def pair_answer(self, id: str, secret: str) -> dict:
+        """What the requester sees: its request's state, with the token once the user approved it."""
+        row = self.store.one("SELECT secret_hash,token,state FROM pairings WHERE id=?", id)
+        if row is None or not secrets.compare_digest(row["secret_hash"], hash_token(secret)):
+            raise NetworkError("no such pairing request")
+        out = {"state": row["state"]}
+        if row["state"] == "approved":
+            out["token"] = row["token"]
+        return out
+
+    def pairing_project(self, agent_id: int) -> str | None:
+        """The project a paired agent was approved for (the app's own helpers are mapped in memory instead)."""
+        row = self.store.one("SELECT project FROM pairings WHERE agent_id=? AND state='approved'", agent_id)
+        return row["project"] if row else None
 
     # ---------------------------------------------------------------- helpers
 

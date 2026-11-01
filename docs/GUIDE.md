@@ -181,6 +181,21 @@ need many more attempts. Less expensive models often fail on register allocation
 Then select the preset in **Agents & models → API key**. If the model does not use llama.cpp, set the context size
 there too. Small models can do small functions. Large functions need a strong model.
 
+## Agents outside the app
+
+A script or another tool on this computer can work one project through the app's tools, once you approve it. It asks
+on its own (its name and a secret it makes up), and the Agents & models page shows the request: pick the project it
+may work and approve it, or refuse. The agent reads the answer — its token — with its secret, and from then on its
+tools are that project's and nothing else. Refused or idle requests show up only while they wait.
+
+```sh
+curl -s http://127.0.0.1:6464/api/pair/request -d '{"name":"my-script","secret":"a-long-secret-only-i-know"}'
+curl -s http://127.0.0.1:6464/api/pair/status  -d '{"id":"…","secret":"a-long-secret-only-i-know"}'
+```
+
+The port is the app's own (shown in its window title and `~/.decomp/server.json`). The app never sends a token
+anywhere: it waits for the agent to come back with the secret only it holds.
+
 ## Decompile together
 
 A team of any size can work on one game. Each person uses their own computer, their own copy of the game and their

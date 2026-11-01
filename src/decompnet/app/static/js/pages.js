@@ -6,7 +6,41 @@ async function showAgentsPage() {
   await loadState();
   loadManualMcp();
   renderAgentsPage();  // again when the search for agents ends (base.js agentsFound)
+  renderPairings();
 }
+
+/* Agents outside the app (a script, another tool) ask to work one project: the user decides here. Approving mints
+   the agent a token for the one project picked; the agent reads it with the secret only it holds. */
+async function renderPairings() {
+  const panel = $("pairPanel"), box = $("pairBox");
+  if (!panel) return;
+  let pending;
+  try { pending = (await api("/api/pair/requests")).requests; } catch { return; }
+  panel.hidden = !pending.length;
+  if (!pending.length) return;
+  const projects = S.projects && S.projects.length ? S.projects : (S.projects = await api("/api/projects").catch(() => []));
+  box.innerHTML = `<p class="muted small">Agents outside the app asked to work on a project. Approving mints one a token for the single project you pick; it reads the token itself, with the secret only it holds.</p>` +
+    pending.map((r) => `<div class="ep-card" data-id="${esc(r.id)}">
+      <div class="ar-head"><b>${esc(r.name)}</b><span class="muted small">asked ${new Date(r.created_at * 1000).toLocaleTimeString()}</span></div>
+      <div class="row"><label class="field"><span>Project</span><select data-project>${projects.map((p) => `<option value="${esc(p.slug)}">${esc(p.name || p.slug)}</option>`).join("")}</select></label>
+        <button class="primary small-btn" data-approve type="button">Approve</button>
+        <button class="ghost small-btn" data-deny type="button">Refuse</button></div></div>`).join("");
+  box.querySelectorAll(".ep-card").forEach((c) => {
+    const id = c.dataset.id, name = c.querySelector("b").textContent;
+    c.querySelector("[data-approve]").onclick = async () => {
+      try {
+        await api("/api/pair/decide", { method: "POST", body: { id, approve: true, project: c.querySelector("[data-project]").value } });
+        toast(`Paired ${name}: it can work that project now.`, "match");
+        renderPairings();
+      } catch (e) { toast(esc(e.message), "err"); }
+    };
+    c.querySelector("[data-deny]").onclick = async () => {
+      try { await api("/api/pair/decide", { method: "POST", body: { id, approve: false } }); renderPairings(); }
+      catch (e) { toast(esc(e.message), "err"); }
+    };
+  });
+}
+setInterval(() => { if (!$("agentsPage").hidden) renderPairings(); }, 5000);
 function renderAgentsPage() {
   const rows = S.st.agents.filter((a) => !a.uses_endpoints);
   $("agList").innerHTML = rows.map((a) => `<div class="agent-row">

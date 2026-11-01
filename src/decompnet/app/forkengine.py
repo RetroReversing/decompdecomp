@@ -737,6 +737,25 @@ class ForkEngine:
     def setup(self, slug: str, game: bytes | Path | None, filename: str = "", log=print, move: bool = False) -> dict:
         """Add the user's game (bytes, or a file on disk) and run the project's setup, then measure it."""
         proj, fp, cfg = self.get(slug)
+        saved = fp.progress_save()
+        if saved:
+            if self.net.store.one("SELECT 1 FROM functions WHERE project_id=? LIMIT 1", proj["id"]):
+                raise NetworkError("This import already has function work. Open its progress folder as a saved project instead.")
+            from . import saves
+            if not isinstance(game, Path):
+                if game is not None:
+                    raise NetworkError("Choose your game file on disk to restore this saved project.")
+                game = fp.root / "baserom.z64"
+            if not game.is_file():
+                raise NetworkError("Choose your own copy of the game to restore the bundled progress.")
+            log("Restoring bundled decompdecomp progress and verifying its saved functions…")
+            result = saves.restore(self.net, str(saved[0]), game, log=log)
+            if cfg.get("repo_url"):
+                self.net._update_cfg(result["slug"], lambda c: c.__setitem__("repo_url", cfg["repo_url"]))
+            # Keep the checkout: the restored ROM project is linked to its progress folder.
+            if result["slug"] != slug:
+                self.net.remove_project(slug)
+            return result
         if game is not None:
             if isinstance(game, (bytes, bytearray)):
                 tmp = fp.root / STATE / "upload.tmp"

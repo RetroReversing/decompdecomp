@@ -1079,3 +1079,21 @@ def test_nested_splat_rom_uses_effective_yaml_base(tmp_path, platform):
     assert project.needs()['sha1'] == 'a' * 40
     config.write_text(config.read_text().replace('base_path: ../..', 'base_path: ../../..'))
     assert not project.needs()['auto']
+
+
+def test_bundled_progress_detection_rejects_invalid_or_linked_manifests(tmp_path):
+    progress = tmp_path / 'progress'
+    progress.mkdir()
+    manifest = progress / 'decompdecomp.json'
+    manifest.write_text(json.dumps({'format': 1, 'game': {'sha1': 'a' * 40}}))
+    needs = ForkProject(tmp_path).needs()
+    assert needs['auto'] and needs['saved_progress'] and needs['sha1'] == 'a' * 40
+    manifest.write_text('{bad')
+    with pytest.raises(NetworkError, match='saved progress manifest'):
+        ForkProject(tmp_path).needs()
+    manifest.unlink()
+    outside = tmp_path / 'outside.json'
+    outside.write_text('{}')
+    manifest.symlink_to(outside)
+    with pytest.raises(NetworkError, match='symbolic links'):
+        ForkProject(tmp_path).needs()

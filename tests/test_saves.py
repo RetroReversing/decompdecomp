@@ -4,6 +4,7 @@ only restores onto the same game."""
 
 import json
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -353,3 +354,35 @@ def test_new_attribution_has_no_token_and_later_runner_keeps_its_identity(tmp_pa
     assert runner.id == credit.id and net.authenticate(token).id == credit.id
     assert net.attribution_agent("new-author").id == credit.id
     assert net.authenticate(token).id == credit.id
+
+
+@pytest.mark.parametrize('public_import', [False, True])
+def test_combined_checkout_restores_verified_work_without_building(worked, tmp_path, public_import, monkeypatch):
+    from decompnet.forks.project import ForkProject
+
+    net, slug, other = worked
+    checkout = tmp_path / 'checkout'
+    saves.save(net, slug, checkout / 'progress')
+    (checkout / 'objdiff.json').write_text('{}')
+    (checkout / 'build.json').write_text('{}')
+    (checkout / 'build.py').write_text('raise RuntimeError("do not execute the standalone build")')
+    assert ForkProject(checkout).needs()['saved_progress']
+    fresh_home = tmp_path / 'fresh'
+    fresh_home.mkdir()
+    fresh = RomNetwork(fresh_home / 'db', fresh_home)
+    if public_import:
+        fresh.forks._register('checkout', 'Checkout', '', checkout,
+                              {'kind': 'fork', 'ready': False, 'platform': 'n64', 'repo_url': 'https://example.com/repo'}, 'cloned')
+        result = fresh.forks.setup('checkout', ROM, log=lambda *_: None)
+        assert fresh.store.one("SELECT 1 FROM projects WHERE slug='checkout'") is None
+        assert checkout.is_dir()
+    else:
+        result = saves.restore(fresh, str(checkout), ROM, log=lambda *_: None)
+    assert result['matched'] == 1 and result['best'] == 1 and result['lost'] == []
+    assert fresh._function('clamp_s32', result['slug'])['status'] == 'matched'
+    assert fresh._function(other, result['slug'])['best_source']
+    assert fresh.instructions(result['slug']) == 'Name functions in snake_case.'
+    config = fresh.cfg(fresh.project_row(result['slug']))
+    assert Path(config['progress_folder']) == checkout / 'progress'
+    if public_import:
+        assert config['repo_url'] == 'https://example.com/repo'
