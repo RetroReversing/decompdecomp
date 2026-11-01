@@ -140,3 +140,18 @@ def test_completed_profiles_survive_a_stopped_later_probe():
     result=preflight.run(net,proj,fn)
     assert result['best']['exact'] and result['tested']==3
     assert state['calls']==[['-O2'],['-O0'],['-O1'],['-O3']]
+
+
+def test_promising_candidates_test_debug_profiles_before_optimization():
+    net,proj,fn,state=setup()
+    cfg=net.cfg(proj);cfg['compiler']={'toolchain':'gcc-2.7.2-kmc','flags':['-O2','-g3']}
+    fn['n_insns']=100;fn['best_score']=500
+    net.debug_flag_variants=lambda tid,flags:[flags,['-O2'],['-O2','-g']]
+    net._judge_with=lambda p,f,t,flags,s:(flags==['-O2'],SimpleNamespace(score=0 if flags==['-O2']else 500),'')
+    state['auto']=True;seen=[]
+    judge=net._judge_with
+    def record(*args):seen.append(args[3]);return judge(*args)
+    net._judge_with=record
+    result=preflight.run(net,proj,fn,max_profiles=2)
+    assert result['best']['exact'] and result['applied']
+    assert seen==[['-O2','-g3'],['-O2']]

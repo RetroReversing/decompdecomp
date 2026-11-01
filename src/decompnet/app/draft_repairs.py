@@ -23,6 +23,7 @@ from . import (
     captured_repairs,
     compiler_shape_repairs,
     count_lifetime_repairs,
+    decision_address_repairs,
     entry_point_repairs,
     evidence_repairs,
     expression_repairs,
@@ -86,8 +87,14 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     start, end = span
     clean = _blank(source)
     opening = clean.find('{', start, end)
-    if opening < 0 or '#' in clean[opening:end]:
+    if opening < 0:
         return []
+    # The dedicated path preserves directives and never rewrites their bodies.
+    early=decision_address_repairs.variants(source,name,arch,header)
+    if '#' in clean[opening:end]:
+        for family,text in early:
+            if labels is not None:labels[text]=family
+        return [text for _,text in early][:limit] if limit is not None else [text for _,text in early]
     body = clean[opening + 1:end].rstrip()
     if not body.endswith('}'):
         return []
@@ -95,6 +102,8 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     offset = opening + 1
     proposals = []
     labels = labels if labels is not None else {}
+    for family,text in early:
+        proposals.append(text);labels[text]=family
     for family, text in helper_expansion.variants(source, name, header) + raw_address_repairs.variants(source, name, arch, asm, header) + buffer_address_repairs.variants(source, name, arch, asm, header) + sdk_io_repairs.variants(source, name, arch, asm, header) + target_local_repairs.variants(source, name, arch, asm, header) + formatter_repairs.variants(source, name) + switch_tables.variants(source, name, tables):
         proposals.append(text)
         labels[text] = family

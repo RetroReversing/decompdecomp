@@ -1359,3 +1359,27 @@ observation remains unresolved: its nearby padding includes two NOPs followed by
 Concrete source comparisons and compiled immediate differences are now shown as revision leads.
 Unsuccessful preparations are summarized only under their original source/build scope, so changed
 inputs remain eligible and old failed experiments are not mistaken for universal impossibility.
+
+### Selector staging, control flow and debug profiles
+
+A private 741-instruction V-Rally regression recovered an already known exact match using
+bounded single-case switch, shared flag-guard join, selector/address staging and unsigned
+halfword hypotheses. Selector staging requires the old pointer to be dead on every
+successor; qualified variants change an existing load rather than adding reads. Macro
+bodies stay in place, and unknown preprocessing/control transfers are rejected. These
+are compiler hypotheses, not semantic proofs; the ordinary exact judge remains mandatory.
+
+The original saved candidate scored 1976. The first generated bundle scored 1216 under
+its original GCC debug profile. Normal profile preflight then tested the current and
+no-debug settings and adopted the exact result through ordinary revalidation. In an
+isolated ROM engine/database this used seven compiler invocations, about 1.66 compiler
+seconds and 2.33 elapsed seconds, excluding database preparation, repository synchronization
+and full cartridge rebuilding. This is known-match recovery, not a new match or a general
+success-rate measurement. Source and ROM inputs remain private.
+
+Promising candidates (score at most ten points per instruction) now prioritize installed
+debug-flag variants within the existing profile budget. Other candidates retain the
+existing optimization-first search. Imported builds still own their compiler flags.
+Register-only differences produce compact allocation/address guidance, not a claimed cause.
+Revoking a manual MCP connection drains its in-flight attempts, retains their results and
+releases only its claims; queued work on that revoked connection cannot reclaim them.

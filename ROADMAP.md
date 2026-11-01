@@ -1494,3 +1494,14 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Planned: copied-build replay adapters for imported projects and phase diagnostics for other compiler
   backends. They explicitly skip instead of using guessed standalone build settings. Timing currently
   measures summed trial elapsed time; per-child CPU accounting across compiler runtimes remains planned.
+
+### Decision and address repair hypotheses
+
+- Done: bounded MIPS halfword arithmetic, single-case switch, shared flag-guard join and
+  selector/address staging through shared drafts and local/iterative/deep search. Pointer
+  liveness, macro/control-flow exclusions and the ordinary exact judge gate candidates.
+- Done: promising ROM candidates prioritize debug-profile alternatives; compact register-only
+  advice and manual-connection claim cleanup shorten investigation overhead.
+- Planned: validate these source families on non-MIPS compiler adapters before enabling them.
+  Imported projects share MIPS source repairs but retain build-owned compiler settings;
+  automatic standalone profile adoption is ROM-only.
