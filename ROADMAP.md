@@ -32,7 +32,7 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Check again (and before helpers start, once after each update) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Kernel stubs set aside and named | — | set aside (BIOS calls) | ✓ | ✓ import stubs (NIDs) and `sc` calls | set aside, named by library and NID | set aside (BIOS calls) | — | ✓ import thunks | ✓ import thunks, named from the kernel export list | — | — |
 | Function-end reports (`report_boundary`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (2-byte boundaries) | — | ✓ (agents agree, the rebuild checks) | ✓ | — | — |
-| A compiler of your own (Setup: another build of one it has) | ✓ | ✓ | ✓ | ✓ your SDK | ✓ | ✓ | — | ✓ your Visual C++ | ✓ your XDK | — | the project's own build |
+| Your own compiler (Setup: another build of one it has) | ✓ | ✓ | ✓ | ✓ your SDK | ✓ | ✓ | — | ✓ your Visual C++ | ✓ your XDK | — | the project's own build |
 | Compiler ranges and suggestions | ✓ | ✓ | ✓ | ✓ (ps3dev GCC, your SDK's) | ✓ | — | from scratch: per source file (`try_compiler`, Settings); else the project's build | per source file (`try_compiler`, Settings) | per source file (`try_compiler`, Settings): Visual C++ 7.0 / 7.1, your XDK's own | per source file (`try_compiler`, Settings) | the project's build |
 | Flag search (`search_flags`) | ✓ | ✓ | ✓ | ✓ | ✓ | — | the project's build | per source file (/Oy-, /O1, /Ob1) | per source file | the project's build | the project's build |
 | Compiler map and the judge's survey | ✓ | ✓ | ✓ | — | ✓ | — | — | ✓ per source file, Rich header | the XDK build's compiler (no Rich header: one per game) | — | — |
@@ -93,14 +93,14 @@ Where to start on a gap:
 
 ## Recently done
 
-- **A compiler of your own on every ROM console.** N64, PS1, PS2, PSP and GBA games can be built with your own copy of
+- **Your own compiler on every ROM console.** N64, PS1, PS2, PSP and GBA games can be built with your own copy of
   a compiler they use, a build no pack has (an EE-GCC, a CodeWarrior PS2, an SNC, a PSP GCC, a KMC GCC, an IDO, an
-  agbcc): Setup, Compilers & tools, "A compiler of your own", given the folder it's in, laid out as the pack's is
-  (`kits/owncompiler.py`). It runs exactly as the pack does (the pack's command, wibo, the PS1's maspsx and
-  assembler) from your folder, which is never copied; its compiler id starts with the pack's, so each console's
+  agbcc): Setup, Compilers & tools, "Your own PS2 compiler" (one per console, in its group), given the folder it's
+  in, laid out as the pack's is (`kits/owncompiler.py`). It runs exactly as the pack does (the pack's command, wibo,
+  the PS1's maspsx and assembler) from your folder, which is never copied; its compiler id starts with the pack's, so each console's
   flags treat it as that compiler. Checked on the N64, PS1, PS2 and GBA demos (a copy of each one's pack imported,
   matched and refused wrong C) and, per pack, byte for byte against the pack's own object (`tests/test_kits.py`);
-  PSP's packs weren't on the machine it was checked on. GameCube, Wii and DS: see "A compiler of your own for
+  PSP's packs weren't on the machine it was checked on. GameCube, Wii and DS: see "Your own compiler for
   GameCube, Wii and DS".
 
 - **Visual C++ 2017 for Windows PC, through wine.** The `msvc2015` pack (proprietary, installed after the user
@@ -523,7 +523,7 @@ Where to start on a gap:
 
 ## Next
 
-### A compiler of your own for GameCube, Wii and DS
+### Your own compiler for GameCube, Wii and DS
 
 Their projects (dtk-template, ds-decomp) take CodeWarrior by version from the community's compilers archive, which
 holds every build known, so no game has needed one of its own yet. When one does: the project's build gets a

@@ -293,7 +293,8 @@ def test_a_ps3_game_takes_the_sdk_copy_whose_stamp_is_its_own_else_the_free_comp
     assert ps3.default_compiler({"compiler_guess": "PS3DEV"}, "") == "ps3dev-gcc"  # (no stamp: as before)
 
 
-# ---- a compiler of your own (kits/owncompiler.py): another build of a pack's compiler, run as that pack runs
+# ---- your own compiler (kits/owncompiler.py): another build of a pack's compiler, run as that pack runs; a kit per
+# console, in its group in Setup
 
 def _own(folder: Path, program: str, data: bytes) -> Path:
     (folder / program).parent.mkdir(parents=True, exist_ok=True)
@@ -301,38 +302,49 @@ def _own(folder: Path, program: str, data: bytes) -> Path:
     return folder
 
 
-def test_a_compiler_of_your_own_is_its_consoles_alone_and_runs_like_the_pack_its_version_names(tmp_path, monkeypatch):
+def _add(kid: str, folder: Path) -> None:
+    toolchains.install(kid, folder=folder, accept_license=True, log=lambda *_: None)
+
+
+def test_your_own_compiler_is_a_card_per_console_and_runs_like_the_pack_its_version_names(tmp_path, monkeypatch):
     _setup(monkeypatch, tmp_path)
     ids = lambda cid: [c.id for c in consoles.get(cid).compilers if "-own-" in c.id]  # noqa: E731
+    own = {c.id: c.kits[0] for c in consoles.CONSOLES if c.kits and c.kits[0].startswith("own-")}
+    assert set(own) == {"n64", "ps", "ps2", "psp", "gba"}
+    # each console's card sits in its packs' group in Setup (the platform its packs say)
+    for cid, kid in own.items():
+        mine = {toolchains.get(c.id).platform for c in consoles.get(cid).fixed_compilers}
+        assert {kits.get(kid).platform} == mine and kits.get(kid).files
     for name, program, data in (("mw", "mwccps2.exe", b"MetroWerks 3.0.1"), ("psp", "mwccpsp.exe", b"3.0.1"),
-                                ("gcc", "gcc", b"gcc version 2.7.2"), ("nothing", "readme.txt", b"")):
+                                ("gcc", "gcc", b"gcc version 2.7.2")):
         _own(tmp_path / name, program, data)
-    with pytest.raises(toolchains.ToolchainError, match="mwccps2.exe"):  # (no compiler of any console's: said which)
-        toolchains.install("own-compiler", folder=tmp_path / "nothing", accept_license=True, log=lambda *_: None)
-    for name in ("mw", "psp", "gcc"):
-        toolchains.install("own-compiler", folder=tmp_path / name, accept_license=True, log=lambda *_: None)
-    # the CodeWarrior PS2 whose version its program names, and only the PS2's
+    with pytest.raises(toolchains.ToolchainError, match="mwccps2.exe"):  # (no PS2 compiler there: says what it wants)
+        _add(own["ps2"], tmp_path / "psp")
+    _add(own["ps2"], tmp_path / "mw")
+    _add(own["psp"], tmp_path / "psp")
+    _add(own["n64"], tmp_path / "gcc")
+    _add(own["ps"], tmp_path / "gcc")  # (one GCC 2.7.2 folder, set up for both consoles)
+    # the CodeWarrior PS2 whose version its program names
     [mw] = ids("ps2")
-    assert mw.startswith("mwcps2-3.0.1-own-") and toolchains.known(mw)  # (what the PS2's flags go by)
+    assert mw.startswith("mwcps2-3.0.1-own-") and toolchains.known(mw)  # (its id: what the PS2's flags go by)
     assert toolchains.get(mw).flags == toolchains.get("mwcps2-3.0.1").flags
-    # eleven builds of CodeWarrior PSP run alike: one compiler
-    assert len(ids("psp")) == 1
-    # one GCC 2.7.2: KMC's way on the N64, PSY-Q's on the PS1, each console its own
+    assert kits.get(own["ps2"]).build(tmp_path / "mw") == f"runs like {toolchains.get('mwcps2-3.0.1').name}"
+    assert len(ids("psp")) == 1  # (eleven builds of CodeWarrior PSP run alike: one compiler)
+    # KMC's way on the N64, PSY-Q's on the PS1, each console its own
     assert [c.split("-own-")[0] for c in ids("n64")] == ["gcc-2.7.2-kmc"]
-    assert len(ids("ps")) == 2 and all("-psx-" in c for c in ids("ps")) and not ids("gba") and not ids("ps3")
-    assert "runs like" in kits.get("own-compiler").verify(tmp_path / "mw")
+    assert len(ids("ps")) == 2 and all("-psx-own-" in c for c in ids("ps")) and not ids("gba")
 
 
 @pytest.mark.parametrize("pack", ["gcc-2.7.2-kmc", "gcc-2.7.2-psx", "ee-gcc-2.96", "mwcps2-2.3.3", "ido-5.3", "agbcc"])
 def test_your_copy_of_a_packs_compiler_builds_the_same_object_from_your_folder(tmp_path, monkeypatch, pack):
-    """A copy of the pack's own folder, set up as a compiler of your own, builds byte for byte what the pack does, through
+    """A copy of the pack's own folder, set up as your own compiler, builds byte for byte what the pack does, through
     the pack's whole command (the PS1's maspsx and assembler, wibo for CodeWarrior), read where it is."""
     import shutil
 
     from decompnet.compiler import compile_source
     from decompnet.project import compiler_config
 
-    if (have := toolchains.installed(pack)) is None:
+    if toolchains.installed(pack) is None:
         pytest.skip(f"needs the {pack} pack")
     real = toolchains.require(pack).parent
     scratch = tmp_path / "toolchains"
@@ -342,10 +354,10 @@ def test_your_copy_of_a_packs_compiler_builds_the_same_object_from_your_folder(t
     monkeypatch.setenv("DECOMPNET_TOOLCHAINS", str(scratch))
     mine = tmp_path / "my compiler"
     shutil.copytree(toolchains.require(pack), mine, symlinks=True)
-    toolchains.install("own-compiler", folder=mine, accept_license=True, log=lambda *_: None)
-    own = next(c for c in kits.compilers(("own-compiler",)) if c.like == pack)
-    console = next(c for c in consoles.CONSOLES if any(x.id == pack for x in c.compilers))
-    assert own.version in [c.id for c in console.compilers] and have
+    console = next(c for c in consoles.CONSOLES if any(x.id == pack for x in c.fixed_compilers))
+    _add(console.kits[0], mine)
+    own = next(c for c in kits.compilers(console.kits) if c.like == pack)
+    assert own.version in [c.id for c in console.compilers]
     flags = toolchains.get(pack).flags
     body = "int add(int a, int b) { return a + b * 3; }"
     built = [compile_source(compiler_config(tmp_path, {"compiler": {"toolchain": t, "flags": flags}}), "", body)
@@ -354,3 +366,22 @@ def test_your_copy_of_a_packs_compiler_builds_the_same_object_from_your_folder(t
     cfg = compiler_config(tmp_path, {"compiler": {"toolchain": own.version, "flags": flags}})
     assert any(str(mine.resolve()) in a for a in cfg.cmd) and str(mine.resolve()) in cfg.ro_paths
     assert built[0].obj == built[1].obj
+
+
+def test_each_installed_pack_is_known_as_itself():
+    """A pack's own folder, read as your own copy, runs like that pack alone: its version is read as a whole number
+    ("2.96" isn't "3.2"), and from a program's version record (CodeWarrior PS2 3.0.1.145). The PS1's two GCC 2.7.2s
+    are one version run two ways: a copy of either is offered as both."""
+    from decompnet.kits import owncompiler
+
+    both = {"gcc-2.7.2-psx", "gcc-2.7.2-cdk-psx"}
+    checked = 0
+    for kit in owncompiler.OWN_COMPILERS:
+        for pack in owncompiler.packs(kit.platform):
+            if toolchains.installed(pack) is None:
+                continue
+            got = [c.like for c in kit.compilers(toolchains.require(pack))]
+            assert got == [pack] or (pack in both and set(got) == both), (pack, got)
+            checked += 1
+    if not checked:
+        pytest.skip("needs a ROM console's compiler pack")

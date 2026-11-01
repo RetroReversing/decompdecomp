@@ -290,7 +290,7 @@ records the folder, and reads it there. Nothing of it is copied, downloaded or p
    (the folder the compiler reads beside `bin/`), `args` and `flags` when you add one, and let the console's
    `default_compiler` pick the copy by build, as the PS3's does by the `.comment` stamp. A copy of a compiler a
    pack already has (another build of it) sets `like` to that pack instead: it then runs through the pack's own
-   command with its folder as `root` (`kits/owncompiler.py`, the ROM consoles' "A compiler of your own"), and its
+   command with its folder as `root` (`kits/owncompiler.py`, the ROM consoles' "Your own PS2 compiler" and the rest), and its
    id starts with the pack's so a console's `startswith` flag rules apply to it.
 5. **Pass the tests**: `uv run pytest tests/test_kits.py -q`. It checks the facts, that it's a local toolchain
    nothing downloads, that a console takes it, and that no code outside `kits/` and that console names it. Test
