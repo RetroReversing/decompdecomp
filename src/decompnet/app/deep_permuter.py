@@ -474,7 +474,9 @@ def run(net, slug, name, minutes, max_variants, log):
         search.record_improvement = lambda score: sweeps.improvement(fn, score)
     search.report()
     state = State()
-    agent, _ = net.local_agent(f'permuter-{fn["id"]}' if slug in net.links else 'permuter')
+    # Issuing local credentials rotates the token. Concurrent searches must not
+    # invalidate each other or the background permuter, even outside rooms.
+    agent, _ = net.local_agent(f'permuter-{fn["id"]}')
     reason = 'Current candidate families finished'
     if slug in net.links:
         log('Room search: host claims coordinate workers; exact matches require host confirmation. '

@@ -1387,6 +1387,7 @@ remain planned: the initial browser toolchain has no matching build-context adap
 
 - Done: deep-pass activity cards default to active only, retain expandable output when sorted, and show measured elapsed duration for active and completed functions.
 
+- Done: parallel deep searches use per-function runner credentials outside rooms too, preventing token invalidation between workers and the background permuter.
 ### Same-name verified source reuse
 
 - Done: a shared bounded Autopilot/cascade phase tries meaningful same-name matched C across
