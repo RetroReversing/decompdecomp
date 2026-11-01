@@ -603,3 +603,13 @@ masks, error values and recovery paths; source identity was not sufficient evide
 
 The proposed preparation changes in this PR were not installed for the matching batch. These are manually
 verified source/context findings, separate from synthetic feature regressions and later whole-image export checks.
+
+### Bounded follow-ups from the SDK I/O batch
+
+The ten-function IDO 5.3 `-O1` batch above motivates raw-word-supported I/O profile priorities, MMIO expression
+hypotheses and local status storage alternatives. Existing byte-only records can recover aggregate-copy shape
+when target unaligned word copies support it. Reference constants and recovery branches are reported for review,
+not rewritten automatically. Source/header improvements reuse digest-scoped preflight and its existing budget.
+Synthetic tests distinguish machine-word address/width evidence from symbolic names, reject shadowed/unqualified
+objects and address-taken locals, and require real record declarations. These are feature regressions, separate
+from the original private matches and from any later live recovery measurements.

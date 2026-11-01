@@ -315,6 +315,9 @@ def attempt(permuter, proj, fn, source, header, agent, fork, diagnostic=None):
     diff = scoring.diff(net._target_obj(fn, proj), candidate)
     if verdict is not None:
         diff = scoring.DiffResult(0 if verdict else max(1, diff.score), diff.max_score, diff.rows, verdict)
+    if diagnostic and dict(proj).get('arch')=='mips':
+        from .sdk_io_repairs import hints
+        for hint in hints(source,dict(fn).get('asm',''),diff.rows):diagnostic(fn['name']+': '+hint)
     score = 0 if diff.bytes_match else max(1, diff.score)
     if fn['best_score'] is None or score < fn['best_score']:
         net._record(fn, agent, score, source, 0, matched=diff.bytes_match, via='local-source',
