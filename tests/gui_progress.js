@@ -70,6 +70,10 @@ function setup(file, marker, end, logId, buttonId, ranges = "") {
       return start.promise;
     },
   };
+  ctx.setupSlug = "test";
+  ctx.searchToken = Symbol();
+  ctx.box._romSearch = ctx.searchToken;
+  ctx.usingGame = false;
   vm.createContext(ctx);
   vm.runInContext(read("deep-progress"), ctx);
   const base = read("base");
@@ -188,7 +192,7 @@ async function main() {
     } else assert.ok(test.get("fnDeepStatus").textContent.includes("Stopping"));
   }
   // Passive overview refreshes keep a pending check's panel and indicator intact.
-  for (const caseIndex of [0, 6]) {
+  for (const caseIndex of [0, 7]) {
     const test = setup(...cases[caseIndex]);
     const name = caseIndex === 0 ? "renderCompilerNotice" : "renderSource";
     const source = read(caseIndex === 0 ? "project" : "steering");

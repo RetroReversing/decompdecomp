@@ -90,7 +90,7 @@ const detail = name => ({name,unit:'u',insns:1,status:'open',best:100,source:`so
   assert.equal(p.el('projectLoading').hidden,true);
   oldProject.resolve({slug:'A',kind:'rom'}); oldMap.resolve({sig:'A',keys:['name'],rows:[['A fn']]}); await old;
   assert.equal(p.S.ov.slug,'B'); assert.equal(p.S.map[0].name,'B fn');
-  vm.runInContext(project.slice(project.indexOf('async function loadStats'),project.indexOf('/* Agents at work')),p.ctx);
+  vm.runInContext(project.slice(project.indexOf('let statsLoading'),project.indexOf('/* Agents at work')),p.ctx);
   p.S.tab='overview'; const stats=p.ctx.loadStats(), heldStats=p.calls.at(-1);
   p.S.gen++; p.S.stats=null; heldStats.resolve({old:true}); await stats;
   assert.equal(p.S.stats,null,'Old statistics cannot populate a later visit to the same project');

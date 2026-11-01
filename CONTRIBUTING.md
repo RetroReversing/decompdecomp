@@ -71,7 +71,7 @@ works on which platform: every — in it is a gap to fill.
 ### Every console gets every feature
 
 decompdecomp is one pipeline for every console: whatever helps agents on one console should work on all of them,
-in ROM mode (N64, PS1, PS2, PSP, GBA) and project mode (GameCube, Wii, PC, DS, public decomps) alike. When you add a feature:
+in ROM mode (N64, PS1, PS2, PS3, PSP, GBA) and project mode (GameCube, Wii, PC, Xbox, DS, public decomps) alike. When you add a feature:
 
 1. Build the shared part where every console uses it: `app/` and `network.py` for the engine, `rom/` and `forks/`
    for each mode, `arch/` for what depends on the processor.
@@ -91,9 +91,11 @@ through one file: the connector, `consoles/__init__.py`.
 | `consoles/n64/` | Nintendo 64 | ROM | `rom.py` the ROM file and its header · `code.py` code the game loads later, compressed code · `guides/` |
 | `consoles/ps1/` | PlayStation | ROM | `exe.py` the game's program (PS-X EXE) and the disc's BOOT line; its discs and overlays through the PS2's readers · `guides/` |
 | `consoles/ps2/` | PlayStation 2 | ROM | `elf.py` the game's program · `disc.py`, `chd.py` disc images · `overlays.py` code in the disc's other files · `syscalls.py` kernel calls · `symtab.py`, `mdebug.py`, `stabs.py`, `cheader.py`, `debuginfo.py` the game's own debug symbols · `guides/` |
+| `consoles/ps3/` | PlayStation 3 | ROM | `elf.py` the decrypted program, its descriptor and `.opd` · `split.py` the program's function list, calls and prologues · `imports.py`, `nids.py` imports and kernel calls named · `symbols.py` its own symbols · `guides/` (the processor: `arch/ppc64.py`) |
 | `consoles/gba/` | Game Boy Advance | ROM | `header.py` the cartridge header · `split.py` luvdis and the candidate finder, its editing and joining · `candidates.py`, `luvdis_run.py` · `export.py`, `export_build.py` · `guides/` |
 | `consoles/gc_wii/` | GameCube, Wii | PROJECT | `scratch.py` a dtk-template project for the game · `guides/` |
 | `consoles/pc/` | Windows PC | PROJECT | `scratch.py` Ghidra finds the functions, decompdecomp cuts them out of the .exe · `project_template/` · `guides/` |
+| `consoles/xbox/` | Xbox | PROJECT | `scratch.py` the XBE (or disc) made a Windows program, then the PC path · kernel import names · `guides/` |
 | `consoles/nds/` | Nintendo DS | PROJECT | `scratch.py` a ds-decomp project for the ROM, a CodeWarrior version per source file · `project_template/` · `guides/` |
 
 Each folder's `__init__.py` makes its console: the facts and the parts the app calls. Start there. Its docstring
@@ -173,6 +175,7 @@ A console works in one of two modes:
    | `tool_args()` | PROJECT: points the project's configure step at the pinned tools. |
    | `identity(path)`, `check_rebuild(fp, version)`, `read_data(fp, name, length)`, `upload_name(data)` | PROJECT: rooms' game check, the rebuild check, data the objects lack, an upload's file name. |
    | `file_compiler(fp, source)`, `set_file_compiler(fp, source, compiler)` | PROJECT: a compiler per source file, when the project's build allows it: then `try_compiler` switches it (DS, Windows PC). |
+   | `compiler_config` | PROJECT: the files (globs in the project) `file_compiler` and `file_ranges` read: the project's page reads them again only when one changed. None named: every second. |
    | `asm_reason(code)` | Why a function can't come from a compiler. The processor's check, with this console's facts. |
    | `up_front_guide(compiler)`, `m2c_target(compiler)` | The guide for a compiler's code; m2c's target for it. |
 
@@ -245,6 +248,54 @@ Example: PC has Visual C++ 6.0 to 2010, and you want Visual C++ 2012 (11.0).
    when it isn't installed: `pytest.mark.skipif(toolchains.installed(...) is None, reason="needs ...")`.
 9. **Say it**: the compiler in ROADMAP.md, README.md and docs/GUIDE.md where they list the console's compilers.
 
+### Adding a kit (a compiler or SDK users bring)
+
+A compiler that only ever came in a proprietary SDK (an early Xbox XDK's Visual C++ 7.0 build), or an SDK whose
+libraries a console needs, can't be pinned and downloaded: nobody may publish it. It's a kit, in `src/decompnet/kits/`
+(the connector, like `consoles/` and `agents/`): the user points Setup at their own copy, decompdecomp checks and
+records the folder, and reads it there. Nothing of it is copied, downloaded or put in CI.
+
+1. **Copy `kits/xdk.py`** to `kits/<id>.py` and fill in its facts: `id` (its Setup entry), `name`, `platform`,
+   `description`, `files` (what proves the folder: paths in it, any case), `places` (folders inside the one the
+   user picks where it may be).
+2. **Its parts**, each optional: `locate(folder)` (the copy a folder is or holds, when its layouts are more than
+   `files` inside `places`: `kits/visualcpp.py` knows VC98, VC and `VC/Tools/MSVC/<version>`), `build(folder)` (which
+   build the copy is, read from its files: the XDK's from its libraries, Visual C++'s from c2.dll's version
+   resource, `kits.file_version`), `compilers(folder)` (`OwnCompiler`: a version name, the compiler, its headers,
+   what runs it: wibo, wine or nothing, and its exact `build`) and `known_files` + `known` (the SHA-256 of a file
+   each build has, so Setup says "verified": a kit isn't pinned, this is how users know their copy is the one the
+   games were built with). Hashes are facts and may be shipped; the files never.
+   **Several copies.** Setup records any number of copies of a kit (a manifest's `folders`; `Remove` forgets one, the
+   files stay), each checked when added, so a user with two XDKs or a Visual C++ 6.0 and a 2008 has both. Nothing
+   in a part may assume one copy: `compilers(folder)` reads that copy only, and its `version` name must be unique
+   per copy (`xdk-3911`, `own-9.0.30729`: configure.py `--own` takes any name, and a project stores
+   `MSVC/<name>`). `kits.folders(id)` lists the copies, `kits.compilers(ids)` the compilers of all of them.
+3. **Register it** in `_registry` at the end of `kits/__init__.py`. It shows in Setup as a toolchain of kind
+   "local" (`toolchains.registry` adds it); it needs no entry in `toolchains.toml`.
+4. **The console takes it**: its `kits` names it, and the console asks the connector for it (`kits.folders`,
+   `kits.compilers`) where it's needed. A console that takes kits gets their compilers in `Console.compilers` (it
+   lists its own as `compilers`; the connector adds `kit_compilers()`, as `MSVC/<version>`), so a project can be
+   switched to one like any other. The PC's `tool_args` passes them to the build (`own_compiler_args`:
+   configure.py's `--own VERSION=RUNNER,CL,INCLUDE`). **Match by build, not by kit**: the console picks the copy
+   whose build is the game's (the Xbox's `game_info`: the XDK copy whose build equals the game's XDK build; the
+   PC's `own_copy`: the Rich header's version and build number against each copy's `build`, else the nearest build
+   of the same version, and it says so), and only when its packs don't have that build. A project template other
+   than PC's takes `--own` the same way.
+   **ROM mode runs a kit's compiler too.** A ROM project's compiler id may name an `OwnCompiler` (its `version`,
+   `ps3sdk-270`): `Console.kit_compilers` lists it with the console's own, `kits.own_compiler(id)` finds it, and
+   `project.compiler_config` runs its exe from the user's copy (through wibo off Windows when `runner` says, its
+   folder `root` and headers mounted read-only in the sandbox, nothing copied) with `args` and the console's flags,
+   in the same sandbox and limits as a pinned compiler; `toolchains.get/known/installed` answer for it while the copy
+   is set up. GCC-style arguments (`-c -I -o`) only so far; `runner = "wine"` is refused in ROM mode. Fill `root`
+   (the folder the compiler reads beside `bin/`), `args` and `flags` when you add one, and let the console's
+   `default_compiler` pick the copy by build, as the PS3's does by the `.comment` stamp. A copy of a compiler a
+   pack already has (another build of it) sets `like` to that pack instead: it then runs through the pack's own
+   command with its folder as `root` (`kits/owncompiler.py`, the ROM consoles' "Your own PS2 compiler" and the rest), and its
+   id starts with the pack's so a console's `startswith` flag rules apply to it.
+5. **Pass the tests**: `uv run pytest tests/test_kits.py -q`. It checks the facts, that it's a local toolchain
+   nothing downloads, that a console takes it, and that no code outside `kits/` and that console names it. Test
+   it with a homemade folder (empty stand-ins, never a file of the real kit).
+
 ## Agents
 
 ### Where an agent's code is
@@ -260,6 +311,7 @@ connector, `agents/__init__.py`.
 | `agents/codex.py` | Codex CLI | `codex exec --json`, the user's own MCP servers switched off for the run |
 | `agents/antigravity.py` | Antigravity CLI | `agy` with stream-json in and out; its models from `agy models`; once Gemini CLI |
 | `agents/opencode.py` | opencode | `opencode run`, its own server per helper (opencode 2); its models from `opencode models` |
+| `agents/zcode.py` | ZCode CLI | `zcode --output-format stream-json`, its own settings file for the app's MCP server, the prompt in an attached file |
 | `agents/api.py` | API helper | No program: the app's own loop for any OpenAI-compatible API, and the saved endpoints' presets |
 
 Around them:
@@ -273,9 +325,11 @@ Around them:
 
 An agent is one of two sorts:
 
-- **A program** the user installs and signs in to (Claude Code, Codex, Antigravity CLI, opencode). The app runs it
-  headless, a session at a time, in a private folder. It connects only to the app's own MCP server, with a token of
-  its own, and may use only decompdecomp's tools. The prompt goes in on stdin; what it prints is read into the feed.
+- **A program** the user installs and signs in to (Claude Code, Codex, Antigravity CLI, opencode, ZCode CLI). The app
+  runs it headless, a session at a time, in a private folder. It connects only to the app's own MCP server, with a
+  token of its own, and may use only decompdecomp's tools. The prompt goes in on stdin, or in a file the agent is
+  given by path when its CLI has no stdin prompt (zcode's `--attach`), never as text on the command line; what it
+  prints is read into the feed.
 - **A loop in the app** (the API helper). It talks to a model's API itself and calls the tools directly.
 
 ### Improving an agent
@@ -322,13 +376,15 @@ An agent is one of two sorts:
 
 5. **Keep the user safe.** A session connects only to the app's MCP server, with the token it was given, and to
    none of the user's own MCP servers. It may use only decompdecomp's tools: no shell, no file edits, no web. The
-   token never goes on the command line, where every process can read it, and the prompt goes in on stdin.
+   token never goes on the command line, where every process can read it, and the prompt goes in on stdin or in a
+   file the agent is given by path, never as text on the command line.
 6. **Register it** in the list at the end of `agents/__init__.py` (`_registry`). The Agents page lists the agents in
    that order.
 7. **Pass the tests**: `uv run pytest tests/test_agent_kinds.py -q`. It checks the facts, the ids, the command line
    (no token on it) and that no code outside `agents/` asks an agent's name. Add a test of its own to
    `tests/test_agents.py`: a recorded line of its output, and the feed items it gives.
-8. **Say it**: add the agent to README.md's list of agents and to docs/GUIDE.md's table.
+8. **Say it**: add the agent to README.md's list of agents, docs/GUIDE.md's table and the site's agent list
+   (`site/public/index.html`).
 
 ## Pull requests
 

@@ -43,6 +43,15 @@ def extract(text, name):
     return found[0]
 
 
+def externalize(definition):
+    """Give a selected file-scope object external linkage without moving its lines."""
+    clean = _blank(definition)
+    match = re.search(r'\bstatic[ \t]+', clean)
+    if match:
+        definition = definition[:match.start()] + ' ' * len(match[0]) + definition[match.end():]
+    return definition
+
+
 def related(text, used):
     """Unambiguous definitions in the explicitly mapped file; no search outside that file."""
     found=[]

@@ -714,12 +714,12 @@ class CompilerMixin:
                 out.append(variant)
         return out
 
-    def flag_variants(self, toolchain: str, base: list[str]) -> list[list[str]]:
+    def flag_variants(self, toolchain: str, base: list[str], more: tuple[str, ...] = ()) -> list[list[str]]:
         """The flags worth trying for a function on this compiler: its optimisation levels, small data on and off
         (MIPS GCC's -G; CodeWarrior's -sdatathreshold), and the few options that change the shape of code most.
         Each variant changes the project's flags in one place, so what matches says which flag it was."""
         family = toolchains.compiler_family(toolchain) or next((f for prefix, f in FLAG_FAMILIES if toolchain.startswith(prefix)), "gcc")
-        levels, extras = FLAG_LEVELS[family], FLAG_EXTRAS[family]
+        levels, extras = FLAG_LEVELS[family], FLAG_EXTRAS[family] + tuple(more)
         current = next((f for f in base if f in levels), None)
         out = [base]
         for level in levels:
@@ -735,7 +735,7 @@ class CompilerMixin:
             for g in SMALL_DATA_SIZES:
                 if base[at] != str(g):
                     out.append(base[:at] + [str(g)] + base[at + 1:])
-        out += [v for v in self.debug_flag_variants(toolchain, base) if v not in out]
+        out += [v for v in CompilerMixin.debug_flag_variants(toolchain, base) if v not in out]
         out += [[*base, extra] for extra in extras if extra not in base]
         return out[:MAX_FLAG_VARIANTS]
 
@@ -755,7 +755,7 @@ class CompilerMixin:
         if not source:
             raise NetworkError(f"{fn['name']} has no attempt yet: pass the C as source")
         results = []
-        for flags in self.flag_variants(tc, base):
+        for flags in self.flag_variants(tc, base, consoles.of(cfg).flag_extras):
             ok, d, _ = self._judge_with(proj, fn, tc, flags, source)
             if d is not None:
                 results.append((0 if ok else max(1, d.score), flags))

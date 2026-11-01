@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import linuxvm, toolchains, wsl
+from . import kits, linuxvm, toolchains, wsl
 from .compiler import CompilerConfig
 
 
@@ -34,6 +34,8 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     see toolchains.toml) plus optional `flags`. With a toolchain, `{tc}` expands to its install directory,
     which is mounted read-only into the sandbox together with any runtime it requires."""
     c = cfg["compiler"]
+    if (own := kits.own_compiler(c.get("toolchain", ""))) is not None and not own.like:
+        return _own_config(root, c, own)
     ro_paths = [str((root / p).resolve()) for p in c.get("ro_paths", [])]
     runtime32 = None
     linux = False
@@ -41,7 +43,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     prelude, cplusplus, intrinsics = "", False, ""
     if "toolchain" in c:
         try:
-            tc = toolchains.get(c["toolchain"])
+            tc = toolchains.get(own.like if own else c["toolchain"])  # (a copy of the user's runs as its pack does)
         except toolchains.ToolchainError:
             raise toolchains.ToolchainError(unknown_compiler_message(c["toolchain"])) from None
         prelude, cplusplus, intrinsics = tc.prelude, tc.cplusplus, tc.intrinsics
@@ -49,7 +51,8 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         linux = tc.via_wsl  # Windows: a Linux toolchain, run inside WSL 2
         if linux and not (ok := wsl.status())[0]:
             raise toolchains.ToolchainError(f"{tc.name} is a Linux program: on Windows it runs in WSL 2. {ok[1]}")
-        dirs = toolchains.runtime_dirs(tc.id)
+        dirs = ((own.root, *(toolchains.require(d, linux) for d in tc.requires)) if own
+                else toolchains.runtime_dirs(tc.id))
         driver = Path(__file__).parent / tc.driver if tc.driver else None
         if driver:
             dirs = (*dirs, driver.parent)
@@ -97,3 +100,23 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
         intrinsics=intrinsics,
         cplusplus=cplusplus,
     )
+
+
+def _own_config(root: Path, c: dict, own: kits.OwnCompiler) -> CompilerConfig:
+    """A compiler in the user's own kit copy (kits.OwnCompiler), run where it is: its exe through the runner it needs
+    (wibo for a Windows program off Windows), its copy mounted read-only in the sandbox, the copy's headers searched
+    after the project's own. Nothing is copied. shortcut: GCC-style arguments (-c, -I, -o), which every ROM kit
+    compiler so far takes; a Visual C++ kit in ROM mode would need its own argument style on OwnCompiler."""
+    if own.runner == "wine":
+        raise toolchains.ToolchainError(f"{own.name} needs wine, which ROM-mode compiling doesn't run yet: use a "
+                                        "compiler of that SDK that runs natively or through wibo")
+    runner = []
+    if own.runner == "wibo" and sys.platform != "win32":
+        runner = [str(toolchains.ensure("wibo", log=lambda *_: None) / "wibo")]
+    cmd = [*runner, str(own.exe), *own.args, *c.get("flags", own.flags), *(f"-I{d}" for d in own.includes),
+           "-I{include}", "{src}", "-o", "{obj}"]
+    ro = [str((root / p).resolve()) for p in c.get("ro_paths", [])]
+    ro += [str(own.root or own.exe.parent), *map(str, own.includes), *([str(Path(runner[0]).parent)] if runner else [])]
+    return CompilerConfig(
+        cmd=cmd, timeout=float(c.get("timeout", 15)), sandbox=c.get("sandbox", "auto"), ro_paths=tuple(dict.fromkeys(ro)),
+        include_dirs=tuple(str((root / p).resolve()) for p in c.get("include_dirs", [])))

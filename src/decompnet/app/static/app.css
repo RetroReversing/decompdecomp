@@ -1335,3 +1335,7 @@ th[aria-sort="ascending"] .table-sort, th[aria-sort="descending"] .table-sort { 
 .source-gutter > button { color:var(--ink); cursor:pointer; }
 .source-instruction { border-left:3px solid var(--bad, #bc3333); padding:10px 14px; margin:12px 0; }
 .source-instruction.source-operand { border-left-color:var(--accent, #d6ad00); }
+.copy-text { display: grid; gap: 3px; min-width: 0; }
+.copy-path { overflow-wrap: anywhere; }
+.local-form { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.local-form input[type=text] { width: 100%; box-sizing: border-box; }

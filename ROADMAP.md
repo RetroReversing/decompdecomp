@@ -199,10 +199,13 @@ individual drafts. Ordinary source-object units retain the table's existing beha
 other processors need their own linked-object writer.
 
 Where to start on a gap:
+- **Public project build prerequisite hints** run in `ForkProject.run` for public checkouts. The other columns
+  describe starting a game from scratch and do not use public-project setup.
 - **PowerPC (GameCube, Wii) and x86 (PC)**: class recovery and the compiler map work on a project's objects in fork
   mode, not on a ROM; the readers are the part to write (CodeWarrior's vtable pointer is often not at offset 0). x86
   has its reader (`arch/x86_fields.py`): PC classes and struct layouts come from it (`Console.classes`,
   `Console.structs`); a PowerPC reader would give GameCube and Wii the same through those parts.
+- **Xbox** shares the Windows PC column's code (`consoles/xbox/` only makes the program); a gap there is usually a PC gap.
 - **Windows PC**: autopilot's Ghidra drafts compile, but rarely match beyond the tiny shapes exact drafts cover:
   Ghidra drafts a delinked object without its callees' prototypes, so a method call loses `this` and a callee's
   arguments are guessed (a draft fed the project's headers, through a Ghidra script that applies them, is the next
@@ -339,6 +342,16 @@ Project-mode similar-transfer support is planned: align target-object relocation
 similar C through objdiff. Other processors need an instruction reader for this search.
 
 ## Recently done
+
+- **Your own compiler on every ROM console.** N64, PS1, PS2, PSP and GBA games can be built with your own copy of
+  a compiler they use, a build no pack has (an EE-GCC, a CodeWarrior PS2, an SNC, a PSP GCC, a KMC GCC, an IDO, an
+  agbcc): Setup, Compilers & tools, "Your own PS2 compiler" (one per console, in its group), given the folder it's
+  in, laid out as the pack's is (`kits/owncompiler.py`). It runs exactly as the pack does (the pack's command, wibo,
+  the PS1's maspsx and assembler) from your folder, which is never copied; its compiler id starts with the pack's, so each console's
+  flags treat it as that compiler. Checked on the N64, PS1, PS2 and GBA demos (a copy of each one's pack imported,
+  matched and refused wrong C) and, per pack, byte for byte against the pack's own object (`tests/test_kits.py`);
+  PSP's packs weren't on the machine it was checked on. GameCube, Wii and DS: see "Your own compiler for
+  GameCube, Wii and DS".
 
 - **Visual C++ 2017 for Windows PC, through wine.** The `msvc2015` pack (proprietary, installed after the user
   accepts it, 220 MB): Visual C++ 2017's last toolset (14.16, cl 19.16.27027.1) and the Windows 10 SDK it was used
@@ -761,6 +774,51 @@ similar C through objdiff. Other processors need an instruction reader for this 
 
 ## Next
 
+### Your own compiler for GameCube, Wii and DS
+
+Their projects (dtk-template, ds-decomp) take CodeWarrior by version from the community's compilers archive, which
+holds every build known, so no game has needed one of its own yet. When one does: the project's build gets a
+compilers folder of the user's beside the archive's (dtk-template's configure.py reads one), and the console lists
+its versions (`Console.kit_compilers`), as Windows PC does for Visual C++ through `--own`.
+
+### PlayStation 3 from your own copy
+
+ROM mode, as the PS2 and PSP: you give decompdecomp the game's program decrypted (EBOOT.ELF: a SELF is refused, it
+never decrypts anything), it splits it (the module descriptor's functions first, then calls and prologues), and the
+judge links each candidate at its address and compares what each instruction refers to (`arch/ppc64.py`: TOC slots,
+function descriptors, the call-site TOC restore). Its imports are named from their NIDs and its kernel calls from
+their numbers (PSL1GHT's lists, MIT), and their stubs set aside. It builds with the free ps3dev GCC (the demo) or your
+own SDK's compiler (the `ps3sdk` kit: the game's `.comment` stamp picks the copy). Every feature of the table ran on
+its demo (`projects/demo-ps3`), and a decrypted retail game (22,482 functions, SDK 2.5.0) imported whole: its module
+descriptor (Sony's 8-byte pairs), its import stubs (all 194 named), its nameless sections and its SDK read as they
+are, and its functions matched through the judge with Sony's GCC rebuilt from its GPL source (SDK 2.5.0, the
+game's own), a getter of a global among them: that game reached its globals through GCC's minimal TOC (r30), which
+the import reads off the code and builds with (`-mminimal-toc`), and its linker didn't narrow any TOC load. What's left:
+
+- **The period compiler without an SDK.** `packaging/ps3-gcc/` rebuilds Sony's `ppu-lv2-gcc` (SDK 1.9.0, 2.5.0, 2.7.0) from
+  the GPL parts of its published source; its `toolchains.toml` entries wait for it to be published.
+- **Drafts.** m2c has no PPC64 target: a ROM-mode Ghidra draft (as PC's) would give PS3 drafts, autopilot's draft
+  phase and `redraft`.
+- **The processor's readers.** `arch/ppc64.py` has no field accesses (`guess_struct`), class reader (`get_class`),
+  piece rule or compiler map yet; the unstripped program's DWARF types and prototypes aren't read either.
+- **Later:** the rebuildable export, PRX modules, SPU programs.
+
+### Xbox: what's next
+
+The original Xbox is a beta PROJECT-mode console: decompdecomp reads your default.xbe (or an .xiso / Redump .iso),
+makes it a Windows program at the same addresses, and from there it is the PC path (Ghidra, COFF objects, objdiff,
+`ninja rebuild`, which writes your default.xbe back byte for byte). With your own XDK set up in Setup (a kit:
+`kits/`), its library code in .text is set aside and a game of an early XDK builds with that XDK's own Visual C++.
+Three retail games imported and rebuilt byte for byte (thousands of functions each). All three were built with
+link-time code generation (/GL, /LTCG), as most Xbox games were: the import tells it from the program (or the import
+dialog says), units build in harness mode (`tools/ltcg.py`: the unit, a driver calling its functions as the game's
+call sites do, and stand-ins, linked /LTCG by the compiler's own linker through wine), briefs show each function's
+convention, `standins_for` writes a starting harness, and a register-convention function of a retail game matched
+through its driver.
+Briefs also say when a function is a member function (its `this` in any register) and of which struct, and an
+attempt whose function got another convention than the original's says which registers differ. What's next is real
+games: a whole one rebuilt from C, then the console's status can say recommended.
+
 ### Game Boy Advance from your own copy
 
 ROM mode, as 1.0.2 had it: luvdis (MIT) finds the functions, agbcc (pret's GCC 2.95 rebuild) compiles the C, the
@@ -788,8 +846,10 @@ blank).
 
 PC projects build with Visual C++ 6.0 to 2010 (phases B and C are done: Recently done). The import already tells a
 newer game apart (its build, /GL, 64-bit, DRM); what's left, one phase at a time. Visual C++ 2017's compilers are
-installed (`msvc2015`, Recently done) and can be chosen per file, but games built with 2017 and newer are still
-refused at import.
+installed (`msvc2015`, Recently done) and can be chosen per file. A game built with a Visual C++ no pack has (2012,
+2013, 2015, 2019, 2022, or another build of a packed version) builds with your own copy of it: the `visualcpp` kit
+(`kits/`), set up in Setup from your Visual Studio's VC folder, matched to the game's Rich header by build (2015 and
+newer through wine). Without a copy, games built with 2017 and newer are still refused at import.
 
 - **What 2005-2010 still lacks.** The newer exception-handling tables (`__CxxFrameHandler3`) need the stub rules
   tested again (a game rebuilt with 2010 tools: 6,583 stubs found; a 2005 game built without C++ exceptions: none).

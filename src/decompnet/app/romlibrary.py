@@ -5,10 +5,20 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import time
 from functools import lru_cache
 from pathlib import Path
 
 from .. import consoles
+
+MAX_FILES = 5000
+MAX_FILE_BYTES = 512 * 1024 * 1024
+MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024
+MAX_SECONDS = 30
+ARCHIVES = {'.zip', '.7z', '.rar', '.tar', '.gz', '.bz2', '.xz'}
+# Windows ctime is creation time and may not change after a same-size overwrite.
+CACHE_HASHES = os.name != 'nt'
+
 
 # Windows stat timestamps can remain unchanged after a same-size overwrite (ctime is creation time).
 # Rehash there rather than offering a stale ROM match. POSIX inode-change timestamps invalidate the cache.
@@ -38,6 +48,30 @@ def fingerprint(path: Path, platform: str) -> str | None:
         return None
 
 
+def _candidate(path: Path, platform: str) -> int:
+    """Return a file's size when it is safe and plausible to hash, or zero to skip it."""
+    if path.is_symlink() or path.suffix.lower() in ARCHIVES:
+        return 0
+    try:
+        size = path.stat().st_size
+        if not 0 < size <= MAX_FILE_BYTES:
+            return 0
+        if platform and platform != "raw":
+            if not consoles.get(platform).library_candidate(path, size):
+                return 0
+        else:
+            # A repository pasted by URL can have no platform metadata. Ask consoles to identify the file
+            # before applying their size and format checks, rather than guessing from its extension.
+            with path.open('rb') as stream:
+                head = stream.read(consoles.HEAD_BYTES)
+            for console in consoles.startable():
+                if console.sniff(head, path) and not console.library_candidate(path, size):
+                    return 0
+        return size
+    except (OSError, ValueError):
+        return 0
+
+
 def find(project, needs: dict, folder: str, log=print) -> dict:
     expected = {str(v.get('sha1', '')).lower() for v in needs.get('rom_versions', [])}
     expected.add(str(needs.get('sha1') or '').lower())
@@ -56,16 +90,28 @@ def find(project, needs: dict, folder: str, log=print) -> dict:
     log('Searching the ROM library and its subfolders for the expected SHA-1…')
     count = 0
     skipped = 0
+    hashed = 0
+    started = time.monotonic()
     def inaccessible(error):
         nonlocal skipped
         skipped += 1
     for parent, dirs, files in os.walk(root, followlinks=False, onerror=inaccessible):
-        dirs.sort()
+        dirs[:] = sorted(d for d in dirs if not (Path(parent, d).is_symlink() or os.path.isjunction(Path(parent, d))))
         for name in sorted(files):
+            if count >= MAX_FILES or hashed >= MAX_TOTAL_BYTES or time.monotonic() - started >= MAX_SECONDS:
+                return {'path': None, 'scanned': count, 'skipped': skipped,
+                        'reason': f'Search stopped after {count} files and {hashed} bytes. Choose the file manually '
+                                  'or use a smaller ROM library folder.'}
             path = Path(parent) / name
-            if path.is_symlink():
+            size = _candidate(path, platform)
+            if not size:
+                skipped += 1
                 continue
+            if hashed + size > MAX_TOTAL_BYTES:
+                return {'path': None, 'scanned': count, 'skipped': skipped,
+                        'reason': 'Search reached its 2 GiB read limit. Choose the file manually or use a smaller folder.'}
             count += 1
+            hashed += size
             if fingerprint(path, platform) in expected:
                 log(f'Found a matching game: {path}')
                 return {'path': str(path), 'in_project': False, 'scanned': count, 'skipped': skipped}
