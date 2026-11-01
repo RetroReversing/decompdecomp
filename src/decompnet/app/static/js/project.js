@@ -849,6 +849,25 @@ function uploadFile(url, file, onProgress) {
   });
 }
 
+function closeUnfinishedProject(slug, title) {
+  dialog("Close project", `<p>Close <b>${esc(title)}</b> and remove its unfinished import from decompdecomp?</p>
+    <p>The project folder and all files stay on disk. You can import the folder again later. Any app-only notes for this import will be removed.</p>
+    <div class="row"><button class="primary" id="fsCloseGo" type="button">Close project</button><button class="ghost" data-close type="button">Cancel</button></div>
+    <pre class="joblog" id="fsCloseLog" hidden></pre>`);
+  $("fsCloseGo").onclick = async () => {
+    const button = $("fsCloseGo"), log = $("fsCloseLog"), gen = S.gen;
+    button.disabled = true;
+    const finish = beginWork(log, "Closing project", [], "Project closed.");
+    try {
+      await api("/api/delete", { method: "POST", body: { slug, files: false } });
+      closeDialog();
+      loadNav();
+      if (S.slug === slug && S.gen === gen) location.hash = "#/";
+    } catch (e) { showJobError(log, e.message); }
+    finally { finish(); button.disabled = false; }
+  };
+}
+
 async function renderForkSetup() {
   const setupGen = S.gen, requestedSlug = S.slug;
   const box = $("forkSetup");
@@ -864,7 +883,9 @@ async function renderForkSetup() {
     ...(romVersions.length ? romVersions.map((v) => [`Original ROM SHA-1 (${v.version})`, v.sha1]) :
       n.kind === "splat" || expectedSha1 ? [["Expected SHA-1", expectedSha1 || "Not specified in the splat config"]] : [])]
     .map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
-    <div class="row"><button class="ghost small-btn" id="fsFolder" type="button">Open project folder</button></div>`;
+    <div class="row"><button class="ghost small-btn" id="fsFolder" type="button">Open project folder</button>
+      <button class="ghost small-btn" id="fsClose" type="button">Close project…</button></div>
+    <p class="muted small">Closing removes this unfinished import from the app and keeps its folder on disk.</p>`;
   let findRom = null, usingGame = false;
   const run = async (start) => {
     usingGame = true;
@@ -981,6 +1002,8 @@ async function renderForkSetup() {
     $("fsCheck").onclick = () => run(() => api("/api/fork/check", { method: "POST", body: { slug: S.slug } }));
   }
   $("fsFolder").onclick = () => openFolder();
+  const setupTitle = S.ov.title;
+  $("fsClose").onclick = () => closeUnfinishedProject(requestedSlug, setupTitle);
 }
 
 

@@ -1304,3 +1304,5 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   compiler-column, statistics and diff responses cannot repaint a later visit.
   Compiler/deep-search jobs continue on the backend while their UI callbacks stay
   tied to the initiating function view; new views do not inherit old progress.
+- Done: unfinished imported projects can be closed directly from setup, keeping
+  the repository folder and all files on disk for a later import.
