@@ -662,6 +662,7 @@ def test_builtin_api_agent_matches_a_function(app, monkeypatch):
     monkeypatch.setattr(httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
     s = agents.Session("api-t", "api", "Test", slug, "api-test", {"base_url": "http://mock/v1", "model": "m", "api_key": "test-key"})
     agent, _ = net.local_agent("api-test")
+    net.claim(agent, slug, "func_800007F4")  # The scripted model targets this function explicitly.
     manager._session_begin(s)
     assert api.API.run(manager, s, agent) is True
     transcript = manager.transcripts.read(slug, s.id)['events']
@@ -678,6 +679,7 @@ def test_an_agent_nobody_signed_in_to_stops_and_says_so(tmp_path, monkeypatch):
     """Claude Code without a sign-in exits at once: say that (not "exited with code 1") and don't keep retrying."""
     manager = agents.Manager(RomNetwork(tmp_path / "app.db", tmp_path), tmp_path, "http://127.0.0.1:9/mcp")
     monkeypatch.setattr(manager, "_preflight_tools", lambda token: None)
+    monkeypatch.setattr(manager, "prepare_session", lambda *a, **kw: None)
     code = "print('Not logged in \\u00b7 Please run /login'); raise SystemExit(1)"
     monkeypatch.setattr(manager, "_command", lambda s, token, workdir: ([sys.executable, "-c", code], dict(os.environ), ""))
     s = agents.Session("claude-1", "claude", "Claude Code #1", "game", "claude-1", {})
@@ -690,6 +692,7 @@ def test_an_agent_out_of_credit_stops_and_says_so(tmp_path, monkeypatch):
     requests" is the provider's limit of requests at once: not a failure, the session waits and tries again."""
     manager = agents.Manager(RomNetwork(tmp_path / "app.db", tmp_path), tmp_path, "http://127.0.0.1:9/mcp")
     monkeypatch.setattr(manager, "_preflight_tools", lambda token: None)
+    monkeypatch.setattr(manager, "prepare_session", lambda *a, **kw: None)
     s = agents.Session("opencode-1", "opencode", "opencode #1", "game", "opencode-1", {})
 
     def says(text: str) -> None:

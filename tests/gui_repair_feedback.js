@@ -1,6 +1,6 @@
 /* Evidence stays plain text; filtering, review and source opt-in export share the chosen scope. */
 const fs = require('fs'), vm = require('vm'), assert = require('assert'), path = require('path');
-const requests = [], downloads = [], copied = [], notices = [];
+const requests = [], downloads = [], copied = [], notices = [], errors = [];
 class Element {
   constructor(tag) { this.tag = tag; this.children = []; this.hidden = false; this.value = ''; this.textContent = ''; this.isConnected = true; this.parts = {}; this.listeners = {}; }
   set value(value) { this._value = String(value); }
@@ -16,9 +16,10 @@ class Element {
   remove() { this.isConnected = false; }
 }
 const body = new Element('body'), button = new Element('button');
-let state = 'new', qualityPending = true, confirmed = false;
+let state = 'new', qualityPending = true, confirmed = false, configFails = false;
 const row = () => ({id: 42, project: '<b>demo</b>', function: 'target', category: 'types', status: state});
 const context = { S: {slug: 'demo'}, document: {body, createElement: (tag) => new Element(tag)}, $: () => button,
+  showJobError: (host,message) => errors.push(message),
   beginWork: () => () => {}, toast: (message, kind) => { if (kind === 'err') throw Error(message); notices.push(message); }, esc: (s) => s,
   confirm: () => confirmed,
   copyText: async (value) => copied.push(await value),
@@ -34,6 +35,7 @@ const context = { S: {slug: 'demo'}, document: {body, createElement: (tag) => ne
       if (url.includes('function=')) return {evidence: 'Compiled alternative, quality unverified'};
       return {reports: qualityPending ? [{function:'suspect', slug:'demo', source_hash:'hash', warning:'Reported uninitialized value', alternatives:[123]}] : []};
     }
+    if (url.includes('/investigate') && !opts && configFails) throw Error('Agent setup unavailable');
     if (url.includes('/investigate')) return opts?.method === 'POST' ? {job: 'j1'} :
       {prompt: 'Investigate these examples safely.', agents: [{id: 'codex', name: 'Codex CLI', installed: true}]};
     if (opts?.method === 'POST') { state = opts.body.status; return {message: 'Saved'}; }
@@ -52,6 +54,13 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   const dialog = body.children[0], list = dialog.querySelector('[data-list]');
   const quality = dialog.querySelector('[data-quality]');
   assert.equal(quality.children.length, 1);
+  assert.equal(dialog.querySelector('[data-quality-panel]').hidden,false);
+  assert.equal(dialog.querySelector('[data-quality-count]').textContent,'· 1');
+  assert.equal(dialog.querySelector('[data-count]').textContent,'1 example shown');
+  assert(dialog.innerHTML.indexOf('data-list') < dialog.innerHTML.indexOf('data-tools'));
+  assert(dialog.innerHTML.includes('Export &amp; share'));
+  assert(!dialog.innerHTML.includes('data-tools open'));
+  assert(!dialog.innerHTML.includes('data-quality-panel open'));
   const reportBody = quality.children[0].children[1];
   await reportBody.children[2].onclick();
   assert(reportBody.children[4].textContent.includes('quality unverified'));
@@ -79,7 +88,7 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   const statusFilter = dialog.querySelector('[data-status]'); statusFilter.value = ''; await statusFilter.onchange();
   assert(requests.filter(r => !r.url.includes('/quality')).at(-1).url.includes('status='));
   const details = list.children[0]; details.open = true; await details.listeners.toggle();
-  const evidence = details.children[1], evidencePanel = evidence.children[6];
+  const evidence = details.children[1], evidencePanel = evidence.children[1];
   const pre = evidencePanel.children.find((child) => child.tag === 'pre');
   assert(evidencePanel.children.some((child) => child.tag === 'p' && child.textContent === 'C tokens changed'));
   assert(pre.children.some((line) => line.textContent.includes('<script>neverExecute()</script>')));
@@ -87,12 +96,16 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   assert(dialog.className.includes('repair-dialog'));
   assert(details.className === 'repair-card');
   assert(details.children[0].children[1].textContent.includes('<b>demo</b>'));
-  const advanced = evidence.children[7];
-  const review = advanced.children[1], kind = advanced.children[2], note = advanced.children[3], save = advanced.children[4];
-  const send = evidence.children[3]; await send.onclick();
+  const advanced = evidence.children[2];
+  const review = advanced.children[1].children[0].children[0], kind = advanced.children[1].children[1].children[0], note = advanced.children[2], save = advanced.children[3];
+  const investigation = evidence.children[4];
+  assert.equal(investigation.tag, 'details');
+  assert(!requests.some(r=>r.url.includes('/investigate')),'Inspecting a source diff must not load coding agent setup');
+  investigation.open=true;await investigation.listeners.toggle();
+  const send = investigation.children[2].children[1]; await send.onclick();
   const handoff = requests.find((item) => item.opts?.body.agent === 'codex');
   assert.equal(handoff.opts.body.id, 42); assert.equal(handoff.opts.body.slug, 'demo');
-  assert(evidence.children[5].textContent.includes('/private/repository'));
+  assert(investigation.children[3].textContent.includes('/private/repository'));
   review.value = 'reviewed'; kind.value = 'types'; note.value = 'Add an AST rule'; await save.onclick();
   const posted = requests.find((item) => item.opts?.body.status === 'reviewed');
   assert.equal(posted.opts.body.note, 'Add an AST rule'); assert.equal(posted.opts.body.status, 'reviewed');
@@ -107,5 +120,11 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/stati
   await dialog.querySelector('[data-classify]').onclick();
   assert(requests.some((request) => request.url === '/api/repair-examples/classify' && request.opts.body.slug === 'demo'));
   assert(notices.some((message) => message.includes('4 examples reviewed')));
+  configFails=true; await dialog.querySelector('[data-refresh]').onclick();
+  const fresh=list.children[0];fresh.open=true;await fresh.listeners.toggle();
+  assert(fresh.children[1].children[1].children.some(child=>child.tag==='pre'),'The source diff remains available without agent setup');
+  const failedSetup=fresh.children[1].children[4];failedSetup.open=true;await failedSetup.listeners.toggle();
+  assert.equal(errors.at(-1),'Agent setup unavailable');
+  assert.equal(failedSetup.children[2].children[1].disabled,true);
   console.log('Repair evidence rendering, review, filtering and explicit source export passed');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

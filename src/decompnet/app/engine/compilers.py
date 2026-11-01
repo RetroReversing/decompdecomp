@@ -205,6 +205,19 @@ class CompilerMixin:
     def _comparison_source(self, fn):
         return fn["matched_source"] if fn["status"] == "matched" and fn["matched_source"] else self._source_of(fn)
 
+    def compiler_profile_usage(self, proj):
+        """Current assignments, not historical alternatives that happened to compile."""
+        cfg = self.cfg(proj)
+        profiles = {}
+        for fn in self.store.all("SELECT vram,status FROM functions WHERE project_id=?", proj["id"]):
+            profile = compiler_for(cfg, fn["vram"])
+            key = (profile["toolchain"], tuple(profile["flags"]))
+            if key not in profiles:
+                profiles[key] = {"toolchain": key[0], "flags": list(key[1]), "functions": 0, "matched": 0}
+            profiles[key]["functions"] += 1
+            profiles[key]["matched"] += int(fn["status"] == "matched")
+        return list(profiles.values())
+
     def compiler_test_result(self, proj, fn):
         row = self.store.one("SELECT * FROM compiler_tests WHERE function_id=?", fn["id"])
         if row is None:

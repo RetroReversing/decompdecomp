@@ -136,3 +136,60 @@
 .tool-catalog > .transcript-tool > summary input { width:18px; height:18px; flex:none; }
 .tool-catalog > .transcript-tool > summary::before { content:"▸"; color:var(--muted); }
 .tool-catalog > .transcript-tool[open] > summary::before { content:"▾"; }
+
+/* Repair examples: review first, developer tools on demand. */
+.repair-header { padding:20px 24px; }
+.repair-header h2 { margin:0 0 6px; font-size:24px; }
+.repair-header p { font-size:13px; }
+.repair-filter-selects { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; align-items:end; }
+.repair-filter-checks { justify-content:space-between; gap:12px 20px; }
+.repair-filter-checks label { flex-wrap:wrap; }
+.repair-list-heading { display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin:20px 0 10px; }
+.repair-list-heading h3 { margin:0; font-size:15px; }
+.repair-list-heading .repair-count { margin:0; }
+.repair-dialog .repair-section { border-top:1px solid var(--line); padding:12px 0 0; margin:18px 0 0; }
+.repair-section > summary, .repair-tool > summary, .repair-share > summary, .repair-investigation > summary { list-style:none; cursor:pointer; font-weight:600; line-height:1.5; }
+.repair-section > summary, .repair-share > summary { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:13px; }
+.repair-section > summary::before, .repair-tool > summary::before, .repair-share > summary::before, .repair-investigation > summary::before { content:'▸'; color:var(--muted); margin-right:6px; }
+.repair-section[open] > summary::before, .repair-tool[open] > summary::before, .repair-share[open] > summary::before, .repair-investigation[open] > summary::before { content:'▾'; }
+.repair-dialog summary::-webkit-details-marker { display:none; }
+.repair-dialog .repair-tool { padding:14px; margin:12px 0; border:1px solid var(--line); border-radius:6px; background:var(--bg-alt); font-size:13px; }
+.repair-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; max-width:440px; margin:16px 0; }
+.repair-form-grid label { display:grid; gap:6px; color:var(--ink-2); font-size:12px; }
+.repair-form-grid input { width:100%; min-width:0; box-sizing:border-box; }
+.repair-check-stack { display:grid; gap:12px; margin:16px 0; }
+.repair-check-stack label { display:grid; grid-template-columns:18px minmax(0,1fr); gap:2px 8px; align-items:start; font-size:13px; }
+.repair-check-stack input { margin-top:3px; grid-row:1 / 3; }
+.repair-check-stack label > span { grid-column:2; }
+.repair-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:14px 0; }
+.repair-dialog .repair-actions > select { flex:1; max-width:280px; }
+.repair-card-title { font-size:13px; }
+.repair-card-meta { font-size:12px; }
+.repair-card-preview { grid-column:1 / -1; font-size:12px; line-height:1.6; color:var(--ink-2); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.repair-badges { flex-wrap:wrap; justify-content:flex-end; max-width:360px; }
+.repair-card > summary::before { content:'▸ Review'; grid-row:2; }
+.repair-card[open] > summary::before { content:'▾ Close'; }
+.repair-concerns .repair-card > summary::before { content:'▸ Review concern'; }
+.repair-concerns .repair-card[open] > summary::before { content:'▾ Close'; }
+.repair-dialog .repair-investigation { margin-top:16px; font-size:12px; }
+.repair-dialog .repair-card-body > details { padding-top:12px; margin-top:12px; }
+.repair-dialog .repair-example-test { margin-top:14px; }
+.repair-dialog .repair-share { border:0; padding:0; margin:0; }
+.repair-share[open] .repair-export-actions { margin-top:14px; }
+.repair-footer { padding:14px 24px; }
+.repair-dialog [data-replay-start], .repair-dialog .repair-review button { background:var(--hl); color:var(--hl-ink); font-weight:600; }
+.repair-dialog summary:focus-visible { outline:2px solid var(--hl); outline-offset:3px; }
+@media (max-width:640px) {
+  .repair-filter-selects { grid-template-columns:1fr 1fr; }
+  .repair-filter-selects > button { grid-column:1 / -1; justify-self:start; }
+  .repair-form-grid { grid-template-columns:1fr; }
+  .repair-header, .repair-footer { padding:16px; }
+  .repair-card > summary { grid-template-columns:1fr; }
+  .repair-badges { justify-content:flex-start; max-width:none; }
+  .repair-section > summary .small { flex-basis:100%; margin-left:20px; }
+}
+.repair-dialog input[type="number"] { padding:8px 10px; font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:5px; }
+.repair-review .repair-form-grid select { margin:0; width:100%; }
+.repair-dialog [data-close] { flex-shrink:0; }
+.repair-card[open] .repair-card-preview { display:none; }
+.repair-card[open] > summary::before, .repair-concerns .repair-card[open] > summary::before { content:'▾ Hide details'; }

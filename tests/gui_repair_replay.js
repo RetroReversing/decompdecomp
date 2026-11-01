@@ -14,6 +14,7 @@ const run=ctx.setupRepairReplay({querySelector:get,addEventListener:(name,fn)=>l
 (async()=>{
  const pending=run(42);await new Promise(setImmediate);
  assert.equal(posts[0][0],'/api/repair-examples/replay');
+ assert.equal(get('[data-tools]').open,true);assert.equal(get('[data-replay-panel]').open,true);
  assert.equal(posts[0][1].body.minimize,true);assert.equal(posts[0][1].body.diagnostics,true);
  assert.equal(posts[0][1].body.id,42);assert.equal(posts[0][1].body.trials,12);
  assert.equal(get('[data-replay-stop]').hidden,false);

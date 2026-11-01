@@ -3,6 +3,11 @@
 Implemented: copy a complete selected session (including unloaded messages) to the clipboard; export all recorded sessions and full events for one project agent as JSON to Downloads,
 independent of transcript dialog pagination. Unrecorded CLI internals cannot be reconstructed.
 
+
+Implemented: ROM function compiler results show current project assignment and matched-function counts for
+each exact compiler/ordered-flags profile. Imported projects own their build settings; equivalent per-file
+profile usage needs a build-system adapter and remains planned.
+
 Implemented: reached reference include-tree macros in explicit source contexts, bounded initializer-helper
 expansion in preparation and shared local repairs, advisory folded object-base and retail switch-table
 case/group comparisons, and explicit bounded batch rechecking of historical exact bundles. Table evidence
@@ -1453,3 +1458,6 @@ remain planned: the initial browser toolchain has no matching build-context adap
   deliberately rejected rather than assigned speculative bounds.
 - Planned: train recipes from reviewed historical repair examples only after a fresh ordinary
   exact verdict. Frozen-control replay alone must not train acceptance evidence.
+
+- Done: Repair examples puts compact source-repair cards and filters first, with candidate concerns, local testing/analysis and exports in separate disclosures. Cards preview the captured explanation and open directly onto source changes; coding-agent setup loads only when its investigation section is expanded. Review statuses use plain labels, form controls stack on narrow windows, and per-example tests reveal their progress section automatically.
+- Done: session transcripts distinguish app-only connection probes from tools exposed to the agent, including legacy pre-prompt probes without rewriting saved events. New probe calls do not increment agent tool-use counters. CLI and API matching sessions preload bounded project facts and one ordinary coordinated claim; prompt previews never claim, and polishing keeps its own file-claim flow. Reusable matching knowledge has explicit per-function note guidance, allows general known-compiler behavior tips, and pending single-model proposals can be accepted or rejected manually without changing the two-model automatic acceptance rule.

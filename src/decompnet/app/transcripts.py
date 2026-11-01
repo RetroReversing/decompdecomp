@@ -47,6 +47,21 @@ class Transcripts:
             raise NetworkError('This session does not belong to this project and helper.')
         events = self.store.all('SELECT * FROM helper_messages WHERE session_id=? AND id>? ORDER BY id' + ('' if whole else ' LIMIT 26'),
                                session, max(0, after)) if row else []
+        events = [dict(event) for event in events]
+        first_prompt = self.store.one("SELECT MIN(id) AS id FROM helper_messages WHERE session_id=? AND kind='prompt'", session)
+        # Older CLI sessions logged the app's probe before recording the initial
+        # prompt. Retitle only that known ordering; never infer model billing.
+        for event in events:
+            if not first_prompt or not first_prompt['id'] or event['id'] >= first_prompt['id']:
+                continue
+            if event['kind'] == 'tool_definitions':
+                event['kind'] = 'connection_check_tools'
+            elif event['kind'] in {'tool_request','tool_response'}:
+                try:
+                    if json.loads(event['text']).get('name') == 'project_info':
+                        event['kind'] = 'connection_check_' + event['kind']
+                except (ValueError, AttributeError):
+                    pass
         return {'sessions': [dict(r) for r in sessions], 'session': dict(row) if row else None,
                 'events': [dict(r) for r in (events if whole else events[:25])], 'more': not whole and len(events) > 25}
 

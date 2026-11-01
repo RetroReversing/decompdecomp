@@ -24,6 +24,12 @@ const context = { S: {logFor: '7', slug: 'demo'}, document: {body, createElement
     requests.push(url); const q = new URL(url, 'http://test').searchParams;
     const id = Number(q.get('session')) || 60, before = Number(q.get('before'));
     const sessions = Array.from({length: 30}, (_, i) => row((before ? 30 : 60) - i));
+    if(id===8) return {sessions,session:row(id),more:false,events:[
+      {id:1,kind:'connection_check_tools',text:JSON.stringify([{name:'project_info',inputSchema:{}}])},
+      {id:2,kind:'connection_check_tool_request',text:JSON.stringify({name:'project_info',call_id:'probe',arguments:{detail:false}})},
+      {id:3,kind:'connection_check_tool_response',text:JSON.stringify({name:'project_info',call_id:'probe',content:'Connected'})},
+      {id:4,kind:'tool_definitions',text:JSON.stringify([{name:'project_info',inputSchema:{}}])}
+    ].map(e=>({...e,created_at:1}))};
     if(id===6 || id===7) {
       const keyed=id===6, payload=(key,extra)=>JSON.stringify({name:'guide',...(keyed?{call_id:key}:{}),...extra});
       return {sessions,session:row(id),more:false,events:[
@@ -115,5 +121,10 @@ vm.runInContext(source.slice(source.indexOf('$("helperTranscript").onclick =')),
   const title=context.transcriptToolTitle({name:'compile',arguments:{source:'<script>'+ 'x'.repeat(1000),flags:['a','b']}});
   assert(title.length<220);assert(title.includes('flags=[2 items]'));
   assert.equal(context.transcriptToolPayload('broken JSON'),null);
+  select.value='8';await select.onchange();
+  assert.equal(events.children.length,3);
+  assert.match(events.children[0].children[0].children[0].textContent,/Connection check.*not sent to model/);
+  assert.match(events.children[1].children[0].children[0].textContent,/Connection check.*project_info/);
+  assert.match(events.children[2].children[0].children[0].textContent,/Tools exposed to agent/);
   console.log('Transcript full-text rendering, usage, paging and old-session selection passed');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

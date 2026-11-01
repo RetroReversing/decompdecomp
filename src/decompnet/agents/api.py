@@ -94,6 +94,7 @@ class Api(Agent):
         if s.options.get("api_key"):
             headers["Authorization"] = f"Bearer {s.options['api_key']}"
         schema = api_tool_schemas(fork=bool(net.fork_slug(s.slug)), names=tools.project_tools(net, s.slug, agent))
+        manager.prepare_session(s, agent)
         messages = [{"role": "system", "content": manager.app_instructions(s)},
                     {"role": "user", "content": manager.prompt(s)}]
         if s.record:
@@ -497,9 +498,10 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
         "claim_readable": ("Take the next matched function that isn't readable yet.", s()),
         "make_readable": ("A readable rewrite of a matched function (names, types, a comment); kept only if it still "
                           "matches byte for byte.", s(function=st("function", True), source=st("readable C", True))),
-        "share_knowledge": ("Not for compiler/flag findings: use compiler_map, try_compiler/search_flags or suggest. Propose shared code knowledge or back proposal #N "
-                            "(supports=N). It counts once two different models agree. Not for compiler questions.",
-                            s(text=st("what every agent should know"), supports=it("a proposal's number to back"))),
+        "share_knowledge": ("Reusable matching tips for the game/compiler across functions. NOT function-specific notes: use release_function(notes=...) or add_note(function=...). "
+                            "Back independently verified tips with supports=N. The user can accept one proposal; automatic acceptance needs two models. "
+                            "Compiler identity/profile changes use compiler_map, try_compiler/search_flags or suggest.",
+                            s(text=st("reusable matching technique, not a function-specific note"), supports=it("a proposal's number to back"))),
         "suggest": ("Suggest a setup change for the user (another compiler or flags), with evidence.",
                     s(text=st("what and why", True), compiler=st("toolchain id"), flags=st("flags"),
                       function=st("a function whose best attempt should match with it: checked now"),

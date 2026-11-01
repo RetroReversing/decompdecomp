@@ -11,7 +11,7 @@ const ctx = { $: get, S: { slug: "demo", fn: "function_one" }, esc: String,
   refreshMap: async () => {}, refreshFn: async () => {}, compilerComparisonBusy: false };
 vm.createContext(ctx);
 const base = fs.readFileSync(path.join(__dirname, "../src/decompnet/app/static/js/base.js"), "utf8");
-vm.runInContext(base.slice(base.indexOf("function compilerRankedTable(")), ctx);
+vm.runInContext(base.slice(base.indexOf("function compilerProfileUsage(")), ctx);
 const source = fs.readFileSync(path.join(__dirname, "../src/decompnet/app/static/js/function.js"), "utf8");
 vm.runInContext(source.slice(source.indexOf("function renderFunctionCompilerComparison("), source.indexOf('$("fnTestCompilers").onclick')), ctx);
 const rows = [
@@ -42,3 +42,13 @@ assert.match(defaults, /Use default/);
 const selected = ctx.compilerRankedTable([{toolchain:'active',flags:['-O2'],exact:true,percent:100,selected:true,apply_disabled:true}],true);
 assert.match(selected, /Currently selected/);
 assert.match(selected, /disabled>Selected/);
+
+const usage = [{toolchain:'active', flags:['-O2'], functions:12, matched:9}];
+const counted = ctx.compilerRankedTable([
+  {toolchain:'active',flags:['-O2'],percent:100,exact:true},
+  {toolchain:'active',flags:['-O1'],percent:100,exact:true},
+],true,usage);
+assert.match(counted, /Used by/);
+assert.match(counted, /12 functions · 9 matched/);
+assert.match(counted, /0 functions · 0 matched/);
+assert.doesNotMatch(selected, /Used by/);

@@ -59,10 +59,12 @@ def set_global(net, name, enabled):
         db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)', (KEY, json.dumps(sorted(names))))
 
 
-def record(net, agent, slug, name):
+def record(net, agent, slug, name, *, count=True):
     from .tools import HANDLERS
     if name not in visible(net, slug, list(HANDLERS), agent):
         raise NetworkError(f'{name} is disabled in agent tool settings. Use an enabled tool instead.')
+    if not count:
+        return  # App-only connection probes are not agent tool usage.
     with net.store.tx() as db:
         db.execute('INSERT INTO agent_tool_usage VALUES(?,1,?) ON CONFLICT(name) DO UPDATE SET '
                    'calls=calls+1,last_used=excluded.last_used', (name, time.time()))
