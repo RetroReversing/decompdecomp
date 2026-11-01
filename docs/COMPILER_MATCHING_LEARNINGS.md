@@ -1342,6 +1342,29 @@ assignments stayed unchanged, while lifetime and scheduling dumps differed. This
 initialization order without claiming a newly discovered allocation cause. No source was applied and
 this replay does not count as another matched function.
 
+### Automating selective branch pointer lifetimes
+
+The shared `branch_pointer_lifetimes` family now tries individual pointer splits and bounded combinations,
+retaining the all-shared parent in the existing frontier. A conservative CFG-backed transform can first
+copy a void terminal suffix into terminal switch leaves: no fallthrough, default required, all incoming
+suffix paths covered, no loops/gotos, and no nested declarations that could shadow copied names. Pointer
+reads must be definitely initialized, storage unescaped, scopes disjoint and volatile/C++ shapes excluded.
+Simple statement macros can be expanded with bounded side-effect-free arguments; strings, control macros
+and opaque captures are left alone. No calls/evaluations are invented or removed by scope changes.
+
+`branch_pointer_declarations` interleaves same-type uninitialized declaration swaps across the retained
+mixed-lifetime hypotheses. The cap is 66 proposals total, shared across parents; ordinary trial/time budgets
+and source/build caches remain in force. Existing numeric/structural frontier retention and input-scoped
+negative trial history handle plateaus and repeated failures. A shorter stream with fewer repeated calls
+is now an advisory hint to inspect tail merging **or missing logic**, not an equivalence or identity verdict.
+
+Frozen private replay under the original KMC profile recovered the recorded successful 666-instruction
+compiler output. The three lifetime candidates scored 12530 (only result pointer split), 40 (only name
+pointer split) and 2660 (both split). The 17th generated proposal, including declaration order, reproduced
+exact function fingerprint and all allocated code/data/relocation output of the previously verified control.
+Four of 66 proposals recovered that control in the complete regression run. This is an existing-match replay,
+not four new matches and not a success-rate estimate. No live source or game data was changed or published.
+
 
 ### Recover predicates and investigate structural misses first
 
@@ -1359,3 +1382,24 @@ observation remains unresolved: its nearby padding includes two NOPs followed by
 Concrete source comparisons and compiled immediate differences are now shown as revision leads.
 Unsuccessful preparations are summarized only under their original source/build scope, so changed
 inputs remain eligible and old failed experiments are not mistaken for universal impossibility.
+
+### Measure combined-search effort rather than assume a speedup
+
+The selective branch-lifetime case motivates combining source repairs and preserving correct
+regions, but not a universal declaration or formatting rule. The shared frontier now ranks
+structural alternatives by newly damaged previously correct target blocks while retaining the
+numeric winner. This is advisory and cannot reject an otherwise exact candidate.
+
+An unchanged-profile private 666-instruction KMC GCC frozen-output benchmark recovered the
+previously verified control with all deterministic families in 67 candidate compiles (about
+20 seconds), including three compiler failures. Restricting generation to the branch families
+recovered it in 19 compiles (about five seconds). Both additionally compiled two controls.
+The earlier direct branch-family list recovered at proposal 17: these measurements do not
+establish a speedup. The round-robin beam and direct list have different proposal orders.
+The successful family already generates a bundled lifetime/declaration edit, so its one-family
+path is not proof that a multi-edge chain was necessary in this replay. Synthetic plateau and
+structure-gain tests separately exercise actual multi-edge continuation, cache reuse and resume.
+
+Keep successful and failed frozen cases as private benchmark inputs, compare first recovery
+trial and wall time under fixed context, and preserve data/relocation checks. Do not train exact
+repair recipes or adopt game progress from a frozen-output replay alone.

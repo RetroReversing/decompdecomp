@@ -44,6 +44,42 @@ def test_missing_or_mixed_context_is_skipped_before_compiling():
         assert 'skipped' in replay.replay(example,measure=lambda source: (_ for _ in ()).throw(AssertionError()))
 
 
+def test_combination_benchmark_reports_path_cost_and_stops_at_recovered_control(monkeypatch):
+    example = case()
+    original = deepcopy(example)
+    before = example['evidence']['before']['source']
+    def variants(source, name, arch, asm, flags, labels, **kwargs):
+        pool = {before:[('scope','bad'), ('scope','step')], 'step':[('order','winner'), ('order','unused')]}.get(source, [])
+        labels.update({s:f for f,s in pool})
+        return [s for _,s in pool]
+    monkeypatch.setattr(replay.draft_repairs, 'variants', variants)
+    calls = []
+    def measure(source):
+        calls.append(source)
+        if source == 'bad':return {'error':'failed compile'}
+        return {'object':obj(2 if source in ('winner',example['evidence']['after']['source']) else 1)}
+    result = replay.replay(example, measure=measure, combinations=True, trials=8)
+    assert result['winning_path'] == ['scope','order']
+    assert result['first_exact_trial'] == result['candidate_compiles'] == 3
+    assert result['control_compiles'] == 2 and result['elapsed_seconds'] >= 0
+    assert result['reason'] == 'control_output_recovered'
+    assert calls == [before,example['evidence']['after']['source'],'bad','step','winner']
+    assert example == original
+
+
+def test_combination_benchmark_budget_failure_and_data_mismatch(monkeypatch):
+    def variants(source, name, arch, asm, flags, labels, **kwargs):
+        labels.update(winner='scope', untried='scope')
+        return ['winner','untried']
+    monkeypatch.setattr(replay.draft_repairs, 'variants', variants)
+    def measure(source):
+        return {'object':obj(1 if 'return 1' in source else 2),
+                'data':'different' if source == 'winner' else 'control'}
+    result = replay.replay(case(), measure=measure, combinations=True, trials=1)
+    assert result['reason'] == 'trial_budget' and result['first_exact_trial'] is None
+    assert result['trials'][0]['score'] == 0 and result['trials'][0]['outcome'] == 'improved'
+
+
 def test_imported_build_missing_inputs_and_uninstalled_tools_are_explicit_skips(monkeypatch):
     example = case()
     monkeypatch.setattr(replay.toolchains,'installed',lambda name:None)

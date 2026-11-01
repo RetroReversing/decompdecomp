@@ -76,6 +76,9 @@ def test_runtime_source_and_profile_probes_share_budget_and_suggest_without_bypa
     assert r['tested']==2 and r['best']['exact']
     assert not state['applied'] and len(state['suggested'])==1
     assert 'long long a' in state['suggested'][0]['source']
+    pending = matching_preflight.run(net,proj,fn,max_profiles=2)
+    while pending.get('pending'):
+        pending = matching_preflight.run(net,proj,fn,max_profiles=2)
     assert matching_preflight.run(net,proj,fn,max_profiles=2)['cached']
     assert len(state['calls'])==2
 
@@ -132,6 +135,9 @@ def test_changed_runtime_target_and_source_require_fresh_judgments(monkeypatch):
     net.cfg=lambda _: {'compiler':{'toolchain':'ido-5.3','flags':['-O2']}}
     net._judge_with=lambda *a:(False,SimpleNamespace(score=50),'')
     assert matching_preflight.run(net,proj,fn,max_profiles=2)['tested']==2
+    pending = matching_preflight.run(net,proj,fn,max_profiles=2)
+    while pending.get('pending'):
+        pending = matching_preflight.run(net,proj,fn,max_profiles=2)
     assert matching_preflight.run(net,proj,fn,max_profiles=2)['cached']
     fn['asm']=CONVERT
     assert matching_preflight.run(net,proj,fn,max_profiles=2)['tested']==2

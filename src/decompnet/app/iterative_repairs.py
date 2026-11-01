@@ -4,6 +4,7 @@ import hashlib
 import json
 import threading
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from itertools import zip_longest
 from pathlib import Path
@@ -14,6 +15,25 @@ from . import allocation_evidence, region_repairs, search_frontier, workers
 
 WIDTH, DEPTH, PER_FUNCTION = 3, 4, 8
 DETOUR_RATIO = 1.25
+
+
+def children(state, parent, variants, *, priority=0):
+    """Keep the pending wave, but reserve a tiny burst for a structurally promising two-step repair."""
+    if parent['depth'] >= DEPTH or parent['source'] in state.setdefault('expanded', []):
+        return 0
+    state['expanded'].append(parent['source'])
+    new = []
+    for proposal in variants(parent['source'], parent['report']):
+        family, source = proposal if isinstance(proposal, tuple) else ('local_repair', proposal)
+        if source in state['seen']:
+            continue
+        state['seen'].append(source)
+        new.append(dict(source=source, depth=parent['depth'] + 1,
+                        ceiling=min(parent['ceiling'], parent['score']),
+                        region_baseline=parent.get('regions'), baseline_rows=parent['report'].get('rows'),
+                        path=parent.get('path', [])+[family], parent_source=parent['source']))
+    state['pending'] = new[:priority]+state['pending']+new[priority:]
+    return len(new)
 
 
 def advance(state, evaluate, variants, stopped, *, arch=None):
@@ -28,7 +48,12 @@ def advance(state, evaluate, variants, stopped, *, arch=None):
         if report is None:  # busy work stays retryable
             return False
         state['pending'].pop(0)
+        counts = state.setdefault('counts', {})
+        outcome = 'matched' if report.get('matched') else 'compile_failed' if report.get('score') is None else 'scored'
+        counts[outcome] = counts.get(outcome, 0) + 1
         if report.get('matched'):
+            state['reason'] = 'matched'
+            state['winning_path'] = node.get('path', [])
             return True
         score = report.get('score')
         if (isinstance(score, (int, float)) and 0 < score <= node['ceiling'] * DETOUR_RATIO
@@ -41,11 +66,22 @@ def advance(state, evaluate, variants, stopped, *, arch=None):
                 regions = region_repairs.snapshot(report.get('rows'))
                 state['next'].append({**node, 'score': score, 'report': report, 'regions': regions,
                                       'region_gain': region_repairs.gain(node.get('region_baseline'), regions)})
+                state['next'][-1]['region_damage'] = region_repairs.damage(node.get('region_baseline'), regions)
+                # A measured structure improvement earns two immediate combination probes, not
+                # an unbounded recursive search. The original wave remains queued and resumable.
+                if (node.get('baseline_rows') and report.get('rows') and node['depth'] < DEPTH
+                        and score <= node['ceiling'] and state.get('bridge_bursts', 0) < 3
+                        and search_frontier.structure(report['rows']) < search_frontier.structure(node['baseline_rows'])
+                        and not state['next'][-1]['region_damage']):
+                    if children(state, state['next'][-1], variants, priority=2):
+                        state['bridge_bursts'] = state.get('bridge_bursts', 0)+1
                 if output is not None:
                     key = str(node['depth'])+':'+output
                     outputs[key] = outputs.get(key, 0) + 1
+            else:
+                counts['equivalent_output'] = counts.get('equivalent_output', 0) + 1
         if not state['pending']:
-            ranked = sorted(state['next'], key=lambda n: (search_frontier.structure(n['report'].get('rows') or []),
+            ranked = sorted(state['next'], key=lambda n: (n.get('region_damage', 0), search_frontier.structure(n['report'].get('rows') or []),
                                                             stack_distance(n['report'].get('rows') or []), n['score']))
             ordinary = [n for n in ranked if n['score'] <= n['ceiling']]
             detours = sorted((n for n in ranked if n['score'] > n['ceiling']),
@@ -62,15 +98,11 @@ def advance(state, evaluate, variants, stopped, *, arch=None):
             state['next'] = []
             for parent in best:
                 if parent['depth'] >= DEPTH:
+                    counts['depth_limit'] = counts.get('depth_limit', 0) + 1
                     continue
-                for source in variants(parent['source'], parent['report']):
-                    if source in state['seen']:
-                        continue
-                    state['seen'].append(source)
-                    state['pending'].append(dict(source=source, depth=parent['depth'] + 1,
-                                                 ceiling=min(parent['ceiling'], parent['score']),
-                                                 region_baseline=parent.get('regions'), baseline_rows=parent['report'].get('rows'),
-                                                 parent_source=parent['source']))
+                children(state, parent, variants)
+    state['reason'] = ('budget_or_stop' if state['pending'] else 'depth_limit' if state.get('counts', {}).get('depth_limit')
+                       else 'supported_variants_exhausted')
     return False
 
 
@@ -93,7 +125,7 @@ def output_key(report):
     return hashlib.sha256(repr((report['candidate_target'], report.get('candidate_relocs'))).encode()).hexdigest()
 
 
-def targeted_variants(source, report, fn, arch, flags, header='', tables=(), callees=''):
+def targeted_variants(source, report, fn, arch, flags, header='', tables=(), callees='', *, tagged=False):
     from . import draft_repairs, normalization_repairs, repair_ranking, stack_padding_repairs
     labels = {}
     proposals = draft_repairs.variants(source, fn['name'], arch, fn['asm'] or '', flags, labels, header=header, limit=None, tables=tables,callees=callees)
@@ -105,7 +137,8 @@ def targeted_variants(source, report, fn, arch, flags, header='', tables=(), cal
             proposals.append(text)
             labels[text] = 'spill_normalization'
     families = repair_ranking.order(list(dict.fromkeys(labels[p] for p in proposals)), report.get('rows') or [])
-    return sorted(proposals, key=lambda p: families.index(labels[p]))[:20]
+    result = sorted(proposals, key=lambda p: families.index(labels[p]))[:20]
+    return [(labels[p], p) for p in result] if tagged else result
 
 
 def run(twins, slug, job):
@@ -125,6 +158,8 @@ def run(twins, slug, job):
         'SELECT name,address FROM symbols WHERE project_id=? ORDER BY name', proj['id'])]
     known = {name for name, _ in symbols}
     matched = [0]
+    reasons = Counter()
+    diagnostics = Counter()
     rules = repair_rules()
     rows = net.store.all("SELECT * FROM functions WHERE project_id=? AND status='open' AND best_source IS NOT NULL "
                          "AND best_score>0 AND best_score<=?*MAX(1,n_insns) "
@@ -144,7 +179,7 @@ def run(twins, slug, job):
         header = net._context(proj['id'], fn['unit'])['header']
         settings = compiler_for(cfg, fn['vram'])
         recipe_profile=repair_sequences.profile(net,proj,fn)
-        context = similar_matches.trial_key('', header, settings, fn, ['beam-v6', symbols, rules, expression_recipes.signature(net,recipe_profile)])
+        context = similar_matches.trial_key('', header, settings, fn, ['beam-v7', symbols, rules, expression_recipes.signature(net,recipe_profile)])
         saved = net.store.one('SELECT context,state FROM repair_frontiers WHERE function_id=?', fn['id'])
         state = json.loads(saved['state']) if saved and saved['context'] == context else None
         if state is None or fn['best_source'] not in state['seen']:
@@ -175,7 +210,8 @@ def run(twins, slug, job):
             if report.get('matched') and state['pending'] and state['pending'][0].get('parent_source'):
                 expression_recipes.learn(net,recipe_profile,state['pending'][0]['parent_source'],source)
             outcome = 'match' if report.get('matched') else 'miss'
-            reason = 'iterative local repair; ' + ('byte match' if outcome == 'match' else f"score {report.get('score')}")
+            path = state['pending'][0].get('path', []) if state['pending'] else []
+            reason = 'iterative local repair; ' + ('byte match' if outcome == 'match' else f"score {report.get('score')}") + '; path: ' + ' → '.join(path)
             with net.store.tx() as db:
                 db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
                            (fn['id'], key, outcome, reason, json.dumps(report)))
@@ -189,13 +225,16 @@ def run(twins, slug, job):
                 compiled = dict(target=bytes.fromhex(report['candidate_target']), relocs=report.get('candidate_relocs', '[]'))
                 guided += similar_matches.literal_variants(source, compiled, fn, bool(proj['big_endian']))
             from . import draft_repairs, switch_tables
-            targeted = targeted_variants(source, report, fn, proj['arch'], settings.get('flags', []), header, switch_tables.read(net,proj,fn), draft_repairs.capture_followup_repairs.callee_evidence(net,proj,fn,source))
+            targeted = targeted_variants(source, report, fn, proj['arch'], settings.get('flags', []), header, switch_tables.read(net,proj,fn), draft_repairs.capture_followup_repairs.callee_evidence(net,proj,fn,source), tagged=True)
             # Interleave pools so address proposals cannot starve targeted families (or vice versa).
             learned = expression_recipes.variants(net, recipe_profile, source)
-            pools = [guided[:4], targeted[:8], similar_matches.repair_variants(source, report)[:4], learned[:2]]
+            pools = [[('address_or_literal', s) for s in guided[:4]], targeted[:8],
+                     [('similar_repair', s) for s in similar_matches.repair_variants(source, report)[:4]],
+                     [('learned_expression', s) for s in learned[:2]]]
             return list(dict.fromkeys(item for group in zip_longest(*pools)
                                       for item in group if item is not None))
 
+        before_counts = Counter(state.get('counts', {}))
         if advance(state, evaluate, variants, stopped, arch=proj['arch']):
             with guard:
                 matched[0] += 1
@@ -204,12 +243,19 @@ def run(twins, slug, job):
             net.add_note(agent, slug, 'Autopilot matched with iterative local repairs', fn['name'])
         with net.store.tx() as db:
             db.execute('INSERT OR REPLACE INTO repair_frontiers VALUES(?,?,?)', (fn['id'], context, json.dumps(state)))
+        with guard:
+            reasons[state.get('reason', 'busy_or_paused')] += 1
+            diagnostics.update(Counter(state.get('counts', {}))-before_counts)
 
     # One thread to a function at a time (Settings: "Iterative repairs: threads"), on a pool of their own: this
     # runs on one of the shared workers, which would wait for the very threads it is waiting on.
     threads = workers.clamp(getattr(getattr(net, 'cascades', None), 'iterative_threads', 0))
     with ThreadPoolExecutor(threads, thread_name_prefix='iterative-repair', initializer=workers.lower_priority) as pool:
         list(pool.map(visit, rows))
+    if reasons:
+        net.add_note(agent, slug, 'Iterative search function outcomes: '+', '.join(f'{k}: {v}' for k,v in sorted(reasons.items()))+
+                     f". {diagnostics['compile_failed']} failed/unscored reports; {diagnostics['equivalent_output']} equivalent-output branches pruned. "
+                     'Pending paths resume on the next run; these are bounded supported repairs, not all possible C.')
     return matched[0]
 
 

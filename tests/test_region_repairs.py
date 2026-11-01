@@ -22,3 +22,10 @@ def test_inserted_instructions_do_not_shift_target_region_identity():
     candidate[5] = ('r', 'different target', 'other')
     assert regions.gain(regions.snapshot(baseline), regions.snapshot(candidate)) == 0
     assert regions.snapshot([]) is None
+
+
+def test_preserving_correct_regions_is_advice_not_a_match_verdict():
+    before = regions.snapshot(rows({1, 2}))
+    assert regions.damage(before, regions.snapshot(rows({1}))) == 0
+    assert regions.damage(before, regions.snapshot(rows({17, 18}))) == 2
+    assert regions.damage(None, before) == 0
