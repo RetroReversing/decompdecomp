@@ -1,4 +1,4 @@
-"""Only explicitly selected file-scope object definitions can enter a prepared candidate."""
+"""Original file-scope objects selected explicitly or referenced in the mapped source file."""
 import re
 
 from ..forks.csource import _blank
