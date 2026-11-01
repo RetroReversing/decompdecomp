@@ -1141,3 +1141,25 @@ none of these matches is attributed to the new diagnostics automatically fixing 
 - Parenthesized `case (...)` labels exposed a source-import bug: a keyword was treated as
   a private helper name. The importer now excludes `case`, with a regression test. The
   installed app was not restarted; a local macro workaround kept the live trial moving.
+
+### Named SDK source can be useful without a matching machine fingerprint
+
+A private N64 replay used `guS2DInitBg` reported matched in an imported repository as a same-name
+source lead for a ROM project. Under the destination's unchanged KMC GCC 2.7.2 profile
+(`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`), the automatic pass improved score **2545 → 1160**.
+It remains non-matching. Fourteen destination trials and two preprocessing probes were used;
+the bounded local repairs did not improve the best donor version further. This is measured
+partial progress, not an additional exact match or a claim that names prove SDK identity.
+
+The donor default branch scored 2245. A source-declared `BUILD_VERSION >= VERSION_J` boundary,
+with `VERSION_J` explicitly defined as 7 by the donor headers, scored 1160. Its override is
+supplied before both headers and body; mixed header/body revision guesses are not intended.
+The destination preprocessor resolves compiler conditionals and macros. Its required declaration
+closure is about 1 KB rather than retaining the roughly 1.3 MB expanded include tree.
+
+Source/default-width, layout and version evidence can therefore bootstrap a better candidate
+before token-consuming work even across project modes. Destination compiler settings stay fixed;
+unknown globals/helper definitions and unsupported preprocessing remain explicit limitations.
+A repeated unchanged pass used zero additional preprocessing or destination compiles after
+input-scoped caching. Synthetic tests cover donor modes, failed-trial renewal, cancellation,
+claims, donor rotation, include bounds and exact destination acceptance separately from this replay.

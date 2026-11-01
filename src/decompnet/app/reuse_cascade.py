@@ -8,7 +8,7 @@ import logging
 import threading
 import time
 
-from . import free_candidates, similar_matches, workers
+from . import free_candidates, named_donors, similar_matches, workers
 from .twins import Job
 
 log = logging.getLogger('decompdecomp')
@@ -57,13 +57,14 @@ class Cascade:
     def notify(self, donor, fid):
         if not self.enabled:
             return
-        fn = self.net.store.one('SELECT size,status,best_source FROM functions WHERE id=?', fid)
+        fn = self.net.store.one('SELECT name,size,status,best_source FROM functions WHERE id=?', fid)
         if not fn or (fn['status'] != 'matched' and not fn['best_source']):
             return
         from .shared_reuse import compatible
+        identity=fn['name'] if fn['status']=='matched' and named_donors.meaningful(fn['name']) else ''
         projects = [p for p in compatible(self.net, donor) if self.net.store.one(
-            "SELECT 1 FROM functions WHERE project_id=? AND status IN ('open','nosource') AND size BETWEEN ? AND ? LIMIT 1",
-            p['id'], int(fn['size'] * .9), int(fn['size'] / .9))]
+            "SELECT 1 FROM functions WHERE project_id=? AND status IN ('open','nosource') AND (size BETWEEN ? AND ? OR name=?) LIMIT 1",
+            p['id'], int(fn['size'] * .9), int(fn['size'] / .9),identity)]
         with self.lock:
             if not self.enabled:
                 return
@@ -99,6 +100,7 @@ class Cascade:
                 count, size, tries = job.reuse_matched, job.reuse_bytes, job.reuse_attempts
                 try:
                     job.matched += self.net.twins.across_games(slug, job)
+                    job.matched += named_donors.run(self.net.twins, slug, job)
                     job.matched += free_candidates.run(self.net.twins, slug, job)
                     job.matched += similar_matches.run(self.net.twins, slug, job)
                     proj = self.net.project_row(slug)

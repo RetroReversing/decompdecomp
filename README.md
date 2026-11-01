@@ -981,6 +981,22 @@ Only select a fork you trust, since updating runs its code. Packaged editions ke
 their existing platform update restrictions. This changes the app's update source,
 not any imported game's repository.
 
+### Reuse verified C by function name
+
+Autopilot also tries meaningfully named, matched functions from compatible imported games,
+including ROM → repository, repository → ROM and repository → repository leads. This can reuse
+SDK C even when compiler differences prevent a byte fingerprint match. Run Autopilot with both
+projects imported; enabled cross-project cascades also try these leads after new matches.
+
+Names select hypotheses, never matches. Imported C brings a bounded local header closure through
+the destination's pinned preprocessor where supported; imported destinations keep their own build
+headers. One explicit numeric version boundary from the source may be tried alongside its defaults.
+Each candidate and a few deterministic repairs use the ordinary destination judge, with no AI calls.
+Unsuccessful trials are cached by their actual inputs, projects rotate fairly, and attributed results
+appear in the existing matches-from-other-games history. Better ROM drafts retain private declarations;
+only an exact destination verdict counts as a match. Assembly-only units and unsupported preprocessing
+or foreign helper/data definitions still need their existing setup/source-preparation adapters.
+
 ### Export deep-permuter metrics
 
 In the deep-pass settings, expand **Rewrite performance** and select
@@ -991,3 +1007,4 @@ detailed measured outcomes and timing coverage. It contains no source code, ROM
 bytes or credentials. Missing older measurements are blank; `partial` timing must
 be compared using `measured_attempts` and measured gains, rather than all-time
 counts. Totals and newer outcome measurements overlap and must not be added.
+
