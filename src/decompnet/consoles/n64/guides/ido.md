@@ -122,3 +122,10 @@ does not authorize assigned-register C or a guessed calling-convention patch.
 
 Reuse a nearby exact function’s private type context as a bounded hypothesis when types and calls
 overlap. Keep the original source line layout and judge each function separately, including its data.
+
+Preserve original object identity as well as type: a typed view of a large application
+object can retain IDO's address construction where byte-array arithmetic folds into a
+new base symbol. Check the actual SDK macro before declaring a helper function: an
+indexed-block macro may forward an extra data pointer, and a matrix macro may take an
+object's address. Compare loop expansion versus helper inlining only as separately
+judged hypotheses. Retail switch tables can differ from archived source revisions.

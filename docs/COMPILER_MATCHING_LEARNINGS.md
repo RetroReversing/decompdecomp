@@ -1116,3 +1116,28 @@ choices on later passes. A controlled fake-judge regression reaches a later `-O3
 with one new probe per round, retains completed work after interruption and resets on source change.
 This test demonstrates search coverage, not an additional game match. Exact revalidation and
 compiler-setting approval gates remain unchanged.
+
+A subsequent ten-candidate source-assisted live-API batch passed ten byte judgments
+(4,424 function bytes): nine at IDO 5.3 `-O3` and one model selector at `-O2`, with
+`-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul`. The batch is manual evidence;
+none of these matches is attributed to the new diagnostics automatically fixing code.
+
+- Two animation readers required the original indexed-block **macro**, forwarding both
+  the set and its data pointer before the index. Declaring that API as a two-argument
+  function gave incorrect call registers. Original aggregate returns and frame records
+  then matched at `-O3`.
+- A static-instance initializer needed the original short-float conversion helper and
+  the matrix conversion macro's address-of operation, not an invented scalar conversion.
+- A particle-system initializer's static-helper version remained at score 860. Explicitly
+  expanding the original four initialization statements in its loop reached zero at
+  `-O3`; instruction order differed around unrolled-loop stores. This is a tested source
+  hypothesis, not a claim that macros always reproduce same-unit inlining.
+- A static renderer reached score 660 with byte-array application access. A typed view
+  of the same original object, retaining its large field offsets, plus original display-list
+  expression order reached zero. IDO had otherwise folded the address into a different
+  base symbol. Large object identity can matter even when addresses are arithmetically equal.
+- One model-selection switch needed an extra independent return-zero arm confirmed by
+  the retail jump table. Archived source was not the final authority for the retail cases.
+- Parenthesized `case (...)` labels exposed a source-import bug: a keyword was treated as
+  a private helper name. The importer now excludes `case`, with a regression test. The
+  installed app was not restarted; a local macro workaround kept the live trial moving.
