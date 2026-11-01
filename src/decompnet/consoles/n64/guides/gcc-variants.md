@@ -23,3 +23,9 @@ use is unconfirmed, so it is available explicitly but excluded from routine
 installed-profile comparisons. These two packs run on Linux, Windows via WSL, or macOS through the optional
 local Linux VM. They have no native macOS binaries. Do not substitute a different host build
 and assume it has identical target code generation.
+
+For a narrow counter, `v = ++i` can schedule differently from incrementing a promoted
+expression and converting it later. A store followed by an increment can also benefit
+from `p->field = i++`. Keep conversion points and observable access order intact; do
+not narrow counters or move increments across calls without range/liveness evidence.
+The local repair families try conservative adjacent forms under the ordinary judge.

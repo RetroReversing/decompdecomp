@@ -1191,3 +1191,8 @@ Synthetic execution/search regressions are distinct from newly measured private-
 Private-context profile probes also cover prepared candidates that fail to improve under the current
 flags (two probes within the existing shared budget). Their source/header/profile evidence is retained
 for review; joint context/profile approval and automatic promotion remain future work.
+
+- Done: bounded adjacent scalar prefix-result and postfix-store hypotheses feed shared
+  draft, agent-local and deep-repair families. Pinned-compiler controls verify generated
+  shapes; nonadjacent increment motion and automatic narrowing remain unsupported pending
+  liveness and range evidence. No new full-game matches are attributed to this rule.
