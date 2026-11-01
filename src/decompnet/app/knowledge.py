@@ -6,8 +6,10 @@ wrote reached all the others, its guesses too ("it's this compiler", then "no, i
 Claude Opus sessions agreeing are one opinion; Claude Opus and GPT agreeing are two. That's also why running
 helpers of several models pays: they check each other. An agreed proposal reaches every agent's prompt once the
 user accepts it, or at once when the project adds agreed knowledge by itself (its setting).
+The user can also explicitly accept a single-model proposal without waiting for consensus.
 
-Compiler questions don't belong here: which compiler built what is settled by the compiler map and range checks,
+Reusable matching techniques for a known compiler belong here. Compiler selection questions do not:
+which compiler built what is settled by the compiler map and range checks,
 with evidence, not by agents agreeing.
 """
 
@@ -24,8 +26,10 @@ SAME_IDEA_RATIO = 0.6  # word overlap above which a new proposal is probably one
 MAX_TEXT = 600
 SHOWN_IN_PROMPT = 2500  # characters of accepted knowledge in a session's prompt
 OPEN_SHOWN = 8  # open proposals an agent is shown, newest first
-COMPILER_TALK = re.compile(r"\b(compil(er|ed)|toolchain|flags?|gcc|ido|mwcc|codewarrior|mwcps2|mwccpsp|snc|msvc)\b|(^|\s)-[OG]\d",
+COMPILER_MENTION = re.compile(r"\b(compil(er|ed)|toolchain|flags?|gcc|ido|mwcc|codewarrior|mwcps2|mwccpsp|snc|msvc)\b|(^|\s)-[OG]\d",
                            re.I)
+
+COMPILER_SELECTION = re.compile(r"built\s+(?:with|by|using)|compiler\s+(?:is|was)|\b(?:use|switch|change|select|try)\s+(?:the\s+)?(?:compiler|flags?|gcc|ido|mwcc)|(^|\s)-[OG]\d", re.I)
 
 SCHEMA = (
     """CREATE TABLE IF NOT EXISTS knowledge(
@@ -103,7 +107,7 @@ class Knowledge:
         text = " ".join(text.split())[:MAX_TEXT]
         if not text:
             raise NetworkError("say what every agent on this game should know (text), or back a proposal (supports=id)")
-        if COMPILER_TALK.search(text):
+        if COMPILER_MENTION.search(text) and COMPILER_SELECTION.search(text):
             raise NetworkError("which compiler built what isn't shared knowledge: the compiler map settles it with "
                                "evidence. Inspect compiler_map(); test a function with try_compiler or search_flags; "
                                "propose a setup change with suggest(text=..., function=...). This was not saved as shared knowledge.")
@@ -144,7 +148,7 @@ class Knowledge:
                                   proj["id"], PROPOSED)
 
     def decide(self, slug: str, kid: int, accept: bool) -> None:
-        """The user accepts an agreed proposal, or rejects (or takes back) one."""
+        """The user may accept any proposal, or reject/take back one, independently of model consensus."""
         proj = self.net._project(slug)
         with self.net.store.tx() as db:
             db.execute("UPDATE knowledge SET status=?, decided_at=? WHERE id=? AND project_id=?",
@@ -181,7 +185,7 @@ class Knowledge:
                 break
             out.append(f"- {r['text']}")
             used += len(r["text"])
-        text = ("What agents learned about this game (agreed by different models):\n" + "\n".join(out)) if out else ""
+        text = ("Accepted matching knowledge for this game (user-approved or model consensus):\n" + "\n".join(out)) if out else ""
         open_ = self._open(proj)[:OPEN_SHOWN]
         if open_:
             text += ("\n\nProposals waiting for a second model (back one with share_knowledge(supports=N) only when "

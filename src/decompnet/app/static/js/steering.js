@@ -188,7 +188,7 @@ async function renderKnowledge(force = false) {
       <button class="ghost small-btn" data-know="${it.id}" type="button">Reject</button></div></div>`;
     if (it.status === "accepted") return `<div class="note">${saidHead("agents get this", it.models, it.t, true)}${saidText(it.text)}
       <div class="row"><button class="ghost small-btn" data-know="${it.id}" type="button">Take it back</button></div></div>`;
-    return `<div class="note">${saidHead("waiting for a second model", it.models, it.t, true)}${saidText(it.text)}</div>`;
+    return `<div class="note">${saidHead("waiting for a second model", it.models, it.t, true)}${saidText(it.text)}<div class="row"><button class="primary small-btn" data-know="${it.id}" data-accept="1" type="button">Accept for all agents</button><button class="ghost small-btn" data-know="${it.id}" type="button">Reject</button></div></div>`;
   };
   const waiting = k.items.filter((it) => it.status === "agreed").length;
   $("knowState").textContent = waiting ? `${waiting} waiting for you` : k.items.length ? "" : "nothing yet";

@@ -62,6 +62,7 @@ def test_budget_waits_for_parallel_tools_and_blocks_new_calls():
 
 
 def test_dispatch_enforces_budget_after_completed_tool(monkeypatch):
+    monkeypatch.setattr('decompnet.app.tool_policy.record',lambda *a,**kw:None)  # Isolate budget behavior from storage/policy.
     net=SimpleNamespace(resolve_function=lambda *args:'f')
     agent=SimpleNamespace(id=1)
     budget=session_budget.start(net,1,'g',{'session_tool_limit':1})
@@ -109,6 +110,7 @@ def test_api_rotation_returns_before_another_provider_request(tmp_path,monkeypat
     net=agent_game(tmp_path)
     manager=agents.Manager(net,tmp_path,URL)
     manager.prompt=lambda s:'task'
+    manager.prepare_session=lambda *a,**kw:None  # Scripted provider test has its own startup facts.
     session=manager._record('game','api','api-m-1','box',{'base_url':'http://mock/v1','model':'m','context_tokens':32768})
     agent,_=net.local_agent(session.agent_name)
     session.context_budget=session_budget.start(net,agent.id,'game',{'session_tool_limit':1})
@@ -162,6 +164,7 @@ def test_cli_rotation_does_not_stop_active_tools(tmp_path,monkeypatch):
     monkeypatch.setattr(agents.subprocess,'Popen',lambda *args,**kwargs:proc)
     monkeypatch.setattr(manager,'_command',lambda *args:(['fake-helper'],{},'prompt'))
     monkeypatch.setattr(manager,'_preflight_tools',lambda *args:None)
+    monkeypatch.setattr(manager, "prepare_session", lambda *a, **kw: None)
     monkeypatch.setattr(manager,'_save',lambda *args:None)
     monkeypatch.setattr(agents,'_proc_start',lambda *args:None)
     monkeypatch.setattr(agents,'_close_windows_job',lambda *args:None)
