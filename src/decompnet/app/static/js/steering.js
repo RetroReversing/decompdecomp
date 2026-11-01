@@ -1152,14 +1152,14 @@ $("sourcePrepReviewsRefresh").onclick = async () => {
   const finish = beginWork(panel, "Loading prepared profile evidence", [button], "Evidence loaded.");
   try {
     const {reviews} = await api("/api/source-preparation", {method:"POST", body:{slug, action:"reviews"}});
-    panel.innerHTML = reviews.length ? reviews.map((r, i) => `<div class="card"><strong>${esc(r.function)}</strong> · ${esc(r.toolchain || "")} ${esc(r.flags.join(" "))}<p>${r.exact ? "Exact when tested" : `Score ${r.score ?? "unavailable"}`} · ${esc(r.category)}</p>${r.source ? `<details><summary>Prepared C and private header</summary><pre>${esc(r.source)}</pre><pre>${esc(r.header)}</pre></details>` : ""}${r.diagnostic ? `<pre>${esc(r.diagnostic)}</pre>` : ""}${r.reviewable ? `<button data-prepared-review="${i}">Recheck and apply source, header & flags</button>` : "<span class=muted>Run preparation again if inputs changed.</span>"}<div data-prepared-log></div></div>`).join("") : "No prepared profile evidence yet. Run a preparation pass first.";
+    panel.innerHTML = reviews.length ? reviews.map((r, i) => `<div class="card"><strong>${esc(r.function)}</strong> · ${esc(r.toolchain || "")} ${esc(r.flags.join(" "))}<p>${r.exact ? "Exact when tested" : `Score ${r.score ?? "unavailable"}`} · ${esc(r.category)}</p>${r.source ? `<details><summary>Prepared C and private header</summary><pre>${esc(r.source)}</pre><pre>${esc(r.header)}</pre></details>` : ""}${r.diagnostic ? `<pre>${esc(r.diagnostic)}</pre>` : ""}${r.reviewable ? `<button data-prepared-review="${i}">Fresh check & apply source, header & flags</button>` : "<span class=muted>Run preparation again if inputs changed.</span>"}<div data-prepared-log></div></div>`).join("") : "No prepared profile evidence yet. Run a preparation pass first.";
     panel.onclick = async (event) => {
       const apply = event.target.closest("[data-prepared-review]");
       if (!apply || S.slug !== slug) return;
       const row = reviews[Number(apply.dataset.preparedReview)], log = apply.parentElement.querySelector("[data-prepared-log]");
       const done = beginWork(log, "Rechecking complete prepared bundle", [apply], "Bundle rechecked.");
       try {
-        const {job} = await api("/api/source-preparation", {method:"POST", body:{slug, action:"apply-review", id:row.id}});
+        const {job} = await api("/api/source-preparation", {method:"POST", body:{slug, action:"recheck-review", id:row.id}});
         await followJob(job, log); apply.hidden = true; refreshMap();
       } catch (error) { showJobError(log, error.message); } finally { done(); }
     };
@@ -1174,7 +1174,7 @@ $("sourcePrepAnalysisRefresh").onclick = async () => {
     const data = await api("/api/source-preparation", {method:"POST", body:{slug, action:"analysis"}});
     if (S.slug !== slug) return;
     const panel = $("sourcePrepAnalysis");
-    panel.innerHTML = `<p class="muted">${esc(data.scope)}</p><div class="compiler-table"><table><thead><tr><th>Family / profile</th><th>Tested</th><th>Improved</th><th>Exact trials (functions)</th><th>Trial time</th></tr></thead><tbody>${data.families.map(r => `<tr><td>${esc(r.family)}<br>${esc(JSON.stringify(r.profile))}</td><td>${r.tested}</td><td>${r.improved}</td><td>${r.matched}</td><td>${(r.elapsed_ms/1000).toFixed(1)}s</td></tr>`).join("")}</tbody></table></div><p>Leads are ranked by compiled call, field-offset and control-flow agreement. These scores do not establish identity. An exact byte verdict still decides matching.</p>` + data.leads.map((r, i) => `<details class="card"><summary>${esc(r.function)} · ${esc(r.lead.symbol || "prepared context")} · support ${r.comparison.support}/100 · ${r.rejected ? "rejected" : r.exact ? "exact trial" : `score ${r.score ?? "unavailable"}`}</summary><p>${esc(r.lead.file || "")} · ${esc(r.family)} · ${esc(JSON.stringify(r.profile))}</p><p>${esc(r.comparison.note)}</p><pre>${esc(JSON.stringify({baseline_score:r.baseline,trial_score:r.score,target:r.comparison.target,candidate:r.comparison.candidate,missing_calls:r.comparison.missing_calls,extra_calls:r.comparison.extra_calls,source_parameters:r.comparison.source_parameters,source_alternatives:r.lead.alternatives,incoming_entry:r.comparison.entry,next_steps:r.comparison.next_steps},null,2))}</pre><p class="muted">Incoming register/stack slots are ABI locations, not a count of C parameters. Check wide arguments, aggregates and original callers.</p><pre>${esc(r.comparison.rows.map(row => row.join(" | ")).join("\n"))}</pre>${r.error ? `<pre>${esc(r.error)}</pre>` : ""}${r.rejected ? `<p>Rejected lead: ${esc(r.rejected)}</p>` : `<label>Reason to reject this source lead<input data-lead-reason placeholder="Explain the contradictory evidence"></label><button data-reject-lead="${i}" class="ghost">Retain as rejected lead</button>`}<div data-lead-log></div></details>`).join("");
+    panel.innerHTML = `<p class="muted">${esc(data.scope)}</p><div class="compiler-table"><table><thead><tr><th>Family / profile</th><th>Tested</th><th>Improved</th><th>Exact trials (functions)</th><th>Trial time</th></tr></thead><tbody>${data.families.map(r => `<tr><td>${esc(r.family)}<br>${esc(JSON.stringify(r.profile))}</td><td>${r.tested}</td><td>${r.improved}</td><td>${r.matched}</td><td>${(r.elapsed_ms/1000).toFixed(1)}s</td></tr>`).join("")}</tbody></table></div><p>Leads are ranked by compiled call, field-offset and control-flow agreement. These scores do not establish identity. An exact byte verdict still decides matching.</p>` + data.leads.map((r, i) => `<details class="card"><summary>${esc(r.function)} · ${esc(r.lead.symbol || "prepared context")} · support ${r.comparison.support}/100 · ${r.rejected ? "rejected" : r.exact ? "exact trial" : `score ${r.score ?? "unavailable"}`}</summary><p>${esc(r.lead.file || "")} · ${esc(r.family)} · ${esc(JSON.stringify(r.profile))}</p><p>${esc(r.comparison.note)}</p><pre>${esc(JSON.stringify({baseline_score:r.baseline,trial_score:r.score,target:r.comparison.target,candidate:r.comparison.candidate,missing_calls:r.comparison.missing_calls,extra_calls:r.comparison.extra_calls,source_parameters:r.comparison.source_parameters,source_alternatives:r.lead.alternatives,context_from:r.lead.context_from,shared_types:r.lead.shared_types,shared_calls:r.lead.shared_calls,incoming_entry:r.comparison.entry,next_steps:r.comparison.next_steps},null,2))}</pre><p class="muted">Incoming register/stack slots are ABI locations, not a count of C parameters. Check wide arguments, aggregates and original callers.</p><pre>${esc(r.comparison.rows.map(row => row.join(" | ")).join("\n"))}</pre>${r.error ? `<pre>${esc(r.error)}</pre>` : ""}${r.rejected ? `<p>Rejected lead: ${esc(r.rejected)}</p>` : `<label>Reason to reject this source lead<input data-lead-reason placeholder="Explain the contradictory evidence"></label><button data-reject-lead="${i}" class="ghost">Retain as rejected lead</button>`}<div data-lead-log></div></details>`).join("");
     panel.onclick = async (event) => {
       const reject = event.target.closest("[data-reject-lead]");
       if (!reject || S.slug !== slug) return;
@@ -1187,4 +1187,23 @@ $("sourcePrepAnalysisRefresh").onclick = async () => {
       } catch (error) { showJobError(output,error.message); } finally { done(); }
     };
   } catch (error) { showJobError(log,error.message); } finally { finish(); }
+};
+
+
+$("sourcePairTry").onclick = async () => {
+  const slug = S.slug, button = $("sourcePairTry"), log = $("sourcePairLog");
+  const functionName = $("sourcePairFunction").value.trim();
+  const body = {slug, action:"try-pair", function:functionName, source:$("sourcePairBody").value, header:$("sourcePairHeader").value};
+  const flags = $("sourcePairFlags").value.trim();
+  const finish = beginWork(log, "Checking separate source and header", [button], "Pair checked.");
+  try {
+    if (flags) {
+      const fn = await api(`/api/function?slug=${encodeURIComponent(slug)}&name=${encodeURIComponent(functionName)}`);
+      body.settings = {toolchain:fn.compiler_profile.toolchain, flags:flags.split(/\s+/)};
+    }
+    const {job} = await api("/api/source-preparation", {method:"POST", body});
+    const result = await followJob(job, log);
+    log.textContent += `\n${result.matched ? "Exact bundle saved." : `Score ${result.score}; working candidate unchanged.`}`;
+    if (S.slug === slug) refreshMap();
+  } catch (error) { showJobError(log, error.message); } finally { finish(); }
 };

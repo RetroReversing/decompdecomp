@@ -88,8 +88,11 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
 
     from . import manual_mcp
 
-    def project_for(agent_id):
-        return manager.project_of(agent_id) or manual_mcp.project_for(net, settings, agent_id)
+    def project_for(agent_id) -> str | None:
+        """The one project an agent may work: a helper the app started (mapped while it runs), a connection the user
+        created in Agents & models, or an outside agent the user approved there for one project (pairing)."""
+        return (manager.project_of(agent_id) or net.pairing_project(agent_id)
+                or manual_mcp.project_for(net, settings, agent_id))
 
     def agent_of(ctx: Context):
         headers = ctx.headers or {}
@@ -97,13 +100,15 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
         agent = net.authenticate(auth.removeprefix("Bearer ").strip() or None)
         slug = project_for(agent.id)
         if not slug:
-            raise NetworkError("This MCP connection is no longer assigned to a project. Create a connection in Agents & models.")
+            raise NetworkError("This MCP connection is no longer assigned to a project. Create or pair one in "
+                               "Agents & models.")
         return agent, slug
 
     threading.Thread(target=collab.local_addresses, daemon=True).start()  # `tailscale status` can take seconds
     # rooms this computer belongs to reconnect (members keep their place; their agents wait while the host is away)
     net.restore_links()
 
+    from .routes import pairing
     from .sdk_names import name_projects
     threading.Thread(target=lambda: name_projects(net), daemon=True, name="sdk-names").start()
 
@@ -214,7 +219,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     app = routes.App(net, mcp, home, port, secret, mcp_url, build_id, manager, jobs, settings, allowed_hosts,
                      guard, body, call, fail, ui_call=ui_call, updater=updates.Updater(before_restart, port, secret),
                      busy=busy, quit_app=quit_app)
-    for part in (pages, state, projects, repair_feedback, repository_sync, forks, setup, life, rooms):
+    for part in (pages, state, projects, repair_feedback, repository_sync, forks, setup, life, rooms, pairing):
         part.register(app)
 
     security = TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=sorted(allowed_hosts),

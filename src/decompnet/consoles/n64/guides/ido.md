@@ -113,3 +113,12 @@ Use prepared-source investigation evidence to compare compiled calls, field offs
 shapes. Similarity supports a source lead; it does not prove its name or justify automatic retail edits.
 After repeated register-only misses under unchanged source/context/profile inputs, prefer a targeted
 prototype/type or declaration-lifetime experiment. Exact judging still decides every candidate.
+
+
+For an internal helper, compare read-before-write temporary registers with the caller’s setup.
+Two incoming temporaries set at a direct call can indicate whole-unit register specialization.
+Inspect the original same-unit helper and its callers before broad body permutation. This evidence
+does not authorize assigned-register C or a guessed calling-convention patch.
+
+Reuse a nearby exact function’s private type context as a bounded hypothesis when types and calls
+overlap. Keep the original source line layout and judge each function separately, including its data.

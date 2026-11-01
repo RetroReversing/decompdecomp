@@ -395,6 +395,14 @@
         <label>Retail macro values (numeric, one per line)<textarea id="sourcePrepOverrides" rows="2" placeholder="OBJECT_LIMIT=128"></textarea></label>
         <p class="small muted">Reference paths and mappings stay on this machine; accepted C and declarations are included in saved/exported work. Use a declarations header with the retail layouts, not debug settings. Imported projects keep their existing build headers; the reference body must compile against those. Each preparation pass is limited to 8 compiles / 20 seconds; unchanged trials are skipped.</p>
         <div class="row"><button id="sourcePrepSave" class="ghost" type="button">Save source settings</button><button id="sourcePrepRun" class="primary" type="button">Try preparation pass</button></div>
+        <details><summary>Try a source body and header directly</summary>
+          <p class="small muted">Keep these separate to preserve source line positions. Add a #line directive if needed. A match saves this function’s source, private header and profile together; a miss leaves the working candidate unchanged. Local ROM projects only.</p>
+          <label>Function<input id="sourcePairFunction" placeholder="func_80001000"></label>
+          <label>C source body<textarea id="sourcePairBody" rows="8" spellcheck="false"></textarea></label>
+          <label>Private declarations header<textarea id="sourcePairHeader" rows="6" spellcheck="false"></textarea></label>
+          <label>Complete compiler flags (optional)<input id="sourcePairFlags" placeholder="Empty: this function’s selected profile"></label>
+          <button id="sourcePairTry" type="button">Compile, compare & save if exact</button><div id="sourcePairLog"></div>
+        </details>
         <div id="sourcePrepLog"></div><button id="sourcePrepReviewsRefresh" class="ghost" type="button">Review prepared profiles</button><div id="sourcePrepReviews"></div>
         <button id="sourcePrepAnalysisRefresh" class="ghost" type="button">Source leads & experiment results</button><div id="sourcePrepAnalysisLog"></div><div id="sourcePrepAnalysis"></div>
       </div>
@@ -565,6 +573,7 @@
     <header class="ag-apps-head"><h2 id="agAppsH">Agent apps on this computer</h2><button class="ghost small-btn" id="agRefresh" type="button">Refresh</button></header>
     <div class="ag-grid" id="agList"></div>
   </section>
+  <section class="panel" id="pairPanel" hidden><header class="panel-head"><h2>Access requests</h2></header><div class="pad" id="pairBox"></div></section>
   <section class="panel manual-mcp" aria-labelledby="mcpHeading">
     <header class="panel-head"><h2 id="mcpHeading">Connect another AI tool with MCP</h2></header>
     <div class="pad">

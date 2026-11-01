@@ -1077,3 +1077,21 @@ A save audit also found that an imported best draft could become matched after t
 publish while its file remained under `best/`. Promotion now publishes `src/` and its manifest
 before acknowledging dirty writes, checks for concurrent edits, and retains an edited
 counterpart for the next import. Save/no-op/restart and concurrent-edit regressions cover this.
+
+### Reuse verified context without merging compilation units blindly
+
+A source-assisted MIPS batch recovered eight related particle routines at IDO 5.3 `-O3` with
+`-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul`. Original records, aggregate return/by-value
+calls and helper prototypes were shared recovery context. The app now offers bounded neighbour-header
+hypotheses based on shared record names and target calls, using saved exact declaration snapshots.
+Each function must independently pass the unchanged judge; adjacent addresses alone prove nothing.
+
+Another constructor remains a miss: its target caller sets `t2`/`t3` for an internal reader instead of
+ordinary external C argument registers. MIPS diagnostics now require read-before-write evidence in the
+callee and corresponding definitions around the caller’s direct call. This is a same-unit optimization
+lead, not a reason to force machine registers or change an ABI automatically.
+
+Source/header concatenation also inflated scratch padding. A direct local body/header API and Settings
+form preserve their separation and source layout. Historical exact source/header/profile bundles can be
+explicitly recompiled against fresh inputs and published atomically only after current byte/data checks.
+Synthetic tests cover these paths separately from the manual game results.
