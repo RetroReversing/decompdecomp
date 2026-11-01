@@ -171,7 +171,7 @@ def test_output_duplicates_bound_expansion_but_preserve_two_source_shapes():
 
 def test_targeted_repairs_chain_and_keep_serialized_progress(monkeypatch):
     from decompnet.app import draft_repairs
-    def proposals(source,name,arch,asm,flags,labels,header='',limit=None,tables=()):
+    def proposals(source,name,arch,asm,flags,labels,header='',limit=None,tables=(),callees=''):
         out={'seed':['lifetime'], 'lifetime':['done']}.get(source,[])
         labels.update({p:'split_scalar_lifetime' for p in out})
         return out
@@ -189,7 +189,7 @@ def test_targeted_repairs_chain_and_keep_serialized_progress(monkeypatch):
 
 def test_targeted_ranking_prefers_load_order_for_scheduling_diffs(monkeypatch):
     from decompnet.app import draft_repairs
-    def proposals(source,name,arch,asm,flags,labels,header='',limit=None,tables=()):
+    def proposals(source,name,arch,asm,flags,labels,header='',limit=None,tables=(),callees=''):
         labels.update(a='signedness',b='pointer_before_store',c='paired_load_order')
         return ['a','b','c']
     monkeypatch.setattr(draft_repairs,'variants',proposals)

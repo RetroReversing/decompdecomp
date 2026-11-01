@@ -1494,3 +1494,10 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Planned: copied-build replay adapters for imported projects and phase diagnostics for other compiler
   backends. They explicitly skip instead of using guessed standalone build settings. Timing currently
   measures summed trial elapsed time; per-child CPU accounting across compiler runtimes remains planned.
+
+### Repair capture follow-ups
+
+- Done: bounded later scalar declaration swaps, typed clamp and record-pointer load staging, independent loop update order and call postincrement placement in shared draft, autopilot, deep and explicit local repair paths. Every candidate uses the ordinary judge.
+- Done: missing call arguments use known matched callee signatures and unambiguous incoming caller parameters. Address-taken scalar buffers grow only from compatible, bounded contiguous constant-index callee writes. Called matched helper changes refresh local retry evidence.
+- Done: single-line macro directives and dependent statements remain protected while unaffected regions can receive repairs; unsupported preprocessing receives an explicit diagnostic.
+- Planned: preprocessing-backed conditional/multiline macro repairs, CFG-aware dynamic callee write extents, and captured callee bodies for frozen historical replay. Unknown field layouts/signatures, ambiguous arguments and pointer aliases deliberately skip these narrow families. Shared C hypotheses reach ROM and imported projects across processors; compiler-specific matching gains require ordinary verdicts and are not inferred from source-pattern coverage.

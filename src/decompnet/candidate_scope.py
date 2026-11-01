@@ -41,6 +41,17 @@ def dependencies(root, source):
     return sorted((str(p),value) for p,value in seen.items())
 
 
+def callees(net, proj, fn, source):
+    """Only referenced matched helpers can supply new signature/write-footprint evidence."""
+    from .forks.csource import _blank
+    names=sorted(set(re.findall(r'\b([A-Za-z_]\w*)\s*\(',_blank(source))) -
+                 {fn['name'],'if','for','while','switch','sizeof'})[:16]
+    if not names:
+        return []
+    return net.store.all("SELECT name,matched_source FROM functions WHERE project_id=? AND status='matched' "
+                         'AND name IN (SELECT value FROM json_each(?)) ORDER BY name',proj['id'],json.dumps(names))
+
+
 def state(net,proj,fn):
     cfg=json.loads(proj['config'])
     build={key:cfg.get(key) for key in ('kind','platform','big_endian','gp')}
@@ -56,6 +67,8 @@ def state(net,proj,fn):
              'AND (name IN (SELECT value FROM json_each(?)) OR address IN (SELECT value FROM json_each(?))) ORDER BY name',
              proj['id'],json.dumps(sorted(names)),json.dumps(sorted(addresses)))]
     result=[build,proj['root'],proj['arch'],proj['big_endian'],ctx['header'] if ctx else None,symbols,fn['target'],fn['relocs'],fn['vram']]
+    result.append([(r['name'],hashlib.sha256((r['matched_source'] or '').encode()).hexdigest())
+                   for r in callees(net,proj,fn,(fn['best_source'] or '')+'\n'+(fn['seed'] or ''))])
     if getattr(net,'fork_slug',lambda _:None)(proj['slug']):
         try:
             _,fp,_=net.forks.get(proj['slug']);unit=fp.unit(fn['unit'])
