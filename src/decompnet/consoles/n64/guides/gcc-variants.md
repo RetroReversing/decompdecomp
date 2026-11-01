@@ -29,3 +29,16 @@ expression and converting it later. A store followed by an increment can also be
 from `p->field = i++`. Keep conversion points and observable access order intact; do
 not narrow counters or move increments across calls without range/liveness evidence.
 The local repair families try conservative adjacent forms under the ordinary judge.
+
+When a near match differs around a call, try staging a simple word-local arithmetic
+operand before that call. An existing typed element pointer can also matter more
+than a fresh temporary; use it only when its old value is dead and no loop needs
+it on another iteration. Repeated explicit `u16` conversions of an unescaped local
+may be shared across straight-line calls if that local is unchanged. These are
+bounded allocator hypotheses, not reasons to invent padding, change prototypes,
+or accept a nonidentical result. The shared repair search tests these shapes.
+
+Before recreating library macros or layouts, inspect the attributed matched-callee
+and cross-game source context in the function brief. Preserve actual macro bodies
+and supporting typedefs, resolve conflicts with the current header, and judge the
+result. Similarity and exact matches elsewhere do not identify a unique SDK ABI.

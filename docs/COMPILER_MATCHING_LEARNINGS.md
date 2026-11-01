@@ -868,6 +868,44 @@ both under one compiler/header and labels the comparison explicitly. Other conte
 block replay, and compiler-output recovery never adopts a game match. The linked replays above
 are stronger, separate evidence. No full-image rebuild or live adoption was performed here.
 
+### Bounded call arithmetic, element addresses and narrowing reuse
+
+Recent private exact-match captures under KMC GCC 2.7.2 (`-G0 -mips3 -mgp32
+-mfp32 -O2 -g3`) supplied three further search hypotheses:
+
+- Moving a local subtraction before a no-argument call fixed a recorded score of
+  235. Try this only for ordinary standalone assignments and declared word locals.
+- Staging an array element address before a field store fixed a score of 10.
+  Use the actual element type from an explicit struct/array declaration; do not
+  infer the layout. Do not reorder a right-hand-side call or mutation.
+- Reusing an unsigned-short conversion across calls appeared in another match,
+  together with a return-prototype correction. This is compound evidence: it does
+  not establish that narrowing reuse alone caused the match. The bounded search
+  only caches equal explicit conversions of an unescaped word local, across at
+  most four straight-line statements without modifying that local.
+
+Independent synthetic controls compiled with pinned KMC GCC 2.7.2 `-O2` verify
+that each generated shape can reproduce the manually written control's function
+bytes. These are regression controls, not new game matches or proof that any
+particular live function benefits. Ordinary linking/objdiff judges remain required.
+
+Matched callee signatures, referenced typedefs and reachable original macros now
+appear as attributed advisory context in both project and ROM agent briefs.
+Existing cross-game source leads also carry actual declarations/macros when
+available. This supplies library context earlier without asserting an identity or
+SDK version from similarity. Object-only signatures cannot supply source layouts.
+No reference is silently merged into the current shared header: even exact bytes
+do not establish a unique C type, and independent references can conflict.
+
+Private replay validation additionally recovered the recorded successful function
+bytes for both the arithmetic case and the element-address case under their saved
+KMC flags and context. The element-address replay needed the existing correctly
+typed pointer, dead after the store; a fresh block-local pointer did not recover
+that output. Both alternatives remain bounded hypotheses. Existing-pointer reuse
+is excluded inside enclosing loops, after address escape, or when later reads
+would need its old value. No live source, compiler settings or match status was
+changed by these replays.
+
 ### Review prepared source and compiler settings as one unit
 
 Typed reference candidates may lose under the current optimization profile and become exact under a

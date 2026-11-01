@@ -813,15 +813,16 @@ class Twins:
     def suggestions(self, slug: str, function: str, limit: int = 5) -> list[dict]:
         """Read-only cross-game and local SDK name hints. Similar code is a lead, never a verified match."""
         proj = self.net.project_row(slug)
+        from .matched_context import reference_hints
         from .shared_reuse import hints
         if self.net.fork_slug(slug):
-            return hints(self, proj, function, limit)
+            return reference_hints(self.net, hints(self, proj, function, limit))
         def finish(items):
             from .shared_reuse import hints as shared_hints
             merged = {}
             for hint in [*shared_hints(self, proj, function, limit), *items]:
                 merged.setdefault((hint["name"], hint["game"]), hint)
-            return list(merged.values())[:limit]
+            return reference_hints(self.net, list(merged.values())[:limit])
 
         fn = self.net._function(function, slug)
         target = self.prints(proj).get(fn["id"])

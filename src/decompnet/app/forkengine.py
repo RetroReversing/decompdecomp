@@ -2379,6 +2379,13 @@ class ForkEngine:
         lines += ["", "Send compile_and_diff the complete function definition (same name and signature as the original), "
                       "with any #include \"...\", prototypes or #pragma lines it needs. Structs, globals and helper "
                       "functions go in with edit_file."]
+        if fn['status'] != 'matched':
+            cross = self.net.twins.suggestions(proj['slug'],fn['name'],limit=3)
+            if cross:
+                from .matched_context import reference_lines
+                lines += ['', '### Other games and local SDK signatures (unverified leads)']
+                lines += [f"- {h['name']} in {h['game']} ({h['kind']}, {h['score'] * 100:.0f}% similarity)" for h in cross]
+                lines += reference_lines(cross)
         lines += candidate_quality.brief(self.net,fn)
         return "\n".join(lines)
 

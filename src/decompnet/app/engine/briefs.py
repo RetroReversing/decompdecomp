@@ -441,6 +441,9 @@ class BriefMixin:
             lines += ["", "### Other games and local SDK signatures (name suggestions, not verified for this game)"]
             lines += [f"- {h['name']} in {h['game']} ({h['kind']}, {h['score'] * 100:.0f}% instruction similarity)"
                       for h in cross]
+            lines += ["For library-like suggestions, inspect the actual reference source and its header/macros before permuting a raw-offset draft. Similarity alone does not verify a library version or its declarations."]
+            from ..matched_context import reference_lines
+            lines += reference_lines(cross)
         alike = [] if twin else [(r, sim) for r, sim in self.similar(proj, fn, top=3) if r["status"] == "matched"]
         if alike:
             lines += ["", "### Looks like (already matched; read with get_function)",
