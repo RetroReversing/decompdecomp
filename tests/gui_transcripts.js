@@ -30,6 +30,7 @@ const context = { S: {logFor: '7', slug: 'demo'}, document: {body, createElement
       {id:3,kind:'connection_check_tool_response',text:JSON.stringify({name:'project_info',call_id:'probe',content:'Connected'})},
       {id:4,kind:'tool_definitions',text:JSON.stringify([{name:'project_info',inputSchema:{}}])}
     ].map(e=>({...e,created_at:1}))};
+    if(id===9) return {sessions,session:row(id),more:false,events:[{id:99,created_at:1,kind:'score_improvement',text:JSON.stringify({name:'target',score_before:1040,score:660})}]};
     if(id===6 || id===7) {
       const keyed=id===6, payload=(key,extra)=>JSON.stringify({name:'guide',...(keyed?{call_id:key}:{}),...extra});
       return {sessions,session:row(id),more:false,events:[
@@ -41,7 +42,7 @@ const context = { S: {logFor: '7', slug: 'demo'}, document: {body, createElement
     }
     if(id===5 && q.get('after')==='1') return {sessions,session:row(id),more:false,events:[{id:2,created_at:2,kind:'tool_response',text:JSON.stringify({name:'claim_function',content:'# Claimed'})}]};
     return {sessions, session: row(id), events: [{id: q.get('after') === '1' ? 2 : 1, created_at: 1, kind: id === 4 ? 'error' : id === 5 ? 'tool_request' : 'prompt', text: id === 5 ? JSON.stringify({name:'claim_function',arguments:{count:4}}) : long}], more: q.get('after') !== '1'};
-  }, URL, Date };
+  }, URL, Date, setTimeout: (fn) => { context.poll = fn; return 1; }, clearTimeout: () => {} };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/decompnet/app/static/js/tool-catalog.js'), 'utf8'),context);
 vm.runInContext(source.slice(0, source.indexOf('$("helperTranscript").onclick =')), context);
@@ -87,6 +88,16 @@ vm.runInContext(source.slice(source.indexOf('$("helperTranscript").onclick =')),
   assert.equal(copied, long);
   assert.equal(events.children[0].children[2].textContent, 'Copied');
   assert(dialog.querySelector('[data-usage]').textContent.includes('380 cache read'));
+  dialog.querySelector('[data-live]').checked = true;
+  const firstEntry = events.children[0]; firstEntry.open = true;
+  await context.poll();
+  assert.equal(events.children[0], firstEntry);
+  assert.equal(firstEntry.open, true);
+  assert(requests.at(-1).includes('after=1'));
+  dialog.querySelector('[data-live]').checked = false;
+  const count = requests.length; await context.poll(); assert.equal(requests.length,count);
+  select.value = '60'; await select.onchange();
+
   await dialog.querySelector('[data-copy-session]').onclick();
   assert(requests.at(-1).includes('session=60&whole=1'));
   assert(copied.includes(long));
@@ -126,5 +137,8 @@ vm.runInContext(source.slice(source.indexOf('$("helperTranscript").onclick =')),
   assert.match(events.children[0].children[0].children[0].textContent,/Connection check.*not sent to model/);
   assert.match(events.children[1].children[0].children[0].textContent,/Connection check.*project_info/);
   assert.match(events.children[2].children[0].children[0].textContent,/Tools exposed to agent/);
+  select.value='9'; await select.onchange();
+  assert.match(events.children[0].className,/transcript-score-improvement/);
+  assert.match(events.children[0].children[0].children[0].textContent,/1040 → 660 · reduced by 380/);
   console.log('Transcript full-text rendering, usage, paging and old-session selection passed');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
