@@ -17,7 +17,10 @@ $("repairExamples").onclick = async () => {
     <p>Replay examples from up to 20 distinct functions matching these filters against captured successful compiler output. This is a regression test: it does not apply source, change game progress or mark examples implemented. Missing historical build inputs are reported as skips.</p>
     <label>Trials per example <input data-replay-trials type="number" min="1" max="32" value="12"></label>
     <label>Seconds per example <input data-replay-seconds type="number" min="1" max="120" value="30"></label>
-    <button data-replay-start type="button">Test automatic repairs</button><button data-replay-stop type="button" hidden>Stop replay</button>
+    <label><input data-replay-minimize type="checkbox" checked> Minimize captured fix first (uses up to half the trials)</label>
+    <label><input data-replay-diagnostics type="checkbox"> Capture GCC phase summary (two extra local compiles; installed native GCC only)</label>
+    <button data-replay-start type="button">Test automatic repairs</button><button data-replay-save type="button" hidden>Download analysis report</button><button data-replay-stop type="button" hidden>Stop replay</button>
+    <p class="muted small">Reports can include private C and compiler evidence. Analysis does not apply source or change game progress.</p>
     <p data-replay-summary class="muted small" role="status"></p><div data-replay-work></div><pre data-replay-results class="repair-replay-results" hidden tabindex="0" aria-label="Repair replay results"></pre></section>
     <section class="repair-help" aria-label="Batch candidate recovery"><h3>Recheck reported candidates · this project · no AI tokens</h3>
     <p>Rejudge saved alternatives, smallest functions first. Measurements are saved across runs; unchanged results are skipped. This does not replace C, clear warnings or mark matches.</p>
@@ -88,7 +91,7 @@ $("repairExamples").onclick = async () => {
         }
         };
         view.onchange = renderDiff; renderDiff();
-        change.textContent += " " + (data.evidence.focus_note || "");
+        if (data.evidence.focus_note) change.textContent += " " + data.evidence.focus_note;
         if (data.evidence.pattern_candidates?.length) change.textContent += " Pattern candidates: " + data.evidence.pattern_candidates.join(', ') + '. ' + data.evidence.pattern_note;
         const raw = document.createElement('details'), rawTitle = document.createElement('summary'), rawText = document.createElement('pre');
         rawTitle.textContent = 'Full technical evidence'; rawText.textContent = JSON.stringify(data.evidence, null, 2);

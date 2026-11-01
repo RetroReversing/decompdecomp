@@ -2,6 +2,7 @@
 import re
 
 from ..m2cfix import _split_top_level
+from .call_lifetime_repairs import block_path
 from .integer_repair_support import IDENT, edit, locals_for, refs, view
 from .pattern_repairs import close
 
@@ -22,6 +23,9 @@ def variants(source, name, header=''):
             continue
         for spare in locals_:
             if spare['name'] in {hit['copy'],hit['origin']} or refs(part,spare) or spare.end() >= part.opening+1+hit.start():
+                continue
+            path = block_path(part, spare.start())
+            if block_path(part, part.opening+1+hit.start())[:len(path)] != path:
                 continue
             replacement = re.sub(r'\b'+re.escape(hit['copy'])+r'\b',spare['name'],hit[0])
             result.append(('word_zero_test_reuse',edit(source,[(part.opening+1+hit.start(),part.opening+1+hit.end(),replacement)])))
@@ -62,6 +66,10 @@ def variants(source, name, header=''):
             if prefix.count('(')!=prefix.count(')'):
                 continue
             start=part.opening+1+call.start()
+            declaration = part.opening+pointer.start(1)
+            path = block_path(part, declaration)
+            if declaration >= start or block_path(part, start)[:len(path)] != path:
+                continue
             args[nested[0]]=variable
             suffix=re.match(r'\s*;',part.clean[end:])
             original=source[start:end+suffix.end()]
