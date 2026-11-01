@@ -14,7 +14,9 @@ import tarfile
 import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
-URL = "https://zlib.net/fossils/zlib-1.1.4.tar.gz"
+# the same archive at each (zlib.net sometimes refuses CI's runners): the first whose bytes have the pinned hash
+URLS = ("https://zlib.net/fossils/zlib-1.1.4.tar.gz",
+        "https://downloads.sourceforge.net/project/libpng/zlib/1.1.4/zlib-1.1.4.tar.gz")
 SHA256 = "9e3e973174f9910fd51539ef9ce94c86a3943d4f897fab8e9adf4b19e6a8291e"
 CORE = ["adler32.c", "compress.c", "crc32.c", "deflate.c", "infblock.c", "infcodes.c", "inffast.c", "inflate.c",
         "inftrees.c", "infutil.c", "trees.c", "uncompr.c", "zutil.c"]
@@ -25,9 +27,20 @@ def fetch() -> pathlib.Path:
     out = HERE / "original"
     if (out / "zlib.h").exists():
         return out
-    data = urllib.request.urlopen(URL, timeout=60).read()
-    if hashlib.sha256(data).hexdigest() != SHA256:
-        raise SystemExit("checksum mismatch: refusing to use this archive")
+    data = None
+    tried = []
+    for url in URLS:
+        try:
+            got = urllib.request.urlopen(url, timeout=60).read()
+        except OSError as e:
+            tried.append(f"{url}: {e}")
+            continue
+        if hashlib.sha256(got).hexdigest() == SHA256:
+            data = got
+            break
+        tried.append(f"{url}: {len(got)} bytes, checksum mismatch")
+    if data is None:
+        raise SystemExit("no copy of zlib 1.1.4 with the pinned checksum: refusing to use these:\n" + "\n".join(tried))
     out.mkdir(exist_ok=True)
     with tarfile.open(fileobj=io.BytesIO(data)) as tar:
         for m in tar.getmembers():
