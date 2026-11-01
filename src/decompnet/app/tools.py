@@ -70,7 +70,7 @@ INSTRUCTIONS = """\
 decompdecomp: you are decompiling a game ROM that the user owns into C that compiles to exactly the same
 machine code. Your C is compiled with the game's original compiler, linked at the function's real address
 and compared with the ROM: score 0 means byte-identical, and the function is saved as matched.
-Start with project_info, then claim_function -> compile_and_diff (repeat). guide(topic) has know-how.
+Use app-provided startup facts and the already claimed function when present; otherwise project_info then claim_function. Compile the first claim before taking another. guide(topic) has know-how.
 Everything runs on the user's computer. The game's code is the user's: never publish it anywhere.
 """
 
@@ -523,9 +523,11 @@ def _invoke(net: RomNetwork, agent: Agent, slug: str, name: str, args: dict) -> 
     return result
 
 
-def _dispatch(net,agent,slug,name,args):
+def _dispatch(net,agent,slug,name,args, *, count_usage=True):
     from .tool_policy import record
-    record(net, agent, slug, name)
+    record(net, agent, slug, name, count=count_usage)
+    if not count_usage:
+        return HANDLERS[name](net, agent, slug, **_named(net, agent, slug, args))
     from . import session_budget
     from .agent_local_pass import after_tool
     budget=session_budget.current(net,agent,slug)
@@ -581,18 +583,23 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
         except NetworkError as e:
             raise ToolError(str(e)) from None
         call_id = uuid.uuid4().hex
-        if observe:
-            observe(agent, slug, 'tool_request', {'name': name, 'arguments': args, 'call_id': call_id})
         try:
-            result = await anyio.to_thread.run_sync(lambda: _dispatch(net,agent,slug,name,args))
+            checking = name == 'project_info' and (ctx.headers or {}).get('x-decomp-connection-check') == '1'
+        except ValueError:
+            checking = False  # In-process tool calls have no HTTP request context.
+        prefix = 'connection_check_' if checking else ''
+        if observe:
+            observe(agent, slug, prefix + 'tool_request', {'name': name, 'arguments': args, 'call_id': call_id})
+        try:
+            result = await anyio.to_thread.run_sync(lambda: _dispatch(net,agent,slug,name,args,count_usage=not checking))
         except Exception as e:
             if observe:
-                observe(agent, slug, 'tool_response', {'name': name, 'error': str(e), 'call_id': call_id})
+                observe(agent, slug, prefix + 'tool_response', {'name': name, 'error': str(e), 'call_id': call_id})
             if isinstance(e, NetworkError):
                 raise ToolError(str(e)) from None
             raise
         if observe:
-            observe(agent, slug, 'tool_response', {'name': name, 'content': result, 'call_id': call_id})
+            observe(agent, slug, prefix + 'tool_response', {'name': name, 'content': result, 'call_id': call_id})
         return result
 
     def tool(fn):
@@ -854,10 +861,11 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
 
     @tool
     async def share_knowledge(ctx: Context, text: str = "", supports: int = 0) -> str:
-        """Not for compiler/flag findings: inspect compiler_map, test try_compiler/search_flags, propose changes with suggest.
-        Propose something every agent on this game should know (a convention, what a struct is, how the code
-        is organised), or back an open proposal with supports=its number. It reaches every agent once helpers
-        running two different models agree. Not for which compiler built what: that's the compiler map's job."""
+        """Reusable game/compiler matching tips across functions. Not function-specific notes: use
+        release_function(notes=...) or add_note(function=...).
+        Propose a general technique or back an independently verified proposal with supports=its number.
+        The user may accept one model's proposal; automatic acceptance requires two models.
+        Compiler identity/profile changes belong in compiler_map, try_compiler/search_flags or suggest."""
         return await run(ctx, "share_knowledge", text=text, supports=supports)
 
     @tool

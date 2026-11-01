@@ -192,7 +192,9 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
             return ListToolsResult(tools=[])
         keep = set(tools.project_tools(net, slug, agent))
         selected = [t for t in everything if t.name in keep]
-        manager.record_agent(agent, slug, 'tool_definitions', [t.model_dump(mode='json') for t in selected])
+        checking = (getattr(ctx.request, 'headers', None) or {}).get('x-decomp-connection-check') == '1'
+        manager.record_agent(agent, slug, 'connection_check_tools' if checking else 'tool_definitions',
+                             [t.model_dump(mode='json') for t in selected])
         return ListToolsResult(tools=selected)
 
     mcp._lowlevel_server.add_request_handler("tools/list", PaginatedRequestParams, scoped_tools)

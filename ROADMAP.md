@@ -1446,3 +1446,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
   deliberately rejected rather than assigned speculative bounds.
 - Planned: train recipes from reviewed historical repair examples only after a fresh ordinary
   exact verdict. Frozen-control replay alone must not train acceptance evidence.
+
+- Done: session transcripts distinguish app-only connection probes from tools exposed to the agent, including legacy pre-prompt probes without rewriting saved events. New probe calls do not increment agent tool-use counters. CLI and API matching sessions preload bounded project facts and one ordinary coordinated claim; prompt previews never claim, and polishing keeps its own file-claim flow. Reusable matching knowledge has explicit per-function note guidance, allows general known-compiler behavior tips, and pending single-model proposals can be accepted or rejected manually without changing the two-model automatic acceptance rule.

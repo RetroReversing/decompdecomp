@@ -101,6 +101,7 @@ def _manager(tmp_path, monkeypatch, kind):
     m = agents.Manager.__new__(agents.Manager)
     m.mcp_url, m.home = "http://127.0.0.1:6464/mcp", tmp_path
     m.prompt = lambda s: "line one\nline two with \"quotes\" & <ampersands>"
+    m.prepare_session = lambda *a, **kw: None  # This test supplies its own prompt/claim script.
     return m
 
 
@@ -354,7 +355,9 @@ def test_zcode_session_ends_when_the_turn_is_done(tmp_path, monkeypatch):
     m = agents.Manager.__new__(agents.Manager)
     m.mcp_url, m.home = "http://127.0.0.1:6464/mcp", tmp_path
     m.prompt = lambda s: "work the function"
+    m.prepare_session = lambda *a, **kw: None  # This test supplies its own prompt/claim script.
     monkeypatch.setattr(m, "_preflight_tools", lambda token: None)
+    monkeypatch.setattr(m, "prepare_session", lambda *a, **kw: None)
 
     import contextlib
 
@@ -667,6 +670,7 @@ def test_an_expired_sign_in_is_recognised_retried_then_asks_for_a_new_sign_in(tm
     "failed", nothing saying why) until the user happened to sign in again. Now it's recognised, tried again a few
     times, and the helper then pauses asking for a new sign-in, without counting as fast failures."""
     monkeypatch.setattr(agents.Manager, "_preflight_tools", lambda *a: None)
+    monkeypatch.setattr(agents.Manager, "prepare_session", lambda *a, **kw: None)
     _no_agent_settings(monkeypatch)
     net = _game(tmp_path)
     m = agents.Manager(net, tmp_path, URL)
@@ -834,6 +838,7 @@ def test_the_api_helper_folds_each_finished_function_into_a_line(tmp_path, monke
     net = _game(tmp_path, functions=2)
     m = agents.Manager(net, tmp_path, URL)
     m.prompt = lambda s: "task"
+    m.prepare_session = lambda *a, **kw: None  # This test supplies its own prompt/claim script.
     s = m._record("game", "api", "api-m-1", "box #1", {"base_url": "http://mock/v1", "model": "m", "per_session": 2,
                                                        "context_tokens": 32768, "prompts":{"instructions":"Custom API experiment instructions"}})
     s.stop = Quick()
@@ -884,6 +889,7 @@ def test_an_api_helper_that_never_starts_says_why(tmp_path, monkeypatch, answer,
     net = _game(tmp_path)
     m = agents.Manager(net, tmp_path, URL)
     m.prompt = lambda s: "task"
+    m.prepare_session = lambda *a, **kw: None  # This test supplies its own prompt/claim script.
     s = m._record("game", "api", "api-m-1", "box #1", {"base_url": "http://mock/v1", "model": "m", "context_tokens": 32768, "prompts":{"instructions":"Custom API experiment instructions"}})
     s.stop = Quick()
     real = httpx.Client
@@ -903,6 +909,7 @@ def test_the_api_helper_sends_a_thinking_models_reasoning_back(tmp_path, monkeyp
     net = _game(tmp_path, functions=1)
     m = agents.Manager(net, tmp_path, URL)
     m.prompt = lambda s: "task"
+    m.prepare_session = lambda *a, **kw: None  # This test supplies its own prompt/claim script.
     s = m._record("game", "api", "api-m-1", "box #1", {"base_url": "http://mock/v1", "model": "m", "per_session": 1,
                                                        "context_tokens": 32768})
     s.stop = Quick()
@@ -1080,6 +1087,7 @@ def test_an_api_helper_asks_its_model_for_the_effort_it_was_given(tmp_path, monk
     net = _game(tmp_path)
     m = agents.Manager(net, tmp_path, URL)
     m.prompt = lambda s: "task"
+    m.prepare_session = lambda *a, **kw: None  # This test supplies its own prompt/claim script.
     sent = []
 
     def handler(request):
@@ -1286,6 +1294,7 @@ def test_paused_unchanged_queue_waits_without_starting_paid_session(tmp_path,mon
 
 def test_invalid_kimi_authorization_grant_uses_bounded_signin_retries(tmp_path,monkeypatch):
     monkeypatch.setattr(agents.Manager, "_preflight_tools", lambda *a: None)
+    monkeypatch.setattr(agents.Manager, "prepare_session", lambda *a, **kw: None)
     _no_agent_settings(monkeypatch)
     net=_game(tmp_path);manager=agents.Manager(net,tmp_path,URL)
     session=manager._record('game','kimi','kimi-1','kimi-1',{})

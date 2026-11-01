@@ -107,24 +107,27 @@ $("helperTranscript").onclick = async () => {
   function showEvents(result, reset) {
     if (reset) { events.replaceChildren(); after = 0; eventCount = 0; pendingTools.clear(); }
     for (const entry of result.events) {
+      const checking = entry.kind.startsWith("connection_check_");
+      const phaseKind = checking ? entry.kind.replace("connection_check_", "") : entry.kind;
+      const kind = checking && phaseKind === "tools" ? "tool_definitions" : phaseKind;
       const details = document.createElement("details"), summary = document.createElement("summary");
       const labels = {prompt: "Initial prompt", instructions: "App instructions", tool_definitions: "Tool definitions",
         tool_request: "Tool request", tool_response: "Tool response", api_request: "API request (actual context)",
         handoff: "Session handoff", text: "Agent reply", think: "Exposed reasoning", usage: "Reported usage"};
-      details.className = `transcript-event${entry.kind === "error" ? " transcript-event-error" : ""}`;
-      details.open = entry.kind === "error" || (entry.kind === "text" && entry.text.length <= 2000);
+      details.className = `transcript-event${kind === "error" ? " transcript-event-error" : ""}`;
+      details.open = kind === "error" || (kind === "text" && entry.text.length <= 2000);
       const label = document.createElement("span"), time = document.createElement("time"), size = document.createElement("span");
-      label.className = "transcript-event-label"; label.textContent = labels[entry.kind] || entry.kind;
-      const tool = ['tool_request', 'tool_response'].includes(entry.kind) ? transcriptToolPayload(entry.text) : null;
-      if (entry.kind === 'tool_request' && tool) label.textContent = `Tool · ${transcriptToolTitle(tool)}`;
+      label.className = "transcript-event-label"; label.textContent = labels[kind] || kind;
+      const tool = ['tool_request', 'tool_response'].includes(kind) ? transcriptToolPayload(entry.text) : null;
+      if (kind === 'tool_request' && tool) label.textContent = `${checking ? "Connection check (app only)" : "Tool"} · ${transcriptToolTitle(tool)}`;
       time.textContent = clock(entry.created_at);
       size.className = "transcript-event-size"; size.textContent = `${entry.text.length.toLocaleString()} characters`;
       summary.append(label, time, size);
       const pre = document.createElement("pre"); pre.textContent = entry.text;
       const copy = document.createElement("button"); copy.type = "button"; copy.className = "ghost small-btn transcript-copy"; copy.textContent = "Copy text";
       copy.onclick = async () => { copy.textContent = await copyText(entry.text) ? "Copied" : "Copy failed — try again"; };
-      let response = entry.kind === "tool_response" ? transcriptToolResponse(entry.text) : null;
-      if (entry.kind === "handoff") {
+      let response = kind === "tool_response" ? transcriptToolResponse(entry.text) : null;
+      if (kind === "handoff") {
         try {
           const handoff = JSON.parse(entry.text);
           const lines = ['Historical continuation facts. Check current candidates and claims.'];
@@ -135,22 +138,22 @@ $("helperTranscript").onclick = async () => {
           response = transcriptToolResponse(JSON.stringify({name: 'session_handoff', content: lines.join('\n\n')}));
         } catch { /* Retain raw legacy or incomplete handoff data. */ }
       }
-      const catalog = entry.kind === "tool_definitions" ? transcriptToolCatalog(entry.text) : null;
+      const catalog = kind === "tool_definitions" ? transcriptToolCatalog(entry.text) : null;
       if (response) {
         const raw = document.createElement("details"), rawLabel = document.createElement("summary");
         raw.className = "transcript-tool-raw"; rawLabel.textContent = "Raw response (JSON)";
         raw.append(rawLabel, pre); details.append(summary, response.body, raw, copy);
-        label.textContent = entry.kind === "handoff" ? "Session handoff" : `Tool response · ${response.name}`;
+        label.textContent = kind === "handoff" ? "Session handoff" : `Tool response · ${response.name}`;
       } else if (catalog) {
         const raw = document.createElement("details"), rawLabel = document.createElement("summary");
         raw.className = "transcript-tool-raw"; rawLabel.textContent = "Full tool definitions (JSON)";
         raw.append(rawLabel, pre); details.append(summary, catalog, raw, copy);
-        label.textContent = `Available tools · ${catalog.children.length - 1}`;
+        label.textContent = `${checking ? "Connection check · tools (not sent to model)" : "Tools exposed to agent"} · ${catalog.children.length - 1}`;
       } else details.append(summary, pre, copy);
       let parent = null;
       if (tool) {
         const key = tool.call_id ? `id:${tool.call_id}` : `name:${tool.name}`;
-        if (entry.kind === 'tool_request') {
+        if (kind === 'tool_request') {
           details.className += ' transcript-tool-exchange';
           // Keep raw request JSON behind its own disclosure inside the shared call card.
           const args = document.createElement('details'), argsLabel = document.createElement('summary');

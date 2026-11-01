@@ -1072,3 +1072,22 @@ be reconstructed. Zero means zero recorded uses, not proof that a tool was never
 The same expandable tool descriptions and parameter cards appear in transcripts and manual MCP setup.
 
 Browser workers receive the host's supported KMC flag variations with each function task. Switching a browser variation is local until submission. The host accepts only a variation offered by that task, recompiles it independently, and publishes a function-only profile/source bundle only after an exact ROM-byte verdict and a final authorization/freshness check. Other compiler families still require browser WASM toolchains.
+
+### Session startup and reusable knowledge
+
+Matching sessions receive compact project facts and one coordinated function claim in
+their initial prompt. They can start compiling without first asking `project_info`
+and `claim_function`. The same selection rules and room coordinator apply; long briefs
+are abbreviated with instructions to fetch omitted evidence. This removes initial tool
+round trips, but the supplied evidence still occupies model context. Polishing gets
+project facts and keeps its separate source-file claim workflow.
+
+Transcripts label the app’s MCP probe **Connection check (app only)** and the actual
+tool catalog **Tools exposed to agent**. New probe calls do not count as agent tool use;
+earlier stored counters remain historical.
+
+**What agents learned** is for reusable matching techniques across a game/compiler,
+rather than work logs about one function. Use function notes for those. The user can
+**Accept for all agents** with one supporting model; automatic acceptance still needs
+two different models. Accepted knowledge is identified as user-approved or model
+consensus, without claiming a single-model tip was independently confirmed.
