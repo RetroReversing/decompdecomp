@@ -29,6 +29,7 @@ class Nintendo64(Console):
         Compiler("ido-7.1", "IDO 7.1", "most later first-party N64 games", guess="IDO"),
         Compiler("ido-5.3", "IDO 5.3", "early N64 games (1996-97)"),
     )
+    kits = ("own-compiler",)  # another build of one of its compilers, the user's (kits/owncompiler.py)
     guides = ("mips",)
     m2c = "mips-gcc"
     ram = (0x80000400, 0x80800000)  # KSEG0 above the exception vectors, up to the Expansion Pak's 8 MiB

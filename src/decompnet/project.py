@@ -34,7 +34,7 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     see toolchains.toml) plus optional `flags`. With a toolchain, `{tc}` expands to its install directory,
     which is mounted read-only into the sandbox together with any runtime it requires."""
     c = cfg["compiler"]
-    if (own := kits.own_compiler(c.get("toolchain", ""))) is not None:
+    if (own := kits.own_compiler(c.get("toolchain", ""))) is not None and not own.like:
         return _own_config(root, c, own)
     ro_paths = [str((root / p).resolve()) for p in c.get("ro_paths", [])]
     runtime32 = None
@@ -42,14 +42,15 @@ def compiler_config(root: Path, cfg: dict) -> CompilerConfig:
     prelude, cplusplus = "", False
     if "toolchain" in c:
         try:
-            tc = toolchains.get(c["toolchain"])
+            tc = toolchains.get(own.like if own else c["toolchain"])  # (a copy of the user's runs as its pack does)
         except toolchains.ToolchainError:
             raise toolchains.ToolchainError(unknown_compiler_message(c["toolchain"])) from None
         prelude, cplusplus = tc.prelude, tc.cplusplus
         linux = tc.via_wsl  # Windows: a Linux toolchain, run inside WSL 2
         if linux and not (ok := wsl.status())[0]:
             raise toolchains.ToolchainError(f"{tc.name} is a Linux program: on Windows it runs in WSL 2. {ok[1]}")
-        dirs = toolchains.runtime_dirs(tc.id)
+        dirs = ((own.root, *(toolchains.require(d, linux) for d in tc.requires)) if own
+                else toolchains.runtime_dirs(tc.id))
         try:
             where_tools = wsl.prepare_tools(dirs) if linux else tuple(str(directory) for directory in dirs)
         except (OSError, subprocess.SubprocessError) as error:

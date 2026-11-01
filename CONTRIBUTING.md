@@ -288,7 +288,10 @@ records the folder, and reads it there. Nothing of it is copied, downloaded or p
    in the same sandbox and limits as a pinned compiler; `toolchains.get/known/installed` answer for it while the copy
    is set up. GCC-style arguments (`-c -I -o`) only so far; `runner = "wine"` is refused in ROM mode. Fill `root`
    (the folder the compiler reads beside `bin/`), `args` and `flags` when you add one, and let the console's
-   `default_compiler` pick the copy by build, as the PS3's does by the `.comment` stamp.
+   `default_compiler` pick the copy by build, as the PS3's does by the `.comment` stamp. A copy of a compiler a
+   pack already has (another build of it) sets `like` to that pack instead: it then runs through the pack's own
+   command with its folder as `root` (`kits/owncompiler.py`, the ROM consoles' "A compiler of your own"), and its
+   id starts with the pack's so a console's `startswith` flag rules apply to it.
 5. **Pass the tests**: `uv run pytest tests/test_kits.py -q`. It checks the facts, that it's a local toolchain
    nothing downloads, that a console takes it, and that no code outside `kits/` and that console names it. Test
    it with a homemade folder (empty stand-ins, never a file of the real kit).

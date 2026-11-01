@@ -68,10 +68,13 @@ class Console:
     def kit_compilers(self) -> tuple[Compiler, ...]:
         """The compilers in the copies of its kits the user set up (kits.compilers), as its projects name them (ROM
         mode: by their version, which project.compiler_config runs from the user's copy; a PROJECT console's build
-        has its own naming and overrides this)."""
+        has its own naming and overrides this). A copy that runs like a pinned compiler (OwnCompiler.like) is the
+        console's only when that compiler is."""
         from .. import kits
 
-        return tuple(Compiler(c.version, c.name, "your own copy") for c in kits.compilers(self.kits))
+        mine = {c.id for c in self.fixed_compilers}
+        return tuple(Compiler(c.version, c.name, "your own copy") for c in kits.compilers(self.kits)
+                     if not c.like or c.like in mine)
 
     id = ""  # what project configs store as their platform ("n64")
     name = ""  # what the app calls it: "Nintendo 64"

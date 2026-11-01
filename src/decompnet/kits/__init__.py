@@ -44,6 +44,7 @@ class OwnCompiler:
     root: Path | None = None
     args: tuple[str, ...] = ()
     flags: tuple[str, ...] = ()
+    like: str = ""  # a pinned compiler it runs as (its command, with this copy's folder, `root`, in the pack's place)
 
 
 class Kit:
@@ -167,11 +168,12 @@ def own_compiler(cid: str) -> OwnCompiler | None:
 
 
 def _registry() -> list[Kit]:
+    from .owncompiler import OWN_COMPILERS
     from .ps3sdk import PS3SDK
     from .visualcpp import VISUALCPP
     from .xdk import XDK
 
-    return [XDK, VISUALCPP, PS3SDK]
+    return [XDK, VISUALCPP, PS3SDK, OWN_COMPILERS]
 
 
 KITS: list[Kit] = _registry()
