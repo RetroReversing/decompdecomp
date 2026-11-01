@@ -232,7 +232,7 @@ class Sweeps:
                 with self.net.store.tx() as db:
                     db.execute("DELETE FROM deep_permutation_passes WHERE function_id IN "
                                "(SELECT id FROM functions WHERE project_id=? AND status='open')",
-                               self.net.project_row(slug)['id'])
+                               (self.net.project_row(slug)['id'],))
             self.save(slug, {'enabled': True, 'minutes': minutes, 'max_variants': max_variants, 'threads': threads})
             job = self.jobs.start('deep-permutation-pass', lambda log: self.run(slug, minutes, max_variants, log, threads),
                                   cancel_message='Deep pass stopped. Verified improvements and completed passes are saved.')

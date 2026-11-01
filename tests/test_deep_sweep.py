@@ -454,3 +454,23 @@ def test_room_deep_summary_updates_only_its_runner_and_function(sweep):
     assert [r['text'] for r in rows] == [
         'Keep the signed comparison.', 'Deep permuter: score 40 → 20',
         'Deep permuter: score 90 → 80', 'Deep permuter: score 50 → 30']
+
+
+def test_start_repeat_clears_only_this_projects_open_passes_and_preserves_improvements(sweep,monkeypatch):
+    obj,net,*_=sweep
+    own=net.project_row('game')['id']
+    with net.store.tx() as db:
+        other=db.execute('INSERT INTO projects(slug,name,root,config) VALUES(?,?,?,?)',('other','Other','/tmp','{}')).lastrowid
+        db.execute("INSERT INTO functions(project_id,name,status) VALUES(?,?,'open')",(other,'elsewhere'))
+        for fn in db.execute('SELECT id FROM functions').fetchall():
+            db.execute("INSERT INTO deep_permutation_passes(function_id,scope,state,minutes,max_variants) VALUES(?,?,'completed',1,10)",(fn['id'],'saved'))
+        first=db.execute("SELECT id FROM functions WHERE project_id=? AND name='f0'",(own,)).fetchone()['id']
+        db.execute('INSERT INTO deep_permutation_improvements(function_id,starting_score,new_score,updated_at) VALUES(?,50,25,1)',(first,))
+    started=[]
+    monkeypatch.setattr(obj.jobs,'start',lambda *args,**kwargs:started.append(args[0]) or 'repeat-job')
+    result=obj.start('game',minutes=1,max_variants=10,repeat=True,threads=1)
+    remaining=net.store.all('SELECT f.name FROM deep_permutation_passes d JOIN functions f ON f.id=d.function_id ORDER BY f.name')
+    assert {r['name'] for r in remaining}=={'f2','f3','elsewhere'}
+    assert started==['deep-permutation-pass'] and result['job']=='repeat-job'
+    assert net.store.one('SELECT new_score FROM deep_permutation_improvements WHERE function_id=?',first)['new_score']==25
+    assert net._function('f0','game')['best_score']==50
