@@ -178,7 +178,8 @@ class DiffResult:
         """Compact side-by-side diff: a count of each kind of mismatch, then only mismatches with a little context.
         Long runs of missing or extra instructions are shortened (a half-written function would otherwise spend
         every row on code that isn't there yet), so each compile costs the agent little context."""
-        return render_rows(self.rows, context, max_rows)
+        from .diff_summary import text
+        return text(self.rows)+"\n"+render_rows(self.rows, context, max_rows)
 
 
 def first_mismatch(rows: list[tuple[str, str, str]]) -> tuple[int, int, tuple[str, str, str] | None]:

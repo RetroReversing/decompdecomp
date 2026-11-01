@@ -1420,3 +1420,13 @@ remain planned: the initial browser toolchain has no matching build-context adap
 
 - Done: one tool-schema catalog serves transcripts, manual MCP setup, global agent tool settings and per-agent controls. Optional tool switches filter authenticated MCP discovery and API schemas, with dispatch enforcement for cached calls; essential claim/compile/release tools stay available. Persistent local usage counters include surviving historical transcript requests once, retain future calls across restarts/removal, and identify tools with zero recorded use without claiming complete pre-tracking coverage.
 - Done: manual MCP connection setup is collapsed by default in Agents & models, using the shared keyboard-accessible disclosure styling.
+
+### Count-lifetime repair coverage
+
+- Done: shared mismatch-category/position diagnostics in ROM and imported Diff views,
+  bounded structural alternatives, and MIPS count-phase/guard-width hypotheses through
+  shared drafts, agent local experiments, iterative and deep repair paths.
+- Planned: validate count-load scheduling and temporary-width adapters on non-MIPS
+  compilers before enabling these compiler-facing source families there. Diagnostics
+  and frontier retention already apply across processors; the MIPS replay is not a
+  claim of matching gains on other architectures.
