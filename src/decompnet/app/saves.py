@@ -527,6 +527,9 @@ def restore(net, source: str, game: Path, log=print) -> dict:
     log("checking the saved project and your game copy")
     with tempfile.TemporaryDirectory(prefix="decomp-restore-") as tmp:
         folder = fetch(source, Path(tmp) / "save", log)
+        from ..forks.project import ForkProject
+        if not (folder / MANIFEST).exists() and (saved := ForkProject(folder).progress_save()):
+            folder = saved[0]
         try:
             manifest = json.loads((folder / MANIFEST).read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -543,7 +546,7 @@ def restore(net, source: str, game: Path, log=print) -> dict:
         manifest = _manifest(files, {"rom": {"sha1": game_sha1}})
         log("importing and splitting your game copy")
         existing = net.store.all("SELECT slug,root,config FROM projects")
-        source_folder = Path(source).expanduser()
+        source_folder = folder if Path(source).expanduser().is_dir() else Path(source).expanduser()
         same_game = []
         for row in existing:
             cfg = json.loads(row["config"])

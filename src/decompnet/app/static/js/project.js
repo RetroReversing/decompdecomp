@@ -895,11 +895,13 @@ async function renderForkSetup() {
     box.querySelectorAll("button, input").forEach((b) => { b.disabled = true; });
     try {
       const { job } = await start();
-      await followJob(job, $("fsLog"));
+      const result = await followJob(job, $("fsLog"));
+      loadNav();
+      if (S.slug !== requestedSlug || S.gen !== setupGen) return;
       if (work) work.hidden = true;
       toast("The project is ready for your agents.", "match");
-      loadNav();
-      openProject(S.slug);
+      if (result?.slug && result.slug !== requestedSlug) location.hash = `#/p/${result.slug}`;
+      else openProject(requestedSlug);
     } catch (e) {
       if (work) work.hidden = true;
       showJobError($("fsLog"), e.message);
