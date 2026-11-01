@@ -1435,6 +1435,10 @@ remain planned: the initial browser toolchain has no matching build-context adap
   and frontier retention already apply across processors; the MIPS replay is not a
   claim of matching gains on other architectures.
 
+### Compiled C line associations
+
+- Done: the C editor marks differing/extra/moved instructions red and operand changes yellow, with line-number buttons showing target/compiled instructions. Compile responses give agents bounded evidence from the same source map. Associations come from the exact scored object, with unchanged compiler flags; edits and function navigation invalidate editor highlights. Shared ELF DWARF 1/2+ and ECOFF readers serve ROM and imported projects; imported file lines are translated to the displayed function fragment and stale objects are rejected.
+- Planned: CodeView/COFF, STABS and relocatable debug tables with overlapping executable sections. Unsupported or absent line information is shown explicitly; target-only instructions are never assigned a guessed C line. Optimized line associations are advisory, not causal proof.
 ### Expression recipes and bounded value proofs
 
 - Done: token-level frozen-output ablation separates independent edits on the same line.
