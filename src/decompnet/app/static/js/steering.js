@@ -1045,6 +1045,7 @@ async function renderDeepSweep() {
       $("deepSweepRepeat").checked = false;
     }
     renderDeepSweepResults(status);
+    renderDeepActivity(status.progress || {});
     $("deepSweepThreads").placeholder = status.threads_default ? `auto (${status.threads_default})` : "auto";
     $("deepSweepStart").disabled = status.state === "running";
     $("deepSweepStop").hidden = status.state !== "running";
@@ -1073,6 +1074,7 @@ async function followDeepSweep(slug, job) {
     await followJob(job, log, (_, state) => {
       const progress = state.progress || {};
       if (S.slug !== slug || deepSweepFollowing !== following) return;
+      renderDeepActivity(progress);
       if (!refreshing && Date.now() - lastResults >= 2000) {
         refreshing = true; lastResults = Date.now();
         api(`/api/permuter/pass?slug=${encodeURIComponent(slug)}`).then(status => {
@@ -1087,7 +1089,7 @@ async function followDeepSweep(slug, job) {
           }
         }).catch(() => {}).finally(() => { refreshing = false; });
       }
-      $("deepSweepStatus").textContent = `${progress.function || "Queue"} · ${progress.phase || "working"} · ${progress.functions_tested || 0} functions tested · ${progress.matches || 0} matches`;
+      $("deepSweepStatus").textContent = Array.isArray(progress.workers) ? `${progress.workers.length} functions active · ${progress.functions_tested || 0} functions tested · ${progress.matches || 0} matches` : `${progress.function || "Queue"} · ${progress.phase || "working"} · ${progress.functions_tested || 0} functions tested · ${progress.matches || 0} matches`;
     }, () => S.slug === slug && deepSweepFollowing === following);
   } catch (error) { if (S.slug === slug && deepSweepFollowing === following) showJobError(log, error.message); }
   finally {

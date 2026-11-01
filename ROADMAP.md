@@ -1325,3 +1325,7 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   ROM selection restores and reverifies saved work through the existing save
   pipeline, preserving the checkout and following the restored project identity.
   Open a saved project also accepts a repository root containing progress/.
+- Done: concurrent deep passes publish function-attributed activity snapshots with
+  bounded recent output and eight recent completions. Settings shows stable,
+  clickable function cards with phase, rewrite family, match changes, trial budgets
+  and improvements; combined diagnostics remain available in a collapsible log.

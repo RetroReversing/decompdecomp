@@ -141,7 +141,7 @@ async function main() {
   }
   for (const outcome of ["done", "error", "cancelled", "detached"]) {
     const test = setup("steering", 'async function followDeepSweep(slug, job) {', '\n}\n', "deepSweepLog", "deepSweepStart");
-    Object.assign(test.ctx, {slug:"test", job:"sweep", deepSweepFollowing:null, renderDeepSweep:()=>{}});
+    Object.assign(test.ctx, {slug:"test", job:"sweep", deepSweepFollowing:null, renderDeepSweep:()=>{}, renderDeepActivity:()=>{}});
     const running = test.ctx.run();
     await tick();
     const log = test.log.children[0];

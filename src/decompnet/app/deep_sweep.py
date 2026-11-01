@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .. import candidate_scope, scoring
 from ..network import NetworkError
 from . import agent_tokens, deep_permuter, workers
+from .deep_activity import Activity
 
 POLL_SECONDS = 15
 QUEUE_CACHE_SECONDS = 10
@@ -286,7 +287,7 @@ class Sweeps:
         """Finish one turn per unchanged candidate; wait for claims or usable C without marking them done. `threads`
         functions are searched at once (0: what the computer can spare, workers.py); each is its own bounded turn."""
         count = workers.clamp(threads) if threads != 1 else 1
-        stats = {'visited': 0, 'tested': 0, 'matched': 0, 'rotated':0}
+        stats = {'visited': 0, 'tested': 0, 'matched': 0, 'rotated':0, 'activity': Activity(log)}
         visited_turns = set()
         lock = threading.Lock()  # (the counters are shared by every thread's function)
         while True:
@@ -338,7 +339,7 @@ class Sweeps:
                 if stats['rotated']:
                     log(f"{stats['rotated']} functions rotated early and remain eligible for the next run.")
                 return {'functions_tested': stats['visited'], 'tested': stats['tested'], 'matched': stats['matched'], 'rotated':stats['rotated']}
-            log.progress({'phase': 'waiting for unclaimed functions or scored C', 'functions_tested': stats['visited'],
+            stats['activity'].publish({'phase': 'waiting for unclaimed functions or scored C', 'functions_tested': stats['visited'],
                           'matches': stats['matched'], 'waiting': waiting, 'total_unmatched': len(rows)})
             # Cancellation remains responsive while another worker owns the remaining functions.
             for _ in range(POLL_SECONDS):
@@ -348,16 +349,20 @@ class Sweeps:
     def search_one(self, slug, proj, fn, scope, minutes, variants, log, stats, lock, total, blocked):
         """One function's bounded turn, on whichever thread is free."""
         log.check_cancel()
+        activity = stats["activity"]
+        activity.update(fn["name"])
         build_scope = candidate_scope.key(self.net, proj, fn)
         self.record(fn, scope, 'running', minutes, variants)
         log(f'Deep pass: {fn["name"]} · up to {minutes} minutes / {variants:,} variants')
 
         def progress(value):
-            log.progress({'function': fn['name'], 'functions_tested': stats['visited'], 'matches': stats['matched'],
+            activity.update(fn["name"], value)
+            activity.publish({'function': fn['name'], 'functions_tested': stats['visited'], 'matches': stats['matched'],
                           'total_unmatched': total, 'waiting': blocked} | value)
 
         def function_log(line):
-            log(line)
+            activity.update(fn["name"], line=line)
+            log(f'{fn["name"]}: {line}')
         function_log.check_cancel = log.check_cancel
         function_log.progress = progress
         function_log.adaptive_budget = True
@@ -366,6 +371,7 @@ class Sweeps:
             # Also records test backends and older search providers that do not publish history.
             # The actual single-function search uses the same completion gate.
             self.completed(slug, fn, minutes, variants, result, build_scope)
+            activity.update(fn['name'], {'phase': 'matched' if result['matched'] else 'finished', **result}, finished=True)
             with lock:
                 stats['visited'] += 1
                 stats['tested'] += result['tested']
@@ -375,9 +381,11 @@ class Sweeps:
             # not completed, and a changed source/header or an explicit repeat retries it.
             busy = self.net.store.one('SELECT 1 FROM claims WHERE function_id=? AND expires_at>?', fn['id'], time.time())
             self.record(fn, scope, 'pending' if busy or 'claim' in str(error).lower() or str(error).startswith('This function is working') else 'error', minutes, variants, error=str(error))
+            activity.update(fn['name'], {'phase': 'waiting' if busy else 'error'}, line=str(error), finished=True)
             log(f'{fn["name"]}: {error}')
         except BaseException:
+            activity.update(fn['name'], {'phase': 'interrupted'}, finished=True)
             self.record(fn, scope, 'pending', minutes, variants)
             raise
-        progress({'phase': 'moving to next function', 'tested': stats['tested'], 'functions_tested': stats['visited'],
+        activity.publish({'phase': 'moving to next function', 'tested': stats['tested'], 'functions_tested': stats['visited'],
                   'matches': stats['matched']})
