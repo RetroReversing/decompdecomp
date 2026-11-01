@@ -28,7 +28,7 @@ from pathlib import Path
 
 from .. import compiler, toolchains
 from ..network import NetworkError
-from ..rom.symbols import IDENT
+from ..rom.symbols import ASM_LOCAL, IDENT
 from . import saves
 
 CHECK_SECONDS = 0.25  # a non-forced check of an unchanged folder is this rare per project
@@ -186,7 +186,7 @@ def _manifest(files: dict[str, str], cfg: dict) -> dict:
                 or not isinstance(manifest.get("set_aside", []), list):
             raise ValueError("symbols, notes, knowledge and set_aside must be lists")
         for symbol in manifest.get("symbols", []):
-            if (not isinstance(symbol, dict) or not IDENT.fullmatch(symbol.get("name", ""))
+            if (not isinstance(symbol, dict) or not (IDENT.fullmatch(symbol.get("name", "")) or ASM_LOCAL.fullmatch(symbol.get("name", "")))
                     or not isinstance(symbol.get("address"), int) or not isinstance(symbol.get("size", 0), int)
                     or symbol.get("kind", "data") not in ("func", "data", "string", "jtbl", "bss")):
                 raise ValueError(f"symbol {symbol.get('name')!r} has an invalid name, address, size or kind")
