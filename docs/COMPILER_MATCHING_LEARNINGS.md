@@ -836,3 +836,17 @@ Synthetic pinned-compiler controls verify generated shapes independently of the
 private investigation. Nonadjacent motion, bucket-address postincrements, automatic
 counter narrowing and frame padding are deliberately not inferred by this rule:
 those need additional liveness/range evidence. Normal budgets and exact judges apply.
+
+### Review prepared source and compiler settings as one unit
+
+Typed reference candidates may lose under the current optimization profile and become exact under a
+neighboring one. Local ROM projects can now explicitly recheck and approve the complete private source,
+header and function-only compiler profile. Compilation happens outside the transaction; stale inputs,
+claims, overlapping entries and a non-exact verdict prevent publication. A synthetic regression tests
+atomic publication and the saved verification header. This is not a new game-match claim.
+
+When linked instructions match but initialized data differs, report the data object and differing
+address range separately. Anonymous local-array initialization may emit padding that disagrees with
+the following ROM object. A bounded preparation hypothesis may copy an existing named array through an
+aggregate record only when its declared int extent and ROM values agree exactly. The unchanged byte/data
+judge and the complete repository rebuild decide acceptance; do not trim padding checks to gain matches.

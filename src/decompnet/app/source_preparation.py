@@ -282,7 +282,9 @@ def inputs(net, proj, fn):
     """The destination state that a private-header compile was judged against, checked again before promotion."""
     ctx = net._context(proj['id'], fn['unit'])
     symbols = [tuple(r) for r in net.store.all('SELECT name,address,size,kind FROM symbols WHERE project_id=? ORDER BY name', proj['id'])]
-    return (proj['config'], fn['unit'], fn['target'], fn['relocs'], fn['vram'], fn['best_source'], ctx['version'], symbols)
+    from .permuter_inputs import build_state
+    return (proj['config'], fn['unit'], fn['target'], fn['relocs'], fn['vram'], fn['best_source'], ctx['version'], symbols,
+            fn['size'],fn['name'],proj['root'],build_state(proj))
 
 
 def promote_context(net, db, fn, expected, header, agent):
@@ -374,6 +376,11 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                 fallback = net.forks.permuter_header(fork, fn['name']) if fork else net._context(proj['id'], fn['unit'])['header']
                 reader.advisories.clear()
                 variants = prepare_variants(reader, cfg, mapping, aliases, fallback)
+                if not fork and hasattr(net, 'reader'):
+                    from .named_array_context import variants as named_arrays
+                    for body, context in list(variants):
+                        variants.extend(named_arrays(body,fn['name'],context,net.reader(fresh,fn),net.symbols(proj['id']).resolve,
+                                                     'big' if json.loads(fresh['config']).get('big_endian',True) else 'little'))
                 for hint in dict.fromkeys(reader.advisories):log_line(fn['name'] + ': ' + hint)
                 retried = False
                 for source, header in variants:
@@ -389,7 +396,7 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                     from .permuter_inputs import build_state
                     state = (st.started_at, fresh['config'], build_state(fresh)) if fork else inputs(net, fresh, fn)
                     digest = hashlib.sha256(repr((state, source, header, cfg)).encode()).hexdigest()
-                    cache_key = 'local-source-v2:' + digest
+                    cache_key = 'local-source-v3:' + digest
                     if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], cache_key):
                         continue
                     report['tested'] += 1
@@ -416,6 +423,8 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                                 with net.store.tx() as db:
                                     db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
                                                (fn['id'], cache_key, 'error', str(exc)[:1200]))
+                                    db.execute('UPDATE reuse_trials SET feedback=? WHERE function_id=? AND signature=?',
+                                               (json.dumps(trial_feedback(fresh,fn,source,header,error=str(exc))),fn['id'],cache_key))
                             continue
                     if score is not None and (fn['best_score'] is None or score < fn['best_score']):
                         improved_source = True
@@ -429,6 +438,8 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                     with net.store.tx() as db:
                         db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason) VALUES(?,?,?,?)',
                                    (fn['id'], cache_key, str(score), 'local source preparation'))
+                        db.execute('UPDATE reuse_trials SET feedback=? WHERE function_id=? AND signature=?',
+                                   (json.dumps(trial_feedback(fresh,fn,source,header,score)),fn['id'],cache_key))
             except (NetworkError, OSError, ValueError) as exc:
                 message = f'{fn["name"]}: {exc}'
                 report['errors'].append(message)
@@ -486,12 +497,18 @@ def private_profiles(net, proj, fn, source, header, st, report, log_line, budget
         if list(flags)!=list(own['flags']) and list(flags) not in choices:choices.append(list(flags))
     for flags in choices[:2]:
         if st.stop.is_set() or report['tested']>=budget or time.monotonic()>=deadline:return
-        key='local-source-profile-v1:'+hashlib.sha256(repr((expected,source,header,own['toolchain'],flags)).encode()).hexdigest()
+        key='local-source-profile-v2:'+hashlib.sha256(repr((expected,source,header,own['toolchain'],flags)).encode()).hexdigest()
         if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?',fn['id'],key):continue
         private={**dict(proj),'config':json.dumps({**cfg,'compiler':{**own,'flags':flags},'compiler_ranges':[]})}
         report['tested']+=1;st.add(variants=1)
         result=net._compile(private,header,source,fn)
-        if not result.ok or not _single_definition(result.obj,fn['name']):continue
+        if not result.ok or not _single_definition(result.obj,fn['name']):
+            feedback={'toolchain':own['toolchain'],'flags':flags,'score':None,'exact':False,
+                      'category':'compile_or_extra_body','diagnostic':str(result.log)[:2000]}
+            with net.store.tx() as db:
+                db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
+                           (fn['id'],key,'failed','private-context compile failure',json.dumps(feedback)))
+            continue
         candidate,verdict,problems=net._evaluate(fn,proj,result.obj)
         if candidate is None:continue
         diff=scoring.diff(net._target_obj(fn,proj),candidate)
@@ -501,8 +518,22 @@ def private_profiles(net, proj, fn, source, header, st, report, log_line, budget
         if inputs(net,net.project_row(proj['slug']),current)!=expected:return
         evidence={'toolchain':own['toolchain'],'flags':flags,'source':source,'header':header,
                   'score':score,'exact':exact,'problems':problems,'review_required':True}
+        from .prepared_evidence import digest
+        evidence['inputs']=digest(net,proj,fn)
+        evidence['category']='exact' if exact else ('data' if diff.bytes_match else 'instructions')
         with net.store.tx() as db:
             db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
                        (fn['id'],key,str(score),'private-context compiler probe; review required',json.dumps(evidence)))
         log_line(f"{fn['name']}: prepared context with {' '.join(flags)} scored {score}; private source/header/profile evidence saved for review. Working settings unchanged.")
         if exact:return
+
+
+def trial_feedback(proj, fn, source, header, score=None, error=''):
+    """Precise local evidence so unchanged source/context/profile misses are not rediscovered."""
+    from ..project import compiler_for
+    own=compiler_for(json.loads(proj['config']),fn['vram'])
+    return {'source_sha256':hashlib.sha256(source.encode()).hexdigest(),
+            'header_sha256':hashlib.sha256(header.encode()).hexdigest(),
+            'toolchain':own.get('toolchain'),'flags':own.get('flags',[]),'score':score,
+            'category':('compile_or_link_error' if error else 'exact' if score==0 else 'scored_miss'),
+            'diagnostic':error[:2000],'exact':score==0}

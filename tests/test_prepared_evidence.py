@@ -1,0 +1,102 @@
+import json
+
+import pytest
+
+from decompnet.app import named_array_context as arrays
+from decompnet.app import prepared_evidence as evidence
+from decompnet.app import source_preparation as prep
+from decompnet.network import Agent, NetworkError
+from tests.test_source_preparation import prepared_net as base_net
+
+
+def prepared_net():
+    net,proj,fn=base_net()
+    with net.store.tx() as db:db.execute("UPDATE functions SET size=4")
+    return net,proj,net.store.one("SELECT * FROM functions WHERE id=1")
+
+
+def test_exact_bundle_publishes_profile_context_and_source_together():
+    net,proj,fn=prepared_net()
+    settings={'toolchain':'ido-5.3','flags':['-O3']}
+    expected=prep.inputs(net,proj,fn)
+    net._record(fn,Agent(1,'autopilot',None),0,'new source',0,matched=True,
+                effective_settings={'compiler':settings},prepared_header='new types',
+                prepared_inputs=expected,prepared_compiler=settings)
+    current=net.store.one('SELECT * FROM functions WHERE id=1')
+    assert current['status']=='matched' and current['matched_source']=='new source'
+    assert net._context(1,current['unit'])['header']=='new types'
+    assert net.store.one('SELECT header FROM verified_matches')['header']=='new types'
+    cfg=json.loads(net.store.one('SELECT config FROM projects')['config'])
+    assert cfg['compiler']=={} and cfg['compiler_ranges'][0]['flags']==['-O3']
+
+
+@pytest.mark.parametrize('change',['source','claim','overlap','miss'])
+def test_bundle_publication_rolls_back_on_stale_claim_overlap_or_nonexact(change):
+    net,proj,fn=prepared_net();expected=prep.inputs(net,proj,fn)
+    with net.store.tx() as db:
+        if change=='source':db.execute("UPDATE functions SET best_source='different'")
+        if change=='claim':db.execute('DELETE FROM claims')
+        if change=='overlap':db.execute("INSERT INTO functions(project_id,name,n_insns,vram,size) VALUES(1,'overlap',1,4096,4)")
+    before=net.store.one('SELECT config FROM projects')['config']
+    with pytest.raises(NetworkError):
+        net._record(fn,Agent(1,'autopilot',None),1 if change=='miss' else 0,'new',0,matched=change!='miss',
+                    prepared_header='new header',prepared_inputs=expected,prepared_compiler={'toolchain':'ido-5.3','flags':['-O3']})
+    assert net.store.one('SELECT config FROM projects')['config']==before
+    assert net.store.one('SELECT COUNT(*) n FROM attempts')['n']==0
+
+
+def test_review_rejects_stale_before_compiling():
+    net,proj,fn=prepared_net();net.is_rom=lambda p:True;net.fork_slug=lambda s:None
+    with net.store.tx() as db:
+        db.execute('INSERT INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(1,?,?,?,?)',
+                   ('local-source-profile-v1:key','0','test',json.dumps({'exact':True,'inputs':'stale'})))
+    with pytest.raises(NetworkError,match='stale'):
+        evidence.apply(net,proj,'local-source-profile-v1:key',print)
+    assert evidence.listing(net,proj)[0]['function']=='f'
+
+
+def test_named_array_requires_declared_extent_and_verified_rom_values():
+    source='void f(void){ int choices[]={1,2}; use(choices); say("choices"); }'
+    header='extern const int D_80004000[2];'
+    read=lambda address,size:bytes.fromhex('0000000100000002') if address==0x80004000 and size==8 else None
+    resolve=lambda name:0x80004000 if name=='D_80004000' else None
+    pairs=arrays.variants(source,'f',header,read,resolve)
+    assert len(pairs)==1 and 'choices.values' in pairs[0][0] and 'say("choices")' in pairs[0][0]
+    assert not arrays.variants(source,'f',header,lambda *args:b'wrong',resolve)
+    assert not arrays.variants(source,'f',header.replace('[2]','[3]'),read,resolve)
+    assert not arrays.variants(source,'f',header,read,lambda name:None)
+
+
+def test_data_diagnostics_do_not_override_verdict():
+    from decompnet.app.candidate_diagnostics import text
+    checks={'instructions':{'exact':True},'linked_bytes':{'exact':False},'data':['your data for table differs; differing range 0x80004004-0x80004008']}
+    message=text(checks)
+    assert 'Instructions match; constant data differs' in message and '0x80004004' in message
+    assert 'Linked bytes verified identical' not in message
+
+
+def test_review_recompiles_outside_transaction_and_records_exact_bundle(monkeypatch):
+    from types import SimpleNamespace
+
+    from decompnet.app.permute import Permuter
+    from decompnet.rom import export
+    net,proj,fn=prepared_net();net.is_rom=lambda p:True;net.fork_slug=lambda s:None
+    net.project_row=lambda slug:net.store.one('SELECT * FROM projects WHERE id=1')
+    net.local_agent=lambda name:(Agent(1,'autopilot',None),'')
+    net.permuter=Permuter(net)
+    settings={'toolchain':'ido-5.3','flags':['-O3']}
+    item={**settings,'source':'int f(void){return 1;}','header':'new types','exact':True,'inputs':evidence.digest(net,proj,fn)}
+    with net.store.tx() as db:
+        db.execute('DELETE FROM claims')
+        db.execute('INSERT INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(1,?,?,?,?)',
+                   ('local-source-profile-v2:key','0','test',json.dumps(item)))
+    def compile(p,h,s,f):
+        assert not getattr(net.store._local,'in_tx',False)
+        assert h=='new types' and json.loads(p['config'])['compiler_ranges'][0]['flags']==['-O3']
+        return SimpleNamespace(ok=True,obj=b'synthetic',effective_settings={'compiler':settings})
+    net._compile=compile;net._evaluate=lambda *args:(object(),True,[])
+    monkeypatch.setattr(export,'_single_definition',lambda *args:True)
+    assert evidence.apply(net,proj,'local-source-profile-v2:key',lambda line:None)['matched']
+    assert net.store.one('SELECT status FROM functions')['status']=='matched'
+    assert net.store.one('SELECT header FROM verified_matches')['header']=='new types'
+    assert not net.store.one('SELECT * FROM claims')
