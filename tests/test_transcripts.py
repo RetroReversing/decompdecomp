@@ -12,6 +12,9 @@ from decompnet.network import NetworkError
 @pytest.fixture
 def setup(tmp_path):
     net = RomNetwork(tmp_path / 'app.db', tmp_path)
+    with net.store.tx() as db:
+        db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                   ('demo', 'Synthetic transcript project', 'mips', str(tmp_path), '{}'))
     manager = Manager(net, tmp_path, 'http://127.0.0.1/mcp')
     session = Session('1', 'codex', 'helper', 'demo', 'helper', {'api_key': 'private-key'})
     manager.sessions['1'] = session
@@ -86,10 +89,15 @@ def test_mcp_records_full_arguments_results_and_errors(setup, monkeypatch):
     events = manager.transcript('demo', 1)['events']
     assert json.loads(events[0]['text'])['arguments']['function'] == 'target'
     assert len(json.loads(events[1]['text'])['content']) == 7000
+    first_id = json.loads(events[0]['text'])['call_id']
+    assert first_id and first_id == json.loads(events[1]['text'])['call_id']
 
     def fail(*args, **kw):
         raise NetworkError('Missing function.')
     monkeypatch.setitem(tools.HANDLERS, 'get_function', fail)
     with pytest.raises(ToolError, match='Missing function'):
         anyio.run(mcp.call_tool, 'get_function', {'function': 'missing'})
-    assert 'Missing function.' in manager.transcript('demo', 1)['events'][-1]['text']
+    events = manager.transcript('demo', 1)['events']
+    assert 'Missing function.' in events[-1]['text']
+    assert json.loads(events[-2]['text'])['call_id'] == json.loads(events[-1]['text'])['call_id']
+    assert json.loads(events[-1]['text'])['call_id'] != first_id

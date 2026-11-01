@@ -175,10 +175,10 @@ class Api(Agent):
                     s.usage["tool_calls"] += 1
                     s.push("tool", f"{name}({args_brief(args)})")
                     if s.record:
-                        s.record('tool_request', {'name': name, 'arguments': args})
+                        s.record('tool_request', {'name': name, 'arguments': args, 'call_id': c['id']})
                     result = tools.call(net, agent, s.slug, name, args)
                     if s.record:
-                        s.record('tool_response', {'name': name, 'content': result})
+                        s.record('tool_response', {'name': name, 'content': result, 'call_id': c['id']})
                     messages.append({"role": "tool", "tool_call_id": c["id"], "content": result})
                     finishing |= name in FINISHING
                 # Done with what it held (in a room the host holds the claim: nothing here says when): what led up

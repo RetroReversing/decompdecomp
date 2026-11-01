@@ -1415,3 +1415,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Done: per-agent Work settings can omit assembly byte/address presentation columns from claims, briefs, full function reads, redrafts and assembly pages; labels and operands remain intact across ROM and imported projects.
 
 - Done: metrics CSV export saves through the private app API to Downloads with a visible saved path or error, avoiding embedded-webview Blob downloads. Recent deep-search cards distinguish completed turns from active workers and expose failure reasons.
+
+- Done: transcript tool cards show compact argument previews and group requests with rendered responses using recorded call IDs; unambiguous legacy exchanges pair across pages while ambiguous concurrent legacy calls stay separate.

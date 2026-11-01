@@ -126,3 +126,8 @@
 .transcript-markdown pre code { padding: 0; }
 .transcript-markdown blockquote { margin: 12px 0; padding: 4px 14px; border-left: 3px solid var(--line); color: var(--muted); }
 .transcript-md-table { overflow: auto; } .transcript-md-table th, .transcript-md-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); text-align: left; }
+
+.transcript-tool-exchange > summary .transcript-event-label { overflow-wrap:anywhere; min-width:0; }
+.transcript-tool-arguments { margin: 0 16px 14px; }
+.transcript-tool-arguments > summary { color:var(--muted); padding:10px 0; }
+.transcript-tool-exchange > .transcript-tool-result { margin:12px 16px 16px; border-left:3px solid var(--match); }

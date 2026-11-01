@@ -23,6 +23,16 @@ const context = { S: {logFor: '7', slug: 'demo'}, document: {body, createElement
     requests.push(url); const q = new URL(url, 'http://test').searchParams;
     const id = Number(q.get('session')) || 60, before = Number(q.get('before'));
     const sessions = Array.from({length: 30}, (_, i) => row((before ? 30 : 60) - i));
+    if(id===6 || id===7) {
+      const keyed=id===6, payload=(key,extra)=>JSON.stringify({name:'guide',...(keyed?{call_id:key}:{}),...extra});
+      return {sessions,session:row(id),more:false,events:[
+        {id:1,kind:'tool_request',text:payload('a',{arguments:{topic:'first'}})},
+        {id:2,kind:'tool_request',text:payload('b',{arguments:{topic:'second'}})},
+        {id:3,kind:'tool_response',text:payload('b',{content:'# Second response'})},
+        ...(keyed?[{id:4,kind:'tool_response',text:payload('a',{error:'First failed'})}]:[])
+      ].map(e=>({...e,created_at:1}))};
+    }
+    if(id===5 && q.get('after')==='1') return {sessions,session:row(id),more:false,events:[{id:2,created_at:2,kind:'tool_response',text:JSON.stringify({name:'claim_function',content:'# Claimed'})}]};
     return {sessions, session: row(id), events: [{id: q.get('after') === '1' ? 2 : 1, created_at: 1, kind: id === 4 ? 'error' : id === 5 ? 'tool_request' : 'prompt', text: id === 5 ? JSON.stringify({name:'claim_function',arguments:{count:4}}) : long}], more: q.get('after') !== '1'};
   }, URL, Date };
 vm.createContext(context);
@@ -74,8 +84,22 @@ vm.runInContext(source.slice(source.indexOf('$("helperTranscript").onclick =')),
   assert.match(events.children[0].className, /transcript-event-error/);
   assert(requests.at(-1).includes('session=4'));
   select.value = '5'; await select.onchange();
-  assert.equal(events.children[0].children[0].children[0].textContent, 'Tool request · claim_function');
-  assert.equal(JSON.parse(events.children[0].children[1].textContent).arguments.count, 4);
+  assert.equal(events.children[0].children[0].children[0].textContent, 'Tool · claim_function(count=4)');
+  assert.equal(JSON.parse(events.children[0].children[1].children[1].textContent).arguments.count, 4);
 
+  await dialog.querySelector('[data-more]').onclick();
+  assert.equal(events.children.length,1); // legacy response across a pagination boundary
+  assert.equal(events.children[0].children.at(-1).children[0].children[0].textContent,'Response');
+  select.value='6';await select.onchange();
+  assert.equal(events.children.length,2);
+  assert.match(events.children[0].children[0].children[0].textContent,/topic="first"/);
+  assert.equal(events.children[0].children.at(-1).children[0].children[0].textContent,'Response · error');
+  assert.match(events.children[1].children.at(-1).children[1].innerHTML,/Second response/);
+  assert.equal(dialog.querySelector('[data-event-count]').textContent,'4 events loaded');
+  select.value='7';await select.onchange();
+  assert.equal(events.children.length,3); // ambiguous legacy calls stay separate
+  const title=context.transcriptToolTitle({name:'compile',arguments:{source:'<script>'+ 'x'.repeat(1000),flags:['a','b']}});
+  assert(title.length<220);assert(title.includes('flags=[2 items]'));
+  assert.equal(context.transcriptToolPayload('broken JSON'),null);
   console.log('Transcript full-text rendering, usage, paging and old-session selection passed');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
