@@ -33,7 +33,7 @@ def variants(source, name, header, reference):
         if not re.search(r'\b'+re.escape(callee)+r'\s*\(',_blank(private)) and callee not in macros(private):
             prototype=re.search(r'(?:^|[;\n])[ \t]*((?:extern\s+)?(?:'+ID+r'[ \t*]+)+'+re.escape(callee)+r'\s*\([^;{}()]*\)\s*;)',_blank(reference))
             if not prototype:continue
-            private+='\n'+reference[prototype.start(1):prototype.end(1)]+'\n' 
+            private+='\n'+reference[prototype.start(1):prototype.end(1)]+'\n'
         private+=f'\n#line {reference[:span[0]].count(chr(10))+1} "reference-predicate.c"\n'+code+'\n'
         result.append((source,private))
         if len(result)>=2:break

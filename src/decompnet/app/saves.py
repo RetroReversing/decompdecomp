@@ -930,10 +930,14 @@ class Autosave:
             if time.monotonic() < self.retry_after.get(row['slug'], 0):
                 continue
             try:
-                if self.net.progress.sync(row["slug"], force=True):
+                if self.net.progress.sync(row["slug"], force=True, retry=False):  # (a failed one waits: RETRY_FAILED_SECONDS)
                     saved.append(row["slug"])
                 self.retry_after.pop(row['slug'], None)
             except Exception as error:  # keep other projects saving; do not flood logs every second
+                from .progress import _StillFailing
+
+                if isinstance(error, _StillFailing):
+                    continue
                 self.retry_after[row['slug']] = time.monotonic() + 30
                 try:
                     cfg = json.loads(row['config'])

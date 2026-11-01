@@ -45,11 +45,13 @@ class PlayStation(Console):
         Compiler("gcc-2.8.1-psx", "GCC 2.8.1 (PSY-Q 4.4)", "PSY-Q 4.4-era code"),
         Compiler("gcc-2.5.7-psx", "GCC 2.5.7 (early PS1)", "Early PS1 code"),
         Compiler("gcc-2.6.0-psx", "GCC 2.6.0 (early PS1)", "Early PSY-Q-era GCC"),
-        Compiler("gcc-2.7.2-cdk", "GCC 2.7.2 CDK (PSY-Q 4.1 era)", "Cygnus/PSY-Q 4.1-era code; ASPSX 2.67"),
+        Compiler("gcc-2.7.2-cdk", "GCC 2.7.2 CDK (legacy ID)", "Existing fork projects", automatic=False),
+        Compiler("gcc-2.7.2-cdk-psx", "GCC 2.7.2 CDK for PlayStation", "Cygnus/PSY-Q 4.1-era code; ASPSX 2.67"),
         Compiler("gcc-2.8.0-psx", "GCC 2.8.0 (PSY-Q 4.3)", "PSY-Q 4.3-era code; ASPSX 2.77"),
         Compiler("gcc-2.91.66-psx", "EGCS 2.91.66 (PSY-Q 4.5)", "later PS1 code, PSY-Q 4.5; ASPSX 2.81"),
         Compiler("gcc-2.95.2-psx", "GCC 2.95.2 (PSY-Q 4.6)", "late PS1 code, PSY-Q 4.6; ASPSX 2.86"),
     )
+    kits = ("own-ps1",)  # another build of one of its compilers, the user's (kits/owncompiler.py)
     guides = ("mips", "ps1")
     compiler_guide = "ps1"
     m2c = "mipsel-gcc"
