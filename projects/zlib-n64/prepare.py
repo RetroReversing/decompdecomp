@@ -1,53 +1,22 @@
-"""Fetch zlib 1.1.4 from zlib.net (pinned sha256) into original/, and build the shared headers
-(context.h) for the two DecompNet projects made from it: zlib-deflate and zlib-inflate.
+"""Build the shared headers (include/context.h, units/) from zlib 1.1.4's sources in original/, for the two
+DecompNet projects made from it: zlib-deflate and zlib-inflate. Both are in git: run this only after changing it.
 
 zlib's license allows use, alteration and redistribution (see LICENSE.zlib). The original source stays
 on the coordinator to build the target objects; agents only see compiled code and context.h.
-Run once before importing:  python3 -I projects/zlib-1.1.4/prepare.py
 """
 
-import hashlib
-import io
 import pathlib
 import re
-import tarfile
-import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
-# the same archive at each (zlib.net sometimes refuses CI's runners): the first whose bytes have the pinned hash
-URLS = ("https://zlib.net/fossils/zlib-1.1.4.tar.gz",
-        "https://downloads.sourceforge.net/project/libpng/zlib/1.1.4/zlib-1.1.4.tar.gz")
-SHA256 = "9e3e973174f9910fd51539ef9ce94c86a3943d4f897fab8e9adf4b19e6a8291e"
 CORE = ["adler32.c", "compress.c", "crc32.c", "deflate.c", "infblock.c", "infcodes.c", "inffast.c", "inflate.c",
         "inftrees.c", "infutil.c", "trees.c", "uncompr.c", "zutil.c"]
 # zlib has two different `struct internal_state`s (compression vs decompression) and per-file macros and
 # typedefs, so each source file (unit) gets its own header: the headers it includes plus its declarations.
 
 def fetch() -> pathlib.Path:
-    out = HERE / "original"
-    if (out / "zlib.h").exists():
-        return out
-    data = None
-    tried = []
-    for url in URLS:
-        try:
-            got = urllib.request.urlopen(url, timeout=60).read()
-        except OSError as e:
-            tried.append(f"{url}: {e}")
-            continue
-        if hashlib.sha256(got).hexdigest() == SHA256:
-            data = got
-            break
-        tried.append(f"{url}: {len(got)} bytes, checksum mismatch")
-    if data is None:
-        raise SystemExit("no copy of zlib 1.1.4 with the pinned checksum: refusing to use these:\n" + "\n".join(tried))
-    out.mkdir(exist_ok=True)
-    with tarfile.open(fileobj=io.BytesIO(data)) as tar:
-        for m in tar.getmembers():
-            name = pathlib.PurePosixPath(m.name).name
-            if m.isfile() and (name.endswith((".c", ".h")) or name == "README"):
-                (out / name).write_bytes(tar.extractfile(m).read())
-    return out
+    # zlib 1.1.4's release archive's .c, .h and README (sha256 9e3e973174f9910fd51539ef9ce94c86a3943d4f897fab8e9adf4b19e6a8291e)
+    return HERE / "original"
 
 
 def strip_comments(text: str) -> str:
