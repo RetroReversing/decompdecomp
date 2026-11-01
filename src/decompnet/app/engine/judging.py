@@ -48,16 +48,27 @@ class JudgeMixin:
                   'export': export_layout(obj, fn['name'], res.exact, res.placements)}
         checks['instructions'] = {'exact': res.instructions_exact}
         checks['data'] = [p for p in res.problems if p.startswith('your data for ')]
+        address_rows = []
+        if res.linked_code is not None and res.candidate is not None and not res.problems and proj['arch'] == 'mips':
+            from ...arch.mips_addresses import aligned
+            rows = scoring.diff(self._target_obj(fn, proj), res.candidate).rows
+            address_rows = aligned(rows, self._rom_target(fn).code, res.linked_code, bool(proj['big_endian']))
+            checks['address_mismatches'] = [row for row in address_rows
+                                           if row['target'] is not None and row['candidate'] is not None
+                                           and row['target'] != row['candidate']]
         checks['message'] = text(checks)
         cache = self.__dict__.setdefault('_candidate_diagnostics', {})
         with self.__dict__.setdefault('_candidate_diagnostics_lock', threading.Lock()):
-            cache[fn['id'], hashlib.sha256(obj).hexdigest()] = checks
+            cache[fn['id'], hashlib.sha256(obj).hexdigest()] = (checks, address_rows)
             while len(cache) > 256:
                 del cache[next(iter(cache))]
         return res.candidate, res.exact if res.candidate is not None else None, res.problems
 
     def _candidate_checks(self, fn, proj, obj: bytes) -> dict:
-        return self.__dict__.get('_candidate_diagnostics', {}).get((fn['id'], hashlib.sha256(obj).hexdigest()), {})
+        return self.__dict__.get('_candidate_diagnostics', {}).get((fn['id'], hashlib.sha256(obj).hexdigest()), ({}, []))[0]
+
+    def _candidate_addresses(self, fn, obj: bytes):
+        return self.__dict__.get('_candidate_diagnostics', {}).get((fn['id'], hashlib.sha256(obj).hexdigest()), ({}, []))[1]
 
     def rename_tokens(self, proj, text: str) -> str:
         """Show automatic names under their current names (func_80001234 -> deflate)."""

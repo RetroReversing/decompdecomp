@@ -1281,3 +1281,6 @@ details.more[open] > summary::before { content: "− "; }
 .compiler-progress[data-finished="true"] .compiler-progress-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .compiler-progress[data-finished="true"] .compiler-progress-stats > div { grid-column: auto; }
 .compiler-table td button.small-btn { white-space: nowrap; }
+
+/* Numeric evidence stays separate from symbolic assembly and its score. */
+.raw-address { display: block; color: var(--muted); font: 11px/1.5 var(--mono); }

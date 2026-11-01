@@ -1247,6 +1247,20 @@ recovered a fourth. This is regression evidence, not new progress or measured to
   characters, once active tools finish. Structured handoffs retain candidate
   revisions, remaining experiments, history and notes; claims and source survive.
 
+## Raw MIPS address repairs
+
+- Done: numeric effective addresses accompany symbolic ROM diff operands and agent
+  mismatch feedback, derived from the target and fully linked candidate bytes.
+- Done: bounded expression-local literal/byte-array high-half repairs, including
+  independent pairs, reach draft, agent-local, deep and autopilot address passes.
+  Synthetic guards cover signed offsets, clobbers, control flow, endianness, missing
+  words, ambiguous destinations, macros, typed-pointer scaling and unrelated C.
+- Verified privately: V-Rally PAL's historical `func_8000F660` near-miss replays
+  80 -> 80 for either single, 80 -> 0 for the pair under the normal byte judge.
+  No extra live matches or measured AI-token savings are claimed.
+- Planned: analogous raw address diagnostics for processors other than MIPS;
+  these proposals currently require MIPS instruction evidence.
+
 ### Matching efficiency feedback
 
 - Done: persistent claim/build-scoped recent-score windows hand back work after

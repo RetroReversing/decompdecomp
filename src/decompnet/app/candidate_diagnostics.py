@@ -47,6 +47,8 @@ def export_layout(obj, name, exact, placements):
 
 def text(checks):
     parts = [checks['link']['message']] if checks.get('link') else []
+    for row in checks.get('address_mismatches', [])[:4]:
+        parts.append(f"Raw MIPS address at diff row {row['row']+1}: target 0x{row['target']:08X}, yours 0x{row['candidate']:08X}. Verify this expression before scheduling permutations; symbolic labels may obscure the address.")
     if checks.get('instructions', {}).get('exact') and checks.get('data'):
         parts.append('Instructions match; constant data differs. Check initializer values, object sizes and anonymous-array padding before changing control flow.\n'+'\n'.join(checks['data']))
     if checks.get('linked_bytes', {}).get('exact'):
