@@ -888,3 +888,25 @@ address range separately. Anonymous local-array initialization may emit padding 
 the following ROM object. A bounded preparation hypothesis may copy an existing named array through an
 aggregate record only when its declared int extent and ROM values agree exactly. The unchanged byte/data
 judge and the complete repository rebuild decide acceptance; do not trim padding checks to gain matches.
+
+### Reduce repeated context before increasing search breadth
+
+Three recent substantial helper transcripts contained a 455k-character compiler
+trial response (450k of unrelated project configuration), 529k characters of claim
+responses, and 79 unfocused assembly reads. Of 190 independent variant batches,
+89 retained the starting candidate. These counts describe recorded payloads and
+outcomes; they are not a causal benchmark or a measured token-price saving.
+
+Trial retrieval now returns only the selected C/profile, result and context ID,
+while its full private reproduction record remains internal. Claim queues keep
+leases but defer later function details; explicit paging preserves full assembly
+access. App helper batches get at most three automatic repairs before manual
+variants, once per source/build scope, with normal judge and trial deduplication.
+An automatic pass explicitly says when handwritten patches were not submitted.
+
+Conversation budgets use completed tool calls and response characters, not guesses
+about provider billing: 80 calls or 160k characters by default. Active tools finish
+before rotation; structured handoffs retain revisions, failed-experiment history,
+remaining repairs and explicit notes. Both API and CLI helpers start fresh sessions
+without deleting claims, accepted matches or attempts. Measure actual provider
+usage and matches per minute before claiming a cost or speed improvement.
