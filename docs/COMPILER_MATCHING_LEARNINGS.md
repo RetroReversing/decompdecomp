@@ -1095,3 +1095,49 @@ Source/header concatenation also inflated scratch padding. A direct local body/h
 form preserve their separation and source layout. Historical exact source/header/profile bundles can be
 explicitly recompiled against fresh inputs and published atomically only after current byte/data checks.
 Synthetic tests cover these paths separately from the manual game results.
+
+### Storage scope, object definitions and resumable profile checks
+
+A source-assisted live MIPS batch recovered a local cache function at IDO 5.3 `-O3`
+with `-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul` only after retaining
+function-local static declarations. Moving the objects to extern/global context changed
+address loads and register reuse. A scheduler entry at `-O2` needed an original wide
+buffer-size argument and original timing-object definitions rather than extern-only substitutes.
+These are manual byte-verified observations from the preceding batch, not new automated matches.
+
+Extraction now retains file-level `static`; advisory comparisons call out lost local statics,
+extra address-high loads for declared externs and adjacent target word loads against explicitly
+narrow MIPS prototypes. None moves storage, synthesizes initializers or infers an ABI automatically.
+Synthetic controls cover preserved storage, narrow/wide declarations, overwritten and nonadjacent loads.
+
+Saved-draft flag preflight used to cache the first bounded subset as a complete search.
+It now caches each completed profile under the full judge-input scope and resumes unvisited
+choices on later passes. A controlled fake-judge regression reaches a later `-O3` exact result
+with one new probe per round, retains completed work after interruption and resets on source change.
+This test demonstrates search coverage, not an additional game match. Exact revalidation and
+compiler-setting approval gates remain unchanged.
+
+A subsequent ten-candidate source-assisted live-API batch passed ten byte judgments
+(4,424 function bytes): eight at IDO 5.3 `-O3` and the scheduler/model selector at `-O2`, with
+`-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul`. The batch is manual evidence;
+none of these matches is attributed to the new diagnostics automatically fixing code.
+
+- Two animation readers required the original indexed-block **macro**, forwarding both
+  the set and its data pointer before the index. Declaring that API as a two-argument
+  function gave incorrect call registers. Original aggregate returns and frame records
+  then matched at `-O3`.
+- A static-instance initializer needed the original short-float conversion helper and
+  the matrix conversion macro's address-of operation, not an invented scalar conversion.
+- A particle-system initializer's static-helper version remained at score 860. Explicitly
+  expanding the original four initialization statements in its loop reached zero at
+  `-O3`; instruction order differed around unrolled-loop stores. This is a tested source
+  hypothesis, not a claim that macros always reproduce same-unit inlining.
+- A static renderer reached score 660 with byte-array application access. A typed view
+  of the same original object, retaining its large field offsets, plus original display-list
+  expression order reached zero. IDO had otherwise folded the address into a different
+  base symbol. Large object identity can matter even when addresses are arithmetically equal.
+- One model-selection switch needed an extra independent return-zero arm confirmed by
+  the retail jump table. Archived source was not the final authority for the retail cases.
+- Parenthesized `case (...)` labels exposed a source-import bug: a keyword was treated as
+  a private helper name. The importer now excludes `case`, with a regression test. The
+  installed app was not restarted; a local macro workaround kept the live trial moving.

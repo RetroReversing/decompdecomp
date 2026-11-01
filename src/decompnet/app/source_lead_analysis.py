@@ -94,6 +94,11 @@ def record(net, proj, fn, source, header, score, rows, lead=None, elapsed_ms=0, 
     comparison=compare(rows,proj['arch'],source,fn['name'])
     from .source_next_steps import recommendations
     comparison['next_steps']=recommendations(source,dict(fn).get('best_source') or '',comparison)
+    from .source_storage import object_hints, scope_hints
+    comparison['next_steps']+=scope_hints(dict(fn).get('best_source') or '',source,header,fn['name'])+object_hints(rows,header)
+    if proj['arch']=='mips':
+        from .source_storage import wide_argument_hints
+        comparison['next_steps']+=wide_argument_hints(fn['asm'] or '',header)
     if proj['arch']=='mips':
         from ..arch.mips_runtime import incoming_arguments
         comparison['entry']=incoming_arguments(fn['asm'] or '')

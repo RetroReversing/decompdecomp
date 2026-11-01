@@ -105,3 +105,9 @@ def test_selected_helper_constants_are_kept_verbatim(tmp_path):
     cfg={'root':str(tmp_path),'helpers':'helper @ f.c','definitions':'coeff @ f.c'}
     source,header=prep.prepare(prep.Reader(cfg),cfg,('dest','original','f.c'),{'original':'dest'},'extern unsigned coeff;')
     assert 'coeff = 0x3f800001;' in source and 'return coeff;' in header
+
+
+def test_parenthesized_switch_case_is_not_a_private_helper_prototype():
+    from decompnet.app.source_context import prototypes
+    source='int f(int x){switch(x){case (3): if(x){return 1;} default: return 0;}}'
+    assert prototypes(source,source,'','f') == ''

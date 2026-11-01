@@ -38,8 +38,6 @@ def extract(text, name):
                 raise NetworkError('Select one object per declaration; supply a prepared definition subset.')
         # Strip preceding directives without moving the object's lines or keeping unrelated includes.
         original=re.sub(r'(?m)^[ \t]*#[^\n]*',lambda m:re.sub(r'[^\n]',' ',m[0]),original)
-        storage=re.search(r'\bstatic\b',_blank(original))
-        if storage:original=original[:storage.start()]+' '*len(storage[0])+original[storage.end():]
         found.append(f'#line {line_number} \"reference-definitions.c\"\n'+original)
     if len(found)!=1:raise NetworkError(f'Expected one object definition for {name!r}; supply a prepared definition subset.')
     return found[0]
