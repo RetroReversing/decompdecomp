@@ -129,3 +129,9 @@ new base symbol. Check the actual SDK macro before declaring a helper function: 
 indexed-block macro may forward an extra data pointer, and a matrix macro may take an
 object's address. Compare loop expansion versus helper inlining only as separately
 judged hypotheses. Retail switch tables can differ from archived source revisions.
+
+A small source helper may return a predicate around another function's result. Preserve its real
+body and range checks rather than declaring the underlying callee Boolean. Mask-word signedness
+can change loop lowering even with the same field width. With only two load-order differences,
+try focused scheduling/declaration hypotheses; with only an extra restore/return suffix, inspect
+adjacent original padding for an unreachable epilogue. Neither finding relaxes byte/data checks.

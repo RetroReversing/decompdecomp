@@ -38,16 +38,19 @@ def parameters(source, name):
 
 
 def features(lines, arch):
-    calls=[];branches=[];offsets=set();exits=0
+    calls=[];branches=[];offsets=set();immediates=set();exits=0
     for text in lines:
         text=text.strip();op=text.split()[0] if text else ''
         if op in {'jal','jalr','bal','bl','blx','call','callq'}:calls.append(text.split(None,1)[-1])
         if (arch=='mips' and op.startswith('b') and op not in {'bal','break'}) or op in {'beq','bne','bgt','blt','je','jne','jg','jl'}:branches.append(op)
+        if op in {'addiu','ori','andi','slti','sltiu','cmp'}:
+            value=re.search(r',\s*(-?0x[0-9a-fA-F]+|-?\d+)\s*$',text)
+            if value:immediates.add((op,int(value[1],0)))
         exits+=bool(re.fullmatch(r'(?:jr\s+\$?ra|ret[q]?)',text))
         if arch=='mips':
             for match in re.finditer(r'(-?0x[0-9a-fA-F]+|-?\d+)\(\$?(?!sp\b|fp\b)[a-z]\w*\)',text):
                 offsets.add(int(match[1],0))
-    return {'calls':calls,'branches':branches,'exits':exits,'offsets':sorted(offsets)}
+    return {'calls':calls,'branches':branches,'exits':exits,'offsets':sorted(offsets),'immediates':sorted(immediates)}
 
 
 def compare(rows, arch, source='', name=''):
@@ -92,8 +95,9 @@ def record(net, proj, fn, source, header, score, rows, lead=None, elapsed_ms=0, 
     scope=scope or destination(net,proj,fn);settings=profile(net,proj,fn)
     signature=key(scope,source,header,family,settings)
     comparison=compare(rows,proj['arch'],source,fn['name'])
+    from .matching_investigations import hints as investigation_hints
     from .source_next_steps import recommendations
-    comparison['next_steps']=recommendations(source,dict(fn).get('best_source') or '',comparison)
+    comparison['next_steps']=investigation_hints(rows,proj['arch'])+recommendations(source,dict(fn).get('best_source') or '',comparison)
     from .source_storage import object_hints, scope_hints, typed_object_hints
     comparison['next_steps']+=scope_hints(dict(fn).get('best_source') or '',source,header,fn['name'])+object_hints(rows,header)+typed_object_hints(rows,source,header)
     if proj['arch']=='mips':
@@ -175,14 +179,19 @@ def brief(net, proj, fn):
                              '\nInspect the original same-unit helper/caller before broad body permutation. This does not assign registers or change a prototype.')
                 break
     scope=destination(net,proj,fn)
-    misses=[];next_steps=[]
+    misses=[];next_steps=[];ineffective=[]
     for row in net.store.all('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature LIKE ? ORDER BY rowid DESC LIMIT 80',fn['id'],PREFIX+'%'):
         item=json.loads(row['feedback'])
         if item['scope']==scope and not item['improved']:
             next_steps.extend(item['comparison'].get('next_steps',[]))
+            if item.get('baseline_source_sha256')==hashlib.sha256((dict(fn).get('best_source') or '').encode()).hexdigest():
+                ineffective.append(item)
         if (item['scope']==scope and item.get('baseline_source_sha256')==hashlib.sha256((dict(fn).get('best_source') or '').encode()).hexdigest()
                 and item['comparison']['register_only'] and not item['improved']):misses.append(item)
     lines.extend(list(dict.fromkeys(next_steps))[:3])
+    if ineffective:
+        examples=list(dict.fromkeys(f"{item['family']} at {item['profile'].get('toolchain','build-owned')} {' '.join(item['profile'].get('flags',[]))}: {item.get('score') if item.get('score') is not None else 'compile/link failure'}" for item in ineffective))
+        lines.append('Already measured without improvement for this saved source/build scope (changed inputs remain eligible): '+ '; '.join(examples[:4])+'. Try a different context or hypothesis before repeating these probes.')
     if len(misses)>=3:
         lines.append(f'{len(misses)} distinct prepared source/context/profile probes retained register-only misses for these inputs. Try declaration lifetimes, original record/prototype context or helper calling convention before equivalent expression rewrites. All mutation families remain available.')
     return '\n'.join(lines)
