@@ -106,7 +106,7 @@ def test_review_recompiles_outside_transaction_and_records_exact_bundle(monkeypa
 def test_explicit_pair_keeps_body_separate_and_only_publishes_exact_bundle(monkeypatch,verdict):
     from types import SimpleNamespace
 
-    from decompnet import scoring
+    from decompnet import scoring, toolchains
     from decompnet.app.permute import Permuter
     from decompnet.rom import export
     net,proj,fn=prepared_net();net.is_rom=lambda p:True;net.fork_slug=lambda s:None
@@ -114,6 +114,7 @@ def test_explicit_pair_keeps_body_separate_and_only_publishes_exact_bundle(monke
     net._function=lambda *args:net.store.one('SELECT * FROM functions WHERE id=1')
     net.local_agent=lambda name:(Agent(1,'autopilot',None),'');net.permuter=Permuter(net)
     settings={'toolchain':'ido-5.3','flags':['-O3']}
+    monkeypatch.setattr(toolchains,'installed',lambda *args:True)
     source='#line 700 "original.c"\nint f(void)\n{\n return 1;\n}\n'
     header='typedef struct {int a;} Item;\n'
     with net.store.tx() as db:db.execute('DELETE FROM claims')

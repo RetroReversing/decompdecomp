@@ -96,7 +96,7 @@ def apply(net, proj, key, log, refresh=False):
 
 def try_pair(net, proj, function, source, header, log, settings=None):
     """Explicit local API candidate: keep body/header separate and rejudge before atomic promotion."""
-    from .. import scoring
+    from .. import scoring, toolchains
     from ..project import compiler_for
     from ..rom.export import _single_definition
     if not net.is_rom(proj) or net.fork_slug(proj['slug']):
@@ -112,6 +112,8 @@ def try_pair(net, proj, function, source, header, log, settings=None):
             or not isinstance(settings.get('flags'),list) or not all(isinstance(flag,str) for flag in settings['flags'])):
         raise NetworkError('Choose an installed compiler and a list of flags for this pair.')
     settings={k:settings[k] for k in ('toolchain','flags')}
+    if toolchains.installed(settings['toolchain']) is None:
+        raise NetworkError('Install this compiler in Compilers & tools before submitting a source/header pair.')
     agent,_=net.local_agent('autopilot')
     if not net.permuter._hold(agent,fn,count_turn=False,seconds=60):
         raise NetworkError('This function is being worked on. Wait until it is released.')
