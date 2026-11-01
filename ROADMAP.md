@@ -1597,6 +1597,7 @@ remain planned: the initial browser toolchain has no matching build-context adap
   exhaustion/budgets and failed or pruned work. Imported standalone replay still requires a copied
   build adapter; live imported deep search uses its existing normal judge.
 
+- Done: the update dialog source-download section uses the normal vertical content layout rather than the compact progress-bar class, so instructions and destination controls remain fully visible.
 ### Repair search measurement and combinations
 
 - Done: two bounded flat-score family combination probes, retained exact alternatives in
