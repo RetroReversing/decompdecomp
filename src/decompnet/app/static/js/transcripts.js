@@ -59,6 +59,25 @@ function transcriptToolResponse(text) {
   body.innerHTML = transcriptMarkdown(content);
   return {body, name:response.name};
 }
+/* Only explicit IDs (or an unambiguous legacy name) link concurrent tool exchanges. */
+function transcriptToolPayload(text) {
+  try {
+    const value = JSON.parse(text), name = value?.name || value?.function?.name;
+    return typeof name === 'string' && name.trim() ? {...value, name} : null;
+  } catch { return null; }
+}
+function transcriptToolTitle(request) {
+  let args = request.arguments ?? request.function?.arguments ?? {};
+  if (typeof args === 'string') { try { args = JSON.parse(args); } catch { return request.name; } }
+  const entries = args && typeof args === 'object' ? Object.entries(args) : [];
+  const preview = entries.slice(0, 4).map(([key, value]) => {
+    let text = Array.isArray(value) ? `[${value.length} items]` : value && typeof value === 'object' ? `{${Object.keys(value).length} fields}` : JSON.stringify(value);
+    text = String(text).replace(/\s+/g, ' ');
+    if (text.length > 55) text = text.slice(0, 54) + '…';
+    return `${key}=${text}`;
+  }).join(', ') + (entries.length > 4 ? ', …' : '');
+  return `${request.name}(${preview.length > 160 ? preview.slice(0, 159) + '…' : preview})`;
+}
 /* Older malformed catalogs retain the raw transcript text. */
 function transcriptToolCatalog(text) {
   let tools;
@@ -82,10 +101,11 @@ $("helperTranscript").onclick = async () => {
   const select = dialog.querySelector("select"), events = dialog.querySelector("[data-events]");
   const older = dialog.querySelector("[data-older]"), more = dialog.querySelector("[data-more]");
   const refresh = dialog.querySelector("[data-refresh]");
-  let session = 0, after = 0, oldest = 0;
+  let session = 0, after = 0, oldest = 0, eventCount = 0;
+  const pendingTools = new Map();
   const endpoint = () => `/api/transcript?slug=${encodeURIComponent(slug)}&helper=${encodeURIComponent(helper)}`;
   function showEvents(result, reset) {
-    if (reset) { events.replaceChildren(); after = 0; }
+    if (reset) { events.replaceChildren(); after = 0; eventCount = 0; pendingTools.clear(); }
     for (const entry of result.events) {
       const details = document.createElement("details"), summary = document.createElement("summary");
       const labels = {prompt: "Initial prompt", instructions: "App instructions", tool_definitions: "Tool definitions",
@@ -95,13 +115,8 @@ $("helperTranscript").onclick = async () => {
       details.open = entry.kind === "error" || (entry.kind === "text" && entry.text.length <= 2000);
       const label = document.createElement("span"), time = document.createElement("time"), size = document.createElement("span");
       label.className = "transcript-event-label"; label.textContent = labels[entry.kind] || entry.kind;
-      if (entry.kind === "tool_request") {
-        try {
-          const request = JSON.parse(entry.text);
-          const name = request?.name || request?.function?.name;
-          if (typeof name === "string" && name.trim()) label.textContent = `Tool request · ${name}`;
-        } catch { /* Older or incomplete entries keep the generic label and full original text. */ }
-      }
+      const tool = ['tool_request', 'tool_response'].includes(entry.kind) ? transcriptToolPayload(entry.text) : null;
+      if (entry.kind === 'tool_request' && tool) label.textContent = `Tool · ${transcriptToolTitle(tool)}`;
       time.textContent = clock(entry.created_at);
       size.className = "transcript-event-size"; size.textContent = `${entry.text.length.toLocaleString()} characters`;
       summary.append(label, time, size);
@@ -132,9 +147,35 @@ $("helperTranscript").onclick = async () => {
         raw.append(rawLabel, pre); details.append(summary, catalog, raw, copy);
         label.textContent = `Available tools · ${catalog.children.length - 1}`;
       } else details.append(summary, pre, copy);
-      events.append(details); after = entry.id;
+      let parent = null;
+      if (tool) {
+        const key = tool.call_id ? `id:${tool.call_id}` : `name:${tool.name}`;
+        if (entry.kind === 'tool_request') {
+          details.className += ' transcript-tool-exchange';
+          // Keep raw request JSON behind its own disclosure inside the shared call card.
+          const args = document.createElement('details'), argsLabel = document.createElement('summary');
+          args.className = 'transcript-tool-arguments'; argsLabel.textContent = 'Request arguments';
+          args.append(argsLabel, pre, copy); details.replaceChildren(); details.append(summary, args);
+          size.textContent = `${entry.text.length.toLocaleString()} request characters · awaiting response`;
+          const waiting = pendingTools.get(key) || [];
+          waiting.push({details, size, name:tool.name, length:entry.text.length}); pendingTools.set(key, waiting);
+        } else {
+          const waiting = pendingTools.get(key) || [];
+          if (waiting.length === 1 && waiting[0].name === tool.name) {
+            parent = waiting[0]; pendingTools.delete(key);
+            label.textContent = tool.error ? 'Response · error' : 'Response';
+            details.className += ' transcript-tool-result';
+            details.open = true;
+            parent.details.append(details);
+            if (tool.error) { parent.details.className += ' transcript-event-error'; details.open = true; }
+            parent.size.textContent = `${parent.length.toLocaleString()} request · ${entry.text.length.toLocaleString()} response characters`;
+          }
+        }
+      }
+      if (!parent) events.append(details);
+      after = entry.id; eventCount++;
     }
-    dialog.querySelector("[data-event-count]").textContent = `${events.children.length} events loaded`;
+    dialog.querySelector("[data-event-count]").textContent = `${eventCount} events loaded`;
     more.hidden = !result.more;
     if (!events.children.length) events.textContent = "No transcript was recorded for this session. Earlier sessions cannot be reconstructed.";
     const row = result.session;

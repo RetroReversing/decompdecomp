@@ -400,6 +400,7 @@ setInterval(() => checkUpdate(false, true), 10 * 60 * 1000);
 /* Manual clients have project-scoped credentials, independent of managed helper processes. */
 let manualMcpRead = 0;
 async function loadManualMcp() {
+  loadGlobalPrompts();
   loadGlobalAgentTools();
   const select = $("mcpProject"), previous = select.value;
   select.innerHTML = S.projects.map(p => `<option value="${esc(p.slug)}">${esc(p.title || p.name || p.slug)}</option>`).join("");

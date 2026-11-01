@@ -835,7 +835,7 @@ def test_the_api_helper_folds_each_finished_function_into_a_line(tmp_path, monke
     m = agents.Manager(net, tmp_path, URL)
     m.prompt = lambda s: "task"
     s = m._record("game", "api", "api-m-1", "box #1", {"base_url": "http://mock/v1", "model": "m", "per_session": 2,
-                                                       "context_tokens": 32768})
+                                                       "context_tokens": 32768, "prompts":{"instructions":"Custom API experiment instructions"}})
     s.stop = Quick()
 
     def call(net, agent, slug, name, args):
@@ -859,6 +859,8 @@ def test_the_api_helper_folds_each_finished_function_into_a_line(tmp_path, monke
     real = httpx.Client
     monkeypatch.setattr(httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
     m._run(s)
+    assert sent[0][0] == {'role':'system','content':'Custom API experiment instructions'}
+    assert any(e['kind']=='instructions' and e['text']=='Custom API experiment instructions' for e in m.transcript('game',s.id)['events'])
     assert len(sent) == 4 and s.state == "stopped" and "nothing left" in s.why
     third = sent[2]  # after f0 matched: its claim folded into a line, the match itself whole
     assert third[:2] == sent[0][:2] and "folded" in third[3]["content"] and "matched f0" in third[3]["content"]
@@ -882,7 +884,7 @@ def test_an_api_helper_that_never_starts_says_why(tmp_path, monkeypatch, answer,
     net = _game(tmp_path)
     m = agents.Manager(net, tmp_path, URL)
     m.prompt = lambda s: "task"
-    s = m._record("game", "api", "api-m-1", "box #1", {"base_url": "http://mock/v1", "model": "m", "context_tokens": 32768})
+    s = m._record("game", "api", "api-m-1", "box #1", {"base_url": "http://mock/v1", "model": "m", "context_tokens": 32768, "prompts":{"instructions":"Custom API experiment instructions"}})
     s.stop = Quick()
     real = httpx.Client
     monkeypatch.setattr(httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(

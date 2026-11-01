@@ -334,6 +334,7 @@ class Session:
     seq: int = 0
     record: Callable[[str, object], None] | None = field(default=None, repr=False)  # current session transcript callback
     session_id: int = 0
+    prompt_config: dict | None = field(default=None, repr=False)
     context_budget: object | None = field(default=None, repr=False)
     rotated: bool = False
     stop: threading.Event = field(default_factory=threading.Event)
@@ -646,6 +647,29 @@ class Manager:
                 kept = {k: v for k, v in s.options.items() if k != "api_key"}
                 db.execute("UPDATE helpers SET options=? WHERE id=?", (json.dumps(kept), s.id))
             return policy
+
+    def set_prompts(self, sid, overrides):
+        from .prompt_settings import validate
+        overrides = validate(overrides)
+        with self._lock:
+            session = self.sessions.get(sid)
+            if session is None:
+                raise ValueError('This agent no longer exists. Refresh the agents list.')
+            session.options['prompts'] = overrides
+            with self.net.store.tx() as db:
+                kept = {k:v for k,v in session.options.items() if k != 'api_key'}
+                db.execute('UPDATE helpers SET options=? WHERE id=?', (json.dumps(kept), session.id))
+
+    def app_instructions(self, session):
+        from .prompt_settings import for_session
+        return for_session(self.net, session)['instructions']
+
+    def instructions_for(self, agent, slug):
+        for session in list(self.sessions.values()):
+            if session.agent_name == agent.name and session.slug == slug:
+                return self.app_instructions(session)
+        from .prompt_settings import effective
+        return effective(self.net, {})['instructions']
 
     def set_tool(self, sid, name, enabled):
         from .tool_policy import validate
@@ -1198,6 +1222,8 @@ class Manager:
         self.net.release_stopped([agent_id], (s.why or "it stopped")[:200])
 
     def _session_begin(self, s: Session) -> int:
+        from .prompt_settings import effective
+        s.prompt_config = effective(self.net, s.options)
         s.usage = _fresh_usage()
         with self.net.store.tx() as db:
             row = db.execute("INSERT INTO helper_sessions(helper_id, project, kind, model, agent, started_at, task) "
@@ -1283,20 +1309,22 @@ class Manager:
         return text
 
     def _prompt(self, s: Session) -> str:
+        from .prompt_settings import for_session
+        templates = for_session(self.net, s)
         ov = self.net.overview(s.slug)
         count = s.options.get("per_session", PER_SESSION)
         if s.options.get("task") == "readable":  # (in either mode: the step that differs is the mode's)
-            return tools.READABLE_PROMPT.format(title=ov["title"], count=count, names=tools.READABLE_FORK
+            return templates['initial_readable'].format(title=ov["title"], count=count, names=tools.READABLE_FORK
                                                 if ov.get("kind") == "fork" else tools.READABLE_ROM)
         if ov.get("kind") == "fork":
             guides = ["fork", "objdiff", *consoles.get(ov.get("platform")).guides]
             platform = ov.get("platform_name") or "its platform"
             what = tools.FORK_SCRATCH if ov.get("origin") == "scratch" else tools.FORK_PUBLIC
-            return tools.FORK_PROMPT.format(title=ov["title"], what=what.format(platform=platform),
+            return templates['initial_project'].format(title=ov["title"], what=what.format(platform=platform),
                                             count=count, budget=network.stall_budget_text(),
                                             guides=", ".join(f'guide("{g}")' for g in guides))
         guide = consoles.get(ov.get("platform")).up_front_guide(ov["compiler"]["toolchain"])
-        return tools.WORK_PROMPT.format(title=ov["title"], count=count, budget=network.stall_budget_text(),
+        return templates['initial_rom'].format(title=ov["title"], count=count, budget=network.stall_budget_text(),
                                         compiler_guide=guide)
 
     def _command(self, s: Session, token: str, workdir: Path) -> tuple[list[str], dict, str]:
@@ -1351,7 +1379,7 @@ class Manager:
                                                           json.dumps(value, ensure_ascii=False, indent=2))
                                                    .replace(token, '[redacted]'))
             s.record('prompt', prompt)
-            s.record('instructions', tools.INSTRUCTIONS)
+            s.record('instructions', self.app_instructions(s))
         s.push("info", f"session {s.runs}: {k.name} started")
         if os.name == "nt":
             import sys

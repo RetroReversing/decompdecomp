@@ -95,6 +95,40 @@ def register(app: App) -> None:
     async def api_state(request: Request) -> Response:
         return guard(request) or JSONResponse(await (app.ui_call or call)(state))
 
+    @mcp.custom_route('/api/agent-prompts', methods=['GET', 'POST'])
+    async def agent_prompts(request: Request) -> Response:
+        from dataclasses import replace
+
+        from .. import prompt_settings
+        if bad := guard(request, write=request.method == 'POST'):
+            return bad
+        try:
+            data = await body(request) if request.method == 'POST' else request.query_params
+            helper = manager.sessions.get(str(data.get('helper', ''))) if data.get('helper') else None
+            if data.get('helper') and helper is None:
+                raise NetworkError('This agent no longer exists. Refresh the agents list.')
+            if request.method == 'POST':
+                action = data.get('action', 'save')
+                overrides = prompt_settings.validate(data.get('overrides', {}))
+                if action not in {'save','preview'}:
+                    raise ValueError('Choose save or preview.')
+                if action == 'preview':
+                    if helper:
+                        draft = replace(helper, options={**helper.options,'prompts':overrides}, prompt_config=None)
+                        return JSONResponse({'initial':await call(manager.prompt, draft),
+                                             'instructions':manager.app_instructions(draft)})
+                    templates = prompt_settings.defaults() | overrides
+                    return JSONResponse({'initial':'\n\n'.join(prompt_settings.LABELS[k]+'\n'+templates[k]
+                                         for k in prompt_settings.FIELDS if k != 'instructions'),
+                                         'instructions':templates['instructions']})
+                if helper:
+                    await call(manager.set_prompts, helper.id, overrides)
+                else:
+                    await call(prompt_settings.save_global, net, overrides)
+            return JSONResponse(await call(prompt_settings.view, net, helper))
+        except (NetworkError, ValueError, KeyError) as error:
+            return fail(error)
+
     @mcp.custom_route('/api/agent-tools', methods=['GET', 'POST'])
     async def agent_tools(request: Request) -> Response:
         from .. import tool_policy, tools
@@ -132,7 +166,7 @@ def register(app: App) -> None:
 
     @mcp.custom_route("/api/manual-mcp", methods=["GET", "POST"])
     async def manual_mcp_connection(request: Request) -> Response:
-        from .. import manual_mcp, tools
+        from .. import manual_mcp, prompt_settings, tools
         if (bad := guard(request, write=request.method == "POST")):
             return bad
         try:
@@ -144,7 +178,7 @@ def register(app: App) -> None:
                 if data.get('action') != 'create':
                     raise ValueError('Choose create or revoke.')
                 item = await call(manual_mcp.create, net, settings, str(data.get('slug') or ''))
-                return JSONResponse({**item, 'url': mcp_url, 'instructions': tools.INSTRUCTIONS})
+                return JSONResponse({**item, 'url': mcp_url, 'instructions': prompt_settings.effective(net, {})['instructions']})
             slug = request.query_params.get('slug')
             if slug:
                 await call(net.project_row, slug)
