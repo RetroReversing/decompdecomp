@@ -417,3 +417,10 @@ def test_parallel_deep_activity_keeps_cards_logs_and_expansion_scoped():
         pytest.skip('needs node')
     subprocess.run([NODE, str(Path(__file__).with_name('gui_deep_activity.js'))], check=True,
                    capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)
+
+
+def test_fork_update_source_ui_saves_validated_source_and_handles_errors():
+    if NODE is None:
+        pytest.skip('needs node')
+    subprocess.run([NODE, str(Path(__file__).with_name('gui_update_source.js'))], check=True,
+                   capture_output=True, text=True, timeout=GUI_TIMEOUT_SECONDS)

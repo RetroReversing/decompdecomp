@@ -171,9 +171,15 @@ async function showSettingsPage() {
   $("setAbout").innerHTML = `<p class="small">${esc(versionLine(st))} on ${esc(st.platform)}. Free and open source (AGPL-3.0): <a class="link" href="https://github.com/RetroReversing/decompdecomp" target="_blank" rel="noopener">its source</a>. Everything runs on this computer: no account, nothing sent to us.</p>
     <p class="small muted">A continuation of <a class="link" href="https://github.com/i12bp8/decomp.wtf" target="_blank" rel="noopener">decomp.wtf</a> by Sam Wolfs, who built it up to 0.10.6. Thank you, Sam.</p>
     ${st.dev ? `<div class="field"><span>Updates</span><p class="muted small">A development copy: no updates. Update it with <code>git pull</code>.</p></div>` : `
-    <div class="field"><span>Updates come from ${from}</span><div class="row"><span class="muted small grow" id="upText">Checking…</span><button class="ghost small-btn" id="upCheck" type="button">Check now</button></div></div>
+    <div class="field"><span>Updates come from ${esc(inst.repo || "RetroReversing/decompdecomp")} · ${from}</span><div class="row"><span class="muted small grow" id="upText">Checking…</span><button class="ghost small-btn" id="upCheck" type="button">Check now</button></div></div>
     <label class="check"><input type="checkbox" id="checkUpdateSet" ${st.settings.check_updates ? "checked" : ""}><span><b>Look for updates</b> now and then (it only asks ${inst.channel === "branch" ? "GitHub for the branch's newest commit" : "GitHub which version is current"}; nothing about you or your projects is sent).</span></label>
     <label class="check"><input type="checkbox" id="autoUpdateSet" ${st.settings.auto_update ? "checked" : ""}><span><b>Install updates by itself</b> when no helper agent is working (it restarts in a few seconds; agents carry on).</span></label>
+    <div class="field"><span>Update from a GitHub fork</span>
+      <input id="updateRepo" class="mono" aria-label="Update repository" placeholder="https://github.com/owner/decompdecomp" value="${esc(`https://github.com/${inst.repo || 'RetroReversing/decompdecomp'}`)}">
+      <div class="row"><input id="updateRepoBranch" aria-label="Fork update branch" value="${esc(inst.branch || 'main')}" placeholder="main"><button class="ghost small-btn" id="saveUpdateRepo" type="button">Save update source</button></div>
+      <p class="small muted">Future updates follow this repository and branch, including main. Only use a fork you trust: updating runs its code. Saving checks the source; it does not install or restart. Use Check now to review its update. If automatic updates are enabled, future checks can install updates from this fork automatically.</p>
+      <pre class="joblog" id="updateRepoLog" hidden></pre>
+    </div>
     <div class="field"><span>Get decompdecomp from a branch</span><div class="row"><input id="srcBranch" class="mono grow" placeholder="its name on GitHub" value="${inst.channel === "branch" ? esc(inst.branch) : ""}">
       <button class="ghost small-btn" id="srcBranchGo" type="button">Switch to it</button>${inst.channel === "branch" ? `<button class="ghost small-btn" id="srcRelease" type="button">Back to releases</button>` : ""}</div>
       <p class="muted small">A branch is a change being tested before it's released: it can break. Use one when you're asked to, and say so when you report a problem.</p></div>`}
@@ -192,6 +198,15 @@ async function showSettingsPage() {
     checkUpdate(false, false).then(showUpdate);
     $("upCheck").onclick = async () => { $("upText").textContent = "Checking…"; showUpdate(await checkUpdate(true, false)); };
     $("checkUpdateSet").onchange = () => save({ check_updates: $("checkUpdateSet").checked }, $("checkUpdateSet").checked ? "decompdecomp looks for updates." : "decompdecomp won't look for updates (Check now still does).");
+    $("saveUpdateRepo").onclick = async () => {
+      const log = $("updateRepoLog"), button = $("saveUpdateRepo");
+      const finish = beginWork(log, "Checking fork update source", [button], "Update source saved. Use Check now to review the update.");
+      try {
+        await api('/api/update', {method:'POST', body:{action:'source', repo:$("updateRepo").value.trim(), branch:$("updateRepoBranch").value.trim()}});
+        await showSettingsPage();
+      } catch(error) { showJobError(log,error.message); }
+      finally { finish(); }
+    };
     $("srcBranchGo").onclick = () => switchSource("branch", $("srcBranch").value.trim());
     if ($("srcRelease")) $("srcRelease").onclick = () => switchSource("release", "");
     $("autoUpdateSet").onchange = () => save({ auto_update: $("autoUpdateSet").checked }, $("autoUpdateSet").checked ? "decompdecomp installs updates by itself." : "decompdecomp asks before updating.");

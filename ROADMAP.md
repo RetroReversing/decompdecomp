@@ -1355,3 +1355,8 @@ model/compiler rankings, and no family or unmatched function is automatically ex
 - Done: autosave diagnostics put the actual exception, progress path, repair advice
   and fork build on the first log line, retaining the full traceback. Failed
   projects back off for 30 seconds while other projects continue synchronizing.
+- Done: Settings accepts a GitHub fork URL and branch as the update source,
+  validates it before saving, and displays the selected repository. Explicit main
+  follows commits; existing release installs retain their previous behavior.
+  Saving changes no code and does not restart; updates retain normal review and
+  package/platform restrictions. Invalid sources leave the working source intact.

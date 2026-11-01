@@ -33,6 +33,12 @@ def register(app: App) -> None:
             return bad
         if request.method == "POST":
             data = await body(request)
+            if data.get('action') == 'source':
+                try:
+                    source = await call(updater.set_source, str(data.get('repo') or ''), str(data.get('branch') or 'main'))
+                    return JSONResponse({'current': source})
+                except ValueError as e:
+                    return fail(e)
             try:  # {"channel", "branch"}: get decompdecomp from there from now on (Settings)
                 await call(lambda: updater.apply(str(data.get("channel") or ""), str(data.get("branch") or "")))
             except ValueError as e:
