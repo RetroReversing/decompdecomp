@@ -334,6 +334,8 @@ class Session:
     seq: int = 0
     record: Callable[[str, object], None] | None = field(default=None, repr=False)  # current session transcript callback
     session_id: int = 0
+    context_budget: object | None = field(default=None, repr=False)
+    rotated: bool = False
     stop: threading.Event = field(default_factory=threading.Event)
     thread: threading.Thread | None = None
     proc: subprocess.Popen | None = None
@@ -1090,11 +1092,11 @@ class Manager:
                 s.error = f"{type(e).__name__}: {e}"
                 s.push("error", s.error)
                 ok = False
-            if ok and not s.stop.is_set() and self._progress(agent.id) == before:
+            if ok and not s.stop.is_set() and not s.rotated and self._progress(agent.id) == before:
                 s.error = "the session ended without compiling anything (its messages are in its details)"
                 s.push("error", s.error)
                 ok = False
-            self._session_end(s, row, agent, began, "stopped" if s.stop.is_set() else "ok" if ok else
+            self._session_end(s, row, agent, began, "stopped" if s.stop.is_set() else "rotated" if s.rotated else "ok" if ok else
                               "limit" if s.limited else "signin" if s.auth_failed else "failed")
             if s.stop.is_set():
                 break
@@ -1183,6 +1185,10 @@ class Manager:
                               "VALUES(?,?,?,?,?,?,?)", (s.id, s.slug, s.kind, s.model or agents.get(s.kind).config_model() or "",
                                                       s.agent_name, time.time(), s.options.get("task") or "")).lastrowid
         s.session_id = row
+        from .session_budget import start
+        agent_row=self.net.store.one('SELECT id FROM agents WHERE name=?',s.agent_name)
+        s.context_budget=start(self.net,agent_row['id'],s.slug,s.options) if agent_row else None
+        s.rotated=False
         s.record = lambda kind, value: self.transcripts.append(row, kind, value, (s.options.get('api_key'),))
         return row
 
@@ -1389,7 +1395,10 @@ class Manager:
                     last_error = text
                     refused = refused or (text if k.fatal(text) else "")
                 s.push(kind, text)
-            if finished or s.stop.is_set():
+            if s.context_budget and s.context_budget.ready() and not s.stop.is_set():
+                s.rotated=True
+                s.push('info','Starting a fresh session to keep context small; saved work and claims are retained.')
+            if finished or s.stop.is_set() or s.rotated:
                 _terminate(proc)
                 break
         code = proc.wait()
@@ -1398,7 +1407,7 @@ class Manager:
         # Bound the wait in case a descendant inherited the pipe.
         stderr_thread.join(timeout=1)
         s.proc = None
-        if s.stop.is_set():
+        if s.stop.is_set() or s.rotated:
             return True
         everything = " ".join([*said, *errors])
         if refused:
