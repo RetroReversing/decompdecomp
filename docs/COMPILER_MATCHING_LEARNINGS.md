@@ -784,6 +784,16 @@ Private isolated replay of the zero-test capture recovered its recorded successf
 budget and remains unresolved. Both results are replay evidence against recorded controls, not new ROM
 matches or claims that the complete historical edit has been automated.
 
+### Prepared context may need flags before it improves
+
+A source-assisted MIPS/IDO session found original typed candidates that were worse under the working
+`-O2` profile but byte-identical under `-O3`. Do not restrict profile probes to already promoted
+source/context improvements. Preparation now spends at most two remaining compile-budget slots on
+private-context profiles even when the current-profile candidate loses. It stores source, header,
+profile and the ordinary link/data verdict together as review evidence; it does not silently promote
+that context or change compiler settings. A synthetic regression verifies an exact alternate-profile
+verdict with unchanged working settings. This test establishes the control flow, not a new game match.
+
 ### Constant indices, reference balancing and evidence reduction (1 November 2026)
 
 Further controlled replays from the same private KMC checkpoint support two additional shapes:
@@ -808,3 +818,21 @@ for the successful output in the tested decomposition. Native GCC diagnostic out
 output across thirteen captured phases. Neither phase statistics nor ablation results replace the linked
 judge; allocated static helper code, initialized data, BSS sizes and named relocations are included in the
 frozen-output comparison. See `docs/repair-replay.md` for limits and controls.
+
+### Narrow increment expression shapes (1 November 2026)
+
+During an unfinished large MIPS routine investigation with KMC GCC 2.7.2 and
+`-G0 -mips3 -mgp32 -mfp32 -O2 -fno-strength-reduce -msoft-float`, a short-counter
+prefix increment recovered a target loop-tail register pattern. A postincrement
+embedded in a field store and one in an address expression recovered additional
+register choices. Reviewed live candidates improved from displayed score 667 to
+622 across several edits; the routine is still unmatched. This is partial evidence,
+not a new exact function match or proof of the original source spelling.
+
+The shared generator now proposes adjacent `i += 1; v = i;` as `v = ++i;` and
+`p->field = i; i += 1;` as `p->field = i++;`, with unescaped local scalar counters.
+It rejects volatile code, ambiguous statement boundaries and side-effecting lvalues.
+Synthetic pinned-compiler controls verify generated shapes independently of the
+private investigation. Nonadjacent motion, bucket-address postincrements, automatic
+counter narrowing and frame padding are deliberately not inferred by this rule:
+those need additional liveness/range evidence. Normal budgets and exact judges apply.

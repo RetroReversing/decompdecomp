@@ -27,6 +27,7 @@ from . import (
     float_intermediate_repairs,
     formatter_repairs,
     global_store_repairs,
+    increment_expression_repairs,
     inferred_layout_repairs,
     inline_scheduling_repairs,
     integer_lifetime_repairs,
@@ -58,7 +59,7 @@ from . import (
     target_local_repairs,
 )
 
-AGENT_FAMILIES = allocator_shape_repairs.FAMILIES + buffer_address_repairs.FAMILIES + normalization_repairs.FAMILIES + call_lifetime_repairs.FAMILIES + sdk_io_repairs.FAMILIES + target_local_repairs.FAMILIES + formatter_repairs.FAMILIES + ('target_switch_order',) + inline_scheduling_repairs.FAMILIES + ('runtime_scalar_signature', 'shared_return_tail', 'direct_compound_store', 'redundant_loop_guard', 'float_argument_bits', 'arithmetic_operand_order', 'call_forwarded_arguments', 'small_copy', 'typed_record_address', 'one_shot_scope', 'one_shot_unwrap',
+AGENT_FAMILIES = increment_expression_repairs.FAMILIES + allocator_shape_repairs.FAMILIES + buffer_address_repairs.FAMILIES + normalization_repairs.FAMILIES + call_lifetime_repairs.FAMILIES + sdk_io_repairs.FAMILIES + target_local_repairs.FAMILIES + formatter_repairs.FAMILIES + ('target_switch_order',) + inline_scheduling_repairs.FAMILIES + ('runtime_scalar_signature', 'shared_return_tail', 'direct_compound_store', 'redundant_loop_guard', 'float_argument_bits', 'arithmetic_operand_order', 'call_forwarded_arguments', 'small_copy', 'typed_record_address', 'one_shot_scope', 'one_shot_unwrap',
                   'pointer_block_scope', 'array_address_share', 'combined_integer_lifetimes', 'inferred_record_layout',
                   'float_product_intermediate','pointer_chase_reuse','independent_assignment_order',
                   'terminal_early_return','member_store_replay','scalar_global_address','split_mask_stores')
@@ -104,6 +105,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
         proposals.append(text)
         labels[text] = family
     for family, text in captured_lifetimes.variants(source, name):
+        proposals.append(text)
+        labels[text] = family
+    for family, text in increment_expression_repairs.variants(source, name):
         proposals.append(text)
         labels[text] = family
     for family, text in captured_control_repairs.variants(source,name):
