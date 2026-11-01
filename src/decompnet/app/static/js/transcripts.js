@@ -3,7 +3,7 @@ function transcriptMarkdown(text) {
   const escape = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
   const inline = text => {
     const codes = [];
-    let safe = escape(text).replace(/`([^`]+)`/g, (_, code) => { codes.push(`<code>${code}</code>`); return `\u0000${codes.length - 1}\u0000`; });
+    let safe = escape(text).replace(/(`+)(.*?)\1(?!`)/g, (_, fence, code) => { if (code.startsWith(" ") && code.endsWith(" ")) code = code.slice(1, -1); codes.push(`<code>${code}</code>`); return `\u0000${codes.length - 1}\u0000`; });
     safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\*([^*]+)\*/g, '<em>$1</em>');
     return safe.replace(/\u0000(\d+)\u0000/g, (_, index) => codes[Number(index)] || "");
@@ -39,7 +39,16 @@ function transcriptMarkdown(text) {
       blocks.push(`<${tag}>${items.join("")}</${tag}>`); continue;
     }
     if (line.includes('|') && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[i + 1])) {
-      const cells = row => row.trim().replace(/^\||\|$/g, '').split('|');
+      const cells = row => {
+        const parts = [''];
+        for (const char of row.trim().replace(/^\||\|$/g, '')) {
+          const last = parts.length - 1;
+          if (char === '|' && parts[last].endsWith('\\')) parts[last] = parts[last].slice(0, -1) + '|';
+          else if (char === '|') parts.push('');
+          else parts[last] += char;
+        }
+        return parts;
+      };
       const head = cells(line).map(c => `<th>${inline(c.trim())}</th>`).join(''); i += 2;
       const rows = [];
       while (i < lines.length && lines[i].includes('|') && lines[i].trim()) rows.push(`<tr>${cells(lines[i++]).map(c => `<td>${inline(c.trim())}</td>`).join('')}</tr>`);

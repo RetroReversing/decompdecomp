@@ -4,6 +4,7 @@ Optimizers coalesce/reorder statements. A location associates an instruction wit
 line; it does not prove that editing that line alone will repair the instruction.
 ECOFF layout/line deltas: binutils include/coff/sym.h and bfd/ecofflink.c.
 """
+import re
 import struct
 from io import BytesIO
 from pathlib import PurePosixPath
@@ -174,16 +175,35 @@ def render(info, source, limit=8):
     """Bounded agent evidence using exactly the same map as the editor."""
     if not info['available']:
         return '\nC-line mapping unavailable (no supported debug line information; flags unchanged).'
-    text = ['\nCompiled C lines associated with differences (advisory, not causes):']
+    text = ['\n### Compiled C lines associated with differences',
+            'Debug-line associations, not proven causes. Expected = target; current = compiled candidate; — = no instruction.', '',
+            '| Line | C | Change | Expected | Current |', '| --- | --- | --- | --- | --- |']
     source_lines = source.splitlines()
+    changes = {'r':'Register', 's':'Stack offset', 'i':'Operand', '|':'Instruction',
+               'o':'Reordered', '<':'Missing', '>':'Extra'}
+    def code(value, bound):
+        value = value.strip()
+        if len(value)>bound:value = value[:bound-1]+'…'
+        if not value:return '—'
+        value = value.replace('|', r'\|').replace('\n',' ')
+        runs = re.findall(r'`+',value)
+        fence = '`' * (max(map(len,runs),default=0)+1)
+        return fence + (' '+value+' ' if runs else value) + fence
+    omitted_instructions = 0
+    limit = max(0,limit)
     for entry in info['lines'][:limit]:
-        text.append(f"  C line {entry['line']}: {source_lines[entry['line'] - 1].strip()[:160]} ({len(entry['instructions'])} differing instructions)")
-        for ins in entry['instructions'][:2]:
-            text.append(f"    {ins['marker']} target: {ins['target'][:120] or '(none)'} | compiled: {ins['compiled'][:120] or '(none)'}")
+        c = code(source_lines[entry['line']-1],160)
+        for index,ins in enumerate(entry['instructions'][:2]):
+            text.append(f"| {entry['line']} | {c if index == 0 else '↳'} | {changes.get(ins['marker'],'Difference')} | {code(ins['target'],120)} | {code(ins['compiled'],120)} |")
+        omitted_instructions += max(0,len(entry['instructions'])-2)
+    if len(info['lines']) > limit or omitted_instructions or info['unmapped']:
+        text.append('')
     if len(info['lines']) > limit:
-        text.append(f"  {len(info['lines']) - limit} more mapped lines omitted.")
+        text.append(f"Mapped lines omitted: {len(info['lines']) - limit}.")
+    if omitted_instructions:
+        text.append(f"Additional instruction rows omitted: {omitted_instructions}.")
     if info['unmapped']:
-        text.append(f"  {info['unmapped']} differences have no compiled C location (including target-only instructions).")
+        text.append(f"Unmapped differences: {info['unmapped']} (no compiled C location, including target-only instructions).")
     return '\n'.join(text)
 
 
@@ -193,13 +213,14 @@ def feedback_note(text):
     for index, line in enumerate(lines):
         if line.startswith('C-line mapping unavailable'):
             return '\n' + line
-        if line.startswith('Compiled C lines associated with differences'):
+        if line.lstrip('# ').startswith('Compiled C lines associated with differences'):
             selected = [line]
             for following in lines[index + 1:]:
-                if not following.startswith('  '):
+                if not (following.startswith(('  ', '|', 'Debug-line associations,', 'Mapped lines omitted:',
+                                              'Additional instruction rows omitted:', 'Unmapped differences:')) or not following):
                     break
                 selected.append(following)
-            return '\n' + '\n'.join(selected)
+            return '\n' + '\n'.join(selected).rstrip()
     return ''
 
 

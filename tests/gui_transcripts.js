@@ -153,5 +153,9 @@ vm.runInContext(source.slice(source.indexOf('$("helperTranscript").onclick =')),
   assert(accounting.firstElementChild.textContent.includes('app only'));
   assert(accounting.firstElementChild.textContent.includes('2 updates'));
   assert(!accounting.open);
+  const mapped=context.transcriptMarkdown('| Line | C | Expected | Current |\n| --- | --- | --- | --- |\n| 29 | `` x = a \\| b; /* `hint` */ `` | — | `move $s4, $zero` |');
+  assert(mapped.includes('<code>x = a | b; /* `hint` */</code>'));
+  assert.equal((mapped.match(/<td>/g)||[]).length,4);
+  assert(mapped.includes('<code>move $s4, $zero</code>'));
   console.log('Transcript full-text rendering, usage, paging and old-session selection passed');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

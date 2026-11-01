@@ -1620,3 +1620,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Done: claim exploration budgets start from the inherited pre-attempt best, so recovery from a worse rewrite does not perpetually renew the allowance. Missing historical baselines retain the legacy counter.
 - Done: explicit reasoned move-on releases bypass the one-time negotiation; compile responses explain the policy. Session function counts are upper limits in default prompts.
 - Done: compiler advice identifies bounded candidate-local C89 declaration suspects and offers explicit recovery. Raw provider usage accounting is grouped in a collapsed app-only transcript section; source events and usage totals remain intact.
+
+- Done: agent C-line mismatch evidence uses bounded Markdown rows with readable change names and Expected/Current columns, escaped code cells, explicit omissions and unlocated differences. Compact feedback retains the whole section; transcripts render escaped pipes and backtick-containing code without breaking table columns.
