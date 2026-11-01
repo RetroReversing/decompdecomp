@@ -12,7 +12,7 @@ const ctx = { $: get, S: { st: { toolchains: [{id:"example", name:"Example", use
   installToolchain: () => {}, api: async (url, opts) => { requests.push([url, opts]); return {job:7}; } };
 vm.createContext(ctx);
 const text = fs.readFileSync(path.join(__dirname,"../src/decompnet/app/static/js/pages.js"), "utf8");
-vm.runInContext(text.slice(text.indexOf("const TOOL_GROUPS"), text.indexOf("/* ------------------------------------------------------------------ settings page */")), ctx);
+vm.runInContext(text.slice(text.indexOf("let toolFilter"), text.indexOf("/* ------------------------------------------------------------------ settings page */")), ctx);
 ctx.renderTools();
 assert(!get("toolGrid").innerHTML.includes("Local Linux compiler runner"));
 ctx.S.st.linux_vm = {ready:false, why:"Install Colima first"};

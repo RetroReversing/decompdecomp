@@ -74,11 +74,17 @@ class Toolchain:
     family: str = ""  # backend family when the registry id doesn't carry its compiler's name
     wine: bool = False  # Windows programs wibo cannot run: use wine on Linux and macOS
     headers: list[str] = field(default_factory=list)  # shared compiler header packs
+    local_files: list[str] = field(default_factory=list)
+    local_places: list[str] = field(default_factory=list)
 
     def __post_init__(self):
         self.requires = [*self.requires, *(h for h in self.headers if h not in self.requires)]
     linux_vm: bool = False  # this Linux pack may use the optional macOS VM runner
     case_sensitive: bool = False  # proxy hosts must preserve archives until extraction on Linux
+
+    @property
+    def local(self) -> bool:
+        return bool(self.local_files)
 
     @property
     def proprietary(self) -> bool:
@@ -104,7 +110,7 @@ class Toolchain:
     @property
     def supported(self) -> bool:
         """Whether this toolchain can be installed on this computer (on Windows, Linux ones through WSL 2)."""
-        return bool(self.git) or bool(self.parts_for()) or self.via_wsl or self.via_vm
+        return self.local or bool(self.git) or bool(self.parts_for()) or self.via_wsl or self.via_vm
 
 
 def current_platform() -> str:
@@ -129,7 +135,11 @@ def unsupported_cpu() -> str | None:
 
 @functools.cache
 def _registry_data() -> dict:
-    return tomllib.loads(resources.files("decompnet").joinpath("toolchains.toml").read_text(encoding="utf-8"))
+    """toolchains.toml's entries, and the kits users bring (kits/: local toolchains, nothing to download)."""
+    from . import kits
+
+    return {**tomllib.loads(resources.files("decompnet").joinpath("toolchains.toml").read_text(encoding="utf-8")),
+            **{k.id: k.toolchain() for k in kits.KITS}}
 
 
 def registry() -> dict[str, Toolchain]:
@@ -139,11 +149,22 @@ def registry() -> dict[str, Toolchain]:
 def known(tid: str) -> bool:
     """Whether the registry has this toolchain id. A project's config can name one it doesn't: the project was made
     with another tool (#118: a Windows project named a 64-bit Visual C++ one), and it must still open."""
-    return tid in _registry_data()
+    return tid in _registry_data() or _own(tid) is not None
+
+
+def _own(tid: str):
+    """A compiler of the user's own kit copies (kits.own_compiler) that a ROM project names as its toolchain; never
+    for a registry id (a kit's own id is one: looking its copies up would ask for it again)."""
+    from . import kits
+
+    return None if tid in _registry_data() else kits.own_compiler(tid)
 
 
 def get(tid: str) -> Toolchain:
     reg = registry()
+    if tid not in reg and (own := _own(tid)) is not None:
+        return Toolchain(id=tid, name=own.name, license="proprietary", source="your own copy: nothing is downloaded",
+                         description="A compiler in your own SDK copy.", flags=list(own.flags))
     if tid not in reg:
         raise ToolchainError(f"unknown toolchain {tid!r}; known: {', '.join(sorted(reg))}")
     return reg[tid]
@@ -188,9 +209,11 @@ def path(tid: str, linux: bool | None = None, *, vm: bool | None = None) -> Path
 
 def installed(tid: str, linux: bool | None = None, *, vm: bool | None = None) -> dict | None:
     manifest = _manifest(tid, linux, vm=vm)
+    if manifest is None and _own(tid) is not None:
+        return {"own": True}
     if manifest is None:
         return None
-    if changed(tid, manifest, path(tid, linux, vm=vm)):
+    if not get(tid).local and changed(tid, manifest, path(tid, linux, vm=vm)):
         return None
     tc = registry().get(tid)
     if tc is not None and any(installed(h, linux, vm=vm) is None for h in tc.headers):
@@ -407,9 +430,102 @@ def _extract(archive: Path, dest: Path, subdir: str | None, keep: dict[str, str]
             shutil.move(str(item), target)
 
 
-def install(tid: str, *, accept_license: bool = False, force: bool = False, log=print, linux: bool | None = None, vm: bool | None = None) -> Path:
-    """Install a toolchain (and what it requires). `linux`: its Linux build for WSL; `vm`: the macOS
-    Linux runner. Both default to the profile's host routing."""
+_INSTALLING = threading.Lock()
+_installs: dict[str, threading.RLock] = {}
+
+
+def find_local(tc: Toolchain, folder: str | Path) -> Path | None:
+    """The folder that holds a copy of a local toolchain (a kit): the one given, or where inside it the kit says
+    (Kit.locate: the XDK's `xbox`, `XDK/xbox`, so the folder its installer unpacks works as it is)."""
+    from . import kits
+
+    return kits.get(tc.id).locate(Path(folder).expanduser())
+
+
+def _copies(m: dict | None) -> list[str]:
+    """The folders a local toolchain's manifest records: a list of copies, or (a manifest from before several copies
+    were allowed) its one `folder`."""
+    m = m if isinstance(m, dict) else {}
+    return list(m.get("folders") or ([m["folder"]] if m.get("folder") else []))
+
+
+def local_folders(tid: str) -> list[Path]:
+    """Where the user's own copies of a local toolchain are (as Setup recorded them) that are still there, or a clear
+    error when none is."""
+    copies = _copies(installed(tid))
+    if not copies:
+        raise ToolchainError(f"{tid} isn't set up: in decompdecomp's Setup, under Compilers & tools, give the "
+                             "folder where your own copy is")
+    tc = get(tid)
+    found = [Path(c) for c in copies if find_local(tc, c) is not None]
+    if not found:
+        raise ToolchainError(f"{tc.name} isn't at {copies[0]} any more (it needs {', '.join(tc.local_files)}): give "
+                             "its folder again in Setup")
+    return found
+
+
+def local_folder(tid: str) -> Path:
+    """The first copy of a local toolchain (local_folders)."""
+    return local_folders(tid)[0]
+
+
+def _link_local(tc: Toolchain, folder: str | Path | None, accept_license: bool, log) -> Path:
+    """Record where a copy of the user's own local toolchain is, besides the copies recorded already. Nothing is
+    copied or downloaded: decompdecomp reads it where it is, so none of it ends up in projects or in the toolchains
+    folder."""
+    if not folder:
+        raise ToolchainError(f"{tc.name} isn't downloaded: give the folder where your own copy is")
+    if tc.proprietary and not accept_license:
+        raise ToolchainError(f"{tc.id} ({tc.name}) is proprietary software. Using your copy is your own licensing "
+                             "decision; accept that to go on.")
+    found = find_local(tc, folder)
+    if found is None:
+        raise ToolchainError(f"{folder} doesn't look like {tc.name}: it should hold {', '.join(tc.local_files)} "
+                             "(give the folder that has them, or the one above it)")
+    copies = [c for c in _copies(_manifest(tc.id)) if find_local(tc, c) is not None]
+    _write_copies(tc, copies if any(Path(c) == found for c in copies) else [*copies, str(found)])
+    log(f"{tc.id}: using your copy at {found}")
+    return found
+
+
+def _write_copies(tc: Toolchain, copies: list[str]) -> None:
+    dest = path(tc.id, False)
+    dest.mkdir(parents=True, exist_ok=True)
+    # (`folder`, the first copy: what a decompdecomp from before several copies reads)
+    _write_manifest(dest, {"id": tc.id, "name": tc.name, "license": tc.license, "source": "local",
+                           "folder": copies[0], "folders": copies, "installed_at": time.time(),
+                           "license_accepted": bool(tc.proprietary), "wsl": False})
+
+
+def remove_local(tid: str, folder: str | Path) -> None:
+    """Forget one of a local toolchain's copies (its files stay where they are); the last one forgotten leaves the
+    toolchain not set up."""
+    tc = get(tid)
+    if not tc.local:
+        raise ToolchainError(f"{tc.name} isn't a copy of your own")
+    copies = _copies(_manifest(tid))
+    left = [c for c in copies if Path(c) != Path(folder)]
+    if len(left) == len(copies):
+        raise ToolchainError(f"{folder} isn't one of your copies of {tc.name}")
+    if left:
+        _write_copies(tc, left)
+    else:
+        (path(tid, False) / MANIFEST).unlink(missing_ok=True)
+
+
+def install(tid: str, *, accept_license: bool = False, force: bool = False, log=print, linux: bool | None = None, vm: bool | None = None, folder: str | Path | None = None) -> Path:
+    """Install a pinned tool once at a time, or register a user's local compiler copy."""
+    tc = get(tid)
+    if tc.local:
+        return _link_local(tc, folder, accept_license, log)
+    with _INSTALLING:
+        lock = _installs.setdefault(tid, threading.RLock())
+    with lock:
+        return _install(tid, accept_license=accept_license, force=force, log=log, linux=linux, vm=vm)
+
+
+def _install(tid: str, *, accept_license: bool, force: bool, log, linux: bool | None, vm: bool | None) -> Path:
+    """Install under the per-tool lock; recursive dependencies use their own locks."""
     tc = get(tid)
     vm = tc.via_vm if vm is None else vm
     linux = (tc.via_wsl or vm) if linux is None else linux
@@ -911,6 +1027,22 @@ def java_version() -> int:
     return int(m.group(1)) if m else 0
 
 
+def _local_status(tc: Toolchain, m: dict) -> dict:
+    """Where the copies of a kit the user set up are, each with its build and whether its files are ones
+    decompdecomp knows (Kit.verify). `folder` and `verified` are the first copy's."""
+    from . import kits
+
+    kit, copies = kits.get(tc.id), []
+    for c in _copies(m):
+        at = find_local(tc, c)
+        try:
+            copies.append({"folder": c, "build": (kit.build(at) or "") if at else "",
+                           "verified": kit.verify(at) if at else "it isn't there any more: remove it or put it back"})
+        except OSError:
+            copies.append({"folder": c, "build": "", "verified": ""})
+    return {"folder": copies[0]["folder"], "verified": copies[0]["verified"], "copies": copies} if copies else {}
+
+
 def status() -> list[dict]:
     """Every pinned compiler and tool: whether it's installed and can be on this computer, its licence, and whether
     its downloads are pinned. For Compilers & tools."""
@@ -921,6 +1053,7 @@ def status() -> list[dict]:
                      "source": tc.source,  # (where it comes from: the install's confirmation says)
                      "installed": m is not None, "supported": tc.supported, "description": tc.description,
                      "changed": m is None and _manifest(tc.id) is not None,
-                     "wsl": tc.via_wsl, "linux_vm": tc.via_vm,
+                     "wsl": tc.via_wsl, "linux_vm": tc.via_vm, "local": tc.local,
+                     **(_local_status(tc, m) if tc.local and m else {}),
                      "pinned": all(p.get("sha256") for p in tc.parts) or bool(tc.commit)})
     return rows

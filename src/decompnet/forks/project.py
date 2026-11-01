@@ -486,6 +486,20 @@ class ForkProject:
         if not need["path"]:
             raise ForkError("decompdecomp doesn't know where this project expects the game; follow its README")
         src = Path(src)
+        if not need["path"].endswith(("/", ".z64")):
+            from ..rom import RomError
+
+            dest = self.root / need["path"]
+            if src.resolve() == dest.resolve():
+                if need.get("sha1") and _sha1(src) != need["sha1"]:
+                    raise ForkError("The game already in this project does not match its expected SHA-1.")
+                return dest
+            try:
+                for console in self._game_consoles():
+                    if console.prepare_fork_game(src, dest, need.get("sha1"), move=move):
+                        return dest
+            except RomError as error:
+                raise ForkError(str(error)) from error
         supplied_sha1 = _sha1(src) if need.get("sha1") or need["path"].endswith(".z64") else None
         details = f"Supplied file SHA-1: {supplied_sha1}"
         normalized_sha1 = None
