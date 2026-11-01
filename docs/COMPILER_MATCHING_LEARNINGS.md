@@ -775,3 +775,28 @@ private-context profiles even when the current-profile candidate loses. It store
 profile and the ordinary link/data verdict together as review evidence; it does not silently promote
 that context or change compiler settings. A synthetic regression verifies an exact alternate-profile
 verdict with unchanged working settings. This test establishes the control flow, not a new game match.
+
+### Constant indices, reference balancing and evidence reduction (1 November 2026)
+
+Further controlled replays from the same private KMC checkpoint support two additional shapes:
+
+- A zero used as an array-store index changed allocation where a dead zero assignment did not.
+  `constant_index_temporary` tries function-local and block-local zero indices on literal stores,
+  plus two small grouped pairs (at most ten candidates). It preserves the pointer, literal, store
+  order and index value. Generated candidates replayed **1846 → 576**, and a pair reached **291**.
+- Identical conditional call arms can change compiler reference counts. `balanced_call_references`
+  tries initialized, unescaped local guards on individual and paired related calls, up to sixteen
+  candidates, fairly interleaved between two guards. Each original call still executes exactly once
+  in its original position. A controlled regression replayed **201 → 151** under fixed settings.
+
+These reproduce existing improvements; they are not new live matches or a compiler-independent success
+rate. No game names, addresses or source patterns are embedded in the generators. Ordinary compilation
+and exact judging decide every proposed repair. Family demotion now resets for a changed parent source,
+while exact compiled-miss caching and the existing source/build-scoped measurement history remain intact.
+
+Repair replay adds optional bounded edit ablation and installed-GCC phase comparison, with downloadable
+private reports. A private replay removed an irrelevant comment while retaining the two changes needed
+for the successful output in the tested decomposition. Native GCC diagnostic output agreed with normal
+output across thirteen captured phases. Neither phase statistics nor ablation results replace the linked
+judge; allocated static helper code, initialized data, BSS sizes and named relocations are included in the
+frozen-output comparison. See `docs/repair-replay.md` for limits and controls.

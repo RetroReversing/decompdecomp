@@ -32,11 +32,11 @@ difference. Missing historical C or context, changed settings and uninstalled to
 Candidate families rotate, one candidate per family per round, so a large family cannot spend every trial.
 
 Results include `compile_error`, `improved`, `neutral`, `regressed`, and `control_output_recovered`.
-The last means the normalized function fingerprint and allocated constant/data sections equal the compiled
+The last means the normalized function fingerprint, all allocated sections (including helper code and BSS sizes), and named relocations equal the compiled
 successful control. It is **not a newly verified game match**: the export does not carry a complete ROM memory
 map or an imported project's build and objdiff objects. Debug information is not part of this comparison.
 Use the original project's normal linked-byte/objdiff judge on a copy before adopting a proposed fix.
-The report stores hashes and bounded diagnostics, rather than another full source export.
+Without edit minimization the report stores hashes and bounded diagnostics. Enabling minimization also includes the resulting private C.
 
 The shared runner also accepts a diagnostic measurement callback for copied project integrations.
 Standalone imported-project replay currently skips cases because full exports do not capture the complete
@@ -66,3 +66,35 @@ private project copy accepted one candidate exactly. This recovered an existing 
 
 Three other private cases produced no control recovery in a 12-trial allowance (one had only nine
 applicable candidates). These neutral outcomes are retained so wider search is evidence-led.
+
+## Minimize a captured fix and inspect GCC phases
+
+The Repair examples replay panel now includes:
+
+- **Minimize captured fix first**, checked by default. Up to half the existing trial budget reverts
+  individual changed line hunks. An edit is removed only if the successful function output and all
+  allocated object sections/relocations still agree. Earlier removals are retained while later hunks
+  are tested. This is bounded ablation, not a proof of semantic necessity or a globally minimal fix.
+- **Capture GCC phase summary**, off by default. At most two additional local compiles add `-da` to
+  the captured failed and successful sources. This requires an already installed native GCC driver;
+  unsupported compilers/adapters are explicit skips, and nothing is downloaded. Each diagnostic output
+  is compared with its normal compile before register/phase evidence is considered comparable.
+- **Download analysis report** after a run. The local report includes the minimized C, retained edit
+  indexes, per-trial outcomes, and bounded phase summaries. Treat it as private game-source evidence.
+
+The phase summaries list captured phases, pseudo counts, reference/lifetime/call-crossing statistics, pseudos disappearing between flow and
+combination, empty conflict lists, selected allocations and truncation markers. These are investigation
+leads, not proof of why a spill exists. Full raw dumps are not retained or sent to an AI service.
+The diagnostic compiles share cancellation and compiler resource limits; they can consume the remaining
+replay time. Analysis never applies C, changes compiler settings or marks a game function matched.
+
+The same controls are available offline:
+
+```sh
+uv run python -m decompnet.app.repair_replay /private/repair-examples.json \
+  --output /private/analysis.json --trials 24 --seconds 120 --minimize --diagnostics
+```
+
+Scalar failed-source penalties are now scoped to the exact parent C as well as its build inputs.
+Changing source permits relevant families to be explored again. Exact failed compiled candidates remain
+cached under their existing build context: retrying a family does not mean recompiling identical input.

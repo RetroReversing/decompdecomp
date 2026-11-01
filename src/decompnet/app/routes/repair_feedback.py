@@ -21,6 +21,9 @@ def register(app):
             trials,seconds=data.get('trials',12),data.get('seconds',30)
             if any(isinstance(v,bool) or not isinstance(v,int) or not 1<=v<=maximum for v,maximum in ((trials,32),(seconds,120))):
                 raise NetworkError('Choose 1–32 trials and 1–120 seconds per example.')
+            minimize,diagnostics=data.get('minimize',False),data.get('diagnostics',False)
+            if not isinstance(minimize,bool) or not isinstance(diagnostics,bool):
+                raise NetworkError('Analysis switches must be booleans.')
             category,status=str(data.get('category') or ''),str(data.get('status') or '')
             comparable=bool(data.get('comparable',True))
             if data.get('id') is not None:
@@ -40,7 +43,7 @@ def register(app):
             with app.jobs._lock:
                 if any(j['kind']=='repair-replay' and j['state']=='running' for j in app.jobs.jobs.values()):
                     raise NetworkError('A repair replay is already running. Stop it or wait before starting another.')
-                job=app.jobs.start('repair-replay',lambda log:repair_replay_jobs.run(feedback,slug,ids,trials,seconds,log),
+                job=app.jobs.start('repair-replay',lambda log:repair_replay_jobs.run(feedback,slug,ids,trials,seconds,log,minimize=minimize,diagnostics=diagnostics),
                                    cancel_message='Repair replay stopped. No game progress or review states changed.')
             return JSONResponse({'job':job})
         except (NetworkError,ValueError,KeyError,TypeError) as error:
