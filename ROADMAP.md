@@ -1315,3 +1315,8 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   project-specific tool descriptions/schemas. Manual clients can create copyable,
   persistent project-scoped credentials and revoke them without exposing the GUI
   secret or saving plaintext bearer tokens. External sessions remain client-managed.
+
+Local browser workers can explicitly pair for manual KMC ROM tasks and host-rejudged plain-C submissions.
+The bridge is origin/project scoped with expiring capabilities, one-use tasks and transaction-time stale/revoked
+checks. Imported object projects, automatic room claims, richer source preprocessing and non-KMC compilers
+remain planned: the initial browser toolchain has no matching build-context adapter for them.

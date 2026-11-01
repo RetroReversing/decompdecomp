@@ -107,6 +107,16 @@ async function prepareLinuxVm() {
 async function showSettingsPage() {
   show("settingsPage");
   const st = await loadState();
+  const projects = await api('/api/projects');
+  $("browserBridgeProject").innerHTML = projects.map(p => `<option value="${esc(p.slug)}">${esc(p.title || p.name || p.slug)}</option>`).join('');
+  const browserAction = async action => {
+    try {
+      const result = await api('/api/browser-bridge/authorize', {method:'POST', body:{action,slug:$("browserBridgeProject").value,origin:$("browserBridgeOrigin").value.trim()}});
+      $("browserBridgeStatus").textContent = action === 'revoke' ? 'Browser access revoked.' : `Pairing code: ${result.code} · valid for five minutes · ${result.origin}`;
+    } catch(error) { $("browserBridgeStatus").textContent = error.message; }
+  };
+  $("browserBridgeCode").onclick = () => browserAction('create');
+  $("browserBridgeRevoke").onclick = () => browserAction('revoke');
   $("setAgents").innerHTML = `
     <label class="field"><span>Functions per agent session (a fresh session keeps the agent's context small)</span><input id="perSession" type="number" min="1" max="20" value="${st.settings.per_session}"></label>
     <label class="field"><span>Budget: stop helper agents when a project's agents have spent this much (US dollars, as the agents report it; 0 = no limit)</span><input id="budgetSet" type="number" min="0" step="0.5" value="${st.settings.budget_usd || 0}"></label>

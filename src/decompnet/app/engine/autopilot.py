@@ -138,13 +138,13 @@ class AutopilotMixin:
         if any(c["status"] in ("checking", "waiting") for c in self.cfg(proj).get("range_checks", [])):
             self.rangechecks.recheck(proj["slug"])  # a neighbour of a suggested range may have spoken
 
-    def try_quietly(self, agent, proj, fn, source: str) -> dict:
+    def try_quietly(self, agent, proj, fn, source: str, before_record=None) -> dict:
         """Judge one candidate for a function nobody holds (autopilot's tries): held only while it compiles,
         recorded as an attempt like any other. {"matched", "score"}."""
         with self.progress.judging(proj["slug"]) if hasattr(self, "progress") else nullcontext():
-            return AutopilotMixin._try_quietly(self, agent, proj, fn, source)
+            return AutopilotMixin._try_quietly(self, agent, proj, fn, source, **({'before_record': before_record} if before_record is not None else {}))
 
-    def _try_quietly(self, agent, proj, fn, source: str) -> dict:
+    def _try_quietly(self, agent, proj, fn, source: str, before_record=None) -> dict:
         fn = self.store.one("SELECT * FROM functions WHERE id=?", fn["id"])
         if fn is None or fn["status"] != "open":
             raise NetworkError("This function is no longer open. Read the updated project before trying another draft.")
@@ -166,7 +166,7 @@ class AutopilotMixin:
             if verdict is not None:
                 d = scoring.DiffResult(0 if verdict else max(1, d.score), d.max_score, d.rows, verdict)
             self._record(fn, agent, d.score, source, ctx["version"], matched=d.bytes_match,
-                         effective_settings=getattr(result, 'effective_settings', None))
+                         effective_settings=getattr(result, 'effective_settings', None), before_record=before_record)
             return {"matched": d.bytes_match, "score": d.score, "max_score": d.max_score,
                     "percent": d.percent, "rows": d.rows,
                     "candidate_target": cand.code.hex(),

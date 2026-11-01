@@ -925,3 +925,21 @@ Reference preparation retains reachable same-file and multiline macro definition
 dependencies. It does not replace original graphics-style macro invocations with guessed expansions, and
 conflicting definitions ask for the correct source/header pair. Reference aggregate parameters and complete
 save/restore snapshots produce ABI/layout diagnostics; no aggregate type or size is invented.
+
+### Local browser workers (initial bridge)
+
+Settings → **Pair a browser worker** creates a five-minute, single-use code for one exact browser origin
+and one local KMC GCC 2.7.2 ROM project. Enter it in N64 Browser Lab at that origin. The browser receives
+a separate one-hour capability, not the window secret or an unrestricted agent token. Revoke project
+browser access in Settings; restarting the app invalidates all pairings.
+
+The browser can manually list unclaimed open functions, fetch one task, and submit plain C. Tasks expire
+after five minutes and can be submitted once. No claim is held while editing. The host rejects claimed
+or stale work and recompiles with its own settings and unchanged byte judge before recording progress.
+Revocation and context/target/settings changes are checked again inside the recording transaction.
+
+Initial scope: local ROM mode, self-contained declarations, KMC MIPS III 32-bit profiles, limited compiler
+flags (including debug levels). No includes, inline assembly or attributes in submitted C, arbitrary
+commands, files, automatic claims or room joins. Imported object projects need a separate adapter.
+Browser localhost permission/CORS failures should be resolved by pairing the exact displayed origin;
+there is no wildcard CORS enablement for existing private APIs.
