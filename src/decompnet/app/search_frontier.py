@@ -5,7 +5,7 @@ replace the saved source. A normal judge must verify any later improvement.
 """
 import hashlib
 
-from . import permuter_focus, region_repairs
+from . import allocation_evidence, permuter_focus, region_repairs
 
 WIDTH = 6
 
@@ -49,6 +49,7 @@ class Frontier:
         node = {'source': source, 'score': score, 'fitness': structure(rows),
                 'frame_distance': permuter_focus.stack_distance(rows),
                 'kind': permuter_focus.classify(rows), 'regions': region_repairs.snapshot(rows),
+                'allocation': allocation_evidence.signature(rows,arch),
                 'output': hashlib.sha256(repr(rows or source).encode()).hexdigest()}
         pool = [n for n in self.nodes if n['source'] != source]+[node]
         numeric = sorted(pool, key=lambda n: (n['score'], n['fitness'], n['frame_distance']))
@@ -56,7 +57,7 @@ class Frontier:
         # Preserve distinct failure shapes: a moved load can be a useful sibling of a register miss.
         selected = numeric[:1]
         for candidate in structural:
-            if not any(n['kind'] == candidate['kind'] for n in selected):
+            if not any(n['allocation'] == candidate['allocation'] for n in selected):
                 selected.append(candidate)
         for candidate in structural:
             if candidate not in selected:

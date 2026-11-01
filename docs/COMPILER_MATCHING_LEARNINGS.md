@@ -1194,3 +1194,49 @@ wall-distance routine's scheduling/base-reuse miss (score 300). Original profile
 A scheduler loop matches its first 256 target bytes, but the candidate has an additional unreachable
 epilogue. The nearby padding entry contains two NOPs followed by the original epilogue; the boundary
 and layout remain unresolved. No target extent, candidate-code denominator or byte gate was changed.
+
+
+## KMC GCC 2.7.2: lifetime, spill and scheduling chain (1 November 2026)
+
+**Evidence:** controlled private matching experiments on a 737-instruction / 2,948-byte function,
+then ordinary live-API exact instruction and linked-byte checks and a complete byte-identical
+12,582,912-byte standalone image rebuild. Profile remained `gcc-2.7.2-kmc`,
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. Approximately 4 h 50 min were spent on the original search.
+No target/judge edits, inline assembly, register bindings or replacement compiler were used.
+Game source, assembly, targets and diagnostic dumps remain private.
+
+| Controlled source change | Observed code generation |
+| --- | --- |
+| Real scalar face-base pointer under register pressure, replacing an explicit stack field | Natural spill reload used the expected scratch register; an equal-offset explicit field did not |
+| Face-base declaration before other long-lived spill candidates | Recovered four target spill offsets |
+| Explicit vector pointer for calls, direct aggregate destination retained | Changed weighted references/lifetimes and global allocation without changing the intended copy |
+| Split secondary counter/table phases; reuse initial index for later phases | Recovered guard registers and delay-slot moves |
+| `s8 one=1` in a byte-fill loop rather than an int constant | Recovered literal/pointer setup order |
+| Place index zeroing immediately after count zeroing, before vector-pointer setup | Removed final scheduling difference |
+
+**New automatic regression replay:** the last pre-match candidate was recompiled in an isolated
+project copy under the same profile: score **60**, linked exact false. The new
+`allocation_initialization_order` generator produced two candidates, one byte-identical to the
+recorded successful source. That candidate recompiled to score **0**, exact linked bytes true,
+with no link/data problems. This recovers an already known match; it is not a new match or proof
+that all preceding manual breakthroughs are automated. Public tests use original synthetic C;
+no private game fixture is committed.
+
+**Negative evidence:** 896 legal prefix orderings did not improve an earlier checkpoint. Extra
+pointer volatility, wide/complex arithmetic, alternate flags and register keywords did not solve
+that allocation plateau. A numerically better candidate enlarged the frame while retaining the
+wrong register cycle. These outcomes are scoped to the tested parent/profile, not universal bans.
+
+**App changes:** coherent register-map and displayed scheduling diagnostics, frame/stack clues in
+agent briefs, distinct register/spill shapes in the bounded frontier, four-step iterative repair
+chains within the same compile quota, mixed scalar/pointer declaration movement, call-pointer
+aliases, narrow byte-fill constants, adjacent independent initialization swaps and small combined
+bridges. Existing source/header/target/compiler-scoped caches and trial history prevent unchanged
+experiments being forgotten; changed parents remain eligible. Shared families reach ROM and
+supported imported C projects. The separate iterative autopilot phase remains MIPS ROM only.
+
+**Limits:** automatic families deliberately cover conservative shapes. The final historical source
+also contains defined equivalent expressions affecting late optimization; it is a generating-source
+hypothesis, not a reconstruction of original spelling. A direct stack field is not evidence of a
+compiler spill. Instruction multiset/register/frame diagnostics guide exploration only; they never
+change numeric scores or replace the ordinary exact judge.

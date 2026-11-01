@@ -38,6 +38,11 @@ repair pipeline. A function match now carries a separate MIPS export-layout chec
 
 ## Automatic repairs before paid agents
 
+Register near misses now include compact allocation clues and bounded pointer-lifetime, mixed declaration-order,
+byte-fill constant and independent initialization-order repairs. The search retains different register/spill
+layouts alongside the numeric winner. Opt-in iterative autopilot can chain four edits within its existing
+per-function compile allowance. Exact acceptance still comes only from the ordinary judge.
+
 Local repairs now include same-type scalar-to-record forwarding, definition-scoped halfword
 lifetimes and definite-assignment zero placement. Structured back edges support nested switches
 and safe internal/outgoing gotos. Register-only near misses prioritize these candidates; the

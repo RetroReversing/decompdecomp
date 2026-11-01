@@ -41,7 +41,7 @@ def test_depth_and_width_bound_cycles_and_branching():
         calls.append(source)
         return dict(score=20, matched=False)
     assert not search.advance(state, evaluate, lambda s, r: [s+str(i) for i in range(8)] + ['seed'], lambda: False)
-    assert len(calls) == 1 + 8 + 24 + 24
+    assert len(calls) == 1 + 8 + 24 * (search.DEPTH - 1)
     assert len(calls) == len(set(calls))
 
 
