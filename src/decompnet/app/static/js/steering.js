@@ -978,26 +978,11 @@ let deepSweepFollowing = null, deepSweepProjectVersion = 0;
 function renderDeepSweepResults(status) {
   const scrollPositions = ["deepSweepRecipes", "deepSweepResults"].map(id =>
     [...$(id).querySelectorAll(".compiler-table")].map(table => [table.scrollTop, table.scrollLeft]));
-  const recipes = status.recipes || [];
-  const detailsOpen = [...$("deepSweepRecipes").querySelectorAll("details")].map(d => d.open);
-  $("deepSweepRecipes").innerHTML = recipes.length ? `<details class="deep-recipe-results"><summary>Rewrite results · ${recipes.length} families</summary><p class="small muted">Tracking starts with new runs and is saved across restarts. Improvements are verified score reductions; random candidates can contain several rewrites, so their final rewrite is shown alongside their saved history. Cached skips and rejected candidates were not recompiled. Score reductions depend on function size; compare them alongside trial counts.</p><div class="compiler-table"><table><thead><tr><th>Rewrite</th><th>Tested</th><th>Improved</th><th>Matched</th><th>Score reduced</th><th>Cached / rejected</th></tr></thead><tbody>${recipes.map(r => `<tr><td>${esc(r.family.replaceAll("_", " "))}</td><td>${r.tested}</td><td>${r.improvements}</td><td>${r.matches}</td><td>${r.score_gain}</td><td>${r.skipped} / ${r.rejected}</td></tr>`).join("")}</tbody></table></div></details>` : "";
-  const measurements = status.measurements || [];
-  if (measurements.length) {
-    const byFamily = new Map();
-    for (const m of measurements) {
-      const row = byFamily.get(m.family) || {family:m.family, attempted:0, compile_failed:0, unscored:0,
-        unchanged:0, worse:0, improved:0, matched:0, elapsed_ms:0, score_gain:0};
-      for (const key of ["attempted", "compile_failed", "unscored", "unchanged", "worse", "improved", "matched", "elapsed_ms", "score_gain"]) row[key] += m[key] || 0;
-      byFamily.set(m.family, row);
-    }
-    const rows = [...byFamily.values()].sort((a,b) => b.improved-a.improved || b.attempted-a.attempted);
-    const burst = measurements.filter(m => m.phase === "local repairs after random improvement");
-    const total = (key) => burst.reduce((n,m) => n + (m[key] || 0), 0);
-    $("deepSweepRecipes").innerHTML += `<details class="deep-recipe-results"><summary>Trial outcomes and time</summary><p class="small muted">New measurements only. Wall time includes compiling and judging; cached skips are excluded. Unscored trials include cases where a project build or comparison could not supply a score.</p><div class="compiler-table"><table><thead><tr><th>Rewrite</th><th>Attempts</th><th>Compile failed</th><th>Unscored</th><th>Unchanged</th><th>Worse</th><th>Improved</th><th>Matches</th><th>Judge time</th><th>Mean / attempt</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.family.replaceAll("_", " "))}</td><td>${r.attempted}</td><td>${r.compile_failed}</td><td>${r.unscored}</td><td>${r.unchanged}</td><td>${r.worse}</td><td>${r.improved}</td><td>${r.matched}</td><td>${(r.elapsed_ms/1000).toFixed(1)}s</td><td>${r.attempted ? (r.elapsed_ms/r.attempted).toFixed(0) + "ms" : "—"}</td></tr>`).join("")}</tbody></table></div><p class="small muted">Follow-up repairs after a random improvement: ${total("attempted")} attempted, ${total("improved")} improved, ${total("matched")} matched, ${total("score_gain")} score reduction; ${(total("elapsed_ms")/1000).toFixed(1)}s judging.</p></details>`;
-  }
+  const detailsOpen = new Map([...$("deepSweepRecipes").querySelectorAll("details")].map((d,i) => [d.dataset?.performanceFamily || d.dataset?.kind || i,d.open]));
+  renderRewritePerformance(status);
   const wins = status.recipe_wins || [];
-  if (wins.length) $("deepSweepRecipes").innerHTML += `<details class="deep-recipe-results"><summary>Recent verified rewrite improvements</summary><div class="compiler-table"><table><thead><tr><th>Date / time</th><th>Function</th><th>Rewrite history</th><th>Score before → after</th></tr></thead><tbody>${wins.map((w, i) => `<tr><td><time datetime="${esc(new Date(w.created_at * 1000).toISOString())}">${esc(new Date(w.created_at * 1000).toLocaleString())}</time></td><td><button type="button" class="ghost small-btn mono" data-deep-win="${i}">${esc(w.function)}</button></td><td>${esc((w.provenance.lineage || []).join(" → ") || w.family.replaceAll("_", " "))}</td><td>${w.previous_score} → ${w.new_score}</td></tr>`).join("")}</tbody></table></div><p class="small muted">The latest 50 improvements are shown; the complete history is stored locally. Rewrites in a random history build on one another.</p></details>`;
-  $("deepSweepRecipes").querySelectorAll("details").forEach((detail, i) => { detail.open = !!detailsOpen[i]; });
+  if (wins.length) $("deepSweepRecipes").innerHTML += `<details class="deep-recipe-results" data-kind="wins"><summary>Recent verified rewrite improvements</summary><div class="compiler-table"><table><thead><tr><th>Date / time</th><th>Function</th><th>Rewrite history</th><th>Score before → after</th></tr></thead><tbody>${wins.map((w, i) => `<tr><td><time datetime="${esc(new Date(w.created_at * 1000).toISOString())}">${esc(new Date(w.created_at * 1000).toLocaleString())}</time></td><td><button type="button" class="ghost small-btn mono" data-deep-win="${i}">${esc(w.function)}</button></td><td>${esc((w.provenance.lineage || []).join(" → ") || w.family.replaceAll("_", " "))}</td><td>${w.previous_score} → ${w.new_score}</td></tr>`).join("")}</tbody></table></div><p class="small muted">The latest 50 improvements are shown; the complete history is stored locally. Rewrites in a random history build on one another.</p></details>`;
+  $("deepSweepRecipes").querySelectorAll("details").forEach((detail, i) => { detail.open = !!detailsOpen.get(detail.dataset?.performanceFamily || detail.dataset?.kind || i); });
   $("deepSweepRecipes").querySelectorAll("[data-deep-win]").forEach(button => {
     button.onclick = () => openFn(wins[Number(button.dataset.deepWin)].function);
   });
