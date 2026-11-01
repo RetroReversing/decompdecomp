@@ -88,6 +88,13 @@ class Flow:
             if stop is None:
                 raise ValueError('unclosed block')
             return stop
+        record = re.match(r'(?:struct|union)(?:\s+'+IDENT+r')?\s*{',text[pos:])
+        if record:
+            closing = close(text,pos+record.end()-1,'{','}')
+            declaration = re.match(r'\s*'+IDENT+r'\s*;',text[closing:]) if closing else None
+            if not declaration:
+                raise ValueError('unsupported record declaration')
+            return closing+declaration.end()
         keyword = re.match(r'(if|while|for|switch|do)\b', text[pos:])
         if keyword:
             kind = keyword[1]

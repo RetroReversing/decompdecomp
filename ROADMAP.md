@@ -1321,6 +1321,20 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   project-specific tool descriptions/schemas. Manual clients can create copyable,
   persistent project-scoped credentials and revoke them without exposing the GUI
   secret or saving plaintext bearer tokens. External sessions remain client-managed.
+
+### Structured lifetime repair and durable match promotion
+
+- Done: shared bounded repairs forward a scalar through an existing same-type record field,
+  separate one explicitly narrowed definition from later full-width uses, and sink a zero into
+  the non-assigning arm of a simple branch. ROM and imported-project C repair pipelines share
+  these candidates; unsupported/ambiguous syntax is skipped. Register-only diffs prioritize them.
+- Done: conditional back-edge recovery handles nested switches and internal/outgoing gotos,
+  refusing external entries and changed break/continue targets. Every candidate uses the usual judge.
+- Done: random search retains quality-unverified starting checkpoints in explicit quality evidence
+  and filters newly introduced nested compound-update chains. This is not an equivalence checker.
+- Done: ROM progress import publishes a newly matched best draft's source and manifest together
+  before acknowledging dirty writes; concurrent editor contributions retain precedence. Imported
+  repository projects already edit their source tree directly and do not use this ROM save format.
 - Done: public imports recognise portable progress bundled with standalone builds.
   ROM selection restores and reverifies saved work through the existing save
   pipeline, preserving the checkout and following the restored project identity.

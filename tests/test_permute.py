@@ -444,3 +444,16 @@ def test_new_saved_improvement_reseeds_next_batch(monkeypatch):
     permuter._permute(AGENT,net.project_row('game'),net.function(),State())
     assert calls == ['external winner']
     assert jobs[1]['source'] == 'external winner'
+
+
+def test_random_search_skips_new_compound_update_chains_and_retains_checkpoint(monkeypatch):
+    from decompnet.app.random_safety import view
+    net=FakeNet()
+    invalid='void f(void){a+=(b+=(c+=(d+=n)));}'
+    p=ScriptedPermuter(net,{invalid:0,'closer':10})
+    batches(monkeypatch,[invalid,'closer'],[])
+    state=State()
+    p._permute(AGENT,net.project_row('game'),net.function(),state)
+    assert invalid not in p.judged and 'closer' in p.judged
+    assert state.matched==0
+    assert SOURCE in '\n'.join(view(net,net.function()))

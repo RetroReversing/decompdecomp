@@ -38,6 +38,14 @@ repair pipeline. A function match now carries a separate MIPS export-layout chec
 
 ## Automatic repairs before paid agents
 
+Local repairs now include same-type scalar-to-record forwarding, definition-scoped halfword
+lifetimes and definite-assignment zero placement. Structured back edges support nested switches
+and safe internal/outgoing gotos. Register-only near misses prioritize these candidates; the
+normal exact judge decides every match. Random search retains its starting C as an explicitly
+quality-unverified checkpoint, available through `get_function(section="quality")`, and rejects
+new compound-update chains that can change meaning. Imported best drafts that become exact are
+published under `src/` with their matched manifest before the save is acknowledged.
+
 The bounded repair pass also tries equal-type chained local assignments in either order, final void calls as explicit returns, and terminal scalar bounds checks as ordered early returns. Empty polling loops can use an explicit entry guard, including in combination with the final-call rewrite. Each candidate is compiled and judged normally.
 
 Candidate-quality reports are advisory: agents, autopilot and the deep permuter can keep working while a concern awaits review. Repair examples retains the warning and saved alternatives; exact matches still require the normal byte or objdiff judge.
