@@ -56,7 +56,7 @@ def find(text: str, name: str) -> tuple[int, int] | None:
         boundary = max(clean.rfind(";", 0, m.start()), clean.rfind("{", 0, m.start()),
                        clean.rfind("}", 0, m.start())) + 1
         prefix = clean[boundary:m.start()]
-        prefix = re.sub(r"(?m)^\s*#[^\n]*", "", prefix).strip()
+        prefix = re.sub(r"(?m)^[ \t]*#[^\n]*", "", prefix).strip()
         if re.search(r"[=()+/!|%]", prefix) or re.search(r"\b(?:for|while|return|if|switch)\b", prefix):
             continue
         # walk to the end of the parameter list

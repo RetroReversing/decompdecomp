@@ -29,7 +29,7 @@ def referenced(text, source, header):
         for name,a,b in blocks:
             if name in used and name not in present:
                 chosen.add((a,b));used.update(re.findall(IDENT,clean[a:b]))
-        for macro in re.finditer(r'(?m)^\s*#\s*define\s+('+IDENT+r')\b([^\n]*)',header):
+        for macro in re.finditer(r'(?m)^[ \t]*#\s*define\s+('+IDENT+r')\b([^\n]*)',header):
             if macro[1] in used:used.update(re.findall(IDENT,macro[2]))
         if (len(chosen),len(used))==before:break
     if not chosen:return ''

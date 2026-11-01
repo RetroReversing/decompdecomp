@@ -19,7 +19,7 @@ def mappings(text):
 def extract(text, name):
     # Function bodies have already been removed. Top-level semicolons delimit declarations,
     # including aggregate initializers; strings/comments remain opaque and line positions stable.
-    clean=_blank(text);clean=re.sub(r'(?m)^\s*#[^\n]*',lambda m:' '*len(m[0]),clean)
+    clean=_blank(text);clean=re.sub(r'(?m)^[ \t]*#[^\n]*',lambda m:' '*len(m[0]),clean)
     start=depth=0;found=[]
     for i,char in enumerate(clean):
         depth+=(char=='{')-(char=='}')
@@ -37,7 +37,7 @@ def extract(text, name):
             elif token==',' and nesting==0:
                 raise NetworkError('Select one object per declaration; supply a prepared definition subset.')
         # Strip preceding directives without moving the object's lines or keeping unrelated includes.
-        original=re.sub(r'(?m)^\s*#[^\n]*',lambda m:re.sub(r'[^\n]',' ',m[0]),original)
+        original=re.sub(r'(?m)^[ \t]*#[^\n]*',lambda m:re.sub(r'[^\n]',' ',m[0]),original)
         storage=re.search(r'\bstatic\b',_blank(original))
         if storage:original=original[:storage.start()]+' '*len(storage[0])+original[storage.end():]
         found.append(f'#line {line_number} \"reference-definitions.c\"\n'+original)

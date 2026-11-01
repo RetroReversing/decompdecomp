@@ -95,6 +95,13 @@ you to review. Imported projects retain their own build settings.
 This cannot identify an unknown original-source function or reconstruct a substantially wrong algorithm. Those
 still need source-assisted agent work. It also cannot guarantee that a nearly matching function will match.
 
+Source preparation now advances through untested private profiles across later passes instead of
+revisiting only the first cached choices. Each round keeps its existing two-new-profile allowance,
+shared compile/time budget and explicit source/header/profile approval gates. Source-lead evidence
+shows reference-versus-saved calls and concrete compiled control differences. Explicit helper
+declaration conflicts suggest prototype/caller review before body permutation. Better saved drafts
+stay selected; possible SDK/retail differences are advisory and do not generate branch patches.
+
 ## Changing a ROM project's compiler
 
 Changing the game's compiler or an address range checks every affected matched function before saving.

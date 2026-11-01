@@ -1,5 +1,9 @@
 # Roadmap
 
+Implemented: source preparation advances cached private profile searches, retains scoped link failures,
+and explains reference/saved-draft call differences plus explicit helper declaration conflicts.
+SDK version identification and automatic retail-source patching are not implemented.
+
 Implemented: explicitly selected definition-preserving source candidates, bounded numeric conditional-branch
 selection with original line layout, advisory repeated-address-load diagnostics; instruction-guided MIPS runtime width/ISA/ABI hypotheses, SDK-signature profile priority,
 proven interior-address source repairs and advisory specialized-call diagnostics; bounded compiler preflight

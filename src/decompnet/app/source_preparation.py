@@ -228,6 +228,8 @@ def prepare(reader, cfg, mapping, aliases, fallback):
     header += '\n' + referenced(original, body, header)
     from .source_context import compatibility, helpers, prototypes
     reader.advisories.extend(compatibility(original, body, header))
+    from .source_next_steps import prototype_hints
+    reader.advisories.extend(prototype_hints(original, body, header))
     from .source_match_context import aggregate_hints
     reader.advisories.extend(aggregate_hints(body, symbol, header))
     helper_context=helpers(reader, cfg, body, header, macros)
@@ -389,7 +391,11 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                     continue
                 fallback = net.forks.permuter_header(fork, fn['name']) if fork else net._context(proj['id'], fn['unit'])['header']
                 reader.advisories.clear()
+                log_line(fn['name'] + ': reading and preparing selected source context…')
                 variants = prepare_variants(reader, cfg, mapping, aliases, fallback)
+                if time.monotonic() >= deadline:
+                    log_line(fn['name'] + ': source preparation used this round’s time allowance before compilation. Use a smaller coherent header before retrying.')
+                    break
                 if not fork and hasattr(net, 'reader'):
                     from .named_array_context import variants as named_arrays
                     for body, context in list(variants):
@@ -414,9 +420,7 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                     from .permuter_inputs import build_state
                     state = (st.started_at, fresh['config'], build_state(fresh)) if fork else inputs(net, fresh, fn)
                     digest = hashlib.sha256(repr((state, source, header, cfg)).encode()).hexdigest()
-                    cache_key = 'local-source-v4:' + digest
-                    if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], cache_key):
-                        continue
+                    cache_key = 'local-source-v5:' + digest
                     lead=reader.origins.get((source,header),{'symbol':mapping[1],'file':mapping[2],'family':'original-context'})
                     if not fork:
                         from ..project import compiler_for
@@ -424,6 +428,10 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                         if rejected(net,fn,destination(net,fresh,fn),source,header,lead,compiler_for(json.loads(fresh['config']),fn['vram'])):
                             log_line(fn['name']+': retained rejected source lead; unchanged trial skipped.')
                             continue
+                    if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], cache_key):
+                        if not fork:
+                            private_profiles(net, fresh, fn, source, header, st, report, log_line, budget, deadline, reader.origins.get((source,header)))
+                        continue
                     report['tested'] += 1
                     st.add(variants=1, repairs=1)
                     log_line(f'Preparing {fn["name"]} ({report["tested"]}/{budget})')
@@ -520,9 +528,14 @@ def private_profiles(net, proj, fn, source, header, st, report, log_line, budget
     choices=[]
     for flags in prioritized(proj,fn,own)+net.flag_variants(own['toolchain'],list(own['flags'])):
         if list(flags)!=list(own['flags']) and list(flags) not in choices:choices.append(list(flags))
-    for flags in choices[:2]:
+    from .source_next_steps import untested_profiles
+    def signature(flags):
+        return 'local-source-profile-v2:'+hashlib.sha256(repr((expected,source,header,own['toolchain'],flags)).encode()).hexdigest()
+    choices=untested_profiles(choices,own['flags'],signature,
+        lambda key:net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?',fn['id'],key))
+    for flags in choices:
         if st.stop.is_set() or report['tested']>=budget or time.monotonic()>=deadline:return
-        key='local-source-profile-v2:'+hashlib.sha256(repr((expected,source,header,own['toolchain'],flags)).encode()).hexdigest()
+        key=signature(flags)
         if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?',fn['id'],key):continue
         private={**dict(proj),'config':json.dumps({**cfg,'compiler':{**own,'flags':flags},'compiler_ranges':[]})}
         from .source_lead_analysis import destination, record
@@ -542,6 +555,9 @@ def private_profiles(net, proj, fn, source, header, st, report, log_line, budget
         if candidate is None:
             record(net,private,fn,source,header,None,[],{**(lead or {}),'family':'compiler-profile'},
                    (time.monotonic()-started)*1000,error='; '.join(problems),scope=scope)
+            with net.store.tx() as db:
+                db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
+                           (fn['id'],key,'failed','private-context link failure',json.dumps({'category':'link_error','diagnostic':'; '.join(problems),'exact':False})))
             continue
         diff=scoring.diff(net._target_obj(fn,proj),candidate)
         exact=bool(verdict if verdict is not None else diff.bytes_match)
