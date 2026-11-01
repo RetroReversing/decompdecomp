@@ -1,5 +1,9 @@
 # Roadmap
 
+Implemented: function notes can be removed, managed-agent session notes append to one handoff, and saved
+score evidence shows the session’s score reduction. Legacy notes are grouped only with session evidence;
+remote workers without local helper-session history retain separate notes and unavailable score attribution.
+
 Implemented: copy a complete selected session (including unloaded messages) to the clipboard; export all recorded sessions and full events for one project agent as JSON to Downloads,
 independent of transcript dialog pagination. Unrecorded CLI internals cannot be reconstructed.
 

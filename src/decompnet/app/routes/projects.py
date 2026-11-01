@@ -237,6 +237,16 @@ def register(app: App) -> None:
 
     def p_note(slug, request, data):
         """A note from you on a function (or the whole project): agents read notes when they claim it."""
+        if data.get('action') == 'remove':
+            proj = net._project(slug)
+            fn = net._function(str(data.get('function', '')), slug)
+            ids = data.get('ids')
+            if not isinstance(ids, list) or not ids or len(ids) > 100 or any(type(i) is not int for i in ids):
+                raise ValueError('Choose a note to remove.')
+            with net.store.tx() as db:
+                db.executemany('DELETE FROM notes WHERE id=? AND project_id=? AND function_id=?',
+                               [(i, proj['id'], fn['id']) for i in ids])
+            return {'message': 'Note removed.'}
         agent, _ = net.local_agent("you")
         text = str(data.get("text", "")).strip()
         if not text:

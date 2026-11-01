@@ -149,3 +149,75 @@ def test_legacy_pre_prompt_probe_is_labelled_without_rewriting_history(setup):
     events=manager.transcript('demo',session.id,row)['events']
     assert [e['kind'] for e in events]==['connection_check_tools','connection_check_tool_request','connection_check_tool_response','prompt','tool_definitions']
     assert net.store.one('SELECT kind FROM helper_messages WHERE session_id=? ORDER BY id',row)['kind']=='tool_definitions'
+
+
+def test_notes_append_per_session_and_persist_score_difference(setup):
+    import time
+
+    from decompnet import agent_notes
+    net, manager, session, sid = setup
+    agent = net.authenticate(net.register_agent('helper', 'test'))
+    proj = net._project('demo')
+    started = net.store.one('SELECT started_at FROM helper_sessions WHERE id=?', sid)['started_at']
+    with net.store.tx() as db:
+        fid = db.execute('INSERT INTO functions(project_id,name) VALUES(?,?)', (proj['id'], 'target')).lastrowid
+        for aid, score, at in [(agent.id, 1040, started-1), (999, 900, started+.01),
+                               (agent.id, 660, started+.02)]:
+            db.execute('INSERT INTO attempts(function_id,agent_id,score,created_at) VALUES(?,?,?,?)',
+                       (fid, aid, score, at))
+    # Use explicit times so the test does not depend on the wall clock advancing.
+    with net.store.tx() as db:
+        db.execute('UPDATE helper_sessions SET ended_at=? WHERE id=?', (started+10, sid))
+        agent_notes.save(db, proj['id'], fid, agent.id, 'First discovery', started+1)
+        agent_notes.save(db, proj['id'], fid, agent.id, 'Additional detail', started+2)
+        agent_notes.save(db, proj['id'], fid, agent.id, 'Additional detail', started+3)
+    notes = net.store.all('SELECT * FROM notes WHERE function_id=?', fid)
+    assert len(notes) == 1
+    assert notes[0]['text'] == 'First discovery\n\nAdditional detail'
+    assert (notes[0]['score_before'], notes[0]['score_after']) == (900, 660)
+    with net.store.tx() as db:
+        db.execute('INSERT INTO attempts(function_id,agent_id,score,created_at) VALUES(?,?,?,?)',
+                   (fid, agent.id, 600, started+4))
+        agent_notes.finish(db, sid)
+    assert net.store.one('SELECT score_after FROM notes WHERE function_id=?', fid)['score_after'] == 600
+    with net.store.tx() as db:
+        agent_notes.save(db, proj['id'], fid, agent.id, 'Different session', started+20)
+    assert len(net.store.all('SELECT * FROM notes WHERE function_id=?', fid)) == 2
+    assert time.time() >= started
+
+
+def test_historical_notes_group_only_with_session_evidence(setup):
+    from decompnet import agent_notes
+    net, manager, session, sid = setup
+    agent = net.authenticate(net.register_agent('helper', 'test'))
+    proj = net._project('demo')
+    started = net.store.one('SELECT started_at FROM helper_sessions WHERE id=?', sid)['started_at']
+    with net.store.tx() as db:
+        fid = db.execute('INSERT INTO functions(project_id,name) VALUES(?,?)', (proj['id'], 'target')).lastrowid
+        for text, at in [('Older', started-10), ('First', started+1), ('Second', started+2)]:
+            db.execute('INSERT INTO notes(project_id,function_id,agent_id,text,created_at) VALUES(?,?,?,?,?)',
+                       (proj['id'], fid, agent.id, text, at))
+    rows = net.store.all('SELECT n.*,a.name AS agent FROM notes n JOIN agents a ON a.id=n.agent_id ORDER BY n.id DESC')
+    grouped = agent_notes.grouped(net.store, rows, proj['id'])
+    assert len(grouped) == 2
+    assert grouped[0]['text'] == 'First\n\nSecond'
+    assert len(grouped[0]['ids']) == 2
+    assert grouped[0]['score_before'] is None
+    assert grouped[1]['text'] == 'Older'
+
+
+def test_notes_recorded_together_without_session_history_merge_without_invented_scores(setup):
+    from decompnet import agent_notes
+    net, manager, session, sid = setup
+    agent = net.authenticate(net.register_agent('imported-agent', 'test'))
+    proj = net._project('demo')
+    with net.store.tx() as db:
+        fid = db.execute('INSERT INTO functions(project_id,name) VALUES(?,?)', (proj['id'], 'imported')).lastrowid
+        for text in ['First note', 'Second note']:
+            db.execute('INSERT INTO notes(project_id,function_id,agent_id,text,created_at) VALUES(?,?,?,?,?)',
+                       (proj['id'], fid, agent.id, text, 1))
+    rows = net.store.all('SELECT n.*,a.name AS agent FROM notes n JOIN agents a ON a.id=n.agent_id ORDER BY n.id DESC')
+    grouped = agent_notes.grouped(net.store, rows, proj['id'])
+    assert len(grouped) == 1 and len(grouped[0]['ids']) == 2
+    assert grouped[0]['text'] == 'First note\n\nSecond note'
+    assert grouped[0]['session_id'] is None and grouped[0]['score_before'] is None

@@ -276,9 +276,21 @@ async function refreshFn(first) {
     $("fnCrossHints").querySelectorAll("[data-name]").forEach((b) => { b.onclick = () => useSuggestedName(b, d); });
     $("fnXref").querySelectorAll(".fn").forEach((x) => { x.onclick = () => openFn(x.dataset.fn.split("+")[0]); });
     // your own notes (written here, as "you") apart from the agents': they aren't notes from an agent
-    const noteRow = (n) => `<div class="note"><small>${esc(n.agent)} · ${clock(n.created_at)}</small>${esc(n.text)}</div>`;
+    const noteRow = (n) => {
+      const gain = n.score_before != null && n.score_after != null ? `Score ${n.score_before} → ${n.score_after} · reduced by ${n.score_before - n.score_after}` : 'Session score difference unavailable';
+      return `<div class="note"><small>${esc(n.agent)} · ${clock(n.created_at)} <button type="button" class="ghost small-btn" data-remove-note="${esc(JSON.stringify(n.ids || [n.id]))}">Remove</button></small>${n.agent === "you" ? "" : `<p class="small muted">${esc(gain)}</p>`}<div style="white-space:pre-wrap">${esc(n.text)}</div></div>`;
+    };
     const notesOf = (mine, title) => { const ns = d.notes.filter((n) => (n.agent === "you") === mine); return ns.length ? `<p class="col-title">${title}</p>` + ns.map(noteRow).join("") : ""; };
     $("fnNotes").innerHTML = notesOf(true, "Your notes") + notesOf(false, "Notes from agents");
+    $("fnNotes").querySelectorAll('[data-remove-note]').forEach(button => { button.onclick = async () => {
+      const slug = S.slug, name = d.name;
+      button.disabled = true;
+      try {
+        await api('/api/note', {method:'POST', body:{slug, function:name, action:'remove', ids:JSON.parse(button.dataset.removeNote)}});
+        if (S.slug === slug && S.fn === name) await refreshFn(false);
+      } catch (error) { toast(esc(error.message), 'err'); button.disabled = false; }
+    }; });
+
     const tab = S.ftab || (d.status === "matched" || !d.scores.length ? "code" : "diff");
     showFnTab(tab);
     $("drawer").removeAttribute("data-loading");

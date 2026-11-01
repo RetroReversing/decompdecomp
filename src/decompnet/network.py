@@ -21,7 +21,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import agents, scoring
+from . import agent_notes, agents, scoring
 from .compiler import compile_source
 from .elfobj import FunctionObj, Reloc, extract_function
 from .project import compiler_config, compiler_for
@@ -1050,8 +1050,7 @@ class Network:
             db.execute("DELETE FROM claims WHERE function_id=?", (fn["id"],))
             db.execute("UPDATE functions SET abandons=abandons+1 WHERE id=?", (fn["id"],))
             if notes.strip() and notes.strip() != "Deep permutation turn ended; improvements shared.":
-                db.execute("INSERT INTO notes(project_id,function_id,agent_id,text,created_at) VALUES(?,?,?,?,?)",
-                           (fn["project_id"], fn["id"], agent.id, notes.strip(), time.time()))
+                agent_notes.save(db, fn["project_id"], fn["id"], agent.id, notes.strip())
             self._event(db, fn["project_id"], agent.id, "release", fn["name"])
             said = self._not_c(db, fn, agent, notes.strip()) if not_c else ""
         from . import claim_stalls
@@ -1174,9 +1173,8 @@ class Network:
                 db.execute("DELETE FROM claims WHERE agent_id=?", (aid,))
                 for r in rows:
                     if aid not in own:  # decompdecomp's own tries leave no notes
-                        db.execute("INSERT INTO notes(project_id,function_id,agent_id,text,created_at) VALUES(?,?,?,?,?)",
-                                   (r["project_id"], r["id"], aid, f"Released because its agent stopped ({why}); its "
-                                    "attempts are kept.", now))
+                        agent_notes.save(db, r["project_id"], r["id"], aid,
+                                         f"Released because its agent stopped ({why}); its attempts are kept.", now)
                     self._event(db, r["project_id"], aid, "freed", r["name"])
                     freed.append(r["name"])
                 if not rows:
@@ -1731,8 +1729,8 @@ class Network:
         if not text.strip():
             raise NetworkError("empty note")
         with self.store.tx() as db:
-            # Keep one current deep-search summary per runner/function. Human and other
-            # agent notes remain append-only, including source/layout discoveries.
+            # Keep one current deep-search summary per runner/function. Other function
+            # notes append to their managed session handoff when session evidence exists.
             if fn and text.startswith('Deep permuter:'):
                 row = db.execute("SELECT id FROM notes WHERE function_id=? AND agent_id=? "
                                  "AND text LIKE 'Deep permuter:%' ORDER BY id DESC LIMIT 1",
@@ -1741,8 +1739,7 @@ class Network:
                     db.execute('UPDATE notes SET text=?,created_at=? WHERE id=?',
                                (text.strip()[:NOTE_CHARS], time.time(), row['id']))
                     return 'Updated the deep permuter summary.'
-            db.execute("INSERT INTO notes(project_id,function_id,agent_id,text,created_at) VALUES(?,?,?,?,?)",
-                       (proj["id"], fn["id"] if fn else None, agent.id, text.strip()[:NOTE_CHARS], time.time()))
+            agent_notes.save(db, proj["id"], fn["id"] if fn else None, agent.id, text.strip()[:NOTE_CHARS])
         return "Noted. Other agents will see it" + (f" when they open {fn['name']}." if fn else " in their briefings.")
 
     def search_notes(self, project: str | None, query: str) -> str:

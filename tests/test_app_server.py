@@ -1716,3 +1716,19 @@ def test_fit_bounds_an_oversized_latest_tool_result_without_changing_prompts():
     assert messages[1]['content'] == 'Custom initial prompt'
     assert messages[-1]['tool_call_id'] == 'one'
     assert 'trimmed' in messages[-1]['content']
+
+
+def test_remove_notes_is_function_scoped_and_requires_window_auth(app, tmp_path):
+    client, net, manager = app
+    with net.store.tx() as db:
+        pid = db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                         ('notes-test', 'Notes fixture', 'mips', str(tmp_path), '{}')).lastrowid
+        one = db.execute('INSERT INTO functions(project_id,name) VALUES(?,?)', (pid, 'one')).lastrowid
+        two = db.execute('INSERT INTO functions(project_id,name) VALUES(?,?)', (pid, 'two')).lastrowid
+        ids = [db.execute('INSERT INTO notes(project_id,function_id,text,created_at) VALUES(?,?,?,?)',
+                           (pid, fid, 'note', 1)).lastrowid for fid in (one, one, two)]
+    payload = {'slug': 'notes-test', 'function': 'one', 'action': 'remove', 'ids': ids}
+    assert client.post('/api/note', json=payload).status_code == 403
+    assert client.post('/api/note', json=payload, headers={'X-Decomp':'1'}).status_code == 200
+    remaining = net.store.all('SELECT id FROM notes WHERE project_id=?', pid)
+    assert [r['id'] for r in remaining] == [ids[-1]]
