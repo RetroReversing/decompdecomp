@@ -36,7 +36,7 @@ def children(state, parent, variants, *, priority=0):
     return len(new)
 
 
-def advance(state, evaluate, variants, stopped, *, arch=None):
+def advance(state, evaluate, variants, stopped, *, arch=None, stop_on_match=True):
     """Resume a bounded beam with one reserved slot for a temporarily worse source shape.
 
     Detours spend the same phase budget and never replace saved best C. A later repair may need
@@ -53,8 +53,17 @@ def advance(state, evaluate, variants, stopped, *, arch=None):
         counts[outcome] = counts.get(outcome, 0) + 1
         if report.get('matched'):
             state['reason'] = 'matched'
-            state['winning_path'] = node.get('path', [])
-            return True
+            state['winning_path'] = state.get('winning_path', node.get('path', []))
+            exact = state.setdefault('exact', [])
+            if len(exact) < WIDTH:
+                exact.append({k: node[k] for k in ('source', 'path', 'depth') if k in node})
+            if stop_on_match:
+                return True
+            # Benchmark mode retains successful alternatives, but never mutates an adopted
+            # live function. Exact nodes need no descendants; finish the remaining frontier.
+            if not state['pending']:
+                expand_wave(state, variants, arch)
+            continue
         score = report.get('score')
         if (isinstance(score, (int, float)) and 0 < score <= node['ceiling'] * DETOUR_RATIO
                 and (score < node['ceiling'] or not search_frontier.unhelpful_detour(arch, node.get('baseline_rows'), report.get('rows') or []))):
@@ -75,35 +84,48 @@ def advance(state, evaluate, variants, stopped, *, arch=None):
                         and not state['next'][-1]['region_damage']):
                     if children(state, state['next'][-1], variants, priority=2):
                         state['bridge_bursts'] = state.get('bridge_bursts', 0)+1
+                # Flat scores often hide the first half of a combined repair. Reserve
+                # one child probe for two distinct families, while preserving the wave.
+                family = (node.get('path') or [None])[-1]
+                bridges = state.setdefault('plateau_families', [])
+                if (state.get('explore_plateaus') and node['depth'] == 1 and score == node['ceiling']
+                        and family and family not in bridges and len(bridges) < 2):
+                    if children(state, state['next'][-1], variants, priority=1):
+                        bridges.append(family)
                 if output is not None:
                     key = str(node['depth'])+':'+output
                     outputs[key] = outputs.get(key, 0) + 1
             else:
                 counts['equivalent_output'] = counts.get('equivalent_output', 0) + 1
         if not state['pending']:
-            ranked = sorted(state['next'], key=lambda n: (n.get('region_damage', 0), search_frontier.structure(n['report'].get('rows') or []),
-                                                            stack_distance(n['report'].get('rows') or []), n['score']))
-            ordinary = [n for n in ranked if n['score'] <= n['ceiling']]
-            detours = sorted((n for n in ranked if n['score'] > n['ceiling']),
-                             key=lambda n: (-n.get('region_gain', 0), n['score']))
-            numeric = min(ordinary, key=lambda n: n['score']) if ordinary else None
-            retained = [numeric] if numeric else []
-            shapes = {allocation_evidence.signature(n['report'].get('rows'),arch) for n in retained}
-            for candidate in ordinary:
-                shape = allocation_evidence.signature(candidate['report'].get('rows'),arch)
-                if shape not in shapes:
-                    retained.append(candidate);shapes.add(shape)
-            retained += [n for n in ordinary if n not in retained]
-            best = retained[:WIDTH-1] + detours[:1] if detours else retained[:WIDTH]
-            state['next'] = []
-            for parent in best:
-                if parent['depth'] >= DEPTH:
-                    counts['depth_limit'] = counts.get('depth_limit', 0) + 1
-                    continue
-                children(state, parent, variants)
+            expand_wave(state, variants, arch)
     state['reason'] = ('budget_or_stop' if state['pending'] else 'depth_limit' if state.get('counts', {}).get('depth_limit')
                        else 'supported_variants_exhausted')
-    return False
+    return bool(state.get('exact'))
+
+
+def expand_wave(state, variants, arch):
+    """Retain numeric and structural alternatives between bounded search waves."""
+    ranked = sorted(state['next'], key=lambda n: (n.get('region_damage', 0), search_frontier.structure(n['report'].get('rows') or []),
+                                                    stack_distance(n['report'].get('rows') or []), n['score']))
+    ordinary = [n for n in ranked if n['score'] <= n['ceiling']]
+    detours = sorted((n for n in ranked if n['score'] > n['ceiling']),
+                     key=lambda n: (-n.get('region_gain', 0), n['score']))
+    numeric = min(ordinary, key=lambda n: n['score']) if ordinary else None
+    retained = [numeric] if numeric else []
+    shapes = {allocation_evidence.signature(n['report'].get('rows'),arch) for n in retained}
+    for candidate in ordinary:
+        shape = allocation_evidence.signature(candidate['report'].get('rows'),arch)
+        if shape not in shapes:
+            retained.append(candidate);shapes.add(shape)
+    retained += [n for n in ordinary if n not in retained]
+    best = retained[:WIDTH-1] + detours[:1] if detours else retained[:WIDTH]
+    state['next'] = []
+    for parent in best:
+        if parent['depth'] >= DEPTH:
+            state.setdefault('counts', {})['depth_limit'] = state.get('counts', {}).get('depth_limit', 0) + 1
+            continue
+        children(state, parent, variants)
 
 
 def stack_distance(rows):
@@ -143,7 +165,15 @@ def targeted_variants(source, report, fn, arch, flags, header='', tables=(), cal
 
 def run(twins, slug, job):
     """Use a separate phase budget and resume after the last visited function."""
-    from . import address_repairs, expression_recipes, free_candidates, repair_sequences, similar_matches
+    from .. import candidate_scope
+    from . import (
+        adaptive_repairs,
+        address_repairs,
+        expression_recipes,
+        free_candidates,
+        repair_sequences,
+        similar_matches,
+    )
 
     net = twins.net
     proj = net.project_row(slug)
@@ -179,12 +209,14 @@ def run(twins, slug, job):
         header = net._context(proj['id'], fn['unit'])['header']
         settings = compiler_for(cfg, fn['vram'])
         recipe_profile=repair_sequences.profile(net,proj,fn)
-        context = similar_matches.trial_key('', header, settings, fn, ['beam-v7', symbols, rules, expression_recipes.signature(net,recipe_profile)])
+        context = similar_matches.trial_key('', header, settings, fn, ['beam-v8', candidate_scope.key(net, proj, fn), symbols, rules, expression_recipes.signature(net,recipe_profile)])
         saved = net.store.one('SELECT context,state FROM repair_frontiers WHERE function_id=?', fn['id'])
         state = json.loads(saved['state']) if saved and saved['context'] == context else None
         if state is None or fn['best_source'] not in state['seen']:
             state = dict(pending=[dict(source=fn['best_source'], depth=0, ceiling=fn['best_score'])],
-                         next=[], seen=[fn['best_source']])
+                         next=[], seen=[fn['best_source']], explore_plateaus=True)
+        build_scope = candidate_scope.key(net, proj, fn)
+        policy_profile = adaptive_repairs.profile(net, proj, fn)
         tries = [0]  # this function's own attempts: other threads are spending the job's at the same time
 
         def stopped():
@@ -192,29 +224,38 @@ def run(twins, slug, job):
                     or time.monotonic() >= deadline)
 
         def evaluate(source):
-            # Reuse the ordinary free-search cache, including old seed probes.
-            for kind in ('address-repair', 'address-probe'):
-                key = similar_matches.trial_key(source, header, settings, fn, [kind, symbols])
+            # Only reuse reports under the full frozen input scope, never legacy partial keys.
+            for kind in ('iterative-v2',):
+                key = similar_matches.trial_key(source, header, settings, fn, [kind, build_scope, symbols])
                 cached = net.store.one("SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=? AND outcome='miss'",
                                        fn['id'], key)
                 if cached:
                     return json.loads(cached['feedback'])
-            key = similar_matches.trial_key(source, header, settings, fn, ['address-repair', symbols])
+            key = similar_matches.trial_key(source, header, settings, fn, ['iterative-v2', build_scope, symbols])
             with guard:
                 job.reuse_attempts += 1
             tries[0] += 1
+            started = time.monotonic()
             try:
                 report = net.try_quietly(agent, proj, fn, source)
             except NetworkError:
                 return None
+            from .permuter_focus import classify
+            node = state['pending'][0] if state['pending'] else {}
+            adaptive_repairs.record(net, policy_profile, classify(node.get('baseline_rows') or []),
+                (node.get('path') or [None])[-1], node.get('ceiling'), report.get('score'),
+                (time.monotonic()-started)*1000, origin='iterative repairs', exact=bool(report.get('matched')))
             if report.get('matched') and state['pending'] and state['pending'][0].get('parent_source'):
                 expression_recipes.learn(net,recipe_profile,state['pending'][0]['parent_source'],source)
             outcome = 'match' if report.get('matched') else 'miss'
             path = state['pending'][0].get('path', []) if state['pending'] else []
             reason = 'iterative local repair; ' + ('byte match' if outcome == 'match' else f"score {report.get('score')}") + '; path: ' + ' → '.join(path)
             with net.store.tx() as db:
-                db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
-                           (fn['id'], key, outcome, reason, json.dumps(report)))
+                # Unscored reports mix syntax errors with resource/tool failures. Keep
+                # their audit row, but do not poison persistent candidate caching.
+                if report.get('score') is not None:
+                    db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
+                               (fn['id'], key, outcome, reason, json.dumps(report)))
                 db.execute('INSERT INTO free_match_attempts(project_id,function_id,strategy,outcome,reason,created_at) VALUES(?,?,?,?,?,?)',
                            (proj['id'], fn['id'], 'iterative-repair', outcome, reason, time.time()))
             return report
@@ -226,6 +267,9 @@ def run(twins, slug, job):
                 guided += similar_matches.literal_variants(source, compiled, fn, bool(proj['big_endian']))
             from . import draft_repairs, switch_tables
             targeted = targeted_variants(source, report, fn, proj['arch'], settings.get('flags', []), header, switch_tables.read(net,proj,fn), draft_repairs.capture_followup_repairs.callee_evidence(net,proj,fn,source), tagged=True)
+            families = list(dict.fromkeys(family for family, _ in targeted))
+            ordered = adaptive_repairs.order(net, proj, fn, report.get('rows') or [], families)
+            targeted.sort(key=lambda item: ordered.index(item[0]))
             # Interleave pools so address proposals cannot starve targeted families (or vice versa).
             learned = expression_recipes.variants(net, recipe_profile, source)
             pools = [[('address_or_literal', s) for s in guided[:4]], targeted[:8],

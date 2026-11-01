@@ -84,11 +84,12 @@ def read(net, proj, fn):
     asm=fn['asm'] or ''; result=[]
     for hit in re.finditer(r'%hi\(((?:jtbl_|D_)[A-Za-z0-9_]+)\)',asm):
         prefix=asm[max(0,hit.start()-700):hit.start()]
-        bound=list(re.finditer(r'addiu\s+\$\w+,\s*\$\w+,\s*(-0x[0-9A-Fa-f]+)',prefix))
-        length=list(re.finditer(r'sltiu\s+\$\w+,\s*\$\w+,\s*(0x[0-9A-Fa-f]+|\d+)',prefix))
-        if not bound or not length:
-            continue
-        low=-int(bound[-1][1],0);count=int(length[-1][1],0)
+        length=list(re.finditer(r'sltiu\s+\$\w+,\s*(\$\w+),\s*(0x[0-9A-Fa-f]+|\d+)',prefix))
+        if not length:continue
+        tested=length[-1][1]
+        bound=list(re.finditer(r'addiu\s+'+re.escape(tested)+r',\s*\$(?!sp\b)\w+,\s*(-?(?:0x[0-9A-Fa-f]+|\d+))',prefix[:length[-1].start()]))
+        low=-int(bound[-1][1],0) if bound else 0
+        count=int(length[-1][2],0)
         address=net.symbols(proj['id']).resolve(hit[1])
         if address is None or not 2<=count<=256:
             continue

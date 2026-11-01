@@ -52,3 +52,19 @@ def test_metrics_audit_records_origin_and_collection_window_without_merging_lega
     assert source['origin'] == 'deep permuter' and source['attempted'] == source['improved'] == 1
     assert source['first_at'] <= source['last_at'] and source['elapsed_ms'] == 5
     assert 'different collection window' in report['scope']
+
+
+def test_equal_success_counts_prefer_faster_verified_throughput():
+    net = FakeNet()
+    for _ in range(40):
+        policy.record(net, 'same', 'register', 'fast', 20, 0, 100)
+        policy.record(net, 'same', 'register', 'slow', 20, 0, 10000)
+    weights = policy.factors(net, 'same', 'register')
+    assert weights['fast'] > weights['slow'] >= policy.MIN_FACTOR
+
+
+def test_explicit_nonexact_zero_does_not_train_a_verified_win():
+    net = FakeNet()
+    policy.record(net,'same','register','family',20,0,100,exact=False)
+    row = net.store.one('SELECT * FROM repair_policy')
+    assert row['improved'] == 1 and row['matched'] == 0

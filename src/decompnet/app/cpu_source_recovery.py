@@ -1,0 +1,46 @@
+"""Bounded CPU follow-ups from a measured private candidate, cached with that candidate's inputs."""
+from . import cpu_source_repairs, cpu_switch_repairs
+
+MAX_PAIRS=6
+
+
+def proposals(net, proj, fn, source, header, measurement):
+    result=cpu_source_repairs.variants(source,header,proj['arch'],measurement.get('rows',[]),measurement.get('lines',{}))
+    from .switch_tables import read
+    tables=read(net,proj,fn) if hasattr(net,'reader') else []
+    result+=cpu_switch_repairs.variants(source,fn['name'],header,tables,cpu_switch_repairs.read_blocks(net,proj,fn,tables))
+    # Share the existing bounded stack/declaration/helper families, not a second random search.
+    rows=measurement.get('rows',[])
+    marks={r[0] for r in rows if r[0]!=' '}
+    if marks and marks<={'r','s'}:
+        from .draft_repairs import variants
+        labels={}
+        candidates=variants(source,fn['name'],proj['arch'],(fn['asm'] or ''),
+                            labels=labels,header=header,limit=40)
+        wanted={'local_declaration_order','spill_declaration_order','stack_padding','small_helper_expansion'}
+        result += [('cpu-'+labels[s],s,header) for s in candidates if labels.get(s) in wanted][:2]
+    return list(dict.fromkeys(result))[:MAX_PAIRS]
+
+
+def extend(net, proj, fn, variants, origins, source, header, measurement, lead):
+    # A small total queue and depth cap keep combined layout/constant hypotheses bounded.
+    depth=lead.get('cpu_depth',0)
+    if depth>=2:return
+    count=sum(meta.get('family','').startswith('cpu-') for meta in origins.values())
+    for family,s,h in proposals(net,proj,fn,source,header,measurement):
+        pair=(s,h)
+        if pair in variants:continue
+        if count>=MAX_PAIRS:return
+        variants.append(pair);origins[pair]={**lead,'family':family,'cpu_depth':depth+1};count+=1
+
+
+def trial_key(state, source, header, cfg):
+    import hashlib
+    return 'local-source-v6:'+hashlib.sha256(repr((state,source,header,cfg)).encode()).hexdigest()
+
+
+def pending(net, fn, state, cfg, variants, origins, exclude):
+    """Let pending structural CPU trials run before spending the pass on broader flag profiles."""
+    return any(pair!=exclude and origins.get(pair,{}).get('family','').startswith('cpu-')
+               and not net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?',
+                                     fn['id'],trial_key(state,*pair,cfg)) for pair in variants)

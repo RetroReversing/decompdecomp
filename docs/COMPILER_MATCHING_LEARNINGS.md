@@ -1342,6 +1342,29 @@ assignments stayed unchanged, while lifetime and scheduling dumps differed. This
 initialization order without claiming a newly discovered allocation cause. No source was applied and
 this replay does not count as another matched function.
 
+### Shared result pointer, branch-local name pointers, then declaration order
+
+A further private 666-instruction / 2,664-byte MIPS function reached exact linked bytes through
+the running app, retaining KMC GCC 2.7.2 `-G0 -mips3 -mgp32 -mfp32 -O2 -g3` throughout.
+Its initial score was 5455 (91.8%); the candidate had 632 instructions. Splitting both a result
+pointer and a name pointer into eleven branch-local scopes improved score to 2660 (96.0%),
+660 instructions. Retaining the shared result pointer while making only name pointers branch-local
+reached score 40 (99.9%) with all 666 instructions. Only eight register positions differed.
+Swapping two plain local integer declarations recovered the final temporary-register substitution
+and exact score 0. The linked-byte and instruction checks were true; no data/address problems,
+and export layout was ready. A full image rebuild was not part of this function-level experiment.
+
+Controlled failures: splitting only the result pointer and keeping the name pointer shared worsened
+the candidate to score 12530 / 597 instructions. Explicit returns versus fallthrough after the
+branch-local blocks made no difference to the tested score. Moving the final two temporaries'
+load order, or adding `register` to either local, retained score 40 rather than fixing it.
+
+Interpretation: splitting every local is not a general allocator repair. Selectively combining
+shared and branch-local lifetimes can prevent unwanted tail merging and restore register allocation.
+A mixed-lifetime candidate should survive alongside the all-shared and all-split alternatives;
+then bounded declaration-order repairs can finish it. These are generating-source hypotheses,
+not proof of original variable spelling or source layout. This result is manual live-API matching,
+not a claim that the automatic repair families found all intermediate steps.
 ### Automating selective branch pointer lifetimes
 
 The shared `branch_pointer_lifetimes` family now tries individual pointer splits and bounded combinations,
@@ -1427,3 +1450,70 @@ structure-gain tests separately exercise actual multi-edge continuation, cache r
 Keep successful and failed frozen cases as private benchmark inputs, compare first recovery
 trial and wall time under fixed context, and preserve data/relocation checks. Do not train exact
 repair recipes or adopt game progress from a frozen-output replay alone.
+
+### Unresolved near-miss cohort and search throughput
+
+A frozen private N64 GCC cohort selected eight open functions (at least 20 instructions),
+ordered by lowest saved score per instruction. Saved scores were 10, 15, 15, 33, 30, 15,
+10 and 25. Each received 16 candidate trials and a 20-second soft deadline, using its
+actual stored compiler profile/header and the ordinary linked-byte judge in a copied
+build root. Source, symbols, ROM and database stayed outside the repository.
+
+The initial pass used 128 candidate compiles plus eight baseline compiles, approximately
+32.04 elapsed trial seconds / 27.86 compiler seconds. Reserving bounded plateau-combination
+probes then used the same compile count, approximately 29.44 elapsed trial seconds /
+24.31 compiler seconds. Neither pass found an exact match or a lower score. These small
+sequential timings are not evidence of a speedup; there is no demonstrated matching gain.
+The harness omits richer donor/address pools and automatic profile search, so this measures
+the shared targeted-source beam, not all autopilot capabilities. Baselines remained unresolved.
+
+The shared beam now reserves one immediate combination probe for each of two distinct
+flat-score families, retaining the existing wave. Optional frozen benchmarks can collect
+several exact alternatives, retaining intermediate parents even when the last wave item
+is exact; live autopilot still stops at its first verified exact result. Numeric and
+structural alternatives remain bounded by the existing width/depth and attempt budgets.
+
+Iterative trial caching now includes the full candidate/build scope (header, target,
+relocations, symbols, compiler flags and referenced helper evidence), excluding old partial
+cache keys. Unscored reports are audited but not persistently cached because resource/tool
+failures are not reliably distinguished from syntax errors. Measured uncached iterative
+trials train the existing adaptive policy; exact-zero reports require an explicit exact
+verdict there. Smoothed exact throughput influences priorities within the same profile and
+mismatch kind while original queue interleaving preserves exploration. Durations are summed
+trial elapsed time, not CPU time or whole-run wall time.
+
+
+
+
+### CPU recovery from source context and measured retail differences
+
+A source-assisted eight-match batch under provisional IDO 5.3 with `-mips2 -G 0 -non_shared
+-Xcpluscomm -Wab,-r4300_mul` required original aggregate/prototype context, preserving an actual
+cache-access call, a four-byte application-record gap, retail switch labels and an 18-character
+limit in place of 16. Five used `-O3`; three menu/state routines used `-O2`. Those are manual
+recoveries, not evidence that the full automatic pipeline already reproduces all eight.
+
+Private CPU replay of two pre-match inputs at `-O2` used the ordinary sandboxed compiler and ROM
+link/data judge. The layout baseline scored **40**, with four mapped stores consistently shifted by
+four bytes. A generated private gap before the earliest affected field recovered linked-byte/data
+exactness. The constant baseline scored **50**; a generated coherent 16-to-18 macro trial recovered
+linked-byte/data exactness. These replay known matches; no new function or coverage is claimed.
+A separate controlled switch replay retained already-mapped retail data bindings, removed the grouped
+error arm and restored older case numbers. Table-based relabelling plus an agreeing structural arm clone
+also recovered linked-byte/data exactness. Arbitrary missing arm bodies or unknown bindings remain
+unsupported. The source and ROM remain private; no live project or repository was changed by these replays.
+
+Mapped source trials now preserve actual differing ANSI prototypes, with actual source types rather
+than guessed scalar/aggregate replacements. A target call can disable a conflicting header macro
+while retaining the actual declaration. Named records from exact neighbours are transferred privately
+with their record dependency closure; incompatible scalar aliases reject that merge. Layout probes
+require at least two mapped field operands with the same small positive displacement; store mappings
+use the assignment's left side, not a similarly named saved-state record on the right. Constant trials
+require aligned instruction evidence tied to a comparison or explicit sizeof(array) bound. Switch
+clones need identical target instruction structure, ABI registers/constants and a bijective data-symbol
+mapping. These hypotheses retain the ordinary judge; they never establish missing source semantics.
+
+The movement near misses at scores 51/60 remain unresolved. Actual pointer-ABI corrections, original
+helpers/constants, aggregate copies and line directives did not match; one flattened ABI rewrite
+scored 1011. Reuse focused declaration/stack/helper families and cache failures by exact source,
+header, target and build state instead of repeating those experiments across agents.

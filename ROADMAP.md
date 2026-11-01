@@ -1,5 +1,12 @@
 # Roadmap
 
+Implemented: bounded mapped-source CPU recovery, actual ABI/call declarations, verified record transfer,
+measured record-gap and coherent constant/extent trials, MIPS table-supported label/arm hypotheses,
+focused stack/declaration/helper follow-ups, and opt-in atomic promotion after a fresh linked-byte/data
+recheck. Cached measurements resume before broad profile searches. Private context/profile publication
+remains ROM-only: imported-build adapters and non-MIPS operand/table readers are planned; unknown
+source types, arbitrary missing arm bodies and ambiguous debug lines are never inferred.
+
 Implemented: compact claims prioritize verified mismatch regions while keeping complete candidates; last_diff
 can reuse an exact scoped baseline without compiling. Unchanged-output advice starts earlier with recent
 change history and respects exhausted/released claims. Compiler failures include bounded declaration/context
@@ -1591,3 +1598,16 @@ remain planned: the initial browser toolchain has no matching build-context adap
   build adapter; live imported deep search uses its existing normal judge.
 
 - Done: the update dialog source-download section uses the normal vertical content layout rather than the compact progress-bar class, so instructions and destination controls remain fully visible.
+### Repair search measurement and combinations
+
+- Done: two bounded flat-score family combination probes, retained exact alternatives in
+  optional frozen benchmarks, and preservation of remaining parent waves after an exact hit.
+- Done: full-scope iterative cache keys and uncached iterative timing/outcome training of
+  adaptive priorities, with smoothed exact throughput and exploration retained.
+- Done: reusable unresolved-case batch benchmark with equal budgets, source-free reports,
+  first-exact cost and measured baseline/best scores. Copied evaluator required; no adoption.
+- Validated: eight private unresolved N64 functions, 128 candidate trials, no matches or
+  score improvements. This does not establish gains on other consoles.
+- Planned: copied imported-build benchmark adapters and broader independent unresolved
+  cohorts; the current iterative autopilot remains MIPS ROM-only. Shared measurement and
+  policy helpers remain usable by existing supported local/deep paths.

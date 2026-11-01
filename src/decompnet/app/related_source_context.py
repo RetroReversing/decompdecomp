@@ -1,23 +1,24 @@
 """Offer exact neighbours' private declarations as hypotheses, never as shared-header changes."""
 import re
 
-from ..forks.csource import _blank
 from .source_context import typedefs
 from .source_lead_analysis import features
 
 MAX_NEIGHBOURS = 16
-MAX_CONTEXT_BYTES = 128 * 1024
+MAX_CONTEXT_BYTES = 1024 * 1024
 MAX_VARIANTS = 2
 
 
 def candidates(net, proj, fn, source, header):
-    """Same-project ROM context only; require a shared record type and a shared target call."""
+    """Same-project ROM context only; shared records need a target call or object-address anchor."""
     if not getattr(net, 'is_rom', lambda p: False)(proj) or net.fork_slug(proj['slug']):
         return []  # Imported projects must use their existing build's own headers.
-    types = {name for name, declaration in typedefs(header).items()
-             if '{' in declaration and re.search(r'\b'+re.escape(name)+r'\b', _blank(source))}
+    from .cpu_source_context import reachable_types
+    used=reachable_types(source,header)
+    types = {name for name, declaration in typedefs(header).items() if '{' in declaration and name in used}
     calls = set(features(_instructions(fn['asm']), proj['arch'])['calls'])
-    if not types or not calls:
+    addresses=set(re.findall(r'\bD_[0-9A-Fa-f]{8}\b',fn['asm'] or ''))
+    if not types or not (calls or addresses):
         return []
     if not net.store.one("SELECT 1 FROM sqlite_master WHERE name='verified_matches'"):
         return []
@@ -29,7 +30,8 @@ def candidates(net, proj, fn, source, header):
     seen = {header}
     for row in rows:
         shared_calls = calls & set(features(_instructions(row['asm']), proj['arch'])['calls'])
-        if not shared_calls or not row['matched_source']:
+        shared_addresses=addresses & set(re.findall(r'\bD_[0-9A-Fa-f]{8}\b',row['asm'] or ''))
+        if not (shared_calls or shared_addresses) or not row['matched_source']:
             continue
         context = row['verified_header']
         if context in seen or len(context.encode()) > MAX_CONTEXT_BYTES:
@@ -37,6 +39,13 @@ def candidates(net, proj, fn, source, header):
         shared_types = types & {name for name, declaration in typedefs(context).items() if '{' in declaration}
         if not shared_types:
             continue
+        from .cpu_source_context import merge_records
+        merged=merge_records(source,header,context)
+        if merged and merged not in seen:
+            seen.add(merged)
+            result.append({'header':merged,'function':row['name'],'types':sorted(shared_types),
+                           'calls':sorted(shared_calls),'distance':abs(row['vram']-fn['vram'])})
+        if context in seen or not shared_calls:continue
         seen.add(context)
         result.append({'header': context, 'function': row['name'], 'types': sorted(shared_types),
                        'calls': sorted(shared_calls), 'distance': abs(row['vram']-fn['vram'])})
