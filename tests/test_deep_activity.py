@@ -28,3 +28,24 @@ def test_interleaved_workers_keep_their_own_output_and_finish_independently():
         activity.update(str(i), finished=True)
     assert len(snapshots[-1]['recent_workers']) == 8
     assert len(snapshots[1]['workers'][0]['lines']) == 1
+
+
+def test_elapsed_time_is_measured_and_frozen_on_completion(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr('decompnet.app.deep_activity.time.monotonic', lambda: now[0])
+    snapshots = []
+    class Log:
+        def progress(self, value):
+            snapshots.append(value)
+    activity = Activity(Log())
+    activity.update('a')
+    now[0] += 75
+    activity.publish({})
+    assert snapshots[-1]['workers'][0]['elapsed_seconds'] == 75
+    activity.update('a', finished=True)
+    now[0] += 50
+    activity.publish({})
+    assert snapshots[-1]['recent_workers'][0]['elapsed_seconds'] == 75
+    assert snapshots[0]['workers'][0]['elapsed_seconds'] == 0
+    activity.update('a')
+    assert snapshots[-1]['workers'][0]['elapsed_seconds'] == 0

@@ -1379,6 +1379,7 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   includes every family in the selected order, detailed measured outcomes, timing
   coverage, and project/platform/version/build metadata without source or ROM data.
 
+- Done: deep-pass activity cards default to active only, retain expandable output when sorted, and show measured elapsed duration for active and completed functions.
 
 ### Same-name verified source reuse
 
@@ -1395,5 +1396,3 @@ model/compiler rankings, and no family or unmatched function is automatically ex
 - Planned: preprocessing adapters for drivers without a supported `-c` → `-E` mode, automatically
   supplying foreign static helpers/initialized data, and preparing assembly-only imported units from
   name-only leads. Those cases remain visible skips or need explicit existing source-preparation setup.
-
-

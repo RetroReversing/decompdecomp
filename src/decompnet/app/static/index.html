@@ -429,6 +429,16 @@
         <div id="deepSweepRecipes"></div>
         <div id="deepSweepResults" aria-live="polite"></div>
         <h3>Function activity <span class="muted small" id="deepActivityCount"></span></h3>
+        <div class="deep-activity-controls">
+          <label><input id="deepActivityOnlyActive" type="checkbox" checked> Active only</label>
+          <label>Sort by <select id="deepActivitySort">
+            <option value="function">Function</option>
+            <option value="improvements">Most improvements</option>
+            <option value="best_percent">Best match</option>
+            <option value="elapsed_seconds">Longest running</option>
+            <option value="tested">Most candidates tested</option>
+          </select></label>
+        </div>
         <div id="deepActivity" class="deep-activity"></div>
         <details><summary>Combined technical log</summary><div id="deepSweepLog"></div></details>
       </div>

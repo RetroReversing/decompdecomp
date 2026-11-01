@@ -2,11 +2,12 @@
 const vm=require('node:vm'), fs=require('node:fs'), assert=require('node:assert/strict');
 function element(){return {dataset:{},children:[],fields:new Map(),textContent:'',innerHTML:'',
  querySelector(key){if(!this.fields.has(key))this.fields.set(key,element());return this.fields.get(key);},
- querySelectorAll(){return this.children;},replaceChildren(){this.children=[];},append(child){this.children.push(child);child.remove=()=>{this.children=this.children.filter(c=>c!==child);};}};}
-const host=element(), count=element(), opened=[];
-const ctx=vm.createContext({$:id=>id==='deepActivity'?host:count,S:{slug:'a'},document:{createElement:element},openFn:name=>opened.push(name)});
+ querySelectorAll(){return this.children;},replaceChildren(){this.children=[];},insertBefore(child,before){this.children=this.children.filter(c=>c!==child);const i=this.children.indexOf(before);this.children.splice(i<0?this.children.length:i,0,child);},append(child){this.children=this.children.filter(c=>c!==child);this.children.push(child);child.remove=()=>{this.children=this.children.filter(c=>c!==child);};}};}
+const host=element(), count=element(), opened=[], active=element(), sort=element();
+active.checked=true; sort.value="function";
+const ctx=vm.createContext({$:id=>({deepActivity:host,deepActivityCount:count,deepActivityOnlyActive:active,deepActivitySort:sort}[id]),S:{slug:'a'},document:{createElement:element},openFn:name=>opened.push(name)});
 vm.runInContext(fs.readFileSync('src/decompnet/app/static/js/deep-activity.js','utf8'),ctx);
-const worker=(name,lines)=>({function:name,phase:'random rewrites',tested:4,variant_limit:10,starting_percent:90,best_percent:95,improvements:1,lines});
+const worker=(name,lines)=>({function:name,phase:'random rewrites',tested:4,variant_limit:10,starting_percent:90,best_percent:95,improvements:1,elapsed_seconds:75,seconds_left:20,lines});
 ctx.renderDeepActivity({workers:[worker('<a>',['a only']),worker('b',['b only'])]});
 assert.equal(host.children.length,2);
 const card=host.children[0], details=card.querySelector('details'); details.open=true;
@@ -19,3 +20,17 @@ card.querySelector('[data-function]').onclick();assert.deepEqual(opened,['<a>'])
 assert.match(count.textContent,/1 active/);
 ctx.S.slug='other';ctx.renderDeepActivity({});assert.equal(host.children.length,0);
 card.querySelector('[data-function]').onclick();assert.equal(opened.length,1);
+
+ctx.S.slug='a';
+ctx.renderDeepActivity({workers:[worker('z',['Budget rotation: technical details'])],recent_workers:[worker('a',['finished'])]});
+assert.equal(host.children[0].dataset.worker,'z');
+assert.equal(host.children[1].hidden,true);
+assert.equal(host.children[0].querySelector('[data-duration]').textContent,'Elapsed 1m 15s · 20s left');
+assert.equal(host.children[1].querySelector('[data-duration]').textContent,'Ran for 1m 15s');
+active.checked=false;active.onchange();assert.equal(host.children[1].hidden,false);
+const z=host.children[0];z.querySelector('details').open=true;
+sort.value='tested';
+ctx.renderDeepActivity({workers:[worker('z',['raw output']),{...worker('b',[]),tested:9}]});
+assert.equal(host.children[0].dataset.worker,'b');
+assert.equal(host.children[1],z);assert.equal(z.querySelector('details').open,true);
+assert.equal(z.querySelector('[data-output]').textContent,'raw output');

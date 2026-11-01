@@ -1007,4 +1007,3 @@ detailed measured outcomes and timing coverage. It contains no source code, ROM
 bytes or credentials. Missing older measurements are blank; `partial` timing must
 be compared using `measured_attempts` and measured gains, rather than all-time
 counts. Totals and newer outcome measurements overlap and must not be added.
-
