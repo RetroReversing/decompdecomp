@@ -1203,3 +1203,9 @@ for review; joint context/profile approval and automatic promotion remain future
   draft, agent-local and deep-repair families. Pinned-compiler controls verify generated
   shapes; nonadjacent increment motion and automatic narrowing remain unsupported pending
   liveness and range evidence. No new full-game matches are attributed to this rule.
+
+- Done: bounded arithmetic-before-call, explicitly typed element-store and local
+  unsigned-short reuse hypotheses feed the shared repair pipeline. Matched callee
+  types/prototypes and existing cross-game library leads expose attributed source
+  declarations/macros for review in ROM and imported-project workflows. Live headers
+  remain unchanged; adopting context still requires compilation and the normal judge.
