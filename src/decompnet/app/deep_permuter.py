@@ -245,6 +245,8 @@ class Search(Permuter):
             for candidate in stack:
                 labels.setdefault(candidate, 'stack_padding')
             choices += stack
+            from . import normalization_repairs
+            normalization_repairs.extend_frame(choices, labels, source, fn['name'], proj['arch'], rows)
             for family, candidate in permuter_local.variants(source, fn['name']):
                 labels.setdefault(candidate, family)
                 choices.append(candidate)

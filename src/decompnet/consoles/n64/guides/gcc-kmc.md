@@ -124,3 +124,18 @@ The local families `branch_tail_lifetimes`, `staged_call_arguments` and
 for register-only misses; unsupported shapes still need a manual edit. Compare frame size and
 instruction count before pursuing helper-based detours, and consult current-input local search
 evidence before repeating failed variants. A linked exact verdict overrides symbolic annotations.
+
+### Normalization across calls and partial frame gaps
+
+When a saved normalized integer is used after a setter call, try `call_return_normalization`:
+an inline helper narrows the argument, calls the unchanged setter and returns the narrowed value.
+This recovered a measured two-register near miss by keeping the value live across the call.
+`split_narrow_lifetime` can separate an earlier full-width stride from a later halfword-only saved
+value. Its mirrored earlier writes preserve the fallback when the later phase is skipped.
+
+If earlier stack slots already agree but later spill slots and the frame differ, whole-frame padding
+is the wrong hypothesis. `spill_normalization` tries bounded bundles of late signed-halfword helpers
+before low-bit masks. KMC can retain unused spill reservations for eliminated pseudos; six such slots
+recovered one measured 48-byte gap. The helper must preserve all observed mask bits. Treat this as a
+compiler-specific search hypothesis and verify every offset and the linked bytes. Equal numeric
+scores do not rule out progress toward the right offsets; never accept the tie-breaker as a match.

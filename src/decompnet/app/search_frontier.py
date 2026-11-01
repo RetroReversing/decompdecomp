@@ -47,11 +47,12 @@ class Frontier:
             return
         rows = permuter_focus.normalized(rows)
         node = {'source': source, 'score': score, 'fitness': structure(rows),
+                'frame_distance': permuter_focus.stack_distance(rows),
                 'kind': permuter_focus.classify(rows), 'regions': region_repairs.snapshot(rows),
                 'output': hashlib.sha256(repr(rows or source).encode()).hexdigest()}
         pool = [n for n in self.nodes if n['source'] != source]+[node]
-        numeric = sorted(pool, key=lambda n: (n['score'], n['fitness']))
-        structural = sorted(pool, key=lambda n: (n['fitness'], n['score']))
+        numeric = sorted(pool, key=lambda n: (n['score'], n['fitness'], n['frame_distance']))
+        structural = sorted(pool, key=lambda n: (n['fitness'], n['frame_distance'], n['score']))
         # Preserve distinct failure shapes: a moved load can be a useful sibling of a register miss.
         selected = numeric[:1]
         for candidate in structural:
