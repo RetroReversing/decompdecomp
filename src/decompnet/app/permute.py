@@ -465,7 +465,7 @@ class Permuter:
             boosts = adaptive_repairs.boosts(self.net, proj, fn, rows, permuter_focus.boosts(rows))
             from .search_frontier import Frontier
             frontier = self.search_frontier = Frontier()
-            frontier.offer(best_src, best, rows)
+            frontier.offer(best_src, best, rows, arch=proj['arch'])
             batches = misses = 0
             while time.monotonic() < deadline and best > 0 and not st.stop.is_set():
                 if gen is not None:
@@ -491,7 +491,7 @@ class Permuter:
                             break
                         best_src = m2cfix.expand_macros(fn['best_source'], header)
                         rows = repair_ranking.evidence(self.net, fn['id'], agent.id)
-                        frontier.offer(best_src, best, rows)
+                        frontier.offer(best_src, best, rows, arch=proj['arch'])
                         reseed = True
                     else:
                         reseed = getattr(self, '_reseed_random', False)

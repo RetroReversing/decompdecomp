@@ -10,9 +10,9 @@ from pathlib import Path
 
 from ..network import NetworkError
 from ..project import compiler_for
-from . import region_repairs, search_frontier, workers
+from . import allocation_evidence, region_repairs, search_frontier, workers
 
-WIDTH, DEPTH, PER_FUNCTION = 3, 3, 8
+WIDTH, DEPTH, PER_FUNCTION = 3, 4, 8
 DETOUR_RATIO = 1.25
 
 
@@ -51,7 +51,13 @@ def advance(state, evaluate, variants, stopped, *, arch=None):
             detours = sorted((n for n in ranked if n['score'] > n['ceiling']),
                              key=lambda n: (-n.get('region_gain', 0), n['score']))
             numeric = min(ordinary, key=lambda n: n['score']) if ordinary else None
-            retained = ([numeric] if numeric else []) + [n for n in ordinary if n is not numeric]
+            retained = [numeric] if numeric else []
+            shapes = {allocation_evidence.signature(n['report'].get('rows'),arch) for n in retained}
+            for candidate in ordinary:
+                shape = allocation_evidence.signature(candidate['report'].get('rows'),arch)
+                if shape not in shapes:
+                    retained.append(candidate);shapes.add(shape)
+            retained += [n for n in ordinary if n not in retained]
             best = retained[:WIDTH-1] + detours[:1] if detours else retained[:WIDTH]
             state['next'] = []
             for parent in best:
@@ -138,7 +144,7 @@ def run(twins, slug, job):
         header = net._context(proj['id'], fn['unit'])['header']
         settings = compiler_for(cfg, fn['vram'])
         recipe_profile=repair_sequences.profile(net,proj,fn)
-        context = similar_matches.trial_key('', header, settings, fn, ['beam-v5', symbols, rules, expression_recipes.signature(net,recipe_profile)])
+        context = similar_matches.trial_key('', header, settings, fn, ['beam-v6', symbols, rules, expression_recipes.signature(net,recipe_profile)])
         saved = net.store.one('SELECT context,state FROM repair_frontiers WHERE function_id=?', fn['id'])
         state = json.loads(saved['state']) if saved and saved['context'] == context else None
         if state is None or fn['best_source'] not in state['seen']:

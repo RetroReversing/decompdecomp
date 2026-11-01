@@ -167,3 +167,22 @@ without narrowing a later wide index that reused the old variable. `sink_zero_in
 tries the zero in an else arm only when the other arm definitely assigns first. Both are bounded
 hypotheses, not advice to change every declaration or initialization. Random candidates remain
 exploratory; quality evidence retains pre-search checkpoints separately from the lowest score.
+
+
+### Allocation before final instruction order
+
+A 737-instruction private function matched with KMC GCC 2.7.2 and unchanged
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. The long search took about 4 h 50 min. Useful
+steps included a true scalar spill instead of an explicit stack field, pointer declaration order,
+phase-specific counter/table split and reuse, a narrow constant for a byte-fill loop, and a live
+vector pointer used by calls while retaining a direct aggregate destination.
+The last adjacent initialization swap was replayed through the new automatic family: score 60
+became exact linked bytes. This is recovery of an existing match, not a new function.
+
+Do not tune setup order before allocation is plausible: 896 legal setup orderings failed at an
+earlier checkpoint. A lower score also hid an enlarged frame. Compare register substitutions,
+frame size and spill offsets alongside score, and preserve structurally different alternatives.
+Use `allocation_initialization_order`, `pointer_argument_alias`, `spill_declaration_order`,
+`byte_fill_constant` and the bounded `allocation_schedule_bridge` when offered. They automate
+subsets of these observations, not the complete historical search. Exact results do not prove
+original variable names, types or source spelling. See `docs/COMPILER_MATCHING_LEARNINGS.md`.
