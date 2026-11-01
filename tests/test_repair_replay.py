@@ -85,3 +85,22 @@ def test_cancellation_stops_before_a_compiler_call():
     def cancelled():raise RuntimeError('stopped')
     with pytest.raises(RuntimeError,match='stopped'):
         replay.replay(case(),check_cancel=cancelled,measure=lambda s: (_ for _ in ()).throw(AssertionError()))
+
+
+def test_edit_minimization_shares_the_replay_budget_and_preserves_evidence(monkeypatch):
+    example=case();before='int f(){return 1;}\n\nint unrelated=1;\n'
+    after='int f(){return 2;}\n\nint unrelated=2;\n'
+    for key,source in [('before',before),('after',after)]:
+        example['evidence'][key].update(source=source,source_sha256=replay.digest(source))
+    original=deepcopy(example)
+    monkeypatch.setattr(replay.draft_repairs,'variants',lambda *a,**kw:[])
+    result=replay.replay(example,trials=6,minimize=True,measure=lambda source:{'object':obj(2 if 'return 2' in source else 1)})
+    assert result['minimization']['reverted']==1
+    assert len(result['trials'])<=3 and example==original
+    assert 'unrelated=1' in result['minimization']['source']
+
+
+def test_analysis_options_require_booleans():
+    import pytest
+    with pytest.raises(ValueError,match='booleans'):
+        replay.replay(case(),minimize='yes')

@@ -66,7 +66,7 @@ def run(net, agent, slug, function, revision, families=None, max_trials=6, *, se
         if time.monotonic()>=deadline:
             return 'Local repair time budget reached during baseline checking; no variants submitted.'
         pools = available(net,agent,slug,fn,source,revision,requested)
-        effect_scope=agent_tokens.target_scope(net,fn,'')
+        effect_scope=repair_ranking.effect_scope(net,fn,source)
         selected=[];seen=set()
         while len(selected)<max_trials and any(pools.values()):
             for family,pool in pools.items():
@@ -182,7 +182,7 @@ def available(net, agent, slug, fn, source, revision, requested):
     durable_scope=agent_tokens.target_scope(net,fn,'')
     pools={f:[s for s in dict.fromkeys(pool) if s!=source and not agent_tokens.compiled_before(net,fn,s,durable_scope) and not agent_tokens.target_tried(net,fn,revision,'local:'+f,s)] for f,pool in pools.items()}
     ranked = repair_ranking.order(pools,repair_ranking.evidence(net,fn['id'],agent.id))
-    effect_scope=agent_tokens.target_scope(net,fn,'')
+    effect_scope=repair_ranking.effect_scope(net,fn,source)
     ranked=repair_ranking.demote(net,effect_scope,ranked)
     ranked=adaptive_repairs.order(net,proj,fn,repair_ranking.evidence(net,fn['id'],agent.id),ranked)
     pools = {f:pools[f] for f in ranked}

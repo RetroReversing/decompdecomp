@@ -6,7 +6,7 @@ from .. import compiler, toolchains
 from .repair_replay import replay
 
 
-def run(feedback, slug, ids, trials, seconds, log):
+def run(feedback, slug, ids, trials, seconds, log, *, minimize=False, diagnostics=False):
     results=[];counts=Counter()
     with tempfile.TemporaryDirectory(prefix='decomp-repair-replay-') as root, compiler.cancellable(log.check_cancel):
         for index,case_id in enumerate(ids):
@@ -17,7 +17,7 @@ def run(feedback, slug, ids, trials, seconds, log):
                 log.progress({'example':case_id,'finished':index,'total':len(ids),**value})
             try:
                 result=replay(example,trials=trials,seconds=seconds,root=root,
-                              check_cancel=log.check_cancel,progress=progress)
+                              check_cancel=log.check_cancel,progress=progress,minimize=minimize,diagnostics=diagnostics)
             except (ValueError,KeyError,OSError,toolchains.ToolchainError) as error:
                 result={'id':case_id,'function':example['evidence']['function'],'skipped':str(error)[:500]}
             results.append(result)

@@ -139,3 +139,10 @@ before low-bit masks. KMC can retain unused spill reservations for eliminated ps
 recovered one measured 48-byte gap. The helper must preserve all observed mask bits. Treat this as a
 compiler-specific search hypothesis and verify every offset and the linked bytes. Equal numeric
 scores do not rule out progress toward the right offsets; never accept the tie-breaker as a match.
+
+For constant packet stores, `constant_index_temporary` can expose a different allocation by assigning
+zero and actually using it as the array index. An unused zero assignment is a different experiment.
+`balanced_call_references` tries small identical-arm combinations around related calls; matching one
+call site's source shape independently can change allocation elsewhere. Both families are bounded.
+For persistent cases, repair replay's optional GCC phase summaries compare normal and diagnostic output;
+use its edit ablation to reduce accumulated changes under frozen settings before attributing a cause.

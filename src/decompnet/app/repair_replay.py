@@ -9,10 +9,7 @@ import json
 import tempfile
 import time
 from collections import Counter
-from io import BytesIO
 from pathlib import Path
-
-from elftools.elf.elffile import ELFFile
 
 from .. import consoles, scoring, toolchains
 from ..compiler import compile_source
@@ -40,10 +37,12 @@ def rewrite_evidence(evidence):
             'direct':direct,'note':'Replay still required; the final rewrite name alone does not isolate a cause.'}
 
 
-def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_cancel=lambda:None, progress=lambda value:None):
+def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_cancel=lambda:None, progress=lambda value:None, minimize=False, diagnostics=False):
     """Replay one frozen case; injectable measurement permits the same runner with a copied project judge."""
     if not 1 <= trials <= 128 or not 1 <= seconds <= 600:
         raise ValueError('Use 1–128 trials and 1–600 seconds per example.')
+    if not isinstance(minimize,bool) or not isinstance(diagnostics,bool):
+        raise ValueError('Replay analysis switches must be booleans.')
     evidence = example['evidence']
     report = {'id':example.get('id'), 'function':evidence['function'], 'trials':[], 'summary':{},
               'rewrite_evidence':rewrite_evidence(evidence)}
@@ -74,10 +73,9 @@ def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_ca
                 return {'error':result.log[:500]}
             obj = extract_function(result.obj, name)
             # Relocation fingerprints alone do not include the values of floating constants/strings.
-            elf = ELFFile(BytesIO(result.obj))
-            data = [(section.name,section.data().hex()) for section in elf.iter_sections()
-                    if section['sh_flags'] & 2 and not section['sh_flags'] & 4 and section['sh_type']!='SHT_NOBITS']
-            return {'object':obj,'data':digest(repr(data))} if obj else {'error':'Compiled object does not define the captured function.'}
+            from .compiler_diagnostics import allocated_output
+            data = allocated_output(result.obj)
+            return {'object':obj,'data':data,'raw_obj':result.obj} if obj else {'error':'Compiled object does not define the captured function.'}
     deadline = time.monotonic()+seconds
     check_cancel()
     baseline = measure(before['source'])
@@ -89,8 +87,35 @@ def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_ca
     target = control['object']
     baseline_score = scoring.diff(target, baseline['object']).score
     report.update(baseline_score=baseline_score, verdict='compiler-output regression only; no linked/objdiff match adoption')
-    if target.fingerprint() == baseline['object'].fingerprint():
+    if target.fingerprint() == baseline['object'].fingerprint() and baseline.get('data') == control.get('data'):
         return report | {'skipped':'Failed and successful sources produce the same normalized control output; no isolated regression.'}
+    if diagnostics and time.monotonic()<deadline:
+        from .compiler_diagnostics import diagnose
+        if baseline.get('raw_obj') and control.get('raw_obj'):
+            failed = diagnose(profile,before['header'],before['source'],name,root=root or '.',baseline_obj=baseline['raw_obj'])
+            check_cancel()
+            successful = (diagnose(profile,after['header'],after['source'],name,root=root or '.',baseline_obj=control['raw_obj'])
+                          if time.monotonic()<deadline else {'skipped':'Replay time budget reached.'})
+            report['compiler_diagnostics'] = {'before':failed,'after':successful,
+                'output_unchanged':bool(failed.get('output_unchanged') and successful.get('output_unchanged')),
+                'phases':successful.get('phases',{}),'note':'At most two extra compiles comparing failed and successful captures; no source applied.'}
+        else:
+            report['compiler_diagnostics'] = diagnose(profile,after['header'],after['source'],name,root=root or '.')
+        check_cancel()
+    counts = Counter()
+    if minimize:
+        from .repair_ablation import minimize as ablate
+        def preserves(source):
+            check_cancel()
+            measured = measure(source)
+            return bool(not measured.get('error') and measured['object'].fingerprint()==target.fingerprint()
+                        and measured.get('data')==control.get('data'))
+        report['minimization'] = ablate(before['source'],after['source'],preserves,
+                                       trials=max(1,trials//2),stopped=lambda:time.monotonic()>=deadline)
+        for row in report['minimization']['trials']:
+            outcome = 'edit_reverted' if row['preserves_output'] else 'edit_retained'
+            report['trials'].append({'family':'revert_captured_edit','outcome':outcome,**row})
+            counts[outcome] += 1
     labels = {}
     candidates = draft_repairs.variants(before['source'],name,platform.arch,evidence.get('target_asm') or '',
                                         profile.get('flags',[]),labels,limit=None,header=after['header'])
@@ -98,7 +123,6 @@ def replay(example, *, trials=24, seconds=120, measure=None, root=None, check_ca
     pools = {}
     for candidate in candidates:
         pools.setdefault(labels.get(candidate,'source_shape'),[]).append(candidate)
-    counts = Counter()
     while any(pools.values()) and len(report['trials']) < trials and time.monotonic() < deadline:
         for family, pool in pools.items():
             if not pool or len(report['trials']) >= trials or time.monotonic() >= deadline:
@@ -131,6 +155,8 @@ def main():
     parser.add_argument('--limit',type=int,default=20)
     parser.add_argument('--trials',type=int,default=24)
     parser.add_argument('--seconds',type=int,default=120)
+    parser.add_argument('--minimize',action='store_true',help='Use up to half the trial budget to revert captured edits while preserving the full allocated control output.')
+    parser.add_argument('--diagnostics',action='store_true',help='Opt in to two additional native GCC runs and a bounded phase summary; no tool downloads.')
     args = parser.parse_args()
     if not 1 <= args.limit <= 100:
         parser.error('Use --limit 1–100.')
@@ -141,7 +167,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='decomp-repair-replay-') as root:
         for case in selected:
             try:
-                results.append(replay(case,trials=args.trials,seconds=args.seconds,root=root))
+                results.append(replay(case,trials=args.trials,seconds=args.seconds,root=root,minimize=args.minimize,diagnostics=args.diagnostics))
             except (ValueError,KeyError,OSError,toolchains.ToolchainError) as error:
                 results.append({'id':case.get('id'),'skipped':str(error)[:500]})
     args.output.write_text(json.dumps({'schema_version':1,'examples':results},indent=2)+'\n')
