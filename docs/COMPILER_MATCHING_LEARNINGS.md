@@ -684,3 +684,27 @@ These are manual recoveries with the ordinary judge, not automatic wins attribut
 A video-manager draft still differed by unreachable NOPs; debug-flag probes did not recover it. Other private
 helper fragments entered with live saved/floating registers, so their isolated ordinary-C signatures remain
 unproven. Neither pattern is resolved by adding padding instructions, weakening boundaries or changing the judge.
+
+### Bounded automation from the KMC local-lifetime case
+
+The verified `gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2 -g3` draw-pair case above
+motivates three shared C hypothesis families: `branch_tail_lifetimes`,
+`staged_call_arguments` and `combined_call_lifetimes`. The first duplicates a terminal,
+straight-line call pair into two existing arms with separate integer locals. Staging uses
+only known unescaped integer locals and signed-int literals; combinations are capped at eight.
+This deliberately covers a narrow source shape, not every shared-tail rendering routine.
+Qualified objects, ambiguous types, macros and escaping/jumping control flow are left alone.
+
+Register-only rows, including indirect-call register changes, prioritise these families.
+After ordinary judging, a non-improving detour that grows both a previously correct frame
+and the instruction count without improving instruction structure is not expanded further.
+Unknown layouts and numeric improvements remain eligible. This is bounded search pruning,
+not an equivalence proof or permission to skip the exact judge.
+
+Synthetic execution regressions compare call values/order for both arms and varied signed
+inputs using a host compiler. Search tests cover frame-growth pruning, exact verdict precedence,
+input-scoped failure caching and retry after changed build inputs. These are controlled feature
+regressions; no additional private-game matches or token savings are claimed for these families.
+The linked-byte verdict is reported separately from symbolic annotations. Known generated
+compile errors now join the existing exact-source miss cache, while infrastructure failures
+stay retryable; compact agent summaries expose both failures and regressions.

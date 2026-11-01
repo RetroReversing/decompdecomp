@@ -68,12 +68,13 @@ def classify(rows):
     changed = [row for row in normalized(rows) if row and row[0] != ' ']
     markers = {row[0] for row in changed}
     text = ' '.join(str(cell) for row in changed for cell in row[1:])
+    # A changed register in an indirect call is still register allocation evidence.
+    if markers and markers <= {'r'}:
+        return 'register'
     if re.search(r'\b(?:jalr?|callq?|bl|bctrl)\b', text):
         return 'call'
     if 's' in markers:
         return 'stack'
-    if markers and markers <= {'r'}:
-        return 'register'
     if 'i' in markers or re.search(r'\b(?:lui|li|ldc1|lwc1|movabs)\b', text):
         return 'constant'
     return 'control' if markers & {'<', '>', '|', 'o'} else ''

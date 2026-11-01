@@ -448,8 +448,8 @@ def target_tried(net, fn, revision, family, old):
 
 def compiled_before(net,fn,source,scope=None):
     scope=scope if scope is not None else target_scope(net,fn,'')
-    return net.store.one('SELECT 1 FROM agent_family_targets WHERE function_id=? AND scope=? AND family=? AND target_hash=?',
-                         fn['id'],scope,'compiled-miss',hashlib.sha256(source.encode()).hexdigest()) is not None
+    return net.store.one("SELECT 1 FROM agent_family_targets WHERE function_id=? AND scope=? AND family IN ('compiled-miss','compiled-error') AND target_hash=?",
+                         fn['id'],scope,hashlib.sha256(source.encode()).hexdigest()) is not None
 
 
 def available_target(net,fn,source,revision,family,old):
@@ -610,10 +610,11 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
             observations.append({'score':measured['score'],'rows':measured['rows'],
                                  'cached':'REPEAT:' in result, 'elapsed_ms':round((time.monotonic()-started)*1000)} if measured else None)
             score = measured['score'] if measured else None
-            if family != 'explicit patches' and score is not None and score > 0:
+            compile_error = score is None and '❌ COMPILE ERROR' in result
+            if family != 'explicit patches' and ((score is not None and score > 0) or compile_error):
                 with net.store.tx() as db:
                     db.execute('INSERT OR IGNORE INTO agent_family_targets VALUES(?,?,?,?)',
-                               (fn['id'],durable_scope,'compiled-miss',hashlib.sha256(src.encode()).hexdigest()))
+                               (fn['id'],durable_scope,'compiled-error' if compile_error else 'compiled-miss',hashlib.sha256(src.encode()).hexdigest()))
             rows = measured['rows'] if measured else None
             if score is not None:
                 scores.append(score)

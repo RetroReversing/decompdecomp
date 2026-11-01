@@ -1172,3 +1172,12 @@ preserving factor order. Integrated with shared draft/local/deep families and ad
 Isolated private replays recovered two recorded SN64 compiler-output controls with the new families;
 a third selected KMC case was already recovered by the existing typed-temporary family. Replay recovery
 is a regression result, not a new game match. Mixed/context-dependent examples remain for review.
+
+## Register-only local lifetime search
+
+Shared draft, agent-local and deep searches offer bounded branch-tail locals, scalar call staging
+and combined proposals for ordinary C in ROM and imported-project mode. Register-only diagnostics
+prioritise these shapes. Search frontiers avoid expanding measured frame/code growth without
+structural improvement, while retaining numeric improvements and ordinary exact judging. Generated
+compile errors reuse input-scoped caches; agent summaries include failures and regressions.
+Synthetic execution/search regressions are distinct from newly measured private-game recoveries.

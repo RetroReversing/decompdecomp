@@ -304,3 +304,20 @@ def test_region_gain_wins_reserved_detour_slot_over_a_lower_total_score():
         return {'seed':['weak','local_fix'], 'local_fix':['done']}.get(source, [])
     assert search.advance(state, lambda s: reports[s], variants, lambda:False)
     assert 'local_fix' in expanded and 'weak' not in expanded
+
+
+def test_unhelpful_frame_growth_is_not_expanded_but_exact_verdict_wins():
+    baseline = [(' ','addiu $sp, $sp, -32','addiu $sp, $sp, -32'),
+                ('r','move $s0, $a0','move $s1, $a0')]
+    larger = [('s','addiu $sp, $sp, -32','addiu $sp, $sp, -40'),
+              ('r','move $s0, $a0','move $s1, $a0'), ('>','','nop')]
+    expanded = []
+    state = seed()
+    state['pending'][0]['baseline_rows'] = baseline
+    assert not search.advance(state,lambda s:dict(score=21,matched=False,rows=larger),
+                              lambda s,r:expanded.append(s) or [],lambda:False,arch='mips')
+    assert not expanded
+    state = seed()
+    state['pending'][0]['baseline_rows'] = baseline
+    assert search.advance(state,lambda s:dict(score=0,matched=True,rows=larger),
+                          lambda s,r:[],lambda:False,arch='mips')
