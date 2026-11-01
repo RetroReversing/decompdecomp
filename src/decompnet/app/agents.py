@@ -310,7 +310,7 @@ def detect(quick: bool = False) -> list[dict]:
 # ---------------------------------------------------------------------------------- sessions
 
 def _fresh_usage() -> dict:
-    return {"usd": 0.0, "tokens": 0, "turns": 0, "tool_calls": 0} | {k: 0 for k in TOKEN_KINDS}
+    return {"usd": 0.0, "tokens": 0, "turns": 0, "tool_calls": 0, "coverage": "unknown"} | {k: 0 for k in TOKEN_KINDS}
 
 
 @dataclass
@@ -376,6 +376,7 @@ class Session:
                 "todo": self.todo, "until": self.until, "stopped_by": self.stopped_by,
                 "last_message": self.last_message, "runs": self.runs, "restarts": self.restarts, "error": self.error,
                 "started_at": self.started_at, "usd": round(self.usd, 4), "tokens": self.tokens,
+                "current_usage_coverage": self.usage.get("coverage", "unknown"),
                 "feed": [f for f in self.feed if f["seq"] > since]}
 
 
@@ -503,6 +504,8 @@ class Manager:
         with net.store.tx() as db:
             for statement in SCHEMA:
                 db.execute(statement)
+            if "usage_coverage" not in {r[1] for r in db.execute("PRAGMA table_info(helper_sessions)")}:
+                db.execute("ALTER TABLE helper_sessions ADD COLUMN usage_coverage TEXT NOT NULL DEFAULT 'unknown'")
             if "task" not in {r[1] for r in db.execute("PRAGMA table_info(helper_sessions)")}:
                 # Sessions from before it was kept take their helper's task now, while its record is there. Ids are
                 # reused (helpers.id has no AUTOINCREMENT), so the helper must also be the session's project and
@@ -1016,6 +1019,8 @@ class Manager:
         """Add what a session spent to the helper, the session and the project (kept in its config)."""
         if s.record:
             s.record("usage", usage)
+        if usage.get('coverage') in {'partial','complete'}:
+            s.usage['coverage'] = usage['coverage']
         usd = float(usage.get("usd") or 0)
         parts = {k: int(usage.get(k) or 0) for k in TOKEN_KINDS}
         total = sum(parts.values()) or int(usage.get("tokens") or 0)
@@ -1259,6 +1264,7 @@ class Manager:
                     result['session'][key + '_tokens'] = live.usage[key]
                 result['session']['usd'] = live.usage['usd']
                 result['session']['tokens'] = live.usage['tokens']
+                result['session']['usage_coverage'] = live.usage.get('coverage','unknown')
         if result.get('session'):
             from .session_efficiency import for_sessions
             result['efficiency']=for_sessions(self.net,[result['session']]) if result['session']['ended_at'] else []
@@ -1281,6 +1287,8 @@ class Manager:
                        "matches=? WHERE id=?", (time.time(), outcome, u["usd"], u["input"], u["output"],
                                                 u["cache_read"], u["cache_write"], u["tokens"], u["turns"],
                                                 u["tool_calls"], compiles, matches, row))
+        with self.net.store.tx() as db:
+            db.execute('UPDATE helper_sessions SET usage_coverage=? WHERE id=?', (s.usage.get('coverage','unknown'),row))
         from .session_efficiency import finish
         finish(self.net,agent,s.slug,row,began)
         spent = f", ${u['usd']:.2f}" if u["usd"] else f", {u['tokens'] // 1000}k tokens" if u["tokens"] else ""
