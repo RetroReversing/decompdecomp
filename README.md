@@ -425,6 +425,23 @@ judged tools. Reported input, output and cache tokens are tracked; missing usage
 costs remain unknown. Live MCP, compile-and-match and permission checks were tested on
 macOS; Linux and Windows launch settings have automated coverage.
 
+### Connect another AI tool
+
+In **Agents & models → Connect another AI tool with MCP**, choose a project and
+create a connection. The panel shows the running local server's port and URL,
+project-specific tool descriptions and input schemas, and copyable configuration.
+Use **Streamable HTTP** with the supplied **Authorization: Bearer …** header;
+configuration field names depend on your client. Clients that only accept stdio
+or OAuth connections cannot use this endpoint directly.
+
+Keep decompdecomp running on the same computer. Ask the AI to read `project_info`
+and follow the server instructions before claiming work. Each connection can read
+and change only its assigned project's work. The credential is shown once; keep it
+private. Connections survive app restarts, but a changed server port needs an
+updated URL. Revoke access in the same panel. Removing the project also revokes its
+manual connections. The external tool controls its own sessions and token costs;
+the app does not start, restart or supervise it.
+
 To inspect agent costs, open **What it said and did → Session transcript**. Each new
 session keeps the full app prompt (including guides and project instructions), exposed
 replies, app tool arguments/results, and reported input/cache/output usage. API helpers
@@ -516,7 +533,7 @@ Keep that file's name as it is. decompdecomp still reads it as `.decomp.wtf.json
 
 What changed on the way:
 
-- **Agents run inside the app only.** `decomp connect` and `decomp mcp` are gone. On its first start, the new
+- **Managed agents run inside the app.** `decomp connect` and `decomp mcp` are gone. On its first start, the new
   version removes the old `decomp` entries from your agents' settings (Claude Code, Codex, opencode, Antigravity and
   others), and its home page says what it removed. Before that, those entries started the old app again whenever
   you closed it.

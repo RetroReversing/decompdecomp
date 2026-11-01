@@ -1289,3 +1289,10 @@ details.more[open] > summary::before { content: "− "; }
 #drawer[data-loading] .drawer-head .row > :not([data-close]):not(#fnPrev):not(#fnNext) { visibility: hidden; pointer-events: none; }
 /* Numeric evidence stays separate from symbolic assembly and its score. */
 .raw-address { display: block; color: var(--muted); font: 11px/1.5 var(--mono); }
+
+.manual-mcp { margin: 24px 0; }
+.manual-mcp .pad { display: grid; gap: 16px; }
+.manual-mcp .cmd { align-items: flex-start; }
+.manual-mcp .cmd code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.manual-mcp details { border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.manual-mcp .mcp-tool, .mcp-connection { padding: 12px 0; }
