@@ -7,7 +7,8 @@ import re
 
 from ..forks.csource import _blank
 from . import local_flow
-from .integer_repair_support import IDENT, INTEGER, edit, locals_for, refs, view
+from .integer_repair_support import IDENT, INTEGER, NUMBER, edit, locals_for, refs, view
+from .pattern_repairs import close
 
 FAMILIES = ('record_value_forwarding', 'narrow_definition_lifetime', 'sink_zero_initialization')
 
@@ -78,6 +79,14 @@ def variants(source, name, header=''):
             chain = straight_nodes(flow, node)
             # One explicitly narrowed definition can use a narrow local until the next kill.
             cast = re.match(r'\s*\(\s*(s16|u16|short|unsigned short)\s*\)', definition[1])
+            if cast:
+                operand=definition[1][cast.end():].strip()
+                # A cast of the left operand does not narrow the whole expression:
+                # (short)a - (short)b can be outside the signed-halfword range.
+                whole=(close(operand,0)==len(operand) if operand.startswith('(')
+                       else re.fullmatch(rf'{IDENT}|-?{NUMBER}',operand) is not None)
+                if not whole:
+                    cast=None
             if cast and decl['type'] in {'s32', 'int', 'u32', 'unsigned int'}:
                 compatible = decl['type'] in {'s32', 'int'}
                 end = next((n.start for n in chain[1:] if variable in n.defines), chain[-1].end)
@@ -151,7 +160,6 @@ def sink_zero(source, name, flow=None):
             if prefix and prefix[-1] not in ';{}':
                 continue
             opening=part.opening+hit.end()
-            from .pattern_repairs import close
             end=close(part.clean,opening)
             if not end or re.search(rf'\b{v}\b',part.clean[opening+1:end-1]):
                 continue

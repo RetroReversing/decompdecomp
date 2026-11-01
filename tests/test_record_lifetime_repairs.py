@@ -83,7 +83,8 @@ def test_narrowing_does_not_change_size_unsigned_arithmetic_or_nested_updates():
     base='int f(int x){int t; int y; t=(short)x; y=t*8; t=x; return t+y;}'
     for changed in [base.replace('y=t*8','y=sizeof(t)'),
                     base.replace('int t;', 'unsigned int t;').replace('(short)', '(unsigned short)'),
-                    base.replace('y=t*8','y=(t=70000)')]:
+                    base.replace('y=t*8','y=(t=70000)'),
+                    base.replace('t=(short)x','t=(short)x - (short)(x+1)')]:
         assert not any(f=='narrow_definition_lifetime' for f,_ in repairs.variants(changed,'f'))
 
 
