@@ -112,6 +112,8 @@ def test_fork_reads_disk_candidate_and_all_target_assembly(tmp_path, monkeypatch
     net.forks.get=lambda slug:(None,fp,{})
     net.forks._current_source=lambda fp,fn:'int f(){return 7;}'
     net.forks._meta=lambda fn:{}
+    from decompnet.app import agent_evidence
+    monkeypatch.setattr(agent_evidence,'baseline',lambda *args:None)
     assert 'return 7' in agent_tokens.get_candidate(net,a,'game','f')
     assert 'op599' in agent_tokens.assembly(net,'game','f',start=590,limit=20)
 
@@ -452,7 +454,7 @@ def test_blank_redraft_is_actionable_and_does_not_invoke_drafter(tmp_path, monke
     assert len(seen)==1
     schemas={t['function']['name']:t['function'] for t in api_tool_schemas()}
     assert schemas['redraft']['parameters']['properties']['context']['minLength']==1
-    assert 'Not for compiler/flag findings' in schemas['share_knowledge']['description']
+    assert 'NOT function-specific notes' in schemas['share_knowledge']['description']
 
 
 @pytest.mark.parametrize('mode',['rom','fork'])
@@ -590,3 +592,34 @@ def test_assembly_metadata_setting_applies_to_pages_briefs_and_full_reads(tmp_pa
     net.set_selection('game', agent.name, {'assembly_metadata': True})
     assert raw in agent_tokens.assembly(net, 'game', 'f', focus='page', agent=agent)
     assert net._function('f', 'game')['asm'] == raw  # no stored target edits
+
+
+def test_candidate_and_startup_brief_include_exact_baseline_line_evidence(tmp_path, monkeypatch):
+    from decompnet.app import agent_evidence
+    net, _ = _game(tmp_path, [('f', 10, 'open')])
+    agent, _ = net.local_agent('a')
+    source = 'int f(){return 1;}'
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET best_source=?,best_score=10', (source,))
+    note = '\nCompiled C lines associated with differences (advisory, not causes):\n  C line 1: return 1; (1 differing instructions)'
+    monkeypatch.setattr(agent_evidence,'baseline',lambda *args:{'source':source,'line_note':note})
+    assert note in agent_tokens.get_candidate(net,agent,'game','f')
+    text = agent_tokens.brief(net, '## CLAIMED: game/f\n```c\n'+source+'\n```', 'game',agent)
+    assert note in text and text.index(note) < text.index('## CLAIMED:')
+    monkeypatch.setattr(agent_evidence,'baseline',lambda *args:{'source':'different C','line_note':note})
+    assert note not in agent_tokens.get_candidate(net,agent,'game','f')
+    assert 'no line locations inferred' in agent_tokens.get_candidate(net,agent,'game','f')
+
+
+def test_compact_compile_feedback_preserves_line_mapping(tmp_path):
+    net, _ = _game(tmp_path, [('f', 10, 'open')])
+    agent, _ = net.local_agent('a')
+    fn = net._function('f','game')
+    rows = [('i','add a,b,c','add a,b,d')]
+    net._last_diffs[agent.id,fn['id']] = (rows,scoring.LEGEND)
+    note = '\nCompiled C lines associated with differences (advisory, not causes):\n  C line 2: return x; (1 differing instructions)\n    i target: add | compiled: sub'
+    text = 'score 10\nmarkers: i=operand\nlisting'+note+'\ncompiler output:\na warning'
+    for previous in (None,rows):
+        out = agent_tokens.feedback(net,agent,'game','f',text,previous)
+        assert note in out and out.count('C line 2:') == 1
+        assert 'a warning' in out
