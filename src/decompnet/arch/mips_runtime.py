@@ -82,3 +82,34 @@ def entry_context(asm):
         pointer |= '$a0' in reads and '$a0' not in defined and '(' in args
         if not store and not branch:defined.add(regs[0])
     return saved, floating and pointer
+
+
+def incoming_arguments(asm):
+    """Read-before-write incoming argument evidence, including spimdisasm's floating aliases."""
+    aliases={'fa0':'f12','fa1':'f14','fv0':'f0','fv1':'f2',
+             **{f'ft{i}':f'f{n}' for i,n in enumerate((4,6,8,10,16,18))},
+             **{f'fs{i}':f'f{20+2*i}' for i in range(6)}}
+    seen=set();integer=set();floating=set();frame=0;stack_slots=set();written=set()
+    for original in instructions(asm)[:64]:
+        line=re.sub(r'\$(\w+)',lambda m:'$'+aliases.get(m[1],m[1]),original)
+        if line.startswith(('jal ','jalr ','jr ')):break
+        match=re.match(r'(\w+(?:\.\w+)?)\s+(.+)',line)
+        if not match:continue
+        op,args=match.groups();regs=re.findall(r'\$[a-z][a-z0-9]*',args)
+        if not regs:continue
+        if m:=re.fullmatch(r'addiu\s+\$sp,\s*\$sp,\s*(-0x[\da-fA-F]+|-\d+)',line):frame=-int(m[1],0)
+        slot=re.search(r'(-?0x[\da-fA-F]+|-?\d+)\(\$sp\)',args)
+        store=op in {'sw','sd','sh','sb','swc1','sdc1'};branch=op.startswith(('b','c.'))
+        to_float=op in {'mtc1','dmtc1','ctc1'}
+        reads=regs[:1] if to_float else regs if store or branch else regs[1:]
+        for reg in reads:
+            if reg in seen:continue
+            if re.fullmatch(r'\$a[0-3]',reg):integer.add(reg)
+            if reg in {'$f12','$f14'}:floating.add(reg)
+        if slot:
+            offset=int(slot[1],0)
+            if store:written.add(offset)
+            elif offset>=frame+16 and offset not in written:stack_slots.add((offset-frame)//4+1)
+        if not store and not branch:seen.add(regs[-1] if to_float else regs[0])
+    return {'integer':sorted(integer),'floating':sorted(floating),'mixed':bool(floating and '$a0' in integer),
+            'incoming_stack_slots':sorted(stack_slots)}

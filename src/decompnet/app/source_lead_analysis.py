@@ -1,0 +1,176 @@
+"""Local source leads and measured differences. Ranking is evidence, never an identity or byte verdict."""
+import hashlib
+import json
+import re
+from collections import Counter
+
+from ..forks.csource import _blank
+from ..network import NetworkError
+from ..project import compiler_for
+
+PREFIX='source-analysis-v1:'
+
+
+def destination(net, proj, fn):
+    from .permuter_inputs import build_state
+    cfg=json.loads(proj['config'])
+    if getattr(net,'fork_slug',lambda slug:None)(proj['slug']):
+        from ..candidate_scope import key
+        return key(net,proj,fn)
+    context=net._context(proj['id'],fn['unit'])
+    symbols=[tuple(r) for r in net.store.all('SELECT name,address,size,kind FROM symbols WHERE project_id=? ORDER BY name',proj['id'])]
+    return hashlib.sha256(repr((compiler_for(cfg,fn['vram']),cfg.get('gp'),proj['arch'],
+                               fn['target'],fn['relocs'],fn['size'],fn['vram'],context['header'],symbols,build_state(proj))).encode()).hexdigest()
+
+
+def parameters(source, name):
+    match=re.search(r'\b'+re.escape(name)+r'\s*\(',_blank(source))
+    if not match:return None
+    clean=_blank(source);start=match.end();depth=1;count=0
+    for i in range(start,len(clean)):
+        if clean[i]=='(':depth+=1
+        if clean[i]==')':depth-=1
+        if not depth:
+            text=clean[start:i].strip()
+            return None if '...' in text or text=='' else 0 if text=='void' else count+1
+        if clean[i]==',' and depth==1:count+=1
+    return None
+
+
+def features(lines, arch):
+    calls=[];branches=[];offsets=set();exits=0
+    for text in lines:
+        text=text.strip();op=text.split()[0] if text else ''
+        if op in {'jal','jalr','bal','bl','blx','call','callq'}:calls.append(text.split(None,1)[-1])
+        if (arch=='mips' and op.startswith('b') and op not in {'bal','break'}) or op in {'beq','bne','bgt','blt','je','jne','jg','jl'}:branches.append(op)
+        exits+=bool(re.fullmatch(r'(?:jr\s+\$?ra|ret[q]?)',text))
+        if arch=='mips':
+            for match in re.finditer(r'(-?0x[0-9a-fA-F]+|-?\d+)\(\$?(?!sp\b|fp\b)[a-z]\w*\)',text):
+                offsets.add(int(match[1],0))
+    return {'calls':calls,'branches':branches,'exits':exits,'offsets':sorted(offsets)}
+
+
+def compare(rows, arch, source='', name=''):
+    valid=[r for r in (rows or []) if isinstance(r,(tuple,list)) and len(r)==3 and all(isinstance(c,str) for c in r)]
+    target=features([r[1] for r in valid if r[1]],arch)
+    candidate=features([r[2] for r in valid if r[2]],arch)
+    call_delta={k:v for k,v in (Counter(target['calls'])-Counter(candidate['calls'])).items()}
+    extra_calls=dict(Counter(candidate['calls'])-Counter(target['calls']))
+    markers={r[0] for r in valid if r[0]!=' '}
+    register_only=bool(markers) and markers=={'r'}
+    # Empty or fully inlined call sets supply no positive identity evidence.
+    score=0
+    if target['calls']:
+        shared=sum((Counter(target['calls'])&Counter(candidate['calls'])).values())
+        score+=round(60*shared/max(len(target['calls']),len(candidate['calls']),1))
+    if target['offsets']:
+        score+=round(30*len(set(target['offsets'])&set(candidate['offsets']))/len(set(target['offsets'])|set(candidate['offsets'])))
+    if valid and target['branches']==candidate['branches'] and target['exits']==candidate['exits']:score+=10
+    return {'target':target,'candidate':candidate,'missing_calls':call_delta,'extra_calls':extra_calls,
+            'source_parameters':parameters(source,name) if name else None,'support':score,
+            'register_only':register_only,'rows':[list(r) for r in valid[:160]],
+            'note':'Call/branch/exit differences are in compiled code; inlining, optimization or ABI differences may explain them. They are not automatic retail-source edits.'}
+
+
+def key(scope, source, header, family, profile):
+    return PREFIX+hashlib.sha256(repr((scope,source,header,family,profile)).encode()).hexdigest()
+
+
+def rejected(net, fn, scope, source, header, lead, profile):
+    row=net.store.one('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=?',fn['id'],key(scope,source,header,lead.get('family','original-context'),profile))
+    return bool(row and json.loads(row['feedback']).get('rejected'))
+
+
+def profile(net, proj, fn):
+    if getattr(net,'fork_slug',lambda slug:None)(proj['slug']):
+        return {'build_owned':True,'scope':destination(net,proj,fn)}
+    return compiler_for(json.loads(proj['config']),fn['vram'])
+
+
+def record(net, proj, fn, source, header, score, rows, lead=None, elapsed_ms=0, error='', scope=None):
+    lead=lead or {};family=lead.get('family','original-context')
+    scope=scope or destination(net,proj,fn);settings=profile(net,proj,fn)
+    signature=key(scope,source,header,family,settings)
+    comparison=compare(rows,proj['arch'],source,fn['name'])
+    if proj['arch']=='mips':
+        from ..arch.mips_runtime import incoming_arguments
+        comparison['entry']=incoming_arguments(fn['asm'] or '')
+    baseline=fn['best_score'];improved=score is not None and (baseline is None or score<baseline)
+    item={'scope':scope,'family':family,'profile':settings,'lead':lead,'score':score,'baseline':baseline,
+          'exact':score==0,'improved':improved,'error':error[:2000], 'elapsed_ms':max(0,int(elapsed_ms)),
+          'baseline_source_sha256':hashlib.sha256((fn['best_source'] or '').encode()).hexdigest(),
+          'source_sha256':hashlib.sha256(source.encode()).hexdigest(),'header_sha256':hashlib.sha256(header.encode()).hexdigest(),
+          'comparison':comparison}
+    with net.store.tx() as db:
+        if db.execute('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?',(fn['id'],signature)).fetchone():return
+        db.execute('INSERT INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
+                   (fn['id'],signature,str(score),'source lead and measured compiler evidence',json.dumps(item)))
+    if hasattr(net,'cfg') and hasattr(net,'fork_slug'):
+        from . import adaptive_repairs
+        adaptive_repairs.record(net,adaptive_repairs.profile(net,proj,fn),'register' if comparison['register_only'] else 'source',
+                                family,baseline,score,elapsed_ms,origin='local source preparation')
+
+
+def listing(net, proj):
+    rows=net.store.all('SELECT r.signature,r.feedback,f.name FROM reuse_trials r JOIN functions f ON f.id=r.function_id WHERE f.project_id=? AND r.signature LIKE ? ORDER BY r.rowid DESC LIMIT 500',proj['id'],PREFIX+'%')
+    leads=[];groups={}
+    for row in rows:
+        item=json.loads(row['feedback']);family=item['family'];profile=item['profile']
+        group=groups.setdefault((family,json.dumps(profile,sort_keys=True)),{'family':family,'profile':profile,'tested':0,'improved':0,'matched_functions':set(),'elapsed_ms':0})
+        group['tested']+=1;group['improved']+=int(item['improved']);group['elapsed_ms']+=item['elapsed_ms']
+        if item['exact']:group['matched_functions'].add(row['name'])
+        leads.append({'id':row['signature'],'function':row['name'],**item})
+    totals=[]
+    for group in groups.values():
+        group['matched']=len(group.pop('matched_functions'));totals.append(group)
+    leads.sort(key=lambda r:(bool(r.get('rejected')),not r['exact'],-r['comparison']['support'],r['score'] if r['score'] is not None else float('inf')))
+    return {'leads':leads[:40],'families':totals,'scope':'This project only; latest 500 distinct source/header/profile trials. Exact trials count distinct functions within each family/profile and may be unpromoted; they are not coverage and are not additive across families. Cached repeats are excluded; these are observations, not causal success rates.'}
+
+
+def reject(net, proj, signature, reason):
+    reason=str(reason).strip()
+    if not reason:raise NetworkError('Give a reason for rejecting this source lead.')
+    with net.store.tx() as db:
+        row=db.execute('SELECT r.* FROM reuse_trials r JOIN functions f ON f.id=r.function_id WHERE f.project_id=? AND r.signature=? AND r.signature LIKE ?',
+                       (proj['id'],signature,PREFIX+'%')).fetchone()
+        if not row:raise NetworkError('This source lead is no longer available. Refresh its evidence.')
+        item=json.loads(row['feedback']);item['rejected']=reason[:1000]
+        db.execute('UPDATE reuse_trials SET feedback=? WHERE function_id=? AND signature=?',(json.dumps(item),row['function_id'],signature))
+    return {'rejected':True}
+
+
+def brief(net, proj, fn):
+    lines=[]
+    if proj['arch']=='mips':
+        from ..arch.mips_runtime import incoming_arguments
+        abi=incoming_arguments(fn['asm'] or '')
+        if abi['mixed']:
+            lines.append('Incoming float/integer entry lead: '+', '.join(abi['floating']+abi['integer'])+
+                         '. An exposed ordinary-C signature may reserve different argument slots. Inspect original static-helper/caller context before broad permutation; no ABI is inferred or rewritten.')
+            if hasattr(net,'xrefs'):
+                callers=sorted(net.xrefs(proj)['called_by'].get(fn['vram'],()))[:4]
+                for address in callers:
+                    row=net.store.one('SELECT name,asm FROM functions WHERE project_id=? AND vram=?',proj['id'],address)
+                    if row:
+                        code=(row['asm'] or '').splitlines();at=next((i for i,line in enumerate(code) if re.search(r'\bjal\s+'+re.escape(fn['name'])+r'\b',line)),None)
+                        lines.append('Caller '+row['name']+(':\n'+'\n'.join(code[max(0,at-3):at+2]) if at is not None else ' (inspect its call-site argument setup).'))
+    scope=destination(net,proj,fn)
+    misses=[]
+    for row in net.store.all('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature LIKE ? ORDER BY rowid DESC LIMIT 80',fn['id'],PREFIX+'%'):
+        item=json.loads(row['feedback'])
+        if (item['scope']==scope and item.get('baseline_source_sha256')==hashlib.sha256((fn['best_source'] or '').encode()).hexdigest()
+                and item['comparison']['register_only'] and not item['improved']):misses.append(item)
+    if len(misses)>=3:
+        lines.append(f'{len(misses)} distinct prepared source/context/profile probes retained register-only misses for these inputs. Try declaration lifetimes, original record/prototype context or helper calling convention before equivalent expression rewrites. All mutation families remain available.')
+    return '\n'.join(lines)
+
+
+def rank_pairs(net, proj, fn, pairs, families):
+    """Use local measured family yield after 32 trials; interleave the original order for exploration."""
+    from itertools import zip_longest
+    own=compiler_for(json.loads(proj['config']),fn['vram'])
+    groups=[g for g in listing(net,proj)['families'] if g['profile']==own and g['tested']>=32]
+    weights={g['family']:(g['improved']+3*g['matched']+1)/(g['tested']+32) for g in groups}
+    if not weights:return pairs
+    ranked=sorted(pairs,key=lambda pair:-weights.get(families.get(pair,'original-context'),1/32))
+    return list(dict.fromkeys(pair for both in zip_longest(pairs,ranked) for pair in both if pair is not None))

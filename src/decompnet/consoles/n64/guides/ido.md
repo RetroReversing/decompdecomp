@@ -101,3 +101,15 @@ original volatile MMIO access shape: replacing a proven numeric register address
 scalar-symbol expression can change IDO 5.3's address setup/register selection. Only use addresses proven by the
 target; rejudge linked bytes rather than symbolic diff spelling. Inspect retail polling masks, error constants
 and recovery paths when an SDK revision differs. Changing optimization alone does not establish compatibility.
+
+## Original helper context before more permutations
+
+An incoming `f12` together with a live integer/pointer in `a0` can indicate an original static-helper
+calling convention that an exposed ordinary-C signature does not reproduce. Inspect the caller's argument
+setup and local helper context first; `mtc1` defining `f12` is not incoming-float evidence. Register and
+stack slots do not directly count C parameters, especially with wide or aggregate arguments.
+
+Use prepared-source investigation evidence to compare compiled calls, field offsets and branch/exit
+shapes. Similarity supports a source lead; it does not prove its name or justify automatic retail edits.
+After repeated register-only misses under unchanged source/context/profile inputs, prefer a targeted
+prototype/type or declaration-lifetime experiment. Exact judging still decides every candidate.
