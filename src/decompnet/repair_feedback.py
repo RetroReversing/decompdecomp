@@ -273,6 +273,8 @@ class RepairFeedback:
                                                           fromfile='before.c', tofile='matched.c'))
             from .repair_views import focused
             evidence.update(focused(old, new, evidence.get('symbol') or evidence['function']))
+            from .repair_review import classify
+            evidence['review_suggestion'] = classify({'evidence': evidence})
         return result | {'evidence': evidence}
 
     def review(self, slug, case_id, status, category='', note=None):

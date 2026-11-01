@@ -99,6 +99,13 @@ $("repairExamples").onclick = async () => {
         const kind = document.createElement('select'); kind.setAttribute('aria-label', `Category for example ${row.id}`);
         for (const value of categories) { const option = document.createElement('option'); option.value = value; option.textContent = value.replaceAll('_', ' '); kind.append(option); }
         kind.value = data.category;
+        const suggestion = data.evidence.review_suggestion;
+        if (suggestion && suggestion.category !== 'unclassified') {
+          const suggested = document.createElement('p'); suggested.className = 'muted small';
+          suggested.textContent = `Suggested category: ${suggestion.category.replaceAll('_', ' ')}. ${suggestion.note}`;
+          body.append(suggested);
+          if (data.category === 'unclassified') kind.value = suggestion.category;
+        }
         const note = document.createElement('textarea'); note.setAttribute('aria-label', `Your review note for example ${row.id}`);
         note.placeholder = 'Your review note, proposed rule or implementation PR'; note.value = data.review_note || '';
         const save = document.createElement('button'); save.type = 'button'; save.textContent = 'Save review';

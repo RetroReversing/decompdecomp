@@ -1160,3 +1160,10 @@ Agent work selection now explains every strategy in the dropdown and selected-op
 `no_compiling_c` strategy restricts automatic and named new claims to open functions with neither a scored
 candidate nor a recorded successful compilation, in both project modes; existing claims continue normally.
 This is historical compile evidence, not a fresh build preflight or a claim that the function cannot compile.
+
+Captured lifetime follow-ups: split scalar casts from constant bitwise operations, reuse a dead unsigned
+shift result in a store outside loops/gotos, and split a same-type floating cast before a product while
+preserving factor order. Integrated with shared draft/local/deep families and advisory repair pattern views.
+Isolated private replays recovered two recorded SN64 compiler-output controls with the new families;
+a third selected KMC case was already recovered by the existing typed-temporary family. Replay recovery
+is a regression result, not a new game match. Mixed/context-dependent examples remain for review.
