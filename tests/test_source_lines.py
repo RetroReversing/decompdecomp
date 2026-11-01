@@ -110,3 +110,18 @@ def test_imported_locations_translate_file_lines_and_reject_stale_objects(tmp_pa
     info,source=ForkEngine._source_mismatches(engine,SimpleNamespace(root=tmp_path),unit,{'name':'f'},[])
     assert info['available'] and source=='int f(void) {return 1;}'
     assert called[0][1]=={'filename':'unit.c','first_line':2}
+
+
+@pytest.mark.parametrize('version',[2,4,5])
+def test_modern_elf_dwarf_versions_have_real_function_locations(tmp_path,version):
+    clang=shutil.which('clang')
+    if not clang:
+        pytest.skip('needs clang for a synthetic ELF debug fixture')
+    source=tmp_path/'func.c';obj=tmp_path/'func.o'
+    source.write_text('int run(int x) {\n if (x > 5)\n  return x * 3;\n return x + 1;\n}\n')
+    result=subprocess.run([clang,'-target','x86_64-unknown-linux-gnu',f'-gdwarf-{version}','-O1','-c',str(source),'-o',str(obj)],capture_output=True,text=True,timeout=30)
+    if result.returncode:
+        pytest.skip('clang cannot build the synthetic ELF fixture: '+result.stderr[:200])
+    spans=source_lines.locations(obj.read_bytes(),'run')
+    assert spans and all(1 <= line <= 5 for _,_,line in spans)
+    assert not source_lines.locations(obj.read_bytes(),'run','unrelated.h')
