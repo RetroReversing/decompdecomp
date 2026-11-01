@@ -178,6 +178,7 @@
 
 <!-- ================================================================ a project -->
 <main id="project" class="view project" hidden>
+  <div id="projectLoading" class="navigation-loading" role="status" hidden><h2 id="projectLoadingText">Loading project…</h2><div class="workbar" role="progressbar" aria-label="Loading project"><i></i></div><button id="projectRetry" class="ghost" type="button" hidden>Retry</button></div>
   <header class="phead" id="phead">
     <div class="ph-row">
       <div class="ph-title">
@@ -620,6 +621,7 @@
         <button class="ghost icon" data-close type="button" aria-label="Close" title="Close (Esc)">✕</button>
       </div>
     </header>
+    <div id="functionLoading" class="navigation-loading" role="status" hidden><p id="functionLoadingText">Loading function…</p><div class="workbar" role="progressbar" aria-label="Loading function"><i></i></div><button id="functionRetry" class="ghost" type="button" hidden>Retry</button></div>
     <div class="drawer-body">
       <p class="set-aside" id="fnAside" hidden><span id="fnAsideWhy"></span> <button class="link-btn" id="fnReopen" type="button">Give it back to the agents</button></p>
       <div id="fnCompilerTest" hidden>

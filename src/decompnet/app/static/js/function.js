@@ -74,6 +74,41 @@ async function openFn(name) {
   const again = S.fn === name && !$("drawer").hidden;
   if (!again) { giveBack(name); S.editDirty = false; $("tryMsg").hidden = true; }
   S.fn = name;
+  if (!again) {
+    S.fnNav = (S.fnNav || 0) + 1;
+    S.fnDetail = null; S.fnLoading = true;
+    compilerComparisonBusy = false; compilerComparisonTarget = null;
+    deepPermuterBusy = false; deepPermuterTarget = null; deepPermuterJob = null;
+    $("fnName").textContent = name;
+    $("fnAddr").textContent = "";
+    $("fnNaming").hidden = true;
+    $("fnStatus").textContent = "";
+    $("fnCompilerMatches").replaceChildren();
+    $("fnApplyCompiler").hidden = true;
+    $("fnCompilerSummary").hidden = true;
+    $("fnCompilerLog").textContent = "";
+    $("fnCompilerLog").hidden = true;
+    $("fnDeepMetrics").hidden = true;
+    $("fnDeepStatus").textContent = "";
+    $("fnDeepLog").textContent = ""; $("fnDeepLog").hidden = true;
+    $("fnDeepNow").textContent = "";
+    $("fnDeepWork").replaceChildren();
+    $("fnDeepRun").disabled = false; $("fnDeepStop").hidden = true;
+    $("fnDeepMinutes").disabled = false; $("fnDeepVariants").disabled = false;
+    for (const id of ["fnCompilerSummary", "fnCompilerLog", "fnDeepLog"]) {
+      const log = $(id); if (log._workStatus) { log._workStatus.remove(); log._workStatus = null; }
+    }
+    document.querySelectorAll("#fnCompilerTest .workbar").forEach(bar => bar.remove());
+    $("tryBtn").disabled = false;
+    $("fnEdit").value = "";
+    $("fnAsm").replaceChildren();
+    $("drawer").setAttribute("data-loading", "");
+    $("drawer").setAttribute("aria-busy", "true");
+    $("functionLoading").hidden = false;
+    $("functionLoadingText").textContent = `Loading ${name}…`;
+    $("functionLoading").querySelector(".workbar").hidden = false;
+    $("functionRetry").hidden = true;
+  }
   showDrawer("drawer");
   if (!again) { S.ftab = null; S.which = "latest"; S.diffKey = null; $("diff").innerHTML = ""; $("diffSum").textContent = ""; }
   drawMap();
@@ -104,16 +139,21 @@ document.querySelectorAll("#diffWhich [data-which]").forEach((b) => {
   };
 });
 
-let fnBusy = false;
-let compilerComparisonBusy = false;
-let deepPermuterBusy = false, deepPermuterJob = null;
+let fnBusy = null, fnRequest = 0;
+function cancelFunctionRead() { fnBusy?.controller?.abort(); fnBusy = null; }
+let compilerComparisonBusy = false, compilerComparisonTarget = null;
+let deepPermuterBusy = false, deepPermuterJob = null, deepPermuterTarget = null;
 async function refreshFn(first) {
-  if (fnBusy || nameChangeBusy || !S.fn) return;
-  fnBusy = true;
+  if ((nameChangeBusy && !first) || !S.fn) return;
+  const slug = S.slug, requested = S.fn, gen = S.gen;
+  const key = `${gen}|${S.fnNav}|${slug}|${requested}`;
+  if (fnBusy?.key === key) return;
+  cancelFunctionRead();
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const request = fnBusy = {key, id: ++fnRequest, controller};
   try {
-    const slug = S.slug, requested = S.fn;
-    const d = await api(`/api/function?slug=${slug}&name=${encodeURIComponent(requested)}`);
-    if (slug !== S.slug || requested !== S.fn || nameChangeBusy) return;
+    const d = await api(`/api/function?slug=${slug}&name=${encodeURIComponent(requested)}`, {signal:controller?.signal});
+    if (gen !== S.gen || slug !== S.slug || requested !== S.fn || fnBusy !== request || (nameChangeBusy && !first)) return;
     // The server follows old-name aliases after a rename (including names inferred by Autopilot).
     S.fn = d.name;
     S.fnDetail = d;
@@ -240,9 +280,18 @@ async function refreshFn(first) {
     $("fnNotes").innerHTML = notesOf(true, "Your notes") + notesOf(false, "Notes from agents");
     const tab = S.ftab || (d.status === "matched" || !d.scores.length ? "code" : "diff");
     showFnTab(tab);
+    $("drawer").removeAttribute("data-loading");
+    $("drawer").setAttribute("aria-busy", "false");
+    $("functionLoading").hidden = true; S.fnLoading = false;
   } catch (e) {
-    if (first) toast(esc(e.message), "err");
-  } finally { fnBusy = false; }
+    if (gen !== S.gen || slug !== S.slug || requested !== S.fn || fnBusy !== request) return;
+    if (first) {
+      $("functionLoadingText").textContent = `Could not load ${requested}: ${e.message}`;
+      $("functionLoading").querySelector(".workbar").hidden = true;
+      $("functionRetry").hidden = false;
+      $("functionRetry").onclick = () => refreshFn(true);
+    }
+  } finally { if (fnBusy === request) fnBusy = null; }
 }
 
 /* Editing a function yourself: a highlighted editor over a textarea, judged like an agent's attempt. */
@@ -274,12 +323,19 @@ $("fnEdit").addEventListener("keydown", (e) => {
 $("tryBtn").onclick = () => tryIt();
 
 async function tryIt() {
+  if (!S.fnDetail || S.fnLoading || $("tryBtn").disabled) return;
+  const slug = S.slug, gen = S.gen, nav = S.fnNav;
+  const active = () => slug === S.slug && gen === S.gen && nav === S.fnNav;
   const name = S.fn, source = $("fnEdit").value, msg = $("tryMsg");
   if (!name || !source.trim() || $("tryBtn").disabled) return;
   $("tryBtn").disabled = true;
   msg.hidden = false; msg.className = "try-msg"; msg.textContent = "Compiling…";
   try {
-    const r = await api("/api/try", { method: "POST", body: { slug: S.slug, name, source } });
+    const r = await api("/api/try", { method: "POST", body: { slug, name, source } });
+    if (!active()) {
+      if (!r.matched && (slug !== S.slug || name !== S.fn)) api("/api/release", {method:"POST",body:{slug,name}}).catch(() => {});
+      return;
+    }
     if (r.matched) {
       S.myClaim = null;
       msg.className = "try-msg ok"; msg.textContent = "Byte-identical. Saved as a match, credited to you.";
@@ -296,8 +352,9 @@ async function tryIt() {
     await refreshFn(false);
     if (r.score != null) { S.ftab = "diff"; showFnTab("diff"); }
   } catch (e) {
+    if (!active()) return;
     msg.className = "try-msg bad"; msg.textContent = e.message;
-  } finally { $("tryBtn").disabled = false; }
+  } finally { if (active()) $("tryBtn").disabled = false; }
 }
 /* The function stays yours only while you're on it: give it back when you move on. */
 function giveBack(next) {
@@ -405,16 +462,16 @@ function renderDiff(d) {
   probs.innerHTML = [...advisory, ...(d.problems || [])].map((p) => `<li>${esc(p)}</li>`).join("");
 }
 async function loadDiff() {
-  const d0 = S.fnDetail;
+  const d0 = S.fnDetail, slug = S.slug, gen = S.gen, which = S.which, nav = S.fnNav;
   if (!d0) return;
-  const key = `${d0.name}|${S.which}|${d0.scores.length}|${d0.status}`;
+  const key = `${gen}|${nav}|${slug}|${d0.name}|${S.which}|${d0.scores.length}|${d0.status}`;
   if (key === S.diffKey) return;
   S.diffKey = key;
   if (!$("diff").innerHTML) $("diffSum").textContent = "Compiling…";
   try {
-    const d = await api(`/api/diff?slug=${S.slug}&name=${encodeURIComponent(d0.name)}&which=${S.which}`);
-    if (S.fnDetail && S.fnDetail.name === d0.name) renderDiff(d);
-  } catch (e) { $("diffSum").innerHTML = `<span class="bad">${esc(e.message)}</span>`; S.diffKey = null; }
+    const d = await api(`/api/diff?slug=${slug}&name=${encodeURIComponent(d0.name)}&which=${which}`);
+    if (gen === S.gen && slug === S.slug && S.diffKey === key && (S.fnDetail?.name === d0.name && nav === S.fnNav)) renderDiff(d);
+  } catch (e) { if (gen !== S.gen || slug !== S.slug || S.diffKey !== key || (S.fnDetail?.name !== d0.name || nav !== S.fnNav)) return; $("diffSum").innerHTML = `<span class="bad">${esc(e.message)}</span>`; S.diffKey = null; }
 }
 
 function stepFn(delta) {
@@ -585,19 +642,25 @@ function wireFunctionCompilerTable(table, ranked, slug, name) {
     if (!button || S.slug !== slug || S.fn !== name) return;
     const row = ranked[Number(button.dataset.compilerChoice)];
     if (!row || row.apply_disabled || row.percent == null) return;
+    const gen = S.gen, nav = S.fnNav;
+    const active = () => gen === S.gen && nav === S.fnNav && S.slug === slug && S.fn === name;
+    const target = compilerComparisonTarget = {};
     const done = beginWork(summary, "Applying selected compiler settings", [...table.querySelectorAll("button")], "Settings applied.");
     compilerComparisonBusy = true;
     try {
       await api("/api/compiler", { method: "POST", body: { slug, function: name, toolchain: row.toolchain, flags: row.flags, allow_non_improving: true } });
+      if (!active()) return;
       await refreshMap(true);
-      summary.textContent = "Applied the selected profile to this function and rechecked its saved C.";
-    } catch (e) { summary.textContent = e.message; }
-    finally { compilerComparisonBusy = false; done(); await refreshFn(false); }
+      if (active()) summary.textContent = "Applied the selected profile to this function and rechecked its saved C.";
+    } catch (e) { if (active()) summary.textContent = e.message; }
+    finally { if (compilerComparisonTarget === target) { compilerComparisonBusy = false; compilerComparisonTarget = null; } if (active()) { done(); await refreshFn(false); } }
   };
 }
 $("fnTestCompilers").onclick = async () => {
   const button = $("fnTestCompilers"), log = $("fnCompilerLog"), summary = $("fnCompilerSummary");
-  const slug = S.slug, name = S.fn;
+  const slug = S.slug, name = S.fn, gen = S.gen, nav = S.fnNav;
+  const active = () => S.gen === gen && S.fnNav === nav && S.slug === slug && S.fn === name && !$("drawer").hidden;
+  const target = compilerComparisonTarget = {};
   log.hidden = false;
   summary.hidden = false;
   compilerComparisonBusy = true;
@@ -605,15 +668,17 @@ $("fnTestCompilers").onclick = async () => {
   showJobError(log, "");
   try {
     const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, flags_only: $("fnCompilerFlagsOnly").checked, function: name } });
-    const result = await followJob(job, log);
-    if (S.fn !== name || S.slug !== slug) return;
+    const result = await followJob(job, null, lines => { if (active()) log.textContent = lines.join("\n"); });
+    if (!active()) return;
     renderFunctionCompilerComparison(result.comparison, slug, name);
-  } catch (e) { summary.textContent = e.message; showJobError(log, e.message); }
-  finally { compilerComparisonBusy = false; finish(); await refreshFn(false); }
+  } catch (e) { if (active()) { summary.textContent = e.message; showJobError(log, e.message); } }
+  finally { if (compilerComparisonTarget === target) { compilerComparisonBusy = false; compilerComparisonTarget = null; } if (active()) { finish(); await refreshFn(false); } }
 };
 
 $("fnDeepRun").onclick = async () => {
-  const slug = S.slug, name = S.fn;
+  const slug = S.slug, name = S.fn, gen = S.gen, nav = S.fnNav;
+  const active = () => S.gen === gen && S.fnNav === nav && S.slug === slug && S.fn === name && !$("drawer").hidden;
+  const target = deepPermuterTarget = {};
   const log = $("fnDeepLog"), status = $("fnDeepStatus"), stop = $("fnDeepStop");
   const controls = [$("fnDeepRun"), $("fnDeepMinutes"), $("fnDeepVariants")];
   const minutes = Number($("fnDeepMinutes").value), maxVariants = Number($("fnDeepVariants").value);
@@ -630,22 +695,27 @@ $("fnDeepRun").onclick = async () => {
   $("fnDeepWork").append(bar);
   try {
     const { job } = await api("/api/permuter/function", { method: "POST", body: { slug, function: name, minutes, max_variants: maxVariants } });
-    deepPermuterJob = job; stop.disabled = false;
-    const result = await followJob(job, log, (_, state) => {
+    if (active()) { deepPermuterJob = job; stop.disabled = false; }
+    const result = await followJob(job, null, (lines, state) => {
+      if (!active()) return;
+      log.textContent = lines.join("\n");
       const p = state.progress;
       if (p) { renderProgress(p); status.textContent = `${name} · ${p.phase}`; }
     });
+    if (!active()) return;
     renderProgress(result);
     status.textContent = `${name} · ${result.reason} · ${result.tested.toLocaleString()} tested. Improvements saved.`;
     if (S.slug === slug && S.fn === name) { await refreshMap(true); await refreshFn(false); }
   } catch (error) {
+    if (!active()) return;
     if (error.job?.state === "cancelled") {
       status.textContent = `${name} · Stopped. Verified improvements are saved.`;
       log._workStatus.dataset.state = "cancelled"; log._workStatus.textContent = "Stopped";
     }
     else { status.textContent = error.message; $("fnDeepOutput").open = true; showJobError(log, error.message); }
   } finally {
-    deepPermuterBusy = false; deepPermuterJob = null; stop.hidden = true; done();
+    if (deepPermuterTarget === target) { deepPermuterBusy = false; deepPermuterJob = null; deepPermuterTarget = null; }
+    if (active()) { stop.hidden = true; done(); }
   }
 };
 $("fnDeepStop").onclick = async () => {

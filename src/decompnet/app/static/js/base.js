@@ -64,8 +64,9 @@ function duration(h) { return h < 1 ? `${Math.max(1, Math.round(h * 60))}\u00a0m
 function bytes(n) { return n >= MIB ? `${(n / MIB).toFixed(1)} MB` : n >= KIB ? `${(n / KIB).toFixed(1)} KB` : `${n} bytes`; }
 function money(usd) { return usd >= 10 ? `$${usd.toFixed(0)}` : `$${usd.toFixed(2)}`; }
 
-async function api(path, { method = "GET", body, raw } = {}) {
+async function api(path, { method = "GET", body, raw, signal } = {}) {
   const opts = { method, headers: {} };
+  if (signal) opts.signal = signal;
   if (method !== "GET") opts.headers["X-Decomp"] = "1";
   if (raw !== undefined) { opts.body = raw; opts.headers["Content-Type"] = "application/octet-stream"; }
   else if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers["Content-Type"] = "application/json"; }
@@ -322,7 +323,7 @@ function route() {
   closeNav();
   hideLaunch();
   if (m) {
-    if (S.slug === m[1] && !$("project").hidden) { setTab(m[2] || "overview"); markNav(); return; }
+    if (S.slug === m[1] && !$("project").hidden) { if (S.ov) setTab(m[2] || "overview"); else S.tab = m[2] || "overview"; markNav(); return; }
     leaveProject();
     openProject(m[1], m[2] || "overview");
   } else {
@@ -343,6 +344,7 @@ function show(view) {
   window.scrollTo(0, 0);
 }
 function leaveProject() {
+  if (typeof cancelProjectLoad === "function") cancelProjectLoad();
   stopPolling();
   S.gen++;  // what its polls bring back now is dropped
   S.slug = null;
