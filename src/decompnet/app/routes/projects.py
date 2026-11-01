@@ -290,12 +290,15 @@ def register(app: App) -> None:
         if request.method == 'GET':
             return sweeps.status(slug)
         action = data.get('action', 'start')
+        if action == 'export-metrics':
+            from ..metrics_export import save
+            return save(slug, data.get('csv'))
         if action == 'stop':
             return sweeps.stop(slug)
         if action == 'reset-metrics':
             return sweeps.reset_metrics(slug)
         if action != 'start':
-            raise ValueError('Choose start, stop or reset-metrics for the deep pass.')
+            raise ValueError('Choose start, stop, reset-metrics or export-metrics for the deep pass.')
         if not isinstance(data.get('repeat', False), bool):
             raise ValueError('Repeat must be true or false.')
         return sweeps.start(slug, data.get('minutes', 5), data.get('max_variants', 10000), data.get('repeat', False),

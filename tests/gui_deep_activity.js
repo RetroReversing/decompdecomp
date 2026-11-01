@@ -34,3 +34,10 @@ ctx.renderDeepActivity({workers:[worker('z',['raw output']),{...worker('b',[]),t
 assert.equal(host.children[0].dataset.worker,'b');
 assert.equal(host.children[1],z);assert.equal(z.querySelector('details').open,true);
 assert.equal(z.querySelector('[data-output]').textContent,'raw output');
+
+ctx.renderDeepActivity({recent_workers:[{...worker('bad',['compiler unavailable']),phase:'error',error:'Saved C no longer compiles'}]});
+assert.equal(host.children[0].querySelector('[data-state]').textContent,'Needs attention');
+assert.equal(host.children[0].querySelector('[data-result]').textContent,'Saved C no longer compiles');
+ctx.renderDeepActivity({recent_workers:[{...worker('done',[]),phase:'finished',reason:'Variant limit reached'}]});
+assert.equal(host.children[0].querySelector('[data-state]').textContent,'Turn complete');
+assert.equal(host.children[0].querySelector('[data-result]').textContent,'Variant limit reached');

@@ -379,7 +379,7 @@ class Sweeps:
             # not completed, and a changed source/header or an explicit repeat retries it.
             busy = self.net.store.one('SELECT 1 FROM claims WHERE function_id=? AND expires_at>?', fn['id'], time.time())
             self.record(fn, scope, 'pending' if busy or 'claim' in str(error).lower() or str(error).startswith('This function is working') else 'error', minutes, variants, error=str(error))
-            activity.update(fn['name'], {'phase': 'waiting' if busy else 'error'}, line=str(error), finished=True)
+            activity.update(fn['name'], {'phase': 'waiting' if busy else 'error', 'error': str(error)}, line=str(error), finished=True)
             log(f'{fn["name"]}: {error}')
         except BaseException:
             activity.update(fn['name'], {'phase': 'interrupted'}, finished=True)

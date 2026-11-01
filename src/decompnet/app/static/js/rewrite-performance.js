@@ -39,22 +39,30 @@ function rewritePerformanceCsv(rows, metadata) {
 }
 function renderRewritePerformance(status) {
   const host=$("deepSweepRecipes"), slug=S.slug;
-  if(host.dataset.project !== S.slug) { host.dataset.project=S.slug; host.dataset.performanceSort='improved'; host.dataset.performanceDirection='desc'; }
+  if(host.dataset.project !== S.slug) { host.dataset.project=S.slug; host.dataset.metricsExportStatus=''; host.dataset.performanceSort='improved'; host.dataset.performanceDirection='desc'; }
   const key=host.dataset.performanceSort || 'improved', descending=host.dataset.performanceDirection !== 'asc';
   const rows=sortRewritePerformance(rewritePerformanceRows(status),key,descending);
   const columns=[['family','Rewrite'],['tested','Tested'],['improved','Improved'],['matched','Matched'],['rate','Improvement rate'],['score_gain','Score reduced'],['elapsed_ms','Judge time']];
   const format=(r,k)=>r[k] == null ? '—' : k==='rate' ? `${r[k].toFixed(2)}%` : k==='elapsed_ms' ? `${(r[k]/1000).toFixed(1)}s${r.timing_coverage==='partial'?' (partial)':''}` : esc(r[k]);
-  host.innerHTML = rows.length ? `<details class="deep-recipe-results" data-kind="performance"><summary>Rewrite performance · ${rows.length} families</summary><p class="small muted">Verified improvements, including exact matches. Older trials may lack outcome/timing measurements; — means unavailable. Partial timing covers only the measured trials, not the whole history. Random candidates can combine rewrites; attribution records their final rewrite alongside saved history.</p><button class="ghost small-btn" data-export-rewrites type="button">Export metrics (CSV)</button><div class="compiler-table"><table><thead><tr>${columns.map(([k,label])=>`<th aria-sort="${key===k?descending?'descending':'ascending':'none'}"><button class="table-sort" type="button" data-performance-sort="${k}">${label}${key===k?descending?' ↓':' ↑':''}</button></th>`).join('')}<th>Details</th></tr></thead><tbody>${rows.map(r=>`<tr>${columns.map(([k])=>`<td>${k==='family'?esc(r.family.replaceAll('_',' ')):format(r,k)}</td>`).join('')}<td><details data-performance-family="${esc(r.family)}"><summary>Outcomes</summary><dl class="facts one">${[['Cached skips',r.skipped],['Rejected',r.rejected],['Measured trials',r.measured_attempts || null],['Measured improvements',r.measured_improved],['Measured matches',r.measured_matched],['Measured score reduction',r.measured_score_gain],['Compile failed',r.compile_failed],['Unscored',r.unscored],['Unchanged',r.unchanged],['Worse',r.worse],['Mean per measured attempt',r.mean_ms == null ? null : `${r.mean_ms.toFixed(0)}ms`]].map(([label,value])=>`<div><dt>${label}</dt><dd>${value == null?'—':esc(value)}</dd></div>`).join('')}</dl></details></td></tr>`).join('')}</tbody></table></div><p class="small muted">Detailed outcomes cover measured trials only. Timing includes compiling and judging; cached skips and rejected candidates are not recompiled. Score reductions depend on function size.</p></details>` : '';
+  host.innerHTML = rows.length ? `<details class="deep-recipe-results" data-kind="performance"><summary>Rewrite performance · ${rows.length} families</summary><p class="small muted">Verified improvements, including exact matches. Older trials may lack outcome/timing measurements; — means unavailable. Partial timing covers only the measured trials, not the whole history. Random candidates can combine rewrites; attribution records their final rewrite alongside saved history.</p><button class="ghost small-btn" data-export-rewrites type="button">Export metrics (CSV)</button><p class="small muted" data-export-status role="status"></p><div class="compiler-table"><table><thead><tr>${columns.map(([k,label])=>`<th aria-sort="${key===k?descending?'descending':'ascending':'none'}"><button class="table-sort" type="button" data-performance-sort="${k}">${label}${key===k?descending?' ↓':' ↑':''}</button></th>`).join('')}<th>Details</th></tr></thead><tbody>${rows.map(r=>`<tr>${columns.map(([k])=>`<td>${k==='family'?esc(r.family.replaceAll('_',' ')):format(r,k)}</td>`).join('')}<td><details data-performance-family="${esc(r.family)}"><summary>Outcomes</summary><dl class="facts one">${[['Cached skips',r.skipped],['Rejected',r.rejected],['Measured trials',r.measured_attempts || null],['Measured improvements',r.measured_improved],['Measured matches',r.measured_matched],['Measured score reduction',r.measured_score_gain],['Compile failed',r.compile_failed],['Unscored',r.unscored],['Unchanged',r.unchanged],['Worse',r.worse],['Mean per measured attempt',r.mean_ms == null ? null : `${r.mean_ms.toFixed(0)}ms`]].map(([label,value])=>`<div><dt>${label}</dt><dd>${value == null?'—':esc(value)}</dd></div>`).join('')}</dl></details></td></tr>`).join('')}</tbody></table></div><p class="small muted">Detailed outcomes cover measured trials only. Timing includes compiling and judging; cached skips and rejected candidates are not recompiled. Score reductions depend on function size.</p></details>` : '';
   host.querySelectorAll('[data-performance-sort]').forEach(button=>{button.onclick=()=>{
     host.dataset.performanceSort=button.dataset.performanceSort;
     host.dataset.performanceDirection=button.dataset.performanceSort===key ? descending?'asc':'desc' : button.dataset.performanceSort==='family'?'asc':'desc';
     renderDeepSweepResults(status);
   };});
+  const exportStatus=host.querySelector('[data-export-status]');
+  if(exportStatus) exportStatus.textContent=host.dataset.metricsExportStatus || '';
   const exportButton=host.querySelector('[data-export-rewrites]');
-  if(exportButton) exportButton.onclick=()=>{
+  if(exportButton) exportButton.onclick=async()=>{
     if(S.slug !== slug) return;
     const csv=rewritePerformanceCsv(rows,{exported_at:new Date().toISOString(),project:S.slug,game_platform:S.ov?.platform || '',platform:S.st?.platform || '',version:S.st?.version || '',build:S.st?.build || ''});
-    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-    const link=document.createElement('a'); link.href=url; link.download=`${S.slug}-rewrite-metrics.csv`; link.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+    const output=host.querySelector('[data-export-status]');
+    const done=beginWork(output,'Saving metrics',[exportButton],'Metrics saved.');
+    try {
+      const result=await api('/api/permuter/pass',{method:'POST',body:{slug,action:'export-metrics',csv}});
+      if(S.slug === slug) { host.dataset.metricsExportStatus=`Saved CSV: ${result.path}`; host.querySelector('[data-export-status]').textContent=host.dataset.metricsExportStatus; toast(`Metrics saved: ${result.path}`, 'match'); }
+    } catch(error) {
+      if(S.slug === slug) { host.dataset.metricsExportStatus=error.message; host.querySelector('[data-export-status]').textContent=error.message; toast(error.message,'error'); }
+    } finally { done(); }
   };
 }

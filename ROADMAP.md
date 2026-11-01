@@ -1413,3 +1413,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Done: room deep searches publish one measured turn summary instead of phase-release boilerplate; latest summaries replace repeats per runner/function, and obsolete lease notes are omitted from function views and briefs without deleting history.
 
 - Done: per-agent Work settings can omit assembly byte/address presentation columns from claims, briefs, full function reads, redrafts and assembly pages; labels and operands remain intact across ROM and imported projects.
+
+- Done: metrics CSV export saves through the private app API to Downloads with a visible saved path or error, avoiding embedded-webview Blob downloads. Recent deep-search cards distinguish completed turns from active workers and expose failure reasons.
