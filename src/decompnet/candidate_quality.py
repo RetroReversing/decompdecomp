@@ -50,6 +50,8 @@ def brief(net,fn):
     source = fn['best_source'] or fn['seed'] or ''
     abi = aggregate_hints(source, fn['name'], source)
     prefix = ['### Aggregate ABI checks (advisory)', *abi] if abi else []
+    from .app.matched_context import brief as matched_context
+    prefix += matched_context(net, fn, source)
     current=hashlib.sha256((fn['best_source'] or '').encode()).hexdigest()
     saved=[r for r in records(net,fn) if r['source_hash']==current]
     if saved:
