@@ -6,7 +6,10 @@ def order(families, rows):
     focus = classify(rows)
     markers = {row[0] for row in rows if row[0] != ' '}
     from .normalization_repairs import frame_gap
-    if frame_gap(rows):
+    if markers and markers <= {'s'}:
+        preferred = ('modular_guard_width', 'local_width', 'spill_normalization', 'unused_scalar_local',
+                     'local_storage', 'parameter_storage', 'local_declaration_order', 'stack_padding')
+    elif frame_gap(rows):
         preferred = ('spill_normalization', 'split_narrow_lifetime', 'call_return_normalization',
                      'stack_address_temporary', 'combined_scheduling', 'stack_padding')
     elif focus == 'call':
@@ -23,7 +26,7 @@ def order(families, rows):
         preferred = ('scalar_global_address', 'integer_address_order', 'call_return_normalization',
                      'split_narrow_lifetime', 'inline_scalar_shape', 'local_widening', 'signedness')
     elif markers & {'<', '>', '|', 'o'}:
-        preferred = ('target_call_argument', 'known_address_alias', 'single_field_record', 'target_local_bundle', 'structured_backedge', 'loop_invariant_placement', 'combined_scheduling', 'shared_return_tail', 'redundant_loop_guard', 'call_initialization', 'address_association', 'paired_load_order', 'pointer_before_store', 'guard_forward_jump', 'branch_call', 'goto_leaf', 'switch_layout',
+        preferred = ('count_lifetime_bundle', 'count_load_qualification', 'count_phase_lifetime', 'normalization_scope', 'target_call_argument', 'known_address_alias', 'single_field_record', 'target_local_bundle', 'structured_backedge', 'loop_invariant_placement', 'combined_scheduling', 'shared_return_tail', 'redundant_loop_guard', 'call_initialization', 'address_association', 'paired_load_order', 'pointer_before_store', 'guard_forward_jump', 'branch_call', 'goto_leaf', 'switch_layout',
                      'branch_orientation', 'loop_induction', 'callee_parameter_width', 'call_result_inline', 'parameter_width')
     elif 'i' in markers:
         preferred = ('known_address_alias', 'target_call_argument', 'target_local_bundle', 'local_widening', 'integer_address_order', 'signedness', 'narrowing', 'constant_local')

@@ -425,6 +425,10 @@ function renderDiff(d) {
   const label = { matched: "Matching C", best: "Best attempt", latest: S.ov.kind === "fork" ? "The source now" : "Latest attempt" }[d.kind] || "Attempt";
   sum.innerHTML = `<b>${label}</b> · ${d.percent === 100 && d.score === 0 ? `<span class="ok">byte-identical</span>` : `${d.percent}%${d.score != null ? ` · score ${d.score}` : ""}`} · ${same} of ${target} instructions identical
     <span class="diff-key"><i class="k arg"></i>operands <i class="k repl"></i>different <i class="k mov"></i>moved</span>`;
+  if (d.mismatch_summary) {
+    const diagnostic = document.createElement("p");
+    diagnostic.className = "muted"; diagnostic.textContent = d.mismatch_summary; probs.append(diagnostic);
+  }
   if (d.stack_diagnostic) {
     const diagnostic = document.createElement("p"); diagnostic.className = "small muted";
     diagnostic.textContent = d.stack_diagnostic; probs.append(diagnostic);

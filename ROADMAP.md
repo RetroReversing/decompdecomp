@@ -1424,3 +1424,13 @@ remain planned: the initial browser toolchain has no matching build-context adap
 
 - Done: global and per-agent initial-prompt templates (ROM/imported/polishing) and app-instruction overrides support preview, inheritance and reset. Sessions freeze their effective templates; authenticated MCP initialization/discovery and API system messages use the selected instructions, transcripts record the effective text, and prompt profiles separate efficiency cohorts. Project instructions and continuation context remain appended.
 - Done: agent cards show one reported-usage line (unknown usage is not zero), one agent-scoped compile total, current function match/instruction metadata, and a clickable distinct-functions-worked-on total that respects metric resets.
+
+### Count-lifetime repair coverage
+
+- Done: shared mismatch-category/position diagnostics in ROM and imported Diff views,
+  bounded structural alternatives, and MIPS count-phase/guard-width hypotheses through
+  shared drafts, agent local experiments, iterative and deep repair paths.
+- Planned: validate count-load scheduling and temporary-width adapters on non-MIPS
+  compilers before enabling these compiler-facing source families there. Diagnostics
+  and frontier retention already apply across processors; the MIPS replay is not a
+  claim of matching gains on other architectures.
