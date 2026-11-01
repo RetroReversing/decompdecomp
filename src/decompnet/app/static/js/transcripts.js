@@ -93,8 +93,8 @@ $("helperTranscript").onclick = async () => {
   dialog.className = "transcript-dialog session-transcript";
   dialog.innerHTML = `<header class="transcript-header"><div><span class="transcript-eyebrow">Agent activity</span><h2>Session transcript</h2><p class="small muted">Prompts, replies and tool exchanges from this helper.</p></div><button data-close type="button" class="ghost" aria-label="Close session transcript">Close</button></header>
     <div class="transcript-toolbar"><label>Session<select aria-label="Session"></select></label><div class="row">
-    <button data-older type="button" class="ghost small-btn">Older sessions</button><button data-refresh type="button" class="ghost small-btn">Refresh</button></div></div>
-    <div class="transcript-usage"><span class="transcript-eyebrow">Reported usage</span><p data-usage></p></div>
+    <button data-export type="button" class="ghost small-btn">Export all transcripts (JSON)</button><button data-older type="button" class="ghost small-btn">Older sessions</button><button data-refresh type="button" class="ghost small-btn">Refresh</button></div></div>
+    <p data-export-status class="small muted" role="status"></p><div class="transcript-usage"><span class="transcript-eyebrow">Reported usage</span><p data-usage></p></div>
     <div class="transcript-timeline"><div class="transcript-timeline-heading"><h3>Timeline</h3><span data-event-count class="small muted"></span></div><div data-events></div><button data-more type="button" class="ghost" hidden>Load more messages</button></div>
     <details class="transcript-coverage"><summary>What this transcript includes</summary><p class="small muted">App prompts, exposed replies and full app tool exchanges recorded while transcripts were enabled. CLI internal system prompts, hidden reasoning, shell output and context compaction are not captured. API requests include the context actually sent. Credentials are redacted. Earlier sessions cannot be reconstructed.</p></details>`;
   document.body.append(dialog);
@@ -201,6 +201,15 @@ $("helperTranscript").onclick = async () => {
     } catch (error) { toast(esc(error.message), "err"); }
     finally { finish(); }
   }
+  dialog.querySelector('[data-export]').onclick = async () => {
+    const button = dialog.querySelector('[data-export]'), status = dialog.querySelector('[data-export-status]');
+    const finish = beginWork(status, 'Exporting all recorded sessions', [button]);
+    try {
+      const result = await api('/api/transcript', {method:'POST', body:{slug, helper}});
+      status.textContent = `Saved ${result.sessions} sessions (${result.events} events): ${result.path}`;
+    } catch (error) { status.textContent = error.message; }
+    finally { finish(); }
+  };
   select.onchange = () => load(); refresh.onclick = () => load();
   more.onclick = () => load(false); older.onclick = () => load(false, true);
   dialog.querySelector("[data-close]").onclick = () => dialog.close();

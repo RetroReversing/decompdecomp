@@ -1,5 +1,8 @@
 # Roadmap
 
+Implemented: export all recorded sessions and full events for one project agent as JSON to Downloads,
+independent of transcript dialog pagination. Unrecorded CLI internals cannot be reconstructed.
+
 Implemented: reached reference include-tree macros in explicit source contexts, bounded initializer-helper
 expansion in preparation and shared local repairs, advisory folded object-base and retail switch-table
 case/group comparisons, and explicit bounded batch rechecking of historical exact bundles. Table evidence

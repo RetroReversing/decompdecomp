@@ -101,3 +101,25 @@ def test_mcp_records_full_arguments_results_and_errors(setup, monkeypatch):
     assert 'Missing function.' in events[-1]['text']
     assert json.loads(events[-2]['text'])['call_id'] == json.loads(events[-1]['text'])['call_id']
     assert json.loads(events[-1]['text'])['call_id'] != first_id
+
+
+def test_export_all_sessions_and_events_without_paging_or_other_agents(setup, tmp_path, monkeypatch):
+    from pathlib import Path
+    net, manager, session, row = setup
+    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
+    for i in range(275):
+        session.record('tool_response', {'index': i, 'password': 'secret'})
+    for _ in range(35):
+        manager._session_begin(session)
+    session.record('text', 'last session')
+    result = manager.transcripts.export('demo', 1)
+    data = json.loads(Path(result['path']).read_text())
+    assert result['sessions'] == len(data['sessions']) == 36
+    assert result['events'] == 276
+    assert len(data['sessions'][0]['events']) == 275
+    assert data['sessions'][-1]['events'][0]['text'] == 'last session'
+    assert 'secret' not in Path(result['path']).read_text()
+    other = manager.transcripts.export('other', 1)
+    assert json.loads(Path(other['path']).read_text())['sessions'] == []
+    assert manager.transcripts.export('demo', 2)['sessions'] == 0
+    assert manager.transcripts.export('demo', 1)['path'] != result['path']
