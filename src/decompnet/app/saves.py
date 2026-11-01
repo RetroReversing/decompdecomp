@@ -938,7 +938,7 @@ class Autosave:
                 try:
                     cfg = json.loads(row['config'])
                     folder = cfg.get('progress_folder') or str(Path(row['root']) / SAVE_FOLDER)
-                except (ValueError, TypeError):
+                except (ValueError, TypeError, AttributeError):
                     folder = str(Path(row['root']) / SAVE_FOLDER)
                 if isinstance(error, PermissionError):
                     action = "Check write permission for this folder and its files."

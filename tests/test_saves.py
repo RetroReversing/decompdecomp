@@ -397,7 +397,7 @@ def test_autosave_errors_show_cause_folder_build_and_retry_other_projects(tmp_pa
 
     clock = [100.0]
     monkeypatch.setattr(saves.time, 'monotonic', lambda: clock[0])
-    rows = [{'slug': 'bad', 'root': str(tmp_path), 'config': '{}'},
+    rows = [{'slug': 'bad', 'root': str(tmp_path), 'config': '[]'},
             {'slug': 'good', 'root': str(tmp_path), 'config': '{}'}]
     calls = []
     def sync(slug, **kwargs):
