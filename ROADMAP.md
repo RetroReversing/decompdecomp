@@ -1,5 +1,9 @@
 # Roadmap
 
+Implemented: ROM function compiler results show current project assignment and matched-function counts for
+each exact compiler/ordered-flags profile. Imported projects own their build settings; equivalent per-file
+profile usage needs a build-system adapter and remains planned.
+
 Implemented: reached reference include-tree macros in explicit source contexts, bounded initializer-helper
 expansion in preparation and shared local repairs, advisory folded object-base and retail switch-table
 case/group comparisons, and explicit bounded batch rechecking of historical exact bundles. Table evidence

@@ -648,7 +648,7 @@ function renderFunctionCompilerComparison(c, slug, name) {
 }
 function wireFunctionCompilerTable(table, ranked, slug, name) {
   const summary = $("fnCompilerSummary");
-  setHtml(table, compilerRankedTable(ranked, true));
+  setHtml(table, compilerRankedTable(ranked, true, S.fnDetail?.compiler_profile_usage ?? null));
   table.onclick = async (event) => {
     const button = event.target.closest("button[data-compiler-choice]");
     if (!button || S.slug !== slug || S.fn !== name) return;
