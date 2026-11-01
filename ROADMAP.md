@@ -1344,6 +1344,12 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   ROM selection restores and reverifies saved work through the existing save
   pipeline, preserving the checkout and following the restored project identity.
   Open a saved project also accepts a repository root containing progress/.
+
+Local browser workers can explicitly pair for manual KMC ROM tasks and host-rejudged plain-C submissions.
+The bridge is origin/project scoped with expiring capabilities, one-use tasks and transaction-time stale/revoked
+checks. Imported object projects, automatic room claims, richer source preprocessing and non-KMC compilers
+remain planned: the initial browser toolchain has no matching build-context adapter for them.
+
 - Done: concurrent deep passes publish function-attributed activity snapshots with
   bounded recent output and eight recent completions. Settings shows stable,
   clickable function cards with phase, rewrite family, match changes, trial budgets

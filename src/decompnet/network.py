@@ -1488,11 +1488,13 @@ class Network:
 
     def _record(self, fn, agent: Agent, score: int | None, source: str, ctx_version: int, matched: bool = False,
                 compiled: bool | None = None, via: str = "agent", effective_settings=None,
-                prepared_header=None, prepared_inputs=None, prepared_compiler=None):
+                prepared_header=None, prepared_inputs=None, prepared_compiler=None, before_record=None):
         now = time.time()
         compiled = score is not None if compiled is None else compiled
         improved = False
         with self.store.tx() as db:
+            if before_record is not None:
+                before_record()  # scoped callers can reject revoked or stale work before any writes
             current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
             if prepared_compiler is not None:
                 if not matched or prepared_header is None or score != 0:

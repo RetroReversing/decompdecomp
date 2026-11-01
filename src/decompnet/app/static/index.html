@@ -618,6 +618,13 @@
 <main id="settingsPage" class="view" hidden>
   <header class="page-head"><p class="eyebrow">Settings</p><h1>How decompdecomp works for you</h1></header>
   <div class="cols">
+    <section class="panel"><header class="panel-head"><h2>Pair a browser worker</h2></header><div class="pad">
+      <p class="muted small">Authorize one browser origin for one KMC ROM project. The browser can read function tasks and submit source for this app to recheck; it cannot run commands or use private app APIs. Access expires after one hour and is lost when this app restarts.</p>
+      <label class="field"><span>Project</span><select id="browserBridgeProject"></select></label>
+      <label class="field"><span>Exact browser origin</span><input id="browserBridgeOrigin" value="http://127.0.0.1:4179"></label>
+      <div class="row"><button id="browserBridgeCode" class="primary" type="button">Create pairing code</button><button id="browserBridgeRevoke" class="ghost" type="button">Revoke project browser access</button></div>
+      <p id="browserBridgeStatus" role="status" class="small muted"></p>
+    </div></section>
     <section class="panel"><header class="panel-head"><h2>Agents</h2></header><div class="pad" id="setAgents"></div></section>
     <div class="stack-col">
       <section class="panel"><header class="panel-head"><h2>This computer</h2></header><div class="pad" id="setComputer"></div></section>
