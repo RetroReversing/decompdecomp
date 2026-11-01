@@ -128,6 +128,17 @@ class Bridge:
     def snapshot(self, proj, fn):
         return (fn['name'], fn['rom_offset'], self.net._context(proj['id'], fn['unit'])['header'], inputs(self.net, proj, fn))
 
+    def compiler_variants(self, compiler):
+        variants=[]
+        for flags in [compiler['flags'], *self.net.flag_variants(compiler['toolchain'], list(compiler['flags']))]:
+            if any(flag not in FLAGS for flag in flags):
+                continue
+            item={'id':digest(json.dumps([compiler['toolchain'], flags]).encode())[:16],
+                  'compiler':compiler['toolchain'], 'flags':list(flags)}
+            if item not in variants:
+                variants.append(item)
+        return variants
+
     def task(self, key, session, fid):
         proj = self.project(session['slug'])
         fn = self.net.store.one("SELECT * FROM functions WHERE id=? AND project_id=? AND status='open'", fid, proj['id'])
@@ -155,6 +166,7 @@ class Bridge:
                   'functionId': fn['id'], 'source': source, 'context': context, 'romSha256': digest(rom),
                   'romOffset': offset, 'vram': fn['vram'], 'targetSha256': digest(fn['target']),
                   'byteCount': len(fn['target']), 'compiler': {'id':'gcc-2.7.2-kmc', 'flags':flags},
+                  'compilerVariants': self.compiler_variants(compiler),
                   'symbols': {r['name']:r['address'] for r in self.net.store.all('SELECT name,address FROM symbols WHERE project_id=?', proj['id'])
                               if r['name'] != fn['name'] and re.fullmatch(r'[A-Za-z_]\w*', r['name'])}, 'expiresIn':300}
         if len(json.dumps(packet).encode()) > 256*1024:
@@ -193,11 +205,18 @@ class Bridge:
             raise ValueError('The function, context or compiler settings changed. Fetch a fresh task before submitting.')
         return proj, fn
 
-    def submit(self, key, session, task, source):
+    def submit(self, key, session, task, source, variant_id=None):
         try:
             proj, fn = self.check(key, session, task)
             agent, _ = self.net.local_agent('browser-worker-'+key[:10])
-            result = self.net.try_quietly(agent, proj, fn, source, before_record=lambda: self.check(key, session, task))
+            variants=task['packet'].get('compilerVariants', [])
+            variant=next((v for v in variants if v['id']==variant_id), None) if variant_id else None
+            if variant_id and variant is None:
+                raise ValueError('Choose a compiler variation offered by this host task.')
+            if variant and variant['flags'] != task['packet']['compiler']['flags']:
+                result=self.submit_variant(key, session, task, proj, fn, agent, source, variant)
+            else:
+                result = self.net.try_quietly(agent, proj, fn, source, before_record=lambda: self.check(key, session, task))
             current = self.net.store.one('SELECT best_score,status FROM functions WHERE id=?', fn['id'])
             return {'matched': bool(result.get('matched')), 'score': result.get('score'), 'bestScore':current['best_score'],
                     'improved': result.get('score') is not None and (fn['best_score'] is None or current['best_score'] < fn['best_score']),
@@ -205,3 +224,29 @@ class Bridge:
         finally:
             with self.lock:
                 session['busy'] = False
+
+    def submit_variant(self, key, session, task, proj, fn, agent, source, variant):
+        """Only an independently exact bundle may publish a function-local profile change."""
+        from ..rom.export import _single_definition
+        from .prepared_evidence import scoped_config
+        if not self.net.permuter._hold(agent, fn, count_turn=False, seconds=60):
+            raise ValueError('An agent holds this function. Fetch it again after it is released.')
+        try:
+            self.check(key, session, task)
+            expected=inputs(self.net, proj, fn)
+            settings={'toolchain':variant['compiler'], 'flags':variant['flags']}
+            private={**dict(proj), 'config':json.dumps(scoped_config(proj, fn, settings))}
+            header=self.net._context(proj['id'], fn['unit'])['header']
+            compiled=self.net._compile(private, header, source, fn)
+            if not compiled.ok or not _single_definition(compiled.obj, fn['name']):
+                return {'matched':False, 'score':None}
+            candidate, verdict, _=self.net._evaluate(fn, proj, compiled.obj)
+            if candidate is None or verdict is not True:
+                return {'matched':False, 'score':None}
+            self.net._record(fn, agent, 0, source, 0, matched=True, via='browser-compiler-variant',
+                             effective_settings=compiled.effective_settings, prepared_header=header,
+                             prepared_inputs=expected, prepared_compiler=settings,
+                             before_record=lambda:self.check(key, session, task))
+            return {'matched':True, 'score':0}
+        finally:
+            self.net.permuter._let_go(agent, fn)

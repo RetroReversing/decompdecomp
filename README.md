@@ -1051,3 +1051,5 @@ Counters are local and survive app restarts and agent removal. They include surv
 saved transcript requests plus future recorded calls; older unrecorded calls cannot
 be reconstructed. Zero means zero recorded uses, not proof that a tool was never used.
 The same expandable tool descriptions and parameter cards appear in transcripts and manual MCP setup.
+
+Browser workers receive the host's supported KMC flag variations with each function task. Switching a browser variation is local until submission. The host accepts only a variation offered by that task, recompiles it independently, and publishes a function-only profile/source bundle only after an exact ROM-byte verdict and a final authorization/freshness check. Other compiler families still require browser WASM toolchains.
