@@ -252,6 +252,13 @@ def register(app: App) -> None:
         proj = net.project_row(slug)
         if request.method == "GET":
             return source_preparation.settings(net, proj)
+        if data.get('action') == 'reviews':
+            from ..prepared_evidence import listing
+            return {'reviews': listing(net, proj)}
+        if data.get('action') == 'apply-review':
+            from ..prepared_evidence import apply
+            key = str(data.get('id', ''))
+            return {'job': jobs.start('prepared-bundle', lambda log: apply(net, proj, key, log))}
         if data.get('action') not in (None, 'save', 'run'):
             raise ValueError('Choose save or run for source preparation.')
         if data.get('action') == 'run':

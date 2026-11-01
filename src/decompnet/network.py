@@ -1427,12 +1427,17 @@ class Network:
 
     def _record(self, fn, agent: Agent, score: int | None, source: str, ctx_version: int, matched: bool = False,
                 compiled: bool | None = None, via: str = "agent", effective_settings=None,
-                prepared_header=None, prepared_inputs=None):
+                prepared_header=None, prepared_inputs=None, prepared_compiler=None):
         now = time.time()
         compiled = score is not None if compiled is None else compiled
         improved = False
         with self.store.tx() as db:
             current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
+            if prepared_compiler is not None:
+                if not matched or prepared_header is None or score != 0:
+                    raise NetworkError("Only a reverified exact prepared bundle can change its compiler profile.")
+                from .app.prepared_evidence import publish_profile
+                prepared_inputs = publish_profile(self, db, current, prepared_inputs, prepared_compiler, agent)
             # A compiler check can finish while this candidate is still compiling with the old flags.
             # Keep that attempt as evidence, but never turn its old-profile verdict into a new green status.
             config = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (fn["project_id"],)).fetchone()["config"])
@@ -1450,7 +1455,7 @@ class Network:
             self.repair_feedback.attempt(db, current, attempt, ctx_version, effective_settings)
             if matched and not stale:
                 from .match_bundle import capture as capture_bundle
-                capture_bundle(db,fn,attempt,source,ctx_version,effective_settings)
+                capture_bundle(db,current,attempt,source,ctx_version,effective_settings)
                 self.repair_feedback.capture(db, current, source, agent.id, via, ctx_version, attempt)
             if not matched and not stale and (not used or all(used.get(k)==own.get(k) for k in ("toolchain","flags"))):
                 from .match_bundle import failed_recheck

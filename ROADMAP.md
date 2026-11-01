@@ -1209,3 +1209,16 @@ for review; joint context/profile approval and automatic promotion remain future
   types/prototypes and existing cross-game library leads expose attributed source
   declarations/macros for review in ROM and imported-project workflows. Live headers
   remain unchanged; adopting context still requires compilation and the normal judge.
+
+### Prepared source/profile review and data diagnostics
+
+- Exact private source/header/profile probes can be reviewed together in local ROM projects. Applying
+  rechecks the ordinary byte/data judge, claims and stale inputs, then saves a private header and
+  function-only profile atomically. Imported builds retain their own header/profile ownership.
+- MIPS link diagnostics distinguish exact linked instructions from differing initialized data and show
+  the differing address range. Other linker adapters retain their current exact verdict; structured
+  instruction/data detail remains an adapter gap.
+- Original typed preparation still runs before broad permutation. At most two named-array copy
+  hypotheses require an existing plain-int-array declaration, exact extent and verified ROM values.
+- Private preparation history retains source/header hashes, profiles and failure categories, with
+  source/header/profile/target/symbol/build scoped invalidation; it is review evidence, not progress.

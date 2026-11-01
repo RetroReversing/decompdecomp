@@ -87,7 +87,7 @@ def test_private_profile_keeps_unpromoted_context_without_changing_working_setti
             return SimpleNamespace(ok=True,obj=b'object')
         def _evaluate(self,*args):return object(),True,[]
         def _target_obj(self,*args):return object()
-    proj={'slug':'sample','config':json.dumps({'compiler':{'toolchain':'ido-5.3','flags':['-O2']}})}
+    proj={'slug':'sample','root':'.','config':json.dumps({'compiler':{'toolchain':'ido-5.3','flags':['-O2']}})}
     fn={'id':1,'vram':0x80001000,'name':'example','best_score':10}
     monkeypatch.setattr(prep,'inputs',lambda *args:('unchanged',))
     monkeypatch.setattr(toolchains,'installed',lambda *args:True)

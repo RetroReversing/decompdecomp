@@ -46,6 +46,8 @@ class JudgeMixin:
         from ..candidate_diagnostics import export_layout, text, unresolved
         checks = {'linked_bytes': {'exact': res.exact}, 'link': unresolved(res.problems),
                   'export': export_layout(obj, fn['name'], res.exact, res.placements)}
+        checks['instructions'] = {'exact': res.instructions_exact}
+        checks['data'] = [p for p in res.problems if p.startswith('your data for ')]
         checks['message'] = text(checks)
         cache = self.__dict__.setdefault('_candidate_diagnostics', {})
         with self.__dict__.setdefault('_candidate_diagnostics_lock', threading.Lock()):
