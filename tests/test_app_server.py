@@ -78,6 +78,49 @@ def test_in_a_wsl_distribution_of_your_own_it_keeps_updating(tmp_path, monkeypat
     build(RomNetwork(home / ".decomp" / "decomp.db", home), home / ".decomp", PORT, SECRET)
     assert json.loads((home / ".decomp" / "settings.json").read_text()) == {"auto_update": True}
 
+def test_an_outside_agent_pairs_through_the_window(app):
+    """An agent outside the app asks with its name and a secret of its own; the user decides in the window, for one
+    project; the agent reads the token with its secret and its MCP tools are that project's alone."""
+    client, net, _ = app
+
+    with TestClient(client.app, base_url=f"http://127.0.0.1:{PORT}") as anon:
+        r = anon.post("/api/pair/request", json={"name": "outside-cli", "secret": "its-own-long-secret"})
+        assert r.status_code == 200 and r.json()["id"]
+        assert anon.post("/api/pair/request", json={"name": "x", "secret": "short"}).status_code == 400
+
+        assert anon.get("/api/pair/requests").status_code == 401  # the window's secret, like every GUI route
+        pending = client.get("/api/pair/requests").json()["requests"]
+        assert [r["name"] for r in pending] == ["outside-cli"]
+
+        with net.store.tx() as db:
+            db.execute("INSERT INTO projects(slug,root,config) VALUES('pair-demo','/tmp/pair-demo','{}')")
+        assert anon.post("/api/pair/status", json={"id": pending[0]["id"], "secret": "its-own-long-secret"}).json() == {"state": "pending"}
+        write = {"x-decomp": "1"}  # every GUI write carries it
+        assert client.post("/api/pair/decide", headers=write, json={"id": pending[0]["id"], "approve": True,
+                                                                    "project": "nope"}).status_code == 400
+        assert client.post("/api/pair/decide", headers=write, json={"id": pending[0]["id"], "approve": True,
+                                                                    "project": "pair-demo"}).status_code == 200
+        answer = anon.post("/api/pair/status", json={"id": pending[0]["id"], "secret": "its-own-long-secret"}).json()
+        assert answer["state"] == "approved" and answer["token"].startswith("dn_")
+        assert anon.post("/api/pair/status", json={"id": pending[0]["id"], "secret": "the-wrong-secret"}).status_code == 400
+
+        # its MCP tools are the paired project's: initialize, then tools/list with the token
+        headers = {"Authorization": f"Bearer {answer['token']}"}
+        r = anon.post("/mcp", headers={**headers, "Accept": "application/json, text/event-stream"},
+                      json={"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                            "params": {"protocolVersion": "2025-03-26", "capabilities": {},
+                                       "clientInfo": {"name": "outside-cli", "version": "0"}}})
+        sid = r.headers["mcp-session-id"]
+        r = anon.post("/mcp", headers={**headers, "Accept": "application/json, text/event-stream",
+                                       "Mcp-Session-Id": sid, "mcp-session-id": sid},
+                      json={"jsonrpc": "2.0", "method": "notifications/initialized"})
+        r = anon.post("/mcp", headers={**headers, "Accept": "application/json, text/event-stream",
+                                       "Mcp-Session-Id": sid, "mcp-session-id": sid},
+                      json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        tools = json.loads(r.text.split("data: ", 1)[1].splitlines()[0])["result"]["tools"]
+        assert tools and "claim_function" in {t["name"] for t in tools}
+
+
 def test_only_the_apps_own_window_gets_the_gui(app):
     """The page and its API answer only the app's window, whose user agent carries the per-launch secret: the
     address alone, pasted in a browser, opens nothing (the old ?k= link and its cookie are gone)."""

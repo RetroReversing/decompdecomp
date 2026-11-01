@@ -84,19 +84,25 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     manager.budget = lambda: float(settings.data.get("budget_usd") or 0)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
 
+    def project_of(agent) -> str | None:
+        """The one project an agent may work: a helper the app started (mapped while it runs), or an outside agent
+        the user approved for one project (pairing)."""
+        return manager.project_of(agent.id) or net.pairing_project(agent.id)
+
     def agent_of(ctx: Context):
         headers = ctx.headers or {}
         auth = headers.get("authorization") or headers.get("Authorization") or ""
         agent = net.authenticate(auth.removeprefix("Bearer ").strip() or None)
-        slug = manager.project_of(agent.id)  # only helpers the app starts have tokens, each for one project
+        slug = project_of(agent)
         if not slug:
-            raise NetworkError("this agent isn't one of this app's helpers: start helpers from the app")
+            raise NetworkError("this agent has no project: start helpers from the app, or pair it in the window")
         return agent, slug
 
     threading.Thread(target=collab.local_addresses, daemon=True).start()  # `tailscale status` can take seconds
     # rooms this computer belongs to reconnect (members keep their place; their agents wait while the host is away)
     net.restore_links()
 
+    from .routes import pairing
     from .sdk_names import name_projects
     threading.Thread(target=lambda: name_projects(net), daemon=True, name="sdk-names").start()
 
@@ -156,7 +162,9 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
             agent = net.authenticate(auth.removeprefix("Bearer ").strip() or None)
         except NetworkError:
             return ListToolsResult(tools=[])
-        slug = manager.project_of(agent.id)
+        slug = project_of(agent)
+        if not slug:
+            return ListToolsResult(tools=[])
         keep = set(tools.project_tools(net, slug))
         selected = [t for t in everything if t.name in keep]
         manager.record_agent(agent, slug, 'tool_definitions', [t.model_dump(mode='json') for t in selected])
@@ -197,7 +205,7 @@ def build(net: RomNetwork, home: Path, port: int, secret: str):
     app = routes.App(net, mcp, home, port, secret, mcp_url, build_id, manager, jobs, settings, allowed_hosts,
                      guard, body, call, fail, updater=updates.Updater(before_restart, port, secret),
                      busy=busy, quit_app=quit_app)
-    for part in (pages, state, projects, repair_feedback, forks, setup, life, rooms):
+    for part in (pages, state, projects, repair_feedback, forks, setup, life, rooms, pairing):
         part.register(app)
 
     security = TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=sorted(allowed_hosts),
