@@ -1496,3 +1496,27 @@ def test_sidebar_reads_saved_snapshot_without_triggering_verification(app, monke
         db.execute("INSERT OR IGNORE INTO projects(slug,name,root,config) VALUES('ui-snapshot','UI','/tmp','{}')")
     response = client.get('/api/projects')
     assert response.status_code == 200 and seen and all(seen)
+
+
+def test_manual_mcp_connections_require_window_and_write_header(app, tmp_path):
+    client, net, _ = app
+    with net.store.tx() as db:
+        db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                   ('manual-test', 'Manual test', 'mips', str(tmp_path), '{}'))
+    endpoint = '/api/manual-mcp'
+    assert client.get(endpoint, headers={'User-Agent': 'external'}).status_code == 401
+    payload = {'action': 'create', 'slug': 'manual-test'}
+    assert client.post(endpoint, json=payload).status_code == 403
+    headers = {'X-Decomp': '1'}
+    assert client.post(endpoint, json={'action': 'create', 'slug': 'missing'}, headers=headers).status_code == 400
+    result = client.post(endpoint, json=payload, headers=headers)
+    assert result.status_code == 200
+    connection = result.json()
+    assert connection['url'] == f'http://127.0.0.1:{PORT}/mcp'
+    assert connection['token'].startswith('dn_')
+    snapshot = client.get(endpoint + '?slug=manual-test').json()
+    assert snapshot['transport'] == 'Streamable HTTP'
+    assert any(t['name'] == 'project_info' and t['inputSchema'] for t in snapshot['tools'])
+    assert connection['token'] not in json.dumps(snapshot)
+    assert client.post(endpoint, json={'action': 'revoke', 'id': connection['id']}, headers=headers).status_code == 200
+    assert all(c['id'] != connection['id'] for c in client.get(endpoint).json()['connections'])

@@ -1310,3 +1310,8 @@ model/compiler rankings, and no family or unmatched function is automatically ex
   tied to the initiating function view; new views do not inherit old progress.
 - Done: unfinished imported projects can be closed directly from setup, keeping
   the repository folder and all files on disk for a later import.
+
+- Done: Agents & models shows the local MCP endpoint, transport and port, with
+  project-specific tool descriptions/schemas. Manual clients can create copyable,
+  persistent project-scoped credentials and revoke them without exposing the GUI
+  secret or saving plaintext bearer tokens. External sessions remain client-managed.
