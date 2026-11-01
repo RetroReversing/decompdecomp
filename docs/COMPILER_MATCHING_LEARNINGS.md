@@ -628,3 +628,24 @@ not rewritten automatically. Source/header improvements reuse digest-scoped pref
 Synthetic tests distinguish machine-word address/width evidence from symbolic names, reject shadowed/unqualified
 objects and address-taken locals, and require real record declarations. These are feature regressions, separate
 from the original private matches and from any later live recovery measurements.
+
+### Follow-up: object definitions, address expressions and typed records
+
+A subsequent manual live-API batch recovered five previously unmatched entries / 2,600 bytes. Three SDK
+initialization/video entries matched IDO 5.3 `-O1`, an integer-formatting entry matched `-O2`, and a typed
+hash-iterator entry matched `-O3`, with the common `-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul` flags.
+These are manual recoveries with the ordinary judge, not automatic wins attributed to this uninstalled PR.
+
+- Restoring the original handle and clock-rate object definitions changed address grouping and scheduling;
+  replacing definitions with `extern` was not neutral. Export still has to verify their initialized/BSS placement.
+- A named buffer reference selected `addiu` where a literal-address cast selected `ori`. Both denoted the same
+  address, but only the named expression reproduced the target bytes. Symbolic diff annotations alone do not
+  establish an instruction difference: inspect the linked encoding.
+- Explicit, correctly typed calls to the already located unsigned 64-bit divide/remainder helpers resolved an
+  integer-formatting call mismatch. This is specific ABI evidence, not permission to invent helper symbols.
+- Original hash record/pointer declarations and loop structure recovered an iterator whose raw-offset draft
+  differed in register allocation. A nearly matching draft is not a substitute for checking original types.
+
+A video-manager draft still differed by unreachable NOPs; debug-flag probes did not recover it. Other private
+helper fragments entered with live saved/floating registers, so their isolated ordinary-C signatures remain
+unproven. Neither pattern is resolved by adding padding instructions, weakening boundaries or changing the judge.
