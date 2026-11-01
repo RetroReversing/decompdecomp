@@ -173,6 +173,7 @@ def test_update_api(tmp_path, monkeypatch):
     mcp, manager, security, _ = build(net, home / ".decomp", 6498, "sec")
     client = TestClient(mcp.streamable_http_app(transport_security=security, host="127.0.0.1"),
                         base_url="http://127.0.0.1:6498")
+    assert client.get("/api/update/checkout").status_code == 401
     assert client.get("/api/update").status_code == 401  # the window's secret, as everywhere
     client.headers["User-Agent"] = f"{window.TOKEN_AGENT}sec"
     monkeypatch.setenv("DECOMP_UPDATES", "on")
@@ -183,6 +184,11 @@ def test_update_api(tmp_path, monkeypatch):
     assert client.post("/api/settings", json={"check_updates": False}, headers={"X-Decomp": "1"}).json()["check_updates"] is False
     assert client.get("/api/update").json()["disabled"] is True
     assert "build" in client.get("/health").json()
+    assert client.get('/api/update/checkout').json()['job']['state'] == 'idle'
+    assert client.post('/api/update/checkout', json={'path': str(tmp_path/'checkout')}).status_code == 403
+    result = client.post('/api/update/checkout', json={'path': ''}, headers={'X-Decomp': '1'})
+    assert result.status_code == 400
+
 
 
 def test_apply_installs_what_a_fresh_check_finds(monkeypatch):

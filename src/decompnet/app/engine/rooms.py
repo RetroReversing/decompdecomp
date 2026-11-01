@@ -9,7 +9,7 @@ import re
 import secrets
 import time
 
-from ...network import NetworkError
+from ...network import Network, NetworkError
 from ...rom.symbols import Symbol
 
 
@@ -63,6 +63,27 @@ class RoomMixin:
             return self.links.get(self._project(project)["slug"])
         except NetworkError:
             return None
+
+    def _room_claim_row(self, agent, project, name, strategy):
+        """Mirror a host-granted lease, replacing only this worker's stale local room leases.
+
+        Call only after link.claim succeeds. Local expiry and host expiry can differ;
+        asking the host again cannot fix a leftover local lease. Roll back if local
+        validation fails, and never release another worker's or the host's claim.
+        """
+        proj = self._project(project)
+        fn = self._function(name, project)
+        self._yield_autopilot(name, project)  # wait outside the transaction for local draft work
+        with self.store.tx() as db:
+            stale = db.execute('SELECT f.id,f.name FROM claims c JOIN functions f ON f.id=c.function_id '
+                               'WHERE c.agent_id=? AND f.project_id=? AND f.id<>?',
+                               (agent.id,proj['id'],fn['id'])).fetchall()
+            for row in stale:
+                db.execute('DELETE FROM claims WHERE function_id=? AND agent_id=?', (row['id'],agent.id))
+            row = Network.claim_row(self, agent, project, name, strategy)
+            for old in stale:
+                self._event(db,proj['id'],agent.id,'room_claim_resynced',old['name']+' -> '+name)
+            return row
 
     def _remote_agent(self, name: str) -> int:
         label = "@" + name
