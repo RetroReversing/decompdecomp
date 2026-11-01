@@ -63,8 +63,12 @@ def test_handoff_is_structured_and_read_back_as_historical_data(monkeypatch):
             return [{'text': 'Tried a cast; next try branch layout.'}]
     net = SimpleNamespace(store=Store())
     monkeypatch.setattr('decompnet.app.agent_tokens.history', lambda *args: 'Already tried a cast.')
+    monkeypatch.setattr('decompnet.app.agent_tokens.candidate', lambda *args: ('saved C','revision123'))
+    monkeypatch.setattr('decompnet.app.local_experiments.summary', lambda *args: 'No untried repairs.')
     report = session_handoffs.capture(net, SimpleNamespace(id=1), 'project', 0)
     assert report['functions'][0]['recent_scores'] == [20]
+    assert report['functions'][0]['revision'] == 'revision123'
+    assert report['functions'][0]['remaining_experiments'] == 'No untried repairs.'
     assert report['functions'][0]['notes']
     net.store.one = lambda *args: {'text': json.dumps(report)}
     assert 'historical data' in session_handoffs.previous(net, 1, 'project')

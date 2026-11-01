@@ -202,6 +202,15 @@ def brief(net, text, slug=None, agent=None):
 
 def claim_packet(net, agent, slug, text):
     """Normal claiming/renewal already happened; suppress only a packet this agent received unchanged."""
+    # Claim all requested leases, but hydrate just the first task. The rest are a
+    # compact queue; get_function(section="brief") loads any queued task on demand.
+    blocks = list(re.finditer(r'^## CLAIMED: (.+?)(?:  \([^\n]*\))?$',text,re.M))
+    if len(blocks)>1:
+        queue = [m[1] for m in blocks[1:]]
+        text = re.sub(r'(?m)^Write all of them[^\n]*',
+                      'Start with the detailed function below; load queued function briefs when ready. Batch judging is still available.',
+                      text[:blocks[1].start()])+'\nQueued claims (leases retained; details on demand):\n'+'\n'.join(
+            '- '+name for name in queue)+'\nUse get_function(function, section="brief") when starting each queued function.\n'
     rendered = brief(net, text, slug, agent)
     if not re.search(r'^## CLAIMED', rendered, re.M):
         return rendered
@@ -230,6 +239,13 @@ def claim_packet(net, agent, slug, text):
 
 def assembly(net, slug, function, start=0, limit=60, focus="", agent=None):
     fn = net._function(function, slug)
+    automatic = not focus and start == 0
+    if focus == 'page':
+        focus = ''
+        automatic = False
+    if automatic:
+        kept=net._last_diffs.get((agent.id,fn['id'])) if agent else None
+        focus='mismatch' if kept and any(r[0]!=' ' and r[1].strip() for r in kept[0]) else 'body'
     if net.fork_slug(slug):
         _, fp, _ = net.forks.get(slug)
         unit = fp.unit(fn['unit'])
@@ -259,6 +275,8 @@ def assembly(net, slug, function, start=0, limit=60, focus="", agent=None):
             if len(focus)>160:
                 raise NetworkError('Use a symbol or short assembly anchor for focus.')
             hits=[i for i,line in enumerate(lines) if re.search(r'(?<![\w])'+re.escape(focus)+r'(?![\w])',line)]
+        if not hits and automatic:
+            hits=[min(20,max(0,len(lines)-1))]
         if not hits:
             return 'No target region located for this focus. Use paged get_assembly or compile a candidate before focus="mismatch".'
         start=max(0,hits[0]-8);limit=min(40,max(1,int(limit)))
@@ -327,7 +345,15 @@ def function_view(net, agent, slug, function, section='all'):
         from . import agent_evidence
         return agent_evidence.warnings(net,agent,net._function(function,slug))
     if section == 'brief':
-        return brief(net,net.get_function(function,slug,agent),slug,agent)
+        text=brief(net,net.get_function(function,slug,agent),slug,agent)
+        fn=net._function(function,slug)
+        if net.store.one('SELECT 1 FROM claims WHERE function_id=? AND agent_id=?',fn['id'],agent.id):
+            source,revision=candidate(net,agent,slug,function)
+            if source and source.strip() not in text:
+                text+='\nCurrent continuation:\n'+get_candidate(net,agent,slug,function)
+            elif 'candidate revision '+revision not in text.lower():
+                text+=f'\nCandidate revision {revision}; use compile_patch on the supplied candidate.\n'
+        return text
     if section == 'draft':
         fn=net._function(function,slug)
         return 'Stored machine draft (not the current candidate):\n```c\n'+(fn['seed'] or '')+'\n```' if fn['seed'] else 'No stored machine draft. Use section=candidate for existing C.'

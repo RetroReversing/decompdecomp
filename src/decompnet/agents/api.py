@@ -106,6 +106,10 @@ class Api(Agent):
             s.push("info", f"session {s.runs}: {model} via {base} ({window // 1000}K tokens of context)")
             budget = int(window * API_CONTEXT_SHARE) - _tokens(schema)  # room for the reply and the tools' definitions
             for _step in range(int(s.options.get("max_steps", API_STEPS))):
+                if getattr(s,'context_budget',None) and s.context_budget.ready():
+                    s.rotated=True
+                    s.push('info','Starting a fresh session with saved candidates and experiments.')
+                    return True
                 if s.stop.is_set():
                     return True
                 for _attempt in range(API_TRIM_RETRIES):

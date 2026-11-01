@@ -1233,3 +1233,16 @@ recovered a fourth. This is regression evidence, not new progress or measured to
   hypotheses require an existing plain-int-array declaration, exact extent and verified ROM values.
 - Private preparation history retains source/header hashes, profiles and failure categories, with
   source/header/profile/target/symbol/build scoped invalidation; it is review evidence, not progress.
+
+### Smaller matching conversations
+
+- Done: compiler-trial reads expose only the selected C/profile and context ID;
+  complete private configuration stays in the internal diagnostic ledger.
+- Done: multi-function claims hydrate the first function and retain a compact
+  queue; queued briefs and full assembly remain explicitly available. Assembly
+  defaults to the first mismatch, with a bounded body fallback and explicit paging.
+- Done: app helper sessions run a small repair-first pass once per source/build
+  scope before handwritten batches. Existing failed-trial ledgers remain authoritative.
+- Done: CLI and API conversations rotate after 80 tools or 160,000 tool-response
+  characters, once active tools finish. Structured handoffs retain candidate
+  revisions, remaining experiments, history and notes; claims and source survive.
