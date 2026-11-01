@@ -1246,3 +1246,19 @@ recovered a fourth. This is regression evidence, not new progress or measured to
 - Done: CLI and API conversations rotate after 80 tools or 160,000 tool-response
   characters, once active tools finish. Structured handoffs retain candidate
   revisions, remaining experiments, history and notes; claims and source survive.
+
+### Matching efficiency feedback
+
+- Done: persistent claim/build-scoped recent-score windows hand back work after
+  24 scored trials with at most 1% recent gain, retaining best C and actionable
+  notes. Larger explicit work budgets extend the minimum; changed build inputs
+  invalidate the window. New sources remain eligible for later work.
+- Done: compile replies summarize the first differing region and mismatch category;
+  independent batches report selected revision, claim state and applied patch IDs.
+- Done: existing compiler/focus-specific repair learning now includes measured
+  trial time, with bounded weights and original-queue exploration preserved.
+- Done: agent Details shows completed-session compiles, helper seconds and separate
+  token categories per recorded match, grouped by model/build/work-selection
+  cohort with observed function sizes. Unsuccessful work stays in the denominator;
+  missing provider usage suppresses token averages. Legacy unscoped sessions are
+  excluded from these comparisons. This is not exact per-function billing.

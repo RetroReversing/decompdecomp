@@ -945,3 +945,29 @@ before rotation; structured handoffs retain revisions, failed-experiment history
 remaining repairs and explicit notes. Both API and CLI helpers start fresh sessions
 without deleting claims, accepted matches or attempts. Measure actual provider
 usage and matches per minute before claiming a cost or speed improvement.
+
+### Sustained progress and comparable efficiency windows
+
+A few tiny score reductions should not extend a paid matching session indefinitely.
+The new progress window counts fresh scored attempts in one claim/build scope,
+persists across restarts, and only considers handing work back after 24 trials.
+If the best score of the later half of the latest 12 trials improves by at most
+1% over the first half, retain best C and write an evidence-led handoff. Exact
+matches and missing/error scores cannot trigger this heuristic. Explicit larger
+work budgets extend the minimum. This is scheduling advice, never proof that a
+function is impossible; ordinary source/build changes and future agents can resume.
+
+Compile feedback supplies the first target/candidate mismatch and an advisory
+category. Batches retain the exact selected continuation and report applied patch
+IDs rather than requiring agents to infer the winner from the final submitted
+trial. Existing profile/focus-specific repair priorities now also account for mean
+measured trial duration, bounded to preserve exploration; cached trials do not
+train the policy.
+
+Completed-session efficiency cohorts retain model, initial build/work-selection
+snapshot and observed function instruction sizes. Ratios include failed work and
+separate uncached input, cache reads/writes and output. Missing usage produces an
+unknown token average, not zero-cost work. Session-start cohorts can contain
+multiple compiler ranges; compare similar workloads and collection windows.
+These are helper-time/session averages, not exact per-function token attribution
+or subscription bills. No speed or token-saving benchmark is claimed yet.
