@@ -439,3 +439,18 @@ def test_function_runner_credentials_survive_other_workers_starting(sweep):
     assert len({background.id, first.id, second.id}) == 3
     for agent, token in ((background, background_token), (first, first_token), (second, second_token)):
         assert net.authenticate(token).id == agent.id
+
+
+def test_room_deep_summary_updates_only_its_runner_and_function(sweep):
+    _, net, _, _ = sweep
+    agent, _ = net.local_agent('permuter-1')
+    other, _ = net.local_agent('permuter-2')
+    net.add_note(agent, 'game', 'Keep the signed comparison.', 'f0')
+    net.add_note(agent, 'game', 'Deep permuter: score 50 → 40', 'f0')
+    net.add_note(agent, 'game', 'Deep permuter: score 40 → 20', 'f0')
+    net.add_note(other, 'game', 'Deep permuter: score 90 → 80', 'f0')
+    net.add_note(agent, 'game', 'Deep permuter: score 50 → 30', 'f1')
+    rows = net.store.all('SELECT text FROM notes ORDER BY id')
+    assert [r['text'] for r in rows] == [
+        'Keep the signed comparison.', 'Deep permuter: score 40 → 20',
+        'Deep permuter: score 90 → 80', 'Deep permuter: score 50 → 30']

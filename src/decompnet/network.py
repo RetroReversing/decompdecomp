@@ -1042,7 +1042,7 @@ class Network:
                 raise NetworkError(f"you don't hold a claim on {fn['name']}")
             db.execute("DELETE FROM claims WHERE function_id=?", (fn["id"],))
             db.execute("UPDATE functions SET abandons=abandons+1 WHERE id=?", (fn["id"],))
-            if notes.strip():
+            if notes.strip() and notes.strip() != "Deep permutation turn ended; improvements shared.":
                 db.execute("INSERT INTO notes(project_id,function_id,agent_id,text,created_at) VALUES(?,?,?,?,?)",
                            (fn["project_id"], fn["id"], agent.id, notes.strip(), time.time()))
             self._event(db, fn["project_id"], agent.id, "release", fn["name"])
@@ -1244,13 +1244,15 @@ class Network:
     def notes_for_brief(self, fn, best_text: str = "", show: int | None = None, when: bool = True) -> list[str]:
         """A function's notes for its brief (brief_notes), with when its best score was first reached."""
         rows = self.store.all("SELECT n.text, n.created_at, a.name FROM notes n LEFT JOIN agents a ON a.id=n.agent_id "
-                              f"WHERE n.function_id=? ORDER BY n.id DESC LIMIT {BRIEF_NOTES * 8}", fn["id"])
+                              f"WHERE n.function_id=? AND n.text != 'Deep permutation turn ended; improvements shared.' "
+                              f"ORDER BY n.created_at DESC,n.id DESC LIMIT {BRIEF_NOTES * 8}", fn["id"])
         best_at = None
         if fn["status"] != "matched" and fn["best_score"] is not None:
             row = self.store.one("SELECT MIN(created_at) AS t FROM attempts WHERE function_id=? AND score=?",
                                  fn["id"], fn["best_score"])
             best_at = row["t"] if row else None
-        return brief_notes(rows, fn, best_at, best_text, show, when)
+        from .search_notes import useful
+        return brief_notes(useful(rows), fn, best_at, best_text, show, when)
 
     def _next_step(self, proj, ctx) -> str:
         """The brief's last line for the agent that claimed the function."""
@@ -1718,6 +1720,16 @@ class Network:
         if not text.strip():
             raise NetworkError("empty note")
         with self.store.tx() as db:
+            # Keep one current deep-search summary per runner/function. Human and other
+            # agent notes remain append-only, including source/layout discoveries.
+            if fn and text.startswith('Deep permuter:'):
+                row = db.execute("SELECT id FROM notes WHERE function_id=? AND agent_id=? "
+                                 "AND text LIKE 'Deep permuter:%' ORDER BY id DESC LIMIT 1",
+                                 (fn['id'], agent.id)).fetchone()
+                if row:
+                    db.execute('UPDATE notes SET text=?,created_at=? WHERE id=?',
+                               (text.strip()[:NOTE_CHARS], time.time(), row['id']))
+                    return 'Updated the deep permuter summary.'
             db.execute("INSERT INTO notes(project_id,function_id,agent_id,text,created_at) VALUES(?,?,?,?,?)",
                        (proj["id"], fn["id"] if fn else None, agent.id, text.strip()[:NOTE_CHARS], time.time()))
         return "Noted. Other agents will see it" + (f" when they open {fn['name']}." if fn else " in their briefings.")

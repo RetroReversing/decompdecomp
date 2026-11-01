@@ -1409,3 +1409,5 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Planned: preprocessing adapters for drivers without a supported `-c` → `-E` mode, automatically
   supplying foreign static helpers/initialized data, and preparing assembly-only imported units from
   name-only leads. Those cases remain visible skips or need explicit existing source-preparation setup.
+
+- Done: room deep searches publish one measured turn summary instead of phase-release boilerplate; latest summaries replace repeats per runner/function, and obsolete lease notes are omitted from function views and briefs without deleting history.

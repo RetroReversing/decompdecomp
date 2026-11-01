@@ -52,6 +52,7 @@ class Search(Permuter):
     def __init__(self, net, minutes, max_variants, log, fn=None):
         super().__init__(net)
         self.room_holds = {}
+        self.started_at = time.monotonic()
         self.deadline = time.monotonic()+minutes*60
         self.seconds = minutes*60
         self.limit = max_variants
@@ -103,7 +104,7 @@ class Search(Permuter):
         try:
             hold = self.room_holds.pop(fn['id'], None)
             if hold:
-                hold[0].call('/collab/release', agent, function=fn['name'], notes='Deep permutation turn ended; improvements shared.')
+                hold[0].call('/collab/release', agent, function=fn['name'], notes='')
         finally:
             super()._let_go(agent, fn)
 
@@ -548,8 +549,27 @@ def run(net, slug, name, minutes, max_variants, log):
                     reason = 'Time limit reached'
     except SearchLimit as error:
         reason = str(error)
+    except NetworkError as error:
+        reason = f'Stopped: {error}'
+        raise
+    except BaseException:
+        reason = 'Interrupted or failed; see activity output'
+        raise
     finally:
         search.flush_recipes()
+        link = net.links.get(slug)
+        if link and (search.tested or reason.startswith('Stopped:')):
+            # Lease releases happen between phases too. Publish one actual turn summary,
+            # not a note for each release, and never claim an unverified room match.
+            text = (f'Deep permuter: score {search.starting_score} → {search.best}; '
+                    f'{search.improvements} improvements; {search.tested} candidates tested; '
+                    f'{search.skipped} cached skips; {search.rejected} rejected; '
+                    f'{round(time.monotonic() - search.started_at)}s elapsed. {reason}.')
+            try:
+                link.call('/collab/note', agent, function=name, text=text)
+            except NetworkError:
+                # Notes are advisory; a disconnected host must not mask the search verdict/error.
+                pass
     search.report()
     log(f'{reason}: {search.tested} candidates tested, {search.skipped} cached misses skipped, {search.rejected} invalid calls skipped. Verified improvements are saved immediately.')
     result = {'function': name, 'reason': reason, 'tested': search.tested, 'skipped': search.skipped,
