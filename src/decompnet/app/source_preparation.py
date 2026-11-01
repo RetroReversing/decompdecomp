@@ -240,7 +240,10 @@ def prepare(reader, cfg, mapping, aliases, fallback):
     reference_macros = original
     if cfg.get('header') and '#include' in original:
         # Read only the mapped file's authorized include tree; retain macros, not its functions/data.
-        reference_macros, _ = source_conditions.select(reader.flatten(path.resolve()), macros, reader.overrides)
+        try:
+            reference_macros, _ = source_conditions.select(reader.flatten(path.resolve()), macros, reader.overrides)
+        except NetworkError as error:
+            reader.advisories.append('Reference include macros could not be read; retaining the explicit private header. Add the matching SDK include roots to recover missing macros. '+str(error))
     header += macro_context(reference_macros, body+helper_context, header)
     header += prototypes(original, body, header, symbol)
     selected = []

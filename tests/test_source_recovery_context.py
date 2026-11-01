@@ -65,3 +65,13 @@ def test_batch_recheck_deduplicates_and_continues_after_claim_failure(monkeypatc
     result=prepared_evidence.recheck_exact(net,{'slug':'demo'},lambda text:None)
     assert visited==['0','2','3'] and result['matched']==2 and len(result['errors'])==1
     with pytest.raises(NetworkError):prepared_evidence.recheck_exact(net,{'slug':'demo'},print,21)
+
+
+def test_explicit_private_header_still_works_with_unavailable_original_sdk(tmp_path):
+    cfg=config(tmp_path)
+    (tmp_path/'types.h').write_text('int helper(int);')
+    (tmp_path/'game.c').write_text('#include "missing-sdk.h"\nint original(int n){return helper(n);}')
+    reader=source_preparation.Reader(cfg)
+    source,header=source_preparation.prepare(reader,cfg,('f','original','game.c'),{'original':'f'},'')
+    assert 'helper(n)' in source and 'int helper(int)' in header
+    assert any('Reference include macros could not be read' in x for x in reader.advisories)
