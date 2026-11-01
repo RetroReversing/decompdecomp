@@ -390,7 +390,7 @@ def run(permuter, proj, st, log_line=lambda line: None, budget=8, seconds=20, on
                     from .permuter_inputs import build_state
                     state = (st.started_at, fresh['config'], build_state(fresh)) if fork else inputs(net, fresh, fn)
                     digest = hashlib.sha256(repr((state, source, header, cfg)).encode()).hexdigest()
-                    cache_key = 'local-source-v1:' + digest
+                    cache_key = 'local-source-v2:' + digest
                     if net.store.one('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?', fn['id'], cache_key):
                         continue
                     report['tested'] += 1
