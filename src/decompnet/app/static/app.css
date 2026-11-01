@@ -1157,7 +1157,7 @@ details.more[open] > summary::before { content: "− "; }
   .deep-scores dd { font-size: 22px; }
 }
 
-.deep-sweep-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin-top: 16px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.deep-sweep-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px; margin-top: 16px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
 .deep-sweep-counts div { padding: 12px 14px; background: var(--panel); display: grid; gap: 4px; }
 .deep-sweep-counts b { font-size: 22px; line-height: 1.1; }
 .deep-sweep-counts span { color: var(--muted); font-size: 12px; }
