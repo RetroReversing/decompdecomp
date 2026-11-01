@@ -1,4 +1,5 @@
 import json
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -135,3 +136,38 @@ def test_exhausted_repair_first_pass_proceeds_to_requested_variants(tmp_path,mon
     monkeypatch.setattr('decompnet.app.local_experiments.run',lambda *args,**kwargs:'No untried applicable local repairs.')
     assert repair_first.before_variants(net,agent,'game',args) is None
     assert net.store.one("SELECT COUNT(*) AS n FROM settings WHERE key LIKE 'repair-first:%'")['n']==1
+
+
+@pytest.mark.skipif(sys.platform=='win32',reason='POSIX fake process; shared budget and API tests cover Windows')
+def test_cli_rotation_does_not_stop_active_tools(tmp_path,monkeypatch):
+    import io
+
+    from decompnet import agents as kinds
+    from decompnet.app import agents
+    from tests.test_agents import URL, _no_agent_settings
+    from tests.test_agents import _game as agent_game
+    _no_agent_settings(monkeypatch)
+    net=agent_game(tmp_path)
+    manager=agents.Manager(net,tmp_path,URL)
+    session=agents.Session('worker','claude','worker','game','worker',{})
+    budget=session.context_budget=session_budget.Budget(tools=1)
+    ended=[]
+    def output():
+        budget.begin();budget.begin();budget.end('first tool saved')
+        yield 'still active'
+        assert not ended
+        budget.end('second tool saved')
+        yield 'all tools saved'
+    proc=SimpleNamespace(pid=987654,stdin=io.StringIO(),stdout=output(),stderr=[],wait=lambda:0)
+    monkeypatch.setattr(agents.subprocess,'Popen',lambda *args,**kwargs:proc)
+    monkeypatch.setattr(manager,'_command',lambda *args:(['fake-helper'],{},'prompt'))
+    monkeypatch.setattr(manager,'_preflight_tools',lambda *args:None)
+    monkeypatch.setattr(manager,'_save',lambda *args:None)
+    monkeypatch.setattr(agents,'_proc_start',lambda *args:None)
+    monkeypatch.setattr(agents,'_close_windows_job',lambda *args:None)
+    monkeypatch.setattr(agents,'_terminate',lambda p:ended.append(p.pid))
+    kind=kinds.get('claude')
+    monkeypatch.setattr(kind,'validate_model',lambda model:None)
+    monkeypatch.setattr(kind,'parse_line',lambda line,state:[('info',line)])
+    assert manager._run_cli(session,'fake-token',tmp_path)
+    assert session.rotated and ended==[987654] and budget.active==0
