@@ -1494,3 +1494,7 @@ remain planned: the initial browser toolchain has no matching build-context adap
 - Planned: copied-build replay adapters for imported projects and phase diagnostics for other compiler
   backends. They explicitly skip instead of using guessed standalone build settings. Timing currently
   measures summed trial elapsed time; per-child CPU accounting across compiler runtimes remains planned.
+
+- Done: selective branch pointer lifetime combinations and declaration-order bridges in shared C candidate
+  repairs, with guarded terminal switch-tail distribution and advisory repeated-call shortfall clues.
+  ROM and imported candidates use their unchanged ordinary judge. Unsupported control/macros stay unchanged.
