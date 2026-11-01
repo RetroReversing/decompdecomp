@@ -33,3 +33,36 @@ def test_parameter_names_do_not_create_false_signature_disagreements():
     assert not prototype_hints('unsigned sound(int id, float volume);',
                                'void f(void){sound(1,0);}',
                                'extern unsigned sound(int number, float level);')
+
+
+def test_cached_source_miss_continues_profiles_but_rejected_lead_does_not(tmp_path, monkeypatch):
+    import json
+
+    from decompnet.app import source_lead_analysis as analysis
+    from decompnet.app import source_preparation as prep
+    from decompnet.app.permute import Permuter, State
+    from decompnet.network import Agent
+    from tests.test_source_preparation import config, prepared_net
+
+    net, proj, fn = prepared_net()
+    net.cfg = lambda p: json.loads(p['config'])
+    net.project_row = lambda s: net.store.one('SELECT * FROM projects WHERE id=1')
+    net.fork_slug = lambda s: None
+    net.links = {}
+    net.local_agent = lambda n: (Agent(1, 'autopilot', None), '')
+    cfg = config(tmp_path)
+    (tmp_path/'types.h').write_text('')
+    (tmp_path/'game.c').write_text('int original(void){return 1;}')
+    prep.configure(net, proj, cfg)
+    with net.store.tx() as db:
+        db.execute('DELETE FROM claims')
+    calls = []
+    monkeypatch.setattr(prep, 'attempt', lambda *args: calls.append('source') or 50)
+    monkeypatch.setattr(prep, 'private_profiles', lambda *args: calls.append('profiles'))
+    worker = Permuter(net)
+    prep.run(worker, proj, State(), budget=3)
+    prep.run(worker, proj, State(), budget=3)
+    assert calls == ['source', 'profiles', 'profiles']
+    monkeypatch.setattr(analysis, 'rejected', lambda *args: True)
+    prep.run(worker, proj, State(), budget=3)
+    assert calls == ['source', 'profiles', 'profiles']
