@@ -1364,3 +1364,21 @@ pointer split) and 2660 (both split). The 17th generated proposal, including dec
 exact function fingerprint and all allocated code/data/relocation output of the previously verified control.
 Four of 66 proposals recovered that control in the complete regression run. This is an existing-match replay,
 not four new matches and not a success-rate estimate. No live source or game data was changed or published.
+
+
+### Recover predicates and investigate structural misses first
+
+The prior manual source-assisted batch recovered a callback at IDO 5.3 `-O3` with
+`-mips2 -G 0 -non_shared -Xcpluscomm -Wab,-r4300_mul` by retaining the original predicate's
+callee-result range check and inline context. A Boolean prototype of the underlying callee had
+lost the checks. The app can now propose private actual one-callee range-predicate bodies from
+mapped source, with their real declarations/constants; it never invents a helper implementation.
+Bounded same-width mask signedness trials address the separately observed unsigned-context match.
+Synthetic positive/negative tests cover generation and imported-build exclusions, not new game matches.
+
+Two inverted loads get focused repair ranking. A candidate-only restore/return suffix receives an
+advisory to inspect original adjacent padding, not a shortened judgment. The previous scheduler
+observation remains unresolved: its nearby padding includes two NOPs followed by the epilogue.
+Concrete source comparisons and compiled immediate differences are now shown as revision leads.
+Unsuccessful preparations are summarized only under their original source/build scope, so changed
+inputs remain eligible and old failed experiments are not mistaken for universal impossibility.

@@ -730,7 +730,7 @@ def test_agent_spend_is_read_from_their_output():
     claude = {"type": "result", "total_cost_usd": 0.42, "num_turns": 9, "usage": {
         "input_tokens": 30, "output_tokens": 900, "cache_read_input_tokens": 50000, "cache_creation_input_tokens": 4000}}
     assert usage("claude", claude) == [{"usd": 0.42, "input": 30, "output": 900, "cache_read": 50000,
-                                        "cache_write": 4000, "turns": 9}]
+                                        "cache_write": 4000, "turns": 9, "coverage": "complete"}]
     codex = {"type": "turn.completed", "usage": {"input_tokens": 900, "cached_input_tokens": 600, "output_tokens": 100}}
     assert usage("codex", codex) == [{"input": 300, "cache_read": 600, "output": 100, "turns": 1}]
     opencode = {"type": "step_finish", "part": {"cost": 0.01, "tokens": {"input": 10, "output": 5, "reasoning": 7,

@@ -1108,3 +1108,16 @@ associate several statements with one location, so the marks are advisory. No co
 flags are changed to manufacture a map. Missing target-only instructions have no
 compiled C location. ELF DWARF 1/2+ and ECOFF are supported; absent, ambiguous or
 unsupported information is labelled unavailable, including COFF/CodeView for now.
+
+### Investigate near misses before broad permutation
+
+Configured local source preparation can test a private copy of a small original range-predicate
+helper and bounded same-width signed/unsigned mask declarations. Actual reference bodies, prototypes,
+constants and scope are retained; these are hypotheses, not inferred semantics. Imported projects
+keep their own build headers, so private-header predicate/field changes need an adapter there.
+
+When only two loads differ in order, local repair ranking prioritizes load, declaration and scheduling
+families. A candidate-only restore/return epilogue triggers a boundary warning: inspect the next
+original padding entry before spending more model tokens. Nothing trims candidate bytes or changes a
+boundary automatically. Prepared-source evidence now highlights differing comparisons and compiled
+immediates, and briefs summarize unsuccessful probes for the current saved source/build scope.
