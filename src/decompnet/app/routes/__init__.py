@@ -9,6 +9,7 @@ module's register(), which adds that part's routes to the MCP server's web app:
 - repository_sync: verified additions to a standalone Git export checkout
 - life:     updates, the window, quitting
 - rooms:    decompiling together (collab.py)
+- pairing:  agents outside the app asking for access, approved in the window
 
 Routes check the request with app.guard (the window's secret, the host, and a header for writes) before anything
 else, run blocking work with app.call (a thread), and answer errors with app.fail.
