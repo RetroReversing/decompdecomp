@@ -5,7 +5,7 @@ from ..forks import csource
 from ..network import NetworkError
 
 IDENT=r'[A-Za-z_]\w*'
-CONTROL={'if','for','while','switch','sizeof','return','defined','__attribute__'}
+CONTROL={'case','if','for','while','switch','sizeof','return','defined','__attribute__'}
 
 
 def prototypes(original, source, header, entry):
