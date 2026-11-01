@@ -624,7 +624,8 @@ verified source/context findings, separate from synthetic feature regressions an
 **Verified case:** an 845-instruction / 3,380-byte rendering routine matched with
 `gcc-2.7.2-kmc`, `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. A standalone ordinary judge
 confirmed equality of every linked byte, then the live app accepted the same source as matched,
-score zero. This verifies one function, not a complete cartridge rebuild or an automatic repair family.
+score zero. A subsequent repository sync also reproduced the complete 12,582,912-byte cartridge,
+retaining all earlier selected C. This is a manually verified case, not an automatic repair family.
 Private evidence is retained outside this repository in `func_80076060-matched.json`,
 `func_80076060-matched-warnings.txt` and `live-exact-verification.json`; source SHA256
 `82858b9b4ee8237c496a715f7d82c8f7d48170fec659739043d55e71f8e2bf8a`.
