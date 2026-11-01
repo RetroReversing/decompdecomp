@@ -258,6 +258,10 @@ class BriefMixin:
             warning = compiler_preflight.warnings(self, proj, fn)
             if warning:
                 text += '\n\nCompiler preflight (advisory; check the draft before tuning):\n' + warning
+        if fn['status']=='open':
+            from ..source_lead_analysis import brief
+            leads=brief(self,proj,fn)
+            if leads:text+='\n\nPrepared-source investigation (advisory):\n'+leads
         return text + self._lifetime_hints(fn) + search_brief(self,proj,fn)
 
     def _lifetime_hints(self, fn):
