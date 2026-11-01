@@ -113,7 +113,8 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     for family,text in global_store_repairs.variants(source,name,header):
         proposals.append(text)
         labels[text]=family
-    for family, text in allocation_repairs.variants(source, name, header):
+    allocation_candidates = allocation_repairs.variants(source, name, header)
+    for family, text in allocation_candidates:
         proposals.append(text)
         labels[text] = family
     for family, text in pointer_pair_repairs.variants(source, name, header) + field_order_repairs.variants(source, name, header) + zero_test_repairs.variants(source, name, arch, header):
@@ -286,6 +287,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
             add(offset + commas[-1], offset + close, '')
         if len(proposals) >= LIMIT:
             break
+    # Preserve the targeted attribution when an older generic family emits the same C.
+    for family, text in allocation_candidates:
+        labels[text] = family
     for text in proposals:
         labels.setdefault(text,'expression_or_near_repair')
     # Round-robin families so a new family cannot crowd existing repairs out of a short pass.

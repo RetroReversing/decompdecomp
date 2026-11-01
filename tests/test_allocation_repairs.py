@@ -126,3 +126,32 @@ def test_scheduling_diagnostics_do_not_change_rows_or_scores():
     before = list(rows)
     assert evidence.diagnose(rows)['scheduling']
     assert rows==before
+
+
+def test_shared_families_reach_supported_candidate_architectures():
+    source = 'void work(void){int count; int *p; int n; int value;p=&value;use(p);use(p);count=0;n=0;}'
+    for arch in ('mips','ppc','x86','arm','thumb'):
+        labels = {}
+        proposals = draft_repairs.variants(source,'work',arch,labels=labels,limit=None)
+        # Another existing family may propose identical text and own its deduplicated label.
+        assert all(text in proposals for _,text in repairs.variants(source,'work'))
+
+
+def test_synthetic_candidates_compile_with_installed_kmc(tmp_path):
+    import pytest
+
+    from decompnet import toolchains
+    from decompnet.compiler import compile_source
+    from decompnet.project import compiler_config
+    if not toolchains.installed('gcc-2.7.2-kmc'):pytest.skip('Pinned KMC compiler is not installed; never download it here.')
+    cfg = compiler_config(tmp_path,{'compiler':{'toolchain':'gcc-2.7.2-kmc','flags':['-G0','-mips3','-mgp32','-mfp32','-O2','-g3']}})
+    source = '''void use(int *);
+int work(char *end) { int count; int *p; int index; int value; char *bytes;
+value=3;p=&value;count=0;index=0;use(p);use(p);
+bytes=end-8;do { *(bytes++) = 1; } while(bytes < end);return count+index+value; }
+'''
+    variants = repairs.variants(source,'work')
+    assert set(repairs.FAMILIES)<={f for f,_ in variants}
+    for family,text in [('control',source)]+variants:
+        result = compile_source(cfg,'',text)
+        assert result.ok,(family,result.log)
