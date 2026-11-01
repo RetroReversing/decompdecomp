@@ -1166,3 +1166,9 @@ This is historical compile evidence, not a fresh build preflight or a claim that
   constant and recovery-branch discrepancies without editing them. Ordinary judges, budgets and compiler approval
   gates remain. Imported projects retain build-owned settings; analogous target evidence on other processors: **—**,
   requires processor/ABI adapters. Existing one-retry stale preparation handling is reused rather than widened.
+Captured lifetime follow-ups: split scalar casts from constant bitwise operations, reuse a dead unsigned
+shift result in a store outside loops/gotos, and split a same-type floating cast before a product while
+preserving factor order. Integrated with shared draft/local/deep families and advisory repair pattern views.
+Isolated private replays recovered two recorded SN64 compiler-output controls with the new families;
+a third selected KMC case was already recovered by the existing typed-temporary family. Replay recovery
+is a regression result, not a new game match. Mixed/context-dependent examples remain for review.

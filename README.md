@@ -879,3 +879,9 @@ Agent **Next function** options include descriptions in the dropdown and a live 
 scored candidate. It includes never-tried functions and compile failures, and stops when none remain;
 it does not fall back to already-compiling functions. Existing filters and claim ownership still apply.
 Historical evidence is used; it does not rebuild every function to check whether its C compiles today.
+
+Repair evidence now suggests a review category using the same conservative triage as **Classify new**;
+existing categories are retained and suggestions save only through the review controls. Function-only pattern
+hints also recognise captured cast/bitwise, dead unsigned shift/store, and explicit floating-cast lifetime
+repairs. These bounded hypotheses run in shared draft, local and deep search, with the ordinary destination
+judge; volatile code and unsupported forms remain untouched.

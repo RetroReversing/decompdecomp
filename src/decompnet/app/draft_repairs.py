@@ -15,6 +15,7 @@ from . import (
     call_initialization_repairs,
     callee_prototype_repairs,
     captured_control_repairs,
+    captured_lifetimes,
     captured_repairs,
     compiler_shape_repairs,
     entry_point_repairs,
@@ -91,6 +92,9 @@ def variants(source: str, name: str, arch: str, asm: str = '', flags=(), labels=
     for family,text in global_store_repairs.variants(source,name,header):
         proposals.append(text)
         labels[text]=family
+    for family, text in captured_lifetimes.variants(source, name):
+        proposals.append(text)
+        labels[text] = family
     for family, text in captured_control_repairs.variants(source,name):
         proposals.append(text)
         labels[text] = family
