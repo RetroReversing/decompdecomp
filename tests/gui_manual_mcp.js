@@ -7,6 +7,7 @@ const $=id=>{
 };
 let completed=0;
 const ctx=vm.createContext({$,URL,JSON,Number,S:{projects:[{slug:'game',name:'Game'}]},
+  loadGlobalPrompts:()=>{},
   loadGlobalAgentTools:()=>{},toolCatalog:tools=>tools,
   esc:s=>String(s).replaceAll('<','&lt;'),cmdBox:s=>String(s),wireCopies:()=>{},
   beginWork:()=>()=>{completed++;},showJobError:(log,error)=>{log.textContent=error;},
