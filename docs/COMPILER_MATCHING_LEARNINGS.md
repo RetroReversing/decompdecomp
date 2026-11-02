@@ -2249,3 +2249,16 @@ permission to skip byte/data checks. A local replay recovered the prior health
 constant binding with one emitted function and the ordinary linked data judge;
 synthetic tests cover precision, sign, getter eligibility, cache/profile progression
 and token-preserving line splitting. These replays are not additional new matches.
+
+
+### Actual helper definition order can matter
+
+In a further source-assisted N64 recovery, IDO 5.3 O3 at the same flags above
+scored 780 with a provisional size-getter macro. Restoring the actual getter
+improved it to 610. Moving the three supplied private helper definitions after
+the caller, retaining their prototypes before use, produced exact code and data
+(score zero) with one emitted function. The new bounded CPU definition-order
+candidate reproduced that match in a read-only replay; live API promotion then
+accepted the same source/header/profile bundle. No helper body or padding was
+invented. This is a working compilation context, not proof of the historical
+source's definition order. The ordinary extra-body gate remains in force.
