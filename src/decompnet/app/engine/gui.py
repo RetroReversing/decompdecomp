@@ -169,8 +169,19 @@ class GuiMixin:
             'SELECT function_id,MAX(created_at) AS last_checked, '
             'MAX(CASE WHEN compiled AND score>=0 AND score<COALESCE(previous,n_insns*100) '
             'THEN created_at END) AS last_improved FROM history GROUP BY function_id', proj['id'])}
+        # Exact target bytes, independent of whether either project has matching C.
+        # Read only targets, not attempts/source; compare within the same processor and byte order.
+        peers = self.store.all(
+            f"SELECT f.id,f.project_id,f.target FROM functions f JOIN projects p ON p.id=f.project_id "
+            f"WHERE p.arch=? AND p.big_endian=? AND f.{IN_BUILD} AND length(f.target)>0",
+            proj['arch'], proj['big_endian'])
+        owners = {}
+        for peer in peers:
+            owners.setdefault(peer['target'], set()).add(peer['project_id'])
+        cross_project = {peer['id'] for peer in peers if peer['project_id'] == proj['id']
+                         and len(owners[peer['target']]) > 1}
         sdk = self.sdk_functions(proj)
-        return [{**name_state(r), **{k: recency.get(r["id"], {}).get(k) for k in ("last_checked", "last_improved")}, "sdk": sdk.get(r["id"]), "name": r["name"], "vram": r["vram"], "size": r["size"], "insns": r["n_insns"], "unit": r["unit"],
+        return [{"cross_project": r["id"] in cross_project, **name_state(r), **{k: recency.get(r["id"], {}).get(k) for k in ("last_checked", "last_improved")}, "sdk": sdk.get(r["id"]), "name": r["name"], "vram": r["vram"], "size": r["size"], "insns": r["n_insns"], "unit": r["unit"],
                  "status": r["status"] if r["status"] in ("matched", "asm") else "working" if (r["agent"] or key(r) in remote) else "open",
                  "best": r["best_score"], "attempts": r["attempts"], "agent": r["agent"] or remote.get(key(r)),
                  "matched_at": r["matched_at"], "matched_by": r["matched_by"],
@@ -217,7 +228,10 @@ class GuiMixin:
                            "COALESCE(SUM(status='matched'), 0) AS m, COALESCE(SUM(best_score), 0) AS bs, "
                            "COALESCE(MAX(matched_at), 0) AS ma, COALESCE(SUM(readable), 0) AS rd, "
                            "COALESCE(SUM(status='asm'), 0) AS sa FROM functions WHERE project_id=?", proj["id"])
-        return f"{f['n']}.{f['hi']}.{f['m']}.{f['bs']}.{f['ma']}.{f['rd']}.{f['sa']}"
+        peers = self.store.all("SELECT p.id,COUNT(f.id) AS n,MAX(f.id) AS hi FROM projects p "
+                               "LEFT JOIN functions f ON f.project_id=p.id GROUP BY p.id ORDER BY p.id")
+        cross_stamp = hashlib.sha1(repr([tuple(r) for r in peers]).encode()).hexdigest()[:12]
+        return f"{cross_stamp}.{f['n']}.{f['hi']}.{f['m']}.{f['bs']}.{f['ma']}.{f['rd']}.{f['sa']}"
 
     def function_diff(self, slug: str, name: str, which: str = "latest") -> dict:
         """The target next to an attempt, instruction by instruction, for the GUI: the matched C, else the latest
