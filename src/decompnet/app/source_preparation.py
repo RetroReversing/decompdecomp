@@ -249,6 +249,15 @@ def prepare(reader, cfg, mapping, aliases, fallback):
             reader.advisories.append('Reference include macros could not be read; retaining the explicit private header. Add the matching SDK include roots to recover missing macros. '+str(error))
     header += macro_context(reference_macros, body+helper_context, header)
     header += prototypes(original, body, header, symbol)
+    # Include trees may contain declarations absent from an explicitly selected header.
+    # Append actual signatures only; unknown types fail compilation without shared edits.
+    from .cpu_source_context import declarations as reference_declarations
+    from .source_match_context import macros as declared_macros
+    from .source_next_steps import called
+    available=reference_declarations(reference_macros,called(body)-{symbol})
+    current=reference_declarations(header,set(available))
+    for name,declaration in available.items():
+        if name not in current and name not in declared_macros(header) and not re.search(r'\(\s*\*\s*'+re.escape(name)+r'\b',csource._blank(header)):header += "\n"+declaration+"\n"
     selected = []
     from .source_match_context import dependencies
     used = dependencies(source+helper_context, header)
@@ -304,6 +313,8 @@ def prepare_variants(reader, cfg, mapping, aliases, fallback):
             reader.advisories.append('Predicate helper context unavailable; retaining the original candidate. '+str(error))
         from .cpu_source_context import variants as reference_trials
         hypotheses=[(family,(s,h)) for family,s,h in reference_trials(pair[0], pair[1], reference, cfg.get('_target_calls',[]))] if reference else []
+        from .retail_source_repairs import commented_calls
+        hypotheses += [(family,(s,h)) for family,s,h in commented_calls(pair[0],pair[1],cfg.get('_target_calls',[]))]
         hypotheses += [('predicate-helper-context',candidate) for candidate in predicate_contexts(pair[0],mapping[0],pair[1],reference)]
         hypotheses += [('mask-signedness-context',candidate) for candidate in signed_contexts(*pair)]
         for family,candidate in hypotheses:

@@ -265,3 +265,86 @@ def test_auto_promotion_requires_an_explicit_boolean_setting():
     with pytest.raises(NetworkError,match='checkbox'):
         prep.configure(net,proj,{'auto_exact':'false'})
     assert prep.configure(net,proj,{'enabled':False,'auto_exact':True})['auto_exact'] is True
+
+
+def test_missing_float_prototype_is_added_without_guessing():
+    source='void f(void){draw(1.0f);}'
+    out=contexts.variants(source,'','void draw(float x);',['draw'])
+    assert any('void draw(float x);' in h for _,_,h in out)
+    assert not contexts.variants(source,'','',['draw'])
+    assert not contexts.variants(source,'void (*draw)(int);','void draw(float x);',['draw'])
+
+
+def test_commented_calls_need_target_multiplicity_and_actual_prototype():
+    from decompnet.app.retail_source_repairs import commented_calls
+    source='void f(void){\n// sound(1);\n// sound(2);\n}'
+    out=commented_calls(source,'void sound(int n);',['sound','sound'])
+    assert len(out)==1 and '// sound' not in out[0][1]
+    assert out[0][1].count('\n')==source.count('\n')
+    assert not commented_calls(source,'void sound(int n);',[])
+    assert not commented_calls(source,'',['sound'])
+    assert not commented_calls('void f(void){/*\n// sound(1);\n*/}', 'void sound(int n);',['sound'])
+    assert not commented_calls('void f(void){\n// sound(1); dangerous();\n}', 'void sound(int n);',['sound'])
+
+
+def test_single_field_load_store_can_try_adjacent_word_swap():
+    s='void f(App *p){\nif (p->timer) use();\np->timer++;\n}'
+    h='typedef struct {int first; int timer; float alpha; int tail;} App;'
+    rows=[('i','lw $v0, 12($a0)','lw $v0, 8($a0)'),('i','sw $v0, 12($a0)','sw $v0, 8($a0)')]
+    out=repairs.variants(s,h,'mips',rows,mapped(rows,[2,3]))
+    assert any('float alpha; int timer;' in x[2] and 'int tail;' in x[2] for x in out)
+    assert not repairs.variants(s,h,'mips',rows,{})
+    assert not repairs.variants(s,h.replace('float alpha;','double alpha;'),'mips',rows,mapped(rows,[2,3]))
+
+
+def test_target_symbol_bindings_require_paired_operands_and_resolved_array():
+    from decompnet.app.retail_source_repairs import data_bindings
+    rows=[('i','lui $a1, %hi(D_80002000)','lui $a1, %hi(D_80001000)'),
+          ('i','addiu $a1, $a1, %lo(D_80002000)','addiu $a1, $a1, %lo(D_80001000)')]
+    s='void f(void){show(D_80001000);}'
+    h='extern char D_80001000[];'
+    out=data_bindings(s,h,rows,lambda n:0x80002000)
+    assert len(out)==1 and 'show(D_80002000)' in out[0][1] and 'extern char D_80002000[];' in out[0][2]
+    assert not data_bindings(s,h,rows[:1],lambda n:1)
+    assert not data_bindings(s,h,rows,lambda n:None)
+    assert not data_bindings(s,h.replace('[]',''),rows,lambda n:1)
+    assert not data_bindings(s,h+'\nextern float D_80002000[];',rows,lambda n:1)
+
+
+def test_abi_classification_does_not_generate_signature_or_assembly_changes():
+    hints=mips.recovery_hints('lw $v0, 24($a0)\nmul.s $f6, $f12, $f4',[])
+    assert any('private pointer/float' in s for s in hints)
+    hints=mips.recovery_hints('jal read\nnop\nlw $v0, 8($a3)',[])
+    assert any('internal-call ABI' in s for s in hints)
+    assert 'Register/frame-only' in mips.recovery_hints('',[('r','or $t0, $a0, $zero','or $t1, $a0, $zero')])[0]
+
+
+def test_comment_call_aliases_follow_real_target_callee():
+    from decompnet.app.retail_source_repairs import commented_calls
+    h='#define sound func_1000\nvoid sound(int n);'
+    assert commented_calls('void f(void){\n// sound(1);\n}',h,['func_1000'])
+
+
+def tail_fixture():
+    lines=['or $a2, $a1, $zero','or $a3, $a0, $zero',
+           'lw $t0, 12($a2)','beql $t0, $zero, .L00000140','lw $ra, 20($sp)',
+           'sw $zero, 24($a2)','lw $t1, 32($a3)','ori $t2, $t1, 8','sw $t2, 32($a3)',
+           'lw $ra, 20($sp)']
+    asm='\n'.join(f'/* 0 {0x100+i*4:08X} 00000000 */ {s}' for i,s in enumerate(lines))
+    asm+='\n.L00000140:\n/* 0 00000140 00000000 */ addiu $sp, $sp, 24\n/* 0 00000144 00000000 */ jr $ra\n/* 0 00000148 00000000 */ nop'
+    return asm,lines
+
+
+def test_only_measured_terminal_branch_shape_is_lifted_and_byte_offsets_explicit():
+    from decompnet.app.retail_source_repairs import terminal_branch
+    asm,lines=tail_fixture();e=mips.tail_branch(asm)
+    assert e and e['condition_arg']==1 and e['object_arg']==0
+    source='void f(Item *x, Boss *b){ update(x); }\n'
+    rows=[('<',s,'') for s in lines[2:9]]
+    got=terminal_branch(source,'f','',e,rows)
+    assert len(got)==1 and 'unsigned char *)b + 12' in got[0][1] and '|= 8' in got[0][1]
+    assert not terminal_branch(source,'f','',e,[])
+    assert not terminal_branch(source.replace('update(x);','return;'),'f','',e,rows)
+    assert not mips.tail_branch(asm.replace('ori $t2, $t1, 8','ori $t2, $t7, 8'))
+    assert not mips.tail_branch(asm.replace('jr $ra','jr $t0'))
+    assert not mips.tail_branch(asm.replace('or $a2, $a1, $zero','addiu $a2, $a1, 4'))

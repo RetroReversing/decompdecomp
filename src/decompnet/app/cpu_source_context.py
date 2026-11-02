@@ -23,13 +23,20 @@ def declarations(text, names):
 
 
 def variants(source, header, reference, target_calls=()):
-    used = called(source)
+    from ..forks.csource import find
+    used = {name for name in called(source) if not find(source,name)}
     originals = declarations(reference, used)
     current = signatures(header, used)
     changes = []
     updated = header
     for name, declaration in sorted(originals.items()):
-        if name not in current or current[name] == signatures(declaration, {name}).get(name):
+        if name not in current:
+            # A call without a declaration promotes floats to double. Use only the actual
+            # selected reference declaration; never infer parameter types from a call.
+            if name not in macros(header) and not re.search(r'\(\s*\*\s*'+re.escape(name)+r'\b',_blank(header)):
+                updated += '\n'+declaration+'\n'
+            continue
+        if current[name] == signatures(declaration, {name}).get(name):
             continue
         # Replace a prototype only, never a function body, function pointer or macro.
         pattern = r'(?m)^[ \t]*(?:(?:extern|static|inline)[ \t]+)?(?:'+ID+r'[ \t*]+)+'+re.escape(name)+r'\s*\([^(){};]*\)\s*;'
