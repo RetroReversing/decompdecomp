@@ -109,6 +109,9 @@ def record(net, proj, fn, source, header, score, rows, lead=None, elapsed_ms=0, 
     if hasattr(net,'reader'):
         from .switch_tables import hints, read
         comparison['next_steps']+=hints(source,fn['name'],read(net,proj,fn),header)
+    from .. import arch as arches
+    reader=arches.get(proj['arch']).source_recovery_hints
+    if reader:comparison['next_steps']+=reader(fn['asm'] or '',rows or [])
     baseline=fn['best_score'];improved=score is not None and (baseline is None or score<baseline)
     item={'scope':scope,'family':family,'profile':settings,'lead':lead,'score':score,'baseline':baseline,
           'exact':score==0,'improved':improved,'error':error[:2000], 'elapsed_ms':max(0,int(elapsed_ms)),
@@ -116,7 +119,13 @@ def record(net, proj, fn, source, header, score, rows, lead=None, elapsed_ms=0, 
           'source_sha256':hashlib.sha256(source.encode()).hexdigest(),'header_sha256':hashlib.sha256(header.encode()).hexdigest(),
           'comparison':comparison}
     with net.store.tx() as db:
-        if db.execute('SELECT 1 FROM reuse_trials WHERE function_id=? AND signature=?',(fn['id'],signature)).fetchone():return
+        previous=db.execute('SELECT feedback FROM reuse_trials WHERE function_id=? AND signature=?',(fn['id'],signature)).fetchone()
+        if previous:
+            old=json.loads(previous['feedback'] or '{}')
+            old_comparison=old.setdefault('comparison',{})
+            old_comparison['next_steps']=list(dict.fromkeys(old_comparison.get('next_steps',[])+comparison['next_steps']))
+            db.execute('UPDATE reuse_trials SET feedback=? WHERE function_id=? AND signature=?',(json.dumps(old),fn['id'],signature))
+            return
         db.execute('INSERT INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
                    (fn['id'],signature,str(score),'source lead and measured compiler evidence',json.dumps(item)))
     if hasattr(net,'cfg') and hasattr(net,'fork_slug'):

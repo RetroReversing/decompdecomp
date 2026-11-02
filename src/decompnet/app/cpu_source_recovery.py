@@ -6,6 +6,13 @@ MAX_PAIRS=6
 
 def proposals(net, proj, fn, source, header, measurement):
     result=cpu_source_repairs.variants(source,header,proj['arch'],measurement.get('rows',[]),measurement.get('lines',{}))
+    from .retail_source_repairs import data_bindings, terminal_branch
+    if hasattr(net,"symbols"):
+        result += data_bindings(source,header,measurement.get("rows",[]),net.symbols(proj["id"]).resolve)
+    from .. import arch as arches
+    reader=arches.get(proj["arch"]).source_tail_branch
+    if reader:
+        result += terminal_branch(source,fn["name"],header,reader(fn["asm"] or ""),measurement.get("rows",[]))
     from .switch_tables import read
     tables=read(net,proj,fn) if hasattr(net,'reader') else []
     result+=cpu_switch_repairs.variants(source,fn['name'],header,tables,cpu_switch_repairs.read_blocks(net,proj,fn,tables))
@@ -36,7 +43,7 @@ def extend(net, proj, fn, variants, origins, source, header, measurement, lead):
 
 def trial_key(state, source, header, cfg):
     import hashlib
-    return 'local-source-v6:'+hashlib.sha256(repr((state,source,header,cfg)).encode()).hexdigest()
+    return 'local-source-v7:'+hashlib.sha256(repr((state,source,header,cfg)).encode()).hexdigest()
 
 
 def pending(net, fn, state, cfg, variants, origins, exclude):

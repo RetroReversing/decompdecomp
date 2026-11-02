@@ -1,5 +1,11 @@
 # Roadmap
 
+Implemented: bounded actual missing prototypes, target-backed commented calls, isolated word-field
+order hypotheses, real data-symbol bindings and a narrow measured MIPS terminal clear/flag branch.
+SDK private-ABI and register/frame-only blockers receive distinct diagnostics. Full translation-unit
+compilation/clobber adapters, general missing-branch reconstruction and non-MIPS operand/tail readers
+remain planned; imported builds retain their own headers and receive body-only compatible trials.
+
 Implemented: bounded mapped-source CPU recovery, actual ABI/call declarations, verified record transfer,
 measured record-gap and coherent constant/extent trials, MIPS table-supported label/arm hypotheses,
 focused stack/declaration/helper follow-ups, and opt-in atomic promotion after a fresh linked-byte/data

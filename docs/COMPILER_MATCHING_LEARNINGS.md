@@ -1517,3 +1517,34 @@ The movement near misses at scores 51/60 remain unresolved. Actual pointer-ABI c
 helpers/constants, aggregate copies and line directives did not match; one flattened ABI rewrite
 scored 1011. Reuse focused declaration/stack/helper families and cache failures by exact source,
 header, target and build state instead of repeating those experiments across agents.
+
+## CPU trials from typed-source and retail-control recoveries (2 November 2026)
+
+Seven source-assisted recoveries at provisional IDO 5.3 `-O2 -mips2 -G 0 -non_shared
+-Xcpluscomm -Wab,-r4300_mul` motivated bounded CPU rules. An omitted actual float-argument
+prototype caused default double promotions, extra conversions and a larger frame; restoring
+that declaration matched. Two commented-out calls present in retail recovered menu input.
+A timer's repeated load/store differed by four bytes; a private adjacent-word field-order
+hypothesis matched without shifting the remainder of the record. Retail error tables required
+real case groups and message-address bindings, not invented strings or initializers.
+
+The CPU pass now tries actual missing prototypes, complete commented target calls with
+callee/multiplicity evidence (including simple aliases), isolated word-field order trials,
+and paired target data-address operands for declared arrays. Existing table-supported arm
+cloning supplies grouped error cases. A narrow MIPS terminal conditional-clear/flag-set
+reader can propose an explicit byte-offset body only when its instructions are missing from
+the measured candidate, argument origins are traced and its branch exits to the epilogue.
+Arbitrary missing branch bodies are still a review task. All proposals use ordinary compilation,
+linked-byte and data checks; none establishes a field's semantic name. CPU queues remain
+bounded, cache fingerprints advance to v7, and improvements feed subsequent measured trials.
+
+**Evidence level:** private replays of known recoveries are controlled regression evidence,
+not new matches or a claim of general effectiveness. SDK sequence setup and a static tempo
+helper still differ under isolated compilation; possible private entry/call clobber ABIs are
+reported for translation-unit investigation. A register/frame-only mismatch gets a separate
+scheduling hint. No wrapper, target-boundary alteration or assembly bypass was introduced.
+
+Four private linked-byte/data replays reproduced known matches: commented calls (baseline score
+4088), missing float prototype (3024), timer field order (20), and the measured terminal branch
+(1680), each to exact. The terminal-branch replay uses explicit byte offsets, not inferred field
+names. These tests leave the live project untouched and keep game source/evidence outside Git.

@@ -66,6 +66,8 @@ def variants(source, header, arch, rows, mapping):
                     if stop<0 or ',' in clean[start:stop] or 'cpu_layout_gap' in clean[a:b]:continue
                     h=header[:start]+f' unsigned char cpu_layout_gap[{delta}]; '+header[start:]
                     result.append(('cpu-record-gap',source,h))
+    from .retail_source_repairs import field_order
+    result += field_order(source,header,fields,lines,list(record_spans(header)))
     constants=[]
     for x in changes:
         if x['kind']!='constant' or x['old']==x['new'] or not 0<=x['new']<=4096:continue
