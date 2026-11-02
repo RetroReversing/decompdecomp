@@ -80,3 +80,16 @@ def test_imported_match_percent_feedback_also_distinguishes_saved_best(tmp_path)
     net._record(net._function('f','game'),a,100,'int f(){return 1;}',1)
     text=agent_tokens.feedback(net,a,'game','f','75.0% match (score 250; 0 = identical).',None)
     assert '150 points worse' in text and 'saved_best' in text
+
+
+def test_generated_local_names_do_not_prompt_shared_header_fetches():
+    for name in ('new_var', 'new_var6', 'temp_v0', 'var_a1'):
+        text = compile_guidance.hints("COMPILE ERROR: `"+name+"' undeclared", 'int f(){return '+name+';}')
+        assert 'Candidate-local identifier issue' in text
+        assert 'Read get_context' not in text
+
+
+def test_unattended_prompts_continue_after_difficult_functions():
+    for prompt in (tools.WORK_PROMPT, tools.FORK_PROMPT):
+        assert 'Continue with the next eligible function while session capacity remains' in prompt
+        assert 'low effort setting alone is not a reason' in prompt

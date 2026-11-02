@@ -499,6 +499,8 @@ def test_batch_continuation_keeps_baseline_or_best_without_extra_attempt(tmp_pat
     assert f'return {expected}' in selected
     assert net.store.one('SELECT COUNT(*) AS n FROM attempts')['n']==3
     assert 'Continuation:' in out and newrev in out
+    assert out.startswith('Current candidate revision '+newrev)
+    assert 'Discard the starting revision' in out
     assert net._function('f','game')['status']=='open'
     # A stale request rejects without spending another compile and supplies the current state/delta.
     if newrev!=rev:

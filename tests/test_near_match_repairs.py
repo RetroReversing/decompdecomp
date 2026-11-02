@@ -70,3 +70,13 @@ def test_forwarded_arguments_recover_two_independent_compiler_controls(tmp_path)
             if result.ok and extract_function(result.obj,name).code == target:
                 recovered = True
         assert recovered
+
+
+def test_forwarding_zero_argument_calls_has_no_empty_argument_or_void_tail():
+    for proto in ('void callee(void);', 'void callee();'):
+        source = proto+' void f(int arg0){callee();}'
+        proposals = [s for family,s in variants(source,'f','move $a0, $s0\njal callee\nnop')
+                     if family == 'call_forwarded_arguments']
+        assert proposals
+        assert all('callee(arg0)' in s and 'callee(int arg0)' in s for s in proposals)
+        assert not any(', )' in s or ', void' in s for s in proposals)

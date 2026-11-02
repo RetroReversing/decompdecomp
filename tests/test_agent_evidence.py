@@ -67,6 +67,14 @@ def test_structured_quality_issue_is_revision_scoped_and_preserves_its_reason(tm
     assert record['alternatives'] and fn['best_score']==10
     candidate_quality.capture(net,fn,a,'Historical candidate is incorrect.',None)
     assert candidate_quality.pending(net,fn)[0]['warning']==why
+    from decompnet.app import agent_tokens
+    before = net.store.one('SELECT COUNT(*) AS n FROM attempts')['n']
+    restored = agent_tokens.get_candidate(net,a,'game','caller','reported_corrected')
+    assert good in restored and 'historical score is not reverified' in restored
+    assert agent_tokens.candidate(net,a,'game','caller')[0] == good
+    assert net._function('caller','game')['best_score'] == 10
+    assert net.store.one('SELECT COUNT(*) AS n FROM attempts')['n'] == before
+    assert 'reported_corrected' in '\n'.join(candidate_quality.brief(net,fn))
     with pytest.raises(NetworkError,match='not saved'):
         candidate_quality.report(net,a,'game','caller','0'*20,'other','This is a concrete concern.')
     with pytest.raises(NetworkError,match='different, compiled'):
