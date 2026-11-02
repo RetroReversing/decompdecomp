@@ -50,8 +50,8 @@ def candidate_line_note(net, agent, slug, fn, source):
 
 
 def get_candidate(net, agent, slug, function, base='current'):
-    if base not in ('current', 'saved_best', 'last_compiling'):
-        raise NetworkError('Choose base=current, saved_best or last_compiling.')
+    if base not in ('current', 'saved_best', 'last_compiling', 'reported_corrected'):
+        raise NetworkError('Choose base=current, saved_best, last_compiling or reported_corrected.')
     note = ''
     if base != 'current':
         fn = net._function(function,slug)
@@ -61,6 +61,10 @@ def get_candidate(net, agent, slug, function, base='current'):
         latest = net.store.one('SELECT id,created_at FROM attempts WHERE function_id=? AND agent_id=? ORDER BY id DESC LIMIT 1',fn['id'],agent.id)
         if base == 'saved_best':
             selected = fn['best_source']
+        elif base == 'reported_corrected':
+            from ..candidate_quality import corrected_alternative
+            row = corrected_alternative(net, fn)
+            selected = row['source'] if row else None
         else:
             row = net.store.one('SELECT source FROM attempts WHERE function_id=? AND agent_id=? AND score IS NOT NULL ORDER BY id DESC LIMIT 1',fn['id'],agent.id)
             selected = row['source'] if row else None
@@ -828,8 +832,9 @@ def variants(net, agent, slug, function, revision, patches, family="explicit pat
                 results.append('Selected changes from starting C (bounded):\n'+'\n'.join(delta[:35])[:2000])
         current_source, current = candidate(net, agent, slug, function)
         current_index = next((i for i, src in enumerate(candidates, 1) if src == current_source), None)
-        results.append(f'Current candidate revision {current}; last submitted variant {last}; current source variant {current_index or "retained candidate"}. '
-                       'Patch this continuation. last_diff follows it when available; get_candidate recovers C.')
+        results.insert(0, f'Current candidate revision {current}; last submitted variant {last}; current source variant {current_index or "retained candidate"}. '
+                       'Patch this continuation. Discard the starting revision and revisions shown inside individual variant results. '
+                       'last_diff follows it when available; get_candidate recovers C.')
         from .efficiency_feedback import continuation, mismatch
         results.append(continuation(net,agent,slug,function,applied=[current_index] if current_index and current_source!=source else [],base=revision))
         kept=net._last_diffs.get((agent.id,fn['id']))

@@ -34,7 +34,8 @@ def capture(net,fn,agent,notes,progress):
     for previous in saved:
         if previous['source_hash']==report['source_hash']:
             if previous.get('structured'):
-                report.update(issue=previous['issue'], structured=True, warning=previous['warning'])
+                report.update(issue=previous['issue'], structured=True, warning=previous['warning'],
+                              corrected_attempt=previous.get('corrected_attempt'))
             report['review']=previous.get('review','pending')
             report['alternatives']=list(dict.fromkeys(report['alternatives']+previous['alternatives']))[:3]
     saved=[r for r in saved if r['source_hash']!=report['source_hash']]
@@ -50,8 +51,16 @@ def brief(net,fn):
     source = fn['best_source'] or fn['seed'] or ''
     abi = aggregate_hints(source, fn['name'], source)
     prefix = ['### Aggregate ABI checks (advisory)', *abi] if abi else []
+    prefix += net.knowledge.for_function(fn)
     from .app.matched_context import brief as matched_context
     prefix += matched_context(net, fn, source)
+    corrected = corrected_alternative(net, fn)
+    if corrected:
+        revision = hashlib.sha256(corrected['source'].encode()).hexdigest()[:20]
+        prefix += ['### Reported corrected alternative (not verified)',
+                   f'Revision {revision}, recorded score {corrected["score"]}. '
+                   'Select with get_candidate(base="reported_corrected"); rejudge in the current context. '
+                   'This alternative is retained separately from the lowest score; inspect its evidence before using.']
     current=hashlib.sha256((fn['best_source'] or '').encode()).hexdigest()
     saved=[r for r in records(net,fn) if r['source_hash']==current]
     if saved:
@@ -171,8 +180,21 @@ def report(net, agent, slug, function, revision, issue, reason, alternative_revi
     previous = next((r for r in saved if r['source_hash']==digest),{})
     item = {'source_hash':digest,'issue':issue,'warning':reason.strip(),'agent':agent.name,
             'alternatives':list(dict.fromkeys(([alternative['id']] if alternative else [])+previous.get('alternatives',[])))[:3],
-            'review':previous.get('review','pending'),'structured':True}
+            'review':previous.get('review','pending'),'structured':True,
+            'corrected_attempt': alternative['id'] if alternative else previous.get('corrected_attempt')}
     saved = [r for r in saved if r['source_hash']!=digest]+[item]
     with net.store.tx() as db:
         db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',(PREFIX+str(fn['id']),json.dumps(saved[-4:])))
     return 'Candidate issue recorded as a hypothesis, tied to revision '+digest[:20]+'. Best C, score and exact-match status unchanged. Release with notes when finished; agents and automatic repairs can continue while this concern is reviewed.'
+
+
+def corrected_alternative(net, fn):
+    """An explicitly linked compiled alternative, never an automatic semantic verdict."""
+    for item in reversed(records(net, fn)):
+        if not item.get('structured') or not item.get('corrected_attempt'):
+            continue
+        row = net.store.one('SELECT source,score FROM attempts WHERE id=? AND function_id=? AND compiled=1 AND score IS NOT NULL',
+                            item['corrected_attempt'], fn['id'])
+        if row and row['source']:
+            return row
+    return None

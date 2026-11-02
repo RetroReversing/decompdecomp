@@ -556,6 +556,7 @@ def test_zcode_session_ends_when_the_turn_is_done(tmp_path, monkeypatch):
     assert m._run_cli(s, "tok", work) is True
     assert time.monotonic() - started < 30, "the helper waited out the stand-in's sleep instead of ending it"
     assert s.usage["tool_calls"] == 1
+    assert any(e['type'] == 'termination' and 'session completion' in e['text'] for e in s.feed)
 
     assert "gemini" not in {a.id for a in kinds.AGENTS} and kinds.get("antigravity").command == "agy"
     assert kinds.get("gemini") is kinds.get("antigravity")
@@ -747,7 +748,7 @@ def test_the_prompt_gives_the_compile_budget_the_guide_gives(tmp_path, monkeypat
     monkeypatch.setattr(net, "overview", lambda slug: {"kind": "rom", "title": "Game", "platform": "n64",
                                                       "compiler": {"toolchain": "gcc-2.7.2-kmc"}})
     s = agents.Session("1", "claude", "claude-1", "game", "claude-1", {})
-    assert network.stall_budget_text() in m._prompt(s) and "8 claims" in m._prompt(s)
+    assert network.stall_budget_text() in m._prompt(s) and "8 compiled claims" in m._prompt(s)
 
 
 def test_a_project_started_from_scratch_isnt_called_a_public_decomp(tmp_path, monkeypatch):
@@ -1489,3 +1490,11 @@ def test_invalid_kimi_authorization_grant_uses_bounded_signin_retries(tmp_path,m
     assert session.state=='paused' and 'sign in again' in session.why
     assert session.runs==agents.AUTH_RETRIES
     assert message in session.why
+
+
+def test_termination_reason_is_saved_in_transcript():
+    s = agents.Session('x','claude','worker','game','worker',{})
+    recorded = []
+    s.record = lambda kind,text: recorded.append((kind,text))
+    s.push('termination','App requested termination: user stopped this helper')
+    assert recorded == [('termination','App requested termination: user stopped this helper')]

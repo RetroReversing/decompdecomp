@@ -111,6 +111,11 @@ class Knowledge:
             raise NetworkError("which compiler built what isn't shared knowledge: the compiler map settles it with "
                                "evidence. Inspect compiler_map(); test a function with try_compiler or search_flags; "
                                "propose a setup change with suggest(text=..., function=...). This was not saved as shared knowledge.")
+        scoped = self._function_mentions(proj, text)
+        if scoped:
+            raise NetworkError('This describes a specific function ('+', '.join(scoped[:3])+'). '
+                               'Use add_note or release_function(notes=...) for function notes, or report_candidate_issue '
+                               'for a source-quality concern. Shared knowledge is for reusable game/compiler matching techniques.')
         mine = _words(text)
         for row in self._open(proj):
             if difflib.SequenceMatcher(None, mine, _words(row["text"])).ratio() >= SAME_IDEA_RATIO:
@@ -181,13 +186,32 @@ class Knowledge:
         out, used = [], 0
         for r in self.net.store.all("SELECT text FROM knowledge WHERE project_id=? AND status=? ORDER BY id DESC",
                                     proj["id"], ACCEPTED):
+            if self._function_mentions(proj, r["text"]):
+                continue
             if used + len(r["text"]) > SHOWN_IN_PROMPT:
                 break
             out.append(f"- {r['text']}")
             used += len(r["text"])
         text = ("Accepted matching knowledge for this game (user-approved or model consensus):\n" + "\n".join(out)) if out else ""
-        open_ = self._open(proj)[:OPEN_SHOWN]
+        open_ = [r for r in self._open(proj) if not self._function_mentions(proj, r["text"])][:OPEN_SHOWN]
         if open_:
             text += ("\n\nProposals waiting for a second model (back one with share_knowledge(supports=N) only when "
                      "your own work shows it):\n" + "\n".join(f"- #{r['id']}: {r['text']}" for r in open_))
         return text.strip()
+
+
+    def _function_mentions(self, proj, text):
+        words = set(re.findall(r'[A-Za-z_]\w*', text))
+        return [r['name'] for r in self.net.store.all('SELECT name FROM functions WHERE project_id=?', proj['id'])
+                if r['name'] in words]
+
+    def for_function(self, fn):
+        """Retain legacy function-specific knowledge at its relevant function, without editing user data."""
+        out = []
+        for row in self.net.store.all('SELECT text,status FROM knowledge WHERE project_id=? AND status IN (?,?) ORDER BY id DESC',
+                                      fn['project_id'], ACCEPTED, PROPOSED):
+            if fn['name'] in set(re.findall(r'[A-Za-z_]\w*', row['text'])):
+                out.append(f"{row['status']}: {row['text'][:600]}")
+            if len(out) == 3:
+                break
+        return ['### Function-specific knowledge (historical reports)', *out] if out else []

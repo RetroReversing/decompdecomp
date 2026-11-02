@@ -58,12 +58,14 @@ def variants(source, name, assembly=''):
         end = close(body, call.end()-1)
         if not end or len(re.findall(r'\b'+re.escape(callee)+r'\s*\(', body)) != 1:
             continue
-        args = [p.strip() for p in _split_top_level(body[call.end():end-1])]
+        args = [p.strip() for p in _split_top_level(body[call.end():end-1]) if p.strip()]
         prototypes = list(re.finditer(r'\b(?:extern\s+)?(?:void|s32|u32|int)\s+'+re.escape(callee)+r'\s*\(([^;{}]*)\)\s*;', clean[:opening]))
-        if len(prototypes) != 1 or not 1 <= len(args) < 4:
+        if len(prototypes) != 1 or not 0 <= len(args) < 4:
             continue
         proto = prototypes[0]
-        types = [p.strip() for p in _split_top_level(proto[1])]
+        types = [p.strip() for p in _split_top_level(proto[1]) if p.strip()]
+        if types == ['void']:
+            types = []
         if len(types) != len(args) or '...' in proto[1]:
             continue
         for count in range(1, min(2, len(params), 4-len(args))+1):

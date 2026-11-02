@@ -122,7 +122,7 @@ $("helperTranscript").onclick = async () => {
       const phaseKind = checking ? entry.kind.replace("connection_check_", "") : entry.kind;
       const kind = checking && phaseKind === "tools" ? "tool_definitions" : phaseKind;
       const details = document.createElement("details"), summary = document.createElement("summary");
-      const labels = {prompt: "Initial prompt", instructions: "App instructions", tool_definitions: "Tool definitions",
+      const labels = {termination: "Session termination (app only)", prompt: "Initial prompt", instructions: "App instructions", tool_definitions: "Tool definitions",
         tool_request: "Tool request", tool_response: "Tool response", api_request: "API request (actual context)",
         handoff: "Session handoff", text: "Agent reply", think: "Exposed reasoning", usage: "Usage update (not sent to model)"};
       details.className = `transcript-event${kind === "error" ? " transcript-event-error" : ""}`;

@@ -409,7 +409,7 @@ def api_tool_schemas(fork: bool = False, names: list[str] | None = None) -> list
     bo = lambda desc: {"type": "boolean", "description": desc}
     defs = {
         "project_info": ("Game, compiler and progress; detail=true includes all facts and suggestions.", s(detail=bo("full details"))),
-        "get_candidate": ("Read candidate C and its revision, without assembly or notes.", s(function=st("function", True), base=st("current (default), saved_best or last_compiling; explicitly selects continuation without judging"))),
+        "get_candidate": ("Read candidate C and its revision, without assembly or notes.", s(function=st("function", True), base=st("current (default), saved_best, reported_corrected (agent-reported alternative, not verified) or last_compiling; explicitly selects continuation without judging"))),
         "compile_patch": ("Compile one exact-text replacement against a candidate revision using the normal judge.",
                           s(function=st("function", True), revision=st("revision from get_candidate or compile feedback", True),
                             old=st("text occurring exactly once", True), new=st("replacement", True),

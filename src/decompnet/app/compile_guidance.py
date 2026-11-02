@@ -19,7 +19,7 @@ def hints(text, source):
     if not advice and 'parse error' in text and re.search(r'(?m)^\s*(?:int|s32|u32|float|double|char|unsigned)\s+\w+', source):
         advice.append('Check C89 declaration placement: declarations must precede statements in each block. Also check the first reported line for a missing delimiter; later errors may be cascades.')
     names = list(dict.fromkeys(re.findall(r"[`‘']([A-Za-z_]\w*)['’] undeclared", text) + re.findall(r"(?:undeclared identifier|unknown type name) ['‘]([A-Za-z_]\w*)['’]", text)))[:3]
-    local_names = [n for n in names if n.startswith('__repair_') or re.search(r'\b(?:[su](?:8|16|32|64)|int|float|double|char|short|long)\s+\**\s*'+re.escape(n)+r'\b',source)]
+    local_names = [n for n in names if re.fullmatch(r'(?:__repair_\w*|new_var\d*|temp_[A-Za-z0-9_]+|var_[A-Za-z0-9_]+)', n) or re.search(r'\b(?:[su](?:8|16|32|64)|int|float|double|char|short|long)\s+\**\s*'+re.escape(n)+r'\b',source)]
     if local_names:
         advice.append('Candidate-local identifier issue: '+', '.join(local_names)+'. Check its declaration and scope in this candidate before fetching shared headers.')
     names = [n for n in names if n not in local_names]

@@ -79,7 +79,7 @@ You are a decompilation agent in decompdecomp, working on {title}. Other agents 
 functions of the same game at the same time; the tools keep you from colliding.
 
 Your job: turn functions of this game into C that compiles to *exactly* the original machine code.
-Use only the decomp tools. Work on up to {count} compiled claims (a batch is one). This is a maximum, not a quota. Stop earlier when the session turn/context allowance is nearly used; leave precise notes for unfinished work. Do not apologise for missing the maximum. Nobody answers during a session: never stop to offer more claims "on
+Use only the decomp tools. Work on up to {count} compiled claims (a batch is one). Continue with the next eligible function while session capacity remains, even after a difficult or unsuccessful claim. Difficulty, low expected yield, or a low effort setting alone is not a reason to end an unattended session. The claim count is a maximum, not a quota. Stop earlier when the session turn/context allowance is nearly used; leave precise notes for unfinished work. Do not apologise for missing the maximum. Nobody answers during a session: never stop to offer more claims "on
 request", just take them. (claim_function's count is something else: how many small neighbours may come along in
 one claim; one function back is normal.)
 
@@ -155,7 +155,7 @@ You are a decompilation agent in decompdecomp, continuing {title}: {what}. Other
 other functions of the same project at the same time; the tools keep you from colliding.
 
 Your job: write functions in the project's own source files so they compile to *exactly* the original
-machine code, judged by objdiff. Use only the decomp tools. Work on up to {count} compiled claims (a batch is one). This is a maximum, not a quota. Stop earlier when the session turn/context allowance is nearly used; leave precise notes for unfinished work. Do not apologise for missing the maximum. Nobody answers during a session: never
+machine code, judged by objdiff. Use only the decomp tools. Work on up to {count} compiled claims (a batch is one). Continue with the next eligible function while session capacity remains, even after a difficult or unsuccessful claim. Difficulty, low expected yield, or a low effort setting alone is not a reason to end an unattended session. The claim count is a maximum, not a quota. Stop earlier when the session turn/context allowance is nearly used; leave precise notes for unfinished work. Do not apologise for missing the maximum. Nobody answers during a session: never
 stop to offer more claims "on request", just take them. (claim_function's count is something else: how many small
 neighbours may come along in one claim; one function back is normal.)
 
@@ -656,7 +656,7 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
 
     @tool
     async def get_candidate(ctx: Context, function: str, base: str = "current") -> str:
-        """Read your current candidate C/revision and bounded advisory C-line mismatch locations, when compiler debug information is available. Use base="saved_best" to explicitly restore saved best C, or base="last_compiling" to recover your last scored C after compiler errors. Selection changes only your continuation; historical scores require rejudging. No full assembly listing or historical notes."""
+        """Read your current candidate C/revision and bounded advisory C-line mismatch locations, when compiler debug information is available. Use base="saved_best" to explicitly restore saved best C, base="reported_corrected" to select a compiled alternative explicitly linked to a quality report (an agent hypothesis, not verified correctness), or base="last_compiling" to recover your last scored C after compiler errors. Selection changes only your continuation; historical scores require rejudging. No full assembly listing or historical notes."""
         return await run(ctx, 'get_candidate', function=function, base=base)
 
     @tool
@@ -727,7 +727,8 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
     async def report_candidate_issue(ctx: Context, function: str, revision: str, issue: str, reason: str, alternative_revision: str = "") -> str:
         """Report a suspected invalid saved candidate by revision. Issues: uninitialized, loop_mutation,
         wrong_store, wrong_value, other. Give a short concrete reason; optional alternative_revision must
-        be a different compiled/scored source of this function. Hypotheses only: no score or match is changed.
+        be a different compiled/scored source of this function; it is retained separately and selectable with
+        get_candidate(base="reported_corrected"). Hypotheses only: no score or match is changed.
         """
         return await run(ctx, 'report_candidate_issue', function=function, revision=revision, issue=issue,
                          reason=reason, alternative_revision=alternative_revision)

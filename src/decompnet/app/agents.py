@@ -377,7 +377,7 @@ class Session:
         return str(self.options.get("model") or "")
 
     def push(self, kind: str, text: str) -> None:
-        if self.record and kind in ("text", "think", "error", "info"):
+        if self.record and kind in ("text", "think", "error", "info", "termination"):
             self.record(kind, text)
         self.seq += 1
         self.feed.append({"seq": self.seq, "t": time.time(), "type": kind, "text": text[:FEED_TEXT]})
@@ -815,6 +815,9 @@ class Manager:
         for s in list(self.sessions.values()):
             if sid not in (None, s.id):
                 continue
+            if s.state in LIVE:
+                s.stopped_by = by
+                s.push('termination', 'App requested termination: '+{BY_YOU: 'user stopped this helper', BY_QUIT: 'app shutdown/restart'}.get(by, str(by)))
             s.stop.set()
             proc = s.proc
             if proc is not None and proc.poll() is None:
@@ -1520,6 +1523,8 @@ class Manager:
                 s.rotated=True
                 s.push('info','Starting a fresh session to keep context small; saved work and claims are retained.')
             if finished or s.stop.is_set() or s.rotated:
+                reason = 'session completion' if finished else 'budget rotation' if s.rotated else 'stop request ('+str(s.stopped_by)+')'
+                s.push('termination', 'App requested termination: '+reason)
                 _terminate(proc)
                 break
         code = proc.wait()
@@ -1563,6 +1568,13 @@ class Manager:
             s.push("error", f"{k.name}'s sign-in failed (exit code {code}): {s.error}")
             return False
         if code != 0:
+            if code < 0:
+                try:
+                    signal_name = signal.Signals(-code).name
+                except ValueError:
+                    signal_name = str(-code)
+                s.push('termination', f'Helper exited from signal {signal_name}; no app termination request recorded on this path. '
+                       'An external kill or resource pressure is possible; the signal alone does not identify the cause.')
             tail =" · ".join(list(errors)[-3:]) or last_error or f"exited with code {code}"
             s.error = tail[:300]
             s.push("error", f"exited with code {code}: {tail[:600]}" if tail != f"exited with code {code}" else tail)

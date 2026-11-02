@@ -134,3 +134,20 @@ def test_pending_proposal_ui_offers_manual_acceptance():
     if node is None:
         pytest.skip('needs node')
     subprocess.run([node,str(Path(__file__).with_name('gui_knowledge_accept.js'))],check=True,timeout=30)
+
+
+def test_function_specific_knowledge_is_scoped_without_deleting_history(net):
+    a = agent(net, 'worker')
+    pid = net._project('game')['id']
+    with net.store.tx() as db:
+        db.execute('INSERT INTO functions(project_id,name) VALUES(?,?)', (pid,'func_example'))
+        db.execute("INSERT INTO knowledge(project_id,text,status,created_at) VALUES(?,?,'accepted',1)",
+                   (pid,'Semantic caution: func_example reads an uninitialized local.'))
+        db.execute("INSERT INTO knowledge(project_id,text,status,created_at) VALUES(?,?,'accepted',2)",
+                   (pid,'Reuse locals to reproduce register allocation.'))
+    prompt = net.knowledge.for_prompt('game')
+    assert 'func_example' not in prompt and 'Reuse locals' in prompt
+    assert 'uninitialized' in '\n'.join(net.knowledge.for_function(net._function('func_example','game')))
+    with pytest.raises(NetworkError, match='specific function'):
+        net.knowledge.share(a,'game','func_example needs a corrected pointer.')
+    assert net.store.one('SELECT COUNT(*) AS n FROM knowledge')['n'] == 2
