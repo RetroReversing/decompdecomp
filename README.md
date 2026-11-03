@@ -1344,3 +1344,14 @@ submissions are held. Creation completion means the worker records were launched
 request is already running: each agent card then shows preparation, sign-in/usage limits and work waits.
 If a multi-worker start fails partway through, check the Agents list before retrying; already-created
 workers are preserved rather than stopped or duplicated automatically.
+
+
+
+### Opening a project while verification is running
+
+Project overview/map reads show the latest saved database snapshot without starting a full saved-file
+verification pass. Existing verification continues in the background; changes and judging still use
+the synchronization gate. The loading panel reports four actual loading steps (app settings, project
+summary, function list, view rendering), elapsed time, and available saved-file verification counts.
+Step completion is not an estimate of time remaining; a large function/attempt history may still
+make the function-list step longer than the others.

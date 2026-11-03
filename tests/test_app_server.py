@@ -1823,3 +1823,25 @@ def test_background_agent_creation_keeps_server_responsive_and_reports_steps(tmp
         if status['state']!='running':break
         time.sleep(.01)
     assert status['state']=='done' and status['result']=={'started':['new-worker']}
+
+
+def test_map_reads_do_not_start_saved_progress_verification(tmp_path,monkeypatch):
+    from .test_loading import tiny_game
+    net=RomNetwork(tmp_path/'app.db',tmp_path)
+    tiny_game(net)
+    mcp,_,security,_=build(net,tmp_path,PORT,SECRET)
+    client=TestClient(mcp.streamable_http_app(transport_security=security,host='127.0.0.1'),
+                      base_url=f'http://127.0.0.1:{PORT}',headers=WINDOW)
+    monkeypatch.setattr(net.progress,'sync',lambda *args,**kwargs:pytest.fail('map read must not trigger verification'))
+    response=client.get('/api/map?slug=game')
+    assert response.status_code==200 and len(response.json()['rows'])==4
+    assert client.get('/api/map?slug=game&since='+response.json()['sig']).json()['same']
+    def columns(slug):
+        assert net.progress.viewing
+        net._project(slug)
+        return []
+    monkeypatch.setattr(net,'map_columns',columns)
+    assert client.get('/api/mapcolumns?slug=game').status_code==200
+    net.progress._activity('game',phase='Verifying saved functions',done=2,total=4)
+    activity=client.get('/api/project-loading?slug=game').json()['verification']
+    assert activity['done']==2 and activity['total']==4
