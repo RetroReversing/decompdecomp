@@ -1,5 +1,11 @@
 # Roadmap
 
+Implemented: bounded matched callback-owner discovery across selected/saved MIPS ROM source,
+private-header declaration renaming during repository sync, and separately verified supplied
+assembly through installed ROM compiler drivers. Source proofs retain provenance but are
+reverified after restore. The overview separates four status counts and all-code C coverage.
+Imported-build assembly verification and non-MIPS compiler-unit discovery remain planned.
+
 Implemented: NOP-only MIPS targets remain rebuildable as set-aside assembly in ROM imports and project objects;
 Check again applies the same classification to existing targets.
 Incomplete nonzero targets still receive advisory boundary review; original bytes, symbols, matches and explicit
@@ -239,6 +245,8 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | C++ methods drafted as `Class::method` | ✓ | ✓ | ✓ | ✓ | — | ✓ (RTTI, and classes from the vtables constructors store) | — | — |
 | Twins: free matches from identical code | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Resumable source/profile queue and explicit assembly reconsideration | ✓ ROM | ✓ ROM | ✓ ROM | ✓ ROM | — owned-build adapter planned | — owned-build adapter planned | — owned-build adapter planned | — owned-build adapter planned |
+| Supplied assembly code/data verification | ✓ ROM driver | ✓ ROM driver | ✓ ROM driver | ✓ ROM driver | — own build adapter planned | — own build adapter planned | — own build adapter planned | — own build adapter planned |
+| Exact C / verified source assembly / other assembly / open counts | ✓ | ✓ | ✓ | ✓ | ✓ counts | ✓ counts | ✓ counts | ✓ counts |
 | Local mapped source preparation | ✓ | ✓ | ✓ | ✓ | body only¹ | body only¹ | body only¹ | body only¹ |
 | Verified neighbour context hypotheses and separate body/header bundles | ✓ ROM | ✓ ROM | ✓ ROM | ✓ ROM | — own build adapter planned | — own build adapter planned | — own build adapter planned | — own build adapter planned |
 | Bounded flag preflight before long search | ✓ ROM | ✓ ROM | ✓ ROM | ✓ ROM | — own build | — own build | — own build | — own build |

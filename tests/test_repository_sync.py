@@ -283,3 +283,15 @@ def test_a_curated_builder_can_verify_its_own_prefix_normalization(project):
     _, net, _ = project
     net._candidate_checks = lambda *args:{'export':{'state':'requires_normalization','ready':None}}
     assert run(project)['accepted'] == ['f']
+
+
+def test_export_renames_callback_forward_declaration_in_private_header(project,monkeypatch):
+    root,net,rows=project
+    rows[0]['name']='old_entry'
+    rows[0]['matched_source']='void caller(void){ callback=old_entry; }\nvoid old_entry(void){}'
+    net._context=lambda *args:{'header':'void old_entry(void); /* old_entry stays in comments */\n'}
+    result=run(project)
+    assert result['accepted']==['old_entry']
+    header=next((root/'include').glob('decompdecomp_sync_*.h')).read_text()
+    assert 'void f(void);' in header and '/* old_entry stays in comments */' in header
+    assert 'callback=f;' in (root/'src/game/f.c').read_text()
