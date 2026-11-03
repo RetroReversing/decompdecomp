@@ -1,15 +1,16 @@
 """The connector: how decompdecomp talks to a helper agent. Every agent the app can start is a module in this folder
-(agents/claude.py, codex.py, antigravity.py, opencode.py, zcode.py, api.py) that makes an `Agent` below and fills in
+(agents/claude.py, codex.py, cursor.py, kimi.py, antigravity.py, opencode.py, zcode.py, api.py) that makes an `Agent` below and fills in
 its parts; the list at the end of this file registers them. The rest of the app (the helpers' manager in
 app/agents.py, the routes, the GUI) asks the agent of a helper, `agents.get(kind)`, and never compares agent names.
 A person or an agent adding support for another agent reads its module and this file, nothing else.
 
 An agent is one of two sorts:
-- A program the user installs and signs in to (Claude Code, Codex, Antigravity CLI, opencode). The app runs it
+- A program the user installs and signs in to (Claude Code, Codex, Cursor Agent, Kimi Code, Antigravity CLI,
+  opencode, ZCode CLI). The app runs it
   headless, once per session, in a private working folder, connected only to the app's own MCP endpoint on 127.0.0.1
   with a token of its own (`session_command`): MCP is the app's private wiring to it. The prompt goes in on stdin
-  (`stdin`); what it prints, one JSON object a line, is read into the helper's feed (`parse`). Most programs read one
-  prompt and exit.
+  (`stdin`) or through the ZCode CLI's bounded attachment (`prompt_file`); what it prints, one JSON object a line,
+  is read into the helper's feed (`parse`).
 - An agent built into the app (the API helper): no program, a loop in the app that talks to a model's API itself and
   calls the tools directly (`run`).
 
