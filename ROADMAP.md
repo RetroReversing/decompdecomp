@@ -2049,3 +2049,8 @@ and provider failures also remains planned; saved candidates/experiments still s
 - Done: compiler-suggestion applications run as reusable background jobs with immediate progress,
   matched-function check counts, score-update stages and persistent errors in the UI; ROM ranges
   and source-project file ranges retain their existing regression protection.
+
+- Done: common scaled-store offsets, immediate conditional pointer-load inlining, subscript
+  reassociation in owned inline helpers and branch-tail stores are available to shared local
+  repairs, agent experiments and deep permutation. Added scoped narrow-index handling and corrected
+  a logical-and false positive in pointer escape checks; the normal judges remain unchanged.
