@@ -2719,3 +2719,5 @@ and require the ordinary compiler/link byte judge. A matching displayed address
 or symbolic label by itself is not proof. Local experiments used the same pinned
 compiler and linker judge; the final source was submitted to the running app,
 which recorded score 0 and exact linked-byte and instruction checks.
+The complete standalone cartridge rebuild subsequently passed byte for byte,
+retaining every earlier selected C function.
