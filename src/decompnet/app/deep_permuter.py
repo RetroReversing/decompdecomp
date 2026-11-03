@@ -338,7 +338,7 @@ class Search(Permuter):
         lane = [c for _,c in lane if c not in self.local_seen][:allocation_search.LIMIT-self.allocation_trials]
         return lane+[c for c in choices if c not in lane],set(lane)
 
-    def local_repairs(self, agent, proj, fn, best, fork, max_trials=None):
+    def local_repairs(self, agent, proj, fn, best, fork, max_trials=None, phase_deadline=None):
         """Regenerate from each saved winner, sharing this search's deadline, cache and allowance."""
         ordinary_phase = self.phase
         flags = compiler_for(self.net.cfg(proj), fn['vram']).get('flags', []) if not fork else []
@@ -360,6 +360,9 @@ class Search(Permuter):
         counters = {'compile_failed': 0, 'frontier_pruned': 0, 'depth_limit': 0}
         self.local_status = {'reason': 'searching', **counters}
         while best > 0:
+            if phase_deadline is not None and time.monotonic() >= phase_deadline:
+                self.local_status = {'reason': 'phase_budget', **counters}
+                return best, self.net._function(fn['name'], proj['slug'])['best_source']
             self.check()
             path = lineage.paths.get(source, [])
             if len(path) >= repair_sequences.MAX_STEPS:
@@ -393,6 +396,10 @@ class Search(Permuter):
             choices,allocation_lane = self.allocation_choices(proj,fn,source,rows,choices,labels,header,fork)
 
             for candidate in dict.fromkeys(choices):
+                if phase_deadline is not None and time.monotonic() >= phase_deadline:
+                    self.local_status = {'reason': 'phase_budget', **counters}
+                    self.log('Local phase budget reached; reserving the remaining search for random rewrites.')
+                    return best, self.net._function(fn['name'], proj['slug'])['best_source']
                 if candidate in self.local_seen:
                     continue
                 if max_trials is not None and trials >= max_trials:
@@ -416,12 +423,10 @@ class Search(Permuter):
                     del self._parent_rows
                 if score is None:
                     counters['compile_failed'] += 1
-                if score is not None and best <= score <= best * 2:
+                if score is not None and score > 0:
                     measured_rows = (self._cached_rows if getattr(self, '_trial_reused', False)
                                      else repair_ranking.evidence(self.net, fn['id'], agent.id))
                     if getattr(self, '_trial_reused', False) and not measured_rows:
-                        continue
-                    if score > best*1.25 and not search_frontier.structure_recovery(rows,measured_rows,proj['arch']):
                         continue
                     alternatives.offer(candidate, score, measured_rows, arch=proj['arch'], baseline=rows, baseline_score=best)
                     if not any(n['source'] == candidate for n in alternatives.nodes):
@@ -451,10 +456,10 @@ class Search(Permuter):
                     break
             else:
                 detour = next((node for node in alternatives.nodes
-                               if node['source'] not in detours_used and node['source'] not in self.local_seen), None)
+                               if node['source'] not in detours_used and node['source'] not in expanded and node['source'] not in self.local_seen), None)
                 # Local trials are already in local_seen; allow each retained source one expansion.
                 if detour is None:
-                    detour = next((node for node in alternatives.nodes if node['source'] not in detours_used), None)
+                    detour = next((node for node in alternatives.nodes if node['source'] not in detours_used and node['source'] not in expanded), None)
                 if detour and len(detours_used) < 3 and detour['source'] not in expanded:
                     detours_used.add(detour['source'])
                     source = detour['source']
@@ -539,8 +544,8 @@ class Search(Permuter):
                 # Only a local near-miss needs diff rows to resume its second edge. Random
                 # trials keep their compact score cache; do not grow it by a full diff per compile.
                 feedback = ({'score': score, 'rows': own[0]} if own and provenance.get('kind') == 'deep local repair'
-                            and best <= score <= best*2 and (score <= best*1.25 or
-                                search_frontier.structure_recovery(rows,own[0],proj['arch'])) else score)
+                            and (best <= score <= best*1.25 or permuter_focus.classify(own[0]) != policy_focus or
+                                 best <= score <= best*2 and search_frontier.structure_recovery(rows,own[0],proj['arch'])) else score)
                 with self.net.store.tx() as db:
                     db.execute('INSERT OR REPLACE INTO reuse_trials(function_id,signature,outcome,reason,feedback) VALUES(?,?,?,?,?)',
                                (fn['id'], key, 'miss', 'deep function search; path: '+ ' → '.join((current_trial() or {}).get('lineage', [])),
@@ -606,7 +611,7 @@ def _run(net, slug, name, minutes, max_variants, log):
     if warning:
         log('Compiler preflight (advisory): '+warning)
     log(f'Searching {name}: {minutes} minutes, up to {max_variants:,} compiled candidates. Checking the saved baseline first.')
-    log('Local repairs follow the current instruction differences; then random rewrites explore further variants.')
+    log('Local repairs use at most half the remaining time and compile allowance; random rewrites receive the rest. A single in-flight compile may cross the phase time boundary.')
     from .source_diagnostics import hints
     for hint in hints(fn['best_source'], name, fn['asm'], proj['arch'], repair_ranking.evidence(net, fn['id'], agent.id)):
         log('Source check (advisory): '+hint)
@@ -645,7 +650,11 @@ def _run(net, slug, name, minutes, max_variants, log):
                         log(diagnostic)
                     search.phase = 'local repairs'
                     search.log('Baseline measured; trying targeted local repairs before random rewriting.')
-                    best, _ = search.local_repairs(agent, proj, net._function(name, slug), baseline, fork)
+                    remaining = max(0, search.deadline-time.monotonic())
+                    local_deadline = time.monotonic()+remaining/2
+                    local_trials = max(1, (search.limit-search.tested)//2)
+                    best, _ = search.local_repairs(agent, proj, net._function(name, slug), baseline, fork,
+                                                   max_trials=local_trials, phase_deadline=local_deadline)
                     if best == 0:
                         reason = 'Matched'
             finally:

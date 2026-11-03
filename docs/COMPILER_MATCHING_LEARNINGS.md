@@ -2773,3 +2773,59 @@ including two diagnostics and recorded a normal exact match. Details and limitat
 [register-cycle replay](repair-replay.md#register-cycle-lifetime-search). This is a controlled
 regression, not a new function match or a measured reduction in model tokens. No generator
 synthesizes arbitrary zero/padding expressions; this family requires an existing proven block.
+
+### Captured store constants, nested halfword casts and build context (2026-11-03)
+
+A read-only review of 1,018 recent local captures found 826 without a failed baseline,
+137 comparable source pairs, and 12 unchanged-C pairs that changed both compiler flags
+and header context. Ten of those 12 added `-mcpu=r4600`; this is a useful ranked profile
+hypothesis, **not evidence that the CPU flag alone caused a match**. Context replay now
+compares before/after controls, compiler-only and header-only combinations. Neither this
+replay nor a recorded successful profile bypasses the ordinary linked/objdiff judge.
+
+Two private, hash-validated captures were replayed with their recorded headers: GCC
+2.7.2 KMC with `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`, and GCC 2.8.1 with the bundled
+SN assembler and `-G0 -mips3 -mgp32 -mfp32 -O1`. Redistributing an unsigned-halfword cast across a subtraction inside an outer
+addition recovered the successful normalized function output (baseline difference score 10).
+Sharing repeated `-1` stores through an integer local recovered a second control (baseline
+205); initializing the local at entry instead improved only to 60. Declaration and bounded
+initialization placement therefore remain separate hypotheses. These are compiler-output
+regressions of existing matches, not newly linked game matches or general equivalence proofs.
+Synthetic tests cover the shapes without publishing game code. The generated casts are not
+unconditional algebraic rewrites: promotions and wraparound can differ.
+
+MIPS argument-home candidates derive offsets from the target frame and O32 register home,
+never an absolute frame-address builtin. Forwarding requires a known callee arity and untouched
+argument registers, including the delay slot. Overlay aliases require an explicit unambiguous
+target call label; equal VRAM alone is insufficient. Escaped array resizing requires a complete
+simple callee write footprint, bounded caller accesses and stack-relative argument evidence.
+Complex/unknown callees remain excluded. Source-only constant/cast candidates reach both search
+modes; these ABI/frame candidates are MIPS-specific and still need normal judging.
+
+### Automatic global-identity and scoped-accumulator replay (3 November 2026)
+
+Evidence: controlled replay of the previously matched private 1,023-instruction
+MIPS renderer, not new live progress. Compiler: KMC GCC 2.7.2 / GNU as 2.6,
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`; original target, symbols and context unchanged.
+The new `typed_global_identity` generator produced two candidates from the saved
+440 baseline. The first scored 0 and linked byte-identically through the ordinary
+compiler/link/diff pipeline. A second linked exactly but retained a rendered score
+of 20, demonstrating why score alone is not the exact-byte verdict.
+The `block_accumulator_lifetime` generator independently reproduced 480-to-440.
+No shared header, live project or compiler profile was modified for these replays.
+
+The earlier score-80 manually prefetched-byte seed resisted over 2,200 focused
+random probes; it was not the source of the successful declaration repair. Search
+now considers higher-scoring structural alternatives instead of excluding them
+at 1.25 times the winner, reserving frontier slots for distinct failure kinds.
+Memory and expansion limits still apply; keeping every historical candidate is
+not intended. This is search guidance, never authorization to overwrite the saved
+best with a worse source.
+
+The ten-minute, 202-candidate local pass had never entered random rewriting.
+The initial local phase now receives at most half the remaining time and compile
+allowance after baseline checks; the rest is available to random rewriting.
+A single-compile total budget cannot fund both lanes, and an in-flight compile
+may overrun its phase boundary. Baseline/preflight and cancellation remain under
+the global limits. NOP-plus-branch-cascade diagnostics suggest inspecting the
+first scheduling boundary without deleting branch mismatches from the judge.

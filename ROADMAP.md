@@ -1,6 +1,7 @@
 # Roadmap
 
-Implemented: NOP-only MIPS targets remain rebuildable as set-aside assembly from import and Check again.
+Implemented: NOP-only MIPS targets remain rebuildable as set-aside assembly in ROM imports and project objects;
+Check again applies the same classification to existing targets.
 Incomplete nonzero targets still receive advisory boundary review; original bytes, symbols, matches and explicit
 operator overrides are preserved.
 
@@ -1449,8 +1450,9 @@ recovered a fourth. This is regression evidence, not new progress or measured to
 - Done: multi-function claims hydrate the first function and retain a compact
   queue; queued briefs and full assembly remain explicitly available. Assembly
   defaults to the first mismatch, with a bounded body fallback and explicit paging.
-- Done: app helper sessions run a small repair-first pass once per source/build
-  scope before handwritten batches. Existing failed-trial ledgers remain authoritative.
+- Done: explicit handwritten batches run their requested variants. Automatic local repairs
+  are explicit tools or the optional after-submission setting; they never replace a batch.
+  Existing failed-trial ledgers remain authoritative.
 - Done: CLI and API conversations rotate after 80 tools or 160,000 tool-response
   characters, once active tools finish. Structured handoffs retain candidate
   revisions, remaining experiments, history and notes; claims and source survive.
@@ -1972,3 +1974,27 @@ host lease. Concurrent guest proposals without a lease remain planned protocol w
   allocation readers and imported-build phase-capture adapters; held-out game/model evaluations
   before claiming a general token or wall-time reduction. Shared ordinary C repair families and
   the existing imported-project judge remain available without these diagnostic readers.
+
+### Recent capture automation and remaining evidence adapters
+
+- Done: bounded shared-store constants and initialization placement, nested halfword cast
+  hypotheses, target-labelled overlay aliases, ABI argument-home and known-callee forwarding
+  candidates; shared by local/deep repair search, with ABI candidates also tried by MIPS autopilot.
+- Done: captured same-project compiler profiles rank fresh current-header probes; unchanged-C
+  context replay separately measures compiler-only and header-only combinations. No header is
+  globally adopted from a capture, and fresh byte/objdiff verification remains mandatory.
+- Done: repair review separates first matches, source repairs, build reports and context changes;
+  function-body diffs remain the default. Automatic analysis queues new captures durably and resumes
+  after restart, one bounded analysis at a time; skipped/pending counts are exposed in the dialog.
+- Planned: non-MIPS argument-home/frame evidence adapters; conservative complete write-footprint
+  summaries for complex escaped SDK buffers; isolated imported-project context replay requires a
+  copied project build adapter (standalone captures do not include all build inputs). Ambiguous
+  overlay labels need relocation/segment identity and are never guessed from a shared address.
+
+## Transcript-driven agent efficiency
+
+Implemented: cached-baseline batch crash regression, explicit batch execution,
+shared connector/account/model configuration rejection, user claim handover,
+current-versus-historical baseline messages, shorter default experiment guidance,
+and global/per-agent tool presets with task usage and schema character counts.
+Normal claim ownership and byte/objdiff judging remain required across both modes.
