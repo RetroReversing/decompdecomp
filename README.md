@@ -181,6 +181,33 @@ rechecks one saved exact source/header/profile bundle per function. Each is inde
 ROM-data verified before publication. Busy or stale failures are listed and leave other functions eligible.
 Imported projects keep their build-owned headers and profile workflow.
 
+**Settings → Local source preparation → Run a resumable CPU source queue** works through
+mapped functions and saved exact bundles without model calls. It checkpoints each function,
+resumes after restart, and shows matches, scores, errors and deferred busy work. Pause finishes
+the current bounded check; resuming retains the original approval options. Each function gets
+up to three preparation rounds, each at most 32 trials /180 seconds; ordinary compile timeouts
+still apply. A new queue can revisit checked misses using cached trial progress.
+
+The assembly checkbox is explicit: only mapped or prepared assembly candidates are included.
+Misses remain set aside. Fresh exact C, private header and settings are published atomically
+with the status change; failed claims, changed inputs or bad data roll the whole operation back.
+Restart recovery releases only the dedicated queue identity's interrupted claim, never agents'
+claims. Busy functions are listed as deferred instead of stealing their work.
+
+MIPS ROM preparation discovers bounded actual caller/callee units and up to three real predecessor
+functions from authorized mapped source. It preserves physical lines, static linkage, referenced
+SDK macros/types and actual static helper bodies. Every emitted real body must independently
+match its known original entry before only the selected entry is exported. No guessed padding
+or target instructions are inserted. Up to sixteen explicitly selected coherent SDK source/header
+alternatives share the pass budget; measured ranking is specific to the source, header, target
+scope and compiler profile. A failed base mapping does not hide valid explicit alternatives.
+Other processors retain single-body trials until their compiler-unit reader/judge supports them.
+
+A function match is not a full cartridge verification. Use **repository sync** and its complete
+original-image comparison before committing/exporting a verified checkpoint. Imported projects
+keep their owned headers, compiler profiles and existing build workflow; a durable queue adapter
+for those builds remains planned.
+
 Mapped ROM preparation also queues bounded **CPU-only source recovery** trials before broader flag
 searches. It can restore actual reference prototypes (including aggregate returns/arguments), preserve
 a target call instead of a header macro, reuse verified named record declarations, try a small record
@@ -1301,10 +1328,12 @@ scanner boundary while the remaining body was left as binary data. Recovery is b
 and inferred; the normal linked-byte judge still decides matches. Existing matches and
 naming provenance survive when their complete targets are unchanged.
 
-**Finish near matches:** open the panel below Autopilot to spend a bounded local
-compile/time budget on your closest saved C, without starting AI agents. Stop whenever
-you like; verified matches are kept and pending paths resume on the next run. The panel
-reports matches per minute. The dedicated pass currently supports MIPS ROM projects.
+**Local repairs:** use the Deep permutation pass to try targeted repairs on saved C,
+followed by random rewrites. The separate near-match pass is no longer shown.
+**Recover saved matches**, below Autopilot, rechecks historical successful C/header
+combinations against the current project. Its time and compile limits apply to the
+whole recovery run; every recovered match must pass fresh verification. No AI tokens
+are used.
 
 ROM code audits also show possible function-pointer references and unowned bytes inside
 mapped segments. These are review leads. N64 reimport can recover narrowly proven
@@ -1336,6 +1365,15 @@ reachable LAN/Tailscale/server address and its room port. Share that fixed link 
 must remain assigned/reachable and any external proxy/named tunnel must be running. This serves only
 the room API, not the app GUI or agent MCP endpoint. A fixed endpoint does not make an offline host
 available; clients reconnect when the host and endpoint return.
+
+Agent creation in **Add agents** is a background job. Its progress bar, elapsed time and log distinguish
+request acceptance, project/model checks, project preparation, identity reservation and worker launch.
+Closing/reopening the popover retains the in-progress view during the same page session; duplicate
+submissions are held. Creation completion means the worker records were launched, not that a provider
+request is already running: each agent card then shows preparation, sign-in/usage limits and work waits.
+If a multi-worker start fails partway through, check the Agents list before retrying; already-created
+workers are preserved rather than stopped or duplicated automatically.
+
 
 
 ### Opening a project while verification is running

@@ -403,6 +403,7 @@ class Network:
     def __init__(self, db_path: str | Path, claim_ttl: int = CLAIM_TTL):
         self.store = Store(db_path)
         self.claim_ttl = claim_ttl
+        self._compile_ahead_local = threading.local()
         self._attempt_locks: dict[tuple[int, int], threading.RLock] = {}
         self._pool = ThreadPoolExecutor(max_workers=8)
         # (agent id, function id) -> its last compile's diff rows and their legend, for last_diff
@@ -642,6 +643,34 @@ class Network:
         result.effective_settings = {'compiler':cfg['compiler'], 'effective_command':list(invocation.cmd),
                                      'language':getattr(result,'language','unknown'), 'settings_source':'compile invocation snapshot'}
         return result
+
+    @staticmethod
+    def _compile_snapshot(proj, fn, header, source):
+        # Include naming metadata: canonical_source can change the compiler input after a rename.
+        return (proj["id"], proj["root"], proj["config"], fn["id"], fn["name"], fn["vram"],
+                fn["meta"], header, source)
+
+    @contextmanager
+    def compiled_ahead(self, prepared):
+        """Offer one background compile to the ordinary attempt/judge on this thread only.
+
+        A changed compiler, header, source or function identity falls back to a fresh compile.
+        No claims, judging or result recording may run in the compile worker.
+        """
+        previous = getattr(self._compile_ahead_local, "prepared", None)
+        self._compile_ahead_local.prepared = prepared
+        try:
+            yield
+        finally:
+            self._compile_ahead_local.prepared = previous
+
+    def _attempt_compilation(self, proj, header, source, fn):
+        prepared = getattr(self._compile_ahead_local, "prepared", None)
+        if prepared is not None:
+            snapshot, future = prepared
+            if snapshot == self._compile_snapshot(proj, fn, header, source):
+                return future.result()
+        return self._compile(proj, header, source, fn)
 
     def _candidate_checks(self, fn, proj, obj: bytes) -> dict:
         """Advisory diagnostics supplied by ROM engines; imported builds keep their whole-image gate."""
@@ -1374,7 +1403,7 @@ class Network:
         key = self.compile_key(fn, ctx["header"], str(ctx["version"]), proj["config"] or "", source)
         if not scratch and (again := self.repeat_of(key, agent, fn)) is not None:
             return again
-        result = self._compile(proj, ctx["header"], source, fn)
+        result = self._attempt_compilation(proj, ctx["header"], source, fn)
 
         if not result.ok:
             if re.search(r"Unknown section type|converter did not produce a big-endian ELF32|Missing [^\n]*reinstall", result.log, re.I):
@@ -1568,7 +1597,7 @@ class Network:
 
     def _record(self, fn, agent: Agent, score: int | None, source: str, ctx_version: int, matched: bool = False,
                 compiled: bool | None = None, via: str = "agent", effective_settings=None,
-                prepared_header=None, prepared_inputs=None, prepared_compiler=None, before_record=None, restoring_exact=False):
+                prepared_header=None, prepared_inputs=None, prepared_compiler=None, before_record=None, restoring_exact=False, prepared_assembly=False):
         now = time.time()
         compiled = score is not None if compiled is None else compiled
         improved = False
@@ -1576,6 +1605,17 @@ class Network:
             if before_record is not None:
                 before_record()  # scoped callers can reject revoked or stale work before any writes
             current = db.execute("SELECT * FROM functions WHERE id=?", (fn["id"],)).fetchone()
+            if prepared_assembly:
+                if not (matched and score==0 and prepared_header is not None and prepared_inputs is not None and current['status']=='asm'):
+                    raise NetworkError('Assembly reconsideration requires an explicitly approved exact prepared bundle.')
+                from .app.source_preparation import inputs
+                proj=db.execute('SELECT * FROM projects WHERE id=?',(current['project_id'],)).fetchone()
+                if inputs(self,proj,current)!=prepared_inputs:
+                    raise NetworkError('Assembly candidate inputs changed. Run its source check again.')
+                meta={k:v for k,v in json.loads(current['meta'] or '{}').items() if k not in ('not_c','asm_code','asm_twin')}
+                db.execute("UPDATE functions SET status='open',meta=? WHERE id=?",(json.dumps({**meta,'reopened':True}),current['id']))
+                self._event(db,current['project_id'],agent.id,'reopen',current['name']+': exact local source bundle verified')
+                current=db.execute('SELECT * FROM functions WHERE id=?',(fn['id'],)).fetchone()
             if prepared_compiler is not None:
                 if not matched or prepared_header is None or score != 0:
                     raise NetworkError("Only a reverified exact prepared bundle can change its compiler profile.")

@@ -229,19 +229,19 @@ async function togglePrio(name, on) {
 
 /* Autopilot: free matches before any agent spends a token: identical code (twins) of what's matched, then every
    function's machine draft through the judge; the permuter works on near misses meanwhile. */
-function renderFinishNear(ov) {
-  const button = $("finishNearStart"), stop = $("finishNearStop"), log = $("finishNearLog");
-  $("finishNearPanel").hidden = ov.kind === "fork";
+function renderSavedMatchRecovery(ov) {
+  const stop = $("savedMatchStop"), log = $("savedMatchLog");
+  $("savedMatchRecoveryPanel").hidden = ov.kind === "fork";
   const recover = $("recoverSavedMatches");
   const start = async (route, label) => {
     const slug = S.slug;
-    const finish = beginWork(log, label, [button, recover], "Match pass finished");
+    const finish = beginWork(log, label, [recover], "Match pass finished");
     log.hidden = false;
-    $("finishNearSummary").textContent = "Preparing near-match queue…";
+    $("savedMatchSummary").textContent = "Preparing saved-match recovery…";
     stop.hidden = false; stop.disabled = true;
     try {
       const result = await api(route, {method: "POST", body: {slug,
-        seconds: Number($("finishNearSeconds").value), attempts: Number($("finishNearAttempts").value)}});
+        seconds: Number($("savedMatchSeconds").value), attempts: Number($("savedMatchAttempts").value)}});
       stop.disabled = false;
       stop.onclick = async () => {
         try { await api("/api/job/cancel", {method: "POST", body: {id: result.job}}); }
@@ -250,17 +250,16 @@ function renderFinishNear(ov) {
       await followJob(result.job, log, (lines, job) => {
         if (S.slug !== slug) return;
         const p = job.progress || job.result;
-        if (p) $("finishNearSummary").textContent = `${p.matched || 0} matched · ${p.attempts || 0} compiles · ${(p.matches_per_minute || 0).toFixed(2)} matches/min`;
+        if (p) $("savedMatchSummary").textContent = `${p.matched || 0} matched · ${p.attempts || 0} compiles · ${(p.matches_per_minute || 0).toFixed(2)} matches/min`;
       });
     } catch (e) { showJobError(log, e.message); }
     finally { finish(); stop.hidden = true; }
   };
-  button.onclick = () => start("/api/finish-near", "Finishing near matches");
   recover.onclick = () => start("/api/reconcile-matches", "Recovering saved matches");
 }
 
 function renderAutopilot(ov) {
-  renderFinishNear(ov);
+  renderSavedMatchRecovery(ov);
   const collapsed = renderAutopilot.collapsed ||= new Set();
   const toggle = $("crossGameToggle"), body = $("crossGameBody");
   body.hidden = collapsed.has(ov.slug);
@@ -1306,4 +1305,31 @@ $("codeAuditBtn").onclick = async () => {
     if (S.slug!==slug) return;
     renderCodeAudit(result);
   } catch(e) {showJobError(log,e.message);} finally {finish();button.disabled=false;}
+};
+
+
+async function sourceQueueProgress() {
+  const data = await api("/api/source-preparation", {method:"POST",body:{slug:S.slug,action:"queue-status"}});
+  const items = data.items || [], done = items.filter(r => !["pending","running"].includes(r.state)).length;
+  $("sourceQueueResults").innerHTML = `<p>${esc(data.state || "Not started")} · ${done}/${items.length} checked · ${items.filter(r => r.matched && !r.already_matched).length} matched</p><progress value="${done}" max="${Math.max(1,items.length)}"></progress>` + items.map(r => `<div class="card"><strong>${esc(r.function)}</strong> · ${esc(r.state)}${r.starting_score != null ? ` · score ${esc(r.starting_score)} → ${esc(r.new_score ?? "—")}` : ""}${r.error ? `<p>${esc(r.error)}</p>` : ""}</div>`).join("");
+  return data;
+}
+$("sourceQueueRefresh").onclick = async () => {
+  const done = beginWork($("sourceQueueLog"), "Loading saved source queue", [$("sourceQueueRefresh")], "Saved progress loaded.");
+  try { await sourceQueueProgress(); } catch(error) { showJobError($("sourceQueueLog"),error.message); } finally { done(); }
+};
+$("sourceQueueStart").onclick = async () => {
+  const log = $("sourceQueueLog"), slug = S.slug;
+  const done = beginWork(log, "Recovering local source", [$("sourceQueueStart")], "Source queue finished.");
+  try {
+    const data = await api("/api/source-preparation", {method:"POST",body:{slug,action:"queue-start",include_assembly:$("sourceQueueAssembly").checked}});
+    await sourceQueueProgress();
+    if (data.job) await followJob(data.job, log);
+    if (S.slug === slug) { await sourceQueueProgress(); refreshMap(); }
+  } catch(error) { showJobError(log,error.message); } finally { done(); }
+};
+$("sourceQueueStop").onclick = async () => {
+  const done = beginWork($("sourceQueueLog"), "Pausing source queue", [$("sourceQueueStop")], "Pause requested; current check will finish.");
+  try { await api("/api/source-preparation", {method:"POST",body:{slug:S.slug,action:"queue-stop"}}); await sourceQueueProgress(); }
+  catch(error) { showJobError($("sourceQueueLog"),error.message); } finally { done(); }
 };

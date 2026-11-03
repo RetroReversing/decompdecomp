@@ -1,5 +1,12 @@
 # Roadmap
 
+Implemented: resumable local-ROM CPU source queues, explicit mapped/prepared assembly reconsideration
+with atomic exact-only publication, dedicated interrupted-claim recovery, bounded real mapped
+caller/callee and predecessor discovery for MIPS compiler-unit judges, and measured coherent SDK-pair
+ranking. Up to sixteen explicit alternatives share the bounded pass budget. Queue status is not a
+complete-image verdict; repository sync retains the full rebuild gate. Imported-build queues and
+non-MIPS compiler-unit readers remain planned.
+
 Implemented: bounded typed pointer/index plus one-shot-scope repairs in shared source search,
 agent experiments and the existing permuter pre-pass. One copied KMC register-only case
 recovered exactly; broader compiler/processor evidence and additional slot shapes remain planned.
@@ -226,6 +233,7 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Drafts follow the header, made in the background; `redraft` | ✓ | ✓ | ✓ | ✓ | — | ✓ Ghidra's | — | — |
 | C++ methods drafted as `Class::method` | ✓ | ✓ | ✓ | ✓ | — | ✓ (RTTI, and classes from the vtables constructors store) | — | — |
 | Twins: free matches from identical code | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Resumable source/profile queue and explicit assembly reconsideration | ✓ ROM | ✓ ROM | ✓ ROM | ✓ ROM | — owned-build adapter planned | — owned-build adapter planned | — owned-build adapter planned | — owned-build adapter planned |
 | Local mapped source preparation | ✓ | ✓ | ✓ | ✓ | body only¹ | body only¹ | body only¹ | body only¹ |
 | Verified neighbour context hypotheses and separate body/header bundles | ✓ ROM | ✓ ROM | ✓ ROM | ✓ ROM | — own build adapter planned | — own build adapter planned | — own build adapter planned | — own build adapter planned |
 | Bounded flag preflight before long search | ✓ ROM | ✓ ROM | ✓ ROM | ✓ ROM | — own build | — own build | — own build | — own build |
@@ -1896,10 +1904,17 @@ retain their prior prefix-normalization behavior. Other processor metadata
 adapters remain planned; PROJECT mode retains its ordinary whole-project judge.
 
 Saved-progress verification now publishes measured checked/total counters to import jobs and the
-setup dialog. Parallel saved verification remains planned: compile immutable input snapshots in a
-bounded worker pool, then apply normal judge records on the coordinating thread under the existing
-project lock. Calling attempt concurrently inside restore would deadlock on that lock and conflict
-with the single progress-judge agent's claim; do not increase threads around the existing loop.
+setup dialog. Saved ROM progress verification now compiles immutable source/header/compiler snapshots
+in a bounded compilation pool (Settings: Background worker threads), with the global compiler-slot
+limit still enforced. The pool is separate from shared background jobs that may wait for the project
+lock. Normal attempts, byte/data verification, attribution and records remain serial under the existing project lock. Changed
+inputs discard a prepared object and compile again; cancellation discards queued work. Already verified
+matches and unchanged best attempts retain their existing skip rules. This covers every ROM console
+using saved-progress restore/sync; PROJECT mode retains its whole-project build/objdiff judge and does
+not use this per-function compilation pipeline.
+Local N64 demo benchmark: 32 saved best attempts, two runs each, one worker averaged 8.4 s
+and four averaged 2.5 s (automatic repair analysis disabled for measurement). The 32 functions
+had identical statuses, scores and saved sources. Actual game import speed depends on compiler and C size.
 
 ## Source checkout runtime
 
