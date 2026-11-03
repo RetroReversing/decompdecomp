@@ -2013,3 +2013,13 @@ disabled completed without errors. The app does not change machine-wide launch l
   deep permutation: dead unsigned scaling, pointer lifetime endings, indexed-store local reuse,
   constant-trip loops and type-preserving mask staging. Unknown syntax and macro-heavy inputs skip
   these candidates; every result still passes the ordinary mode's judge.
+### Timed single-function agents
+
+Done: the function dialog can create one configured CLI/API agent for a named function
+and a 1–240 minute wall-clock allowance. Shared claim enforcement pins the function by
+stable ID (including batch claims, PROJECT mode and room requests), preserving normal
+leases. Busy targets wait before a paid session starts. Context rotations stay on the
+same target; matches/set-aside status or expiry stop the worker through normal process
+termination and claim release. Deadlines persist across app restart; a manual agent
+restart grants a new allowance. The Agents card shows the target and deadline; the
+launcher has its own Stop control. No model is started until the user clicks Start.
