@@ -2784,3 +2784,31 @@ target call label; equal VRAM alone is insufficient. Escaped array resizing requ
 simple callee write footprint, bounded caller accesses and stack-relative argument evidence.
 Complex/unknown callees remain excluded. Source-only constant/cast candidates reach both search
 modes; these ABI/frame candidates are MIPS-specific and still need normal judging.
+
+### Automatic global-identity and scoped-accumulator replay (3 November 2026)
+
+Evidence: controlled replay of the previously matched private 1,023-instruction
+MIPS renderer, not new live progress. Compiler: KMC GCC 2.7.2 / GNU as 2.6,
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`; original target, symbols and context unchanged.
+The new `typed_global_identity` generator produced two candidates from the saved
+440 baseline. The first scored 0 and linked byte-identically through the ordinary
+compiler/link/diff pipeline. A second linked exactly but retained a rendered score
+of 20, demonstrating why score alone is not the exact-byte verdict.
+The `block_accumulator_lifetime` generator independently reproduced 480-to-440.
+No shared header, live project or compiler profile was modified for these replays.
+
+The earlier score-80 manually prefetched-byte seed resisted over 2,200 focused
+random probes; it was not the source of the successful declaration repair. Search
+now considers higher-scoring structural alternatives instead of excluding them
+at 1.25 times the winner, reserving frontier slots for distinct failure kinds.
+Memory and expansion limits still apply; keeping every historical candidate is
+not intended. This is search guidance, never authorization to overwrite the saved
+best with a worse source.
+
+The ten-minute, 202-candidate local pass had never entered random rewriting.
+The initial local phase now receives at most half the remaining time and compile
+allowance after baseline checks; the rest is available to random rewriting.
+A single-compile total budget cannot fund both lanes, and an in-flight compile
+may overrun its phase boundary. Baseline/preflight and cancellation remain under
+the global limits. NOP-plus-branch-cascade diagnostics suggest inspecting the
+first scheduling boundary without deleting branch mismatches from the judge.
