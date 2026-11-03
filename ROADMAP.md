@@ -2032,3 +2032,7 @@ with aligned cost labels and controls in both themes and narrow layouts.
 
 - Done: project-scoped distinct improved-function totals per room member, alongside matches in the
   host/guest room dialog and room agent cards, including attribution from older attempt histories.
+
+- Done: compiler-suggestion applications run as reusable background jobs with immediate progress,
+  matched-function check counts, score-update stages and persistent errors in the UI; ROM ranges
+  and source-project file ranges retain their existing regression protection.
