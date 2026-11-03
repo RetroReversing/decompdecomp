@@ -2043,3 +2043,5 @@ to existing context fitting. Paid summarization uses the selected endpoint/model
 Other CLI connectors retain their provider's in-process context management, but exact conversation
 resumption after those programs exit remains planned. API history persistence across app restarts
 and provider failures also remains planned; saved candidates/experiments still survive.
+- Done: project-scoped distinct improved-function totals per room member, alongside matches in the
+  host/guest room dialog and room agent cards, including attribution from older attempt histories.
