@@ -175,3 +175,10 @@ def test_plain_sum_reuse_and_arithmetic_contracts():
 def test_unknown_display_rows_cannot_claim_a_repaired_target():
     for rows in (None,[],['placeholder'],[(None,'target','candidate')]):
         assert search_frontier.mismatch_positions(rows)==set()
+
+
+def test_shared_draft_generator_reaches_each_supported_architecture():
+    for arch in integer_abi.ARCHES:
+        labels = {}
+        candidates = draft_repairs.variants(SOURCE,'f',arch,labels=labels,limit=None)
+        assert any(labels[c]=='later_local_reuse' for c in candidates)
