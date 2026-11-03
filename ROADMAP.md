@@ -2008,3 +2008,8 @@ GC; cancelled compiler stdout/stderr pipes close even when exception frames are 
 These shared fixes cover both project modes; Windows retains its native handle limits.
 A scratch run of 300 short-lived reader threads under a 256-descriptor limit with GC
 disabled completed without errors. The app does not change machine-wide launch limits.
+
+- Done: captured index/lifetime repair candidates shared by local repairs, agent experiments and
+  deep permutation: dead unsigned scaling, pointer lifetime endings, indexed-store local reuse,
+  constant-trip loops and type-preserving mask staging. Unknown syntax and macro-heavy inputs skip
+  these candidates; every result still passes the ordinary mode's judge.
