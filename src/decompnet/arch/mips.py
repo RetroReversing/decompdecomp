@@ -5,10 +5,9 @@
   instead (allegrex_lines);
 - code no compiler makes (asm_reason): coprocessor 0 (the system: mfc0, mtc0, rfe, eret) or a console's coprocessor 2
   (the PS2's VU0: ctc2, mtc2, lwc2, cop2 commands), which C compilers never emit (C that drives VU0 does it with
-  inline asm, which decompdecomp doesn't take), or the Allegrex's VFPU; a system call (a kernel entry stub); code
-  that ends without a return or a jump and so runs on into the next function (an extra entry point into hand-written
-  code: the splitter cut it off); or a first block that reads a temporary register (at, v0, v1, t0-t9) or k0/k1 before setting it (compiled
+  inline asm, which decompdecomp doesn't take), or the Allegrex's VFPU; a system call (a kernel entry stub); or a first block that reads a temporary register (at, v0, v1, t0-t9) or k0/k1 before setting it (compiled
   code gets its arguments in a0-a3);
+- incomplete extents (boundary_reason) are advisory flow/boundary findings, never assembly provenance;
 - where a stretch of code is loaded (place): its calls are absolute, so they say it. The N64's code segments that
   load later (consoles/n64/code.py) and the PS2's overlays (consoles/ps2/overlays.py) are both found this way.
 """
