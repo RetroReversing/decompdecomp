@@ -2114,3 +2114,30 @@ def test_background_work_routes_are_guarded(app):
     assert 'cpu_note' in snapshot and 'threads' in snapshot
     assert client.post(endpoint,json={'kind':'service','key':'x'}).status_code==403
     assert client.post(endpoint,json={'kind':'service','key':'x'},headers={'X-Decomp':'1'}).status_code==400
+
+
+def test_brief_project_list_skips_progress_summaries(app, monkeypatch, tmp_path):
+    client, net, _ = app
+    with net.store.tx() as db:
+        db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                   ('brief-mcp-test', 'Brief MCP test', 'mips', str(tmp_path), '{}'))
+    monkeypatch.setattr(net, 'summary', lambda *args:pytest.fail('MCP picker must not calculate project progress'))
+    response=client.get('/api/projects?brief=1')
+    assert response.status_code==200
+    assert {'slug':'brief-mcp-test','name':'Brief MCP test'} in response.json()
+    assert client.get('/api/projects?brief=1', headers={'User-Agent':'external'}).status_code==401
+
+
+def test_manual_mcp_catalog_uses_read_only_ui_snapshot(app, monkeypatch, tmp_path):
+    from decompnet.app import tools
+    client, net, _=app
+    with net.store.tx() as db:
+        db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                   ('catalog-snapshot', 'Catalog', 'mips', str(tmp_path), '{}'))
+    def names(*args):
+        assert net.progress.viewing
+        return ['project_info']
+    monkeypatch.setattr(tools, 'project_tools', names)
+    response=client.get('/api/manual-mcp?slug=catalog-snapshot')
+    assert response.status_code==200
+    assert [t['name'] for t in response.json()['tools']]==['project_info']
