@@ -564,3 +564,21 @@ def test_profile_count_is_remembered_forwarded_and_invalidates_completion(sweep,
     assert obj.config('game')['compiler_profiles'] == 2
     assert obj.run('game', 1, 10, Log())['functions_tested'] == 2
     assert counts == [1, 1, 2, 2]
+
+def test_queue_batches_state_and_loads_fresh_function_at_dispatch(sweep, monkeypatch):
+    obj, net, calls, _ = sweep
+    reads=[]
+    original=net.store.all
+    def read(sql,*args):
+        reads.append(sql)
+        return original(sql,*args)
+    monkeypatch.setattr(net.store,'all',read)
+    def shuffle(batch):
+        assert all(set(fn) == {'id','name','size'} for fn,scope in batch)
+        # A concurrent worker removes this candidate after the queue snapshot.
+        with net.store.tx() as db:
+            db.execute("UPDATE functions SET status='matched' WHERE name='f0'")
+    monkeypatch.setattr(deep_sweep.random,'shuffle',shuffle)
+    obj.run('game',1,10,Log())
+    assert calls == ['f1']
+    assert any('LEFT JOIN deep_permutation_passes' in sql and 'LIMIT 128' in sql for sql in reads)

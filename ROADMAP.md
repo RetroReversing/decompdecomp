@@ -2212,3 +2212,7 @@ existing peers disclosure request, for both ROM and imported projects.
   compile allowance; misses are cached per profile. Project-wide passes remember the count and
   invalidate completed scopes when it changes. Imported-build and host-owned room profile search
   needs separate build/host support and remains planned.
+
+- Done: batch deep-pass queue reads, bound inspector chart/note payloads, reuse function
+  records, coalesce worker snapshots, move response encoding to workers with bounded
+  full-map wire caching, and add opt-in request/SQL/browser timing diagnostics.
