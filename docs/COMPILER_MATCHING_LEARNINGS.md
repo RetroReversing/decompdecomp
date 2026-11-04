@@ -3062,3 +3062,10 @@ families; the existing regressions and call-scope tests pass together. A later l
 manifest update correctly invalidated the old private fixture. Repeat comparisons against
 an isolated export snapshot instead of weakening the input guard or updating a fixture
 silently to fit the current live project.
+
+Final isolated-export repetition, including the restored refinement priority: 20 candidates /
+30 seconds per case recovered the same one of four on candidate 3 in both main and this
+revision. Both evaluated 80 candidates with no compile/link failures; the other three
+scores remained 790, 60 and 230. Observed summed trial times were 49.57 seconds before /
+49.13 after. The changed per-case counts versus the earlier live-export run reflect the
+time cap and local load; they are not additional recovery evidence or a speed claim.
