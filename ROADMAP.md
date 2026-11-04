@@ -1,5 +1,11 @@
 # Roadmap
 
+Implemented: processor-owned MIPS local acyclic register-chain advice routes a bounded eight-proposal
+lifetime/declaration lane in iterative and deep search without diagnostic compiles. Branch-target and
+delay-slot residuals prioritize source control-flow repairs over literal edits. Closed-cycle budgets
+and exact acceptance are unchanged. Readers for other processors and numeric register aliases remain
+planned.
+
 Implemented: temporary room HTTP failures (including gateway errors) preserve queued saved progress for retry
 in ROM and project rooms, instead of treating them as the host rejecting the candidate.
 
@@ -248,6 +254,7 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | :-- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
 | Typed later-local reuse and bounded residual follow-ups | ✓ | ✓ | ✓ 32-bit scalars | ✓ | ✓ 32-bit scalars | ✓ 32-bit scalars | ✓ | ✓ by target ABI |
 | Frozen multi-case exported-ROM repair CLI | ✓ MIPS | ✓ MIPS | ✓ MIPS | ✓ MIPS | — copied evaluator | — copied evaluator | — copied evaluator | — copied evaluator |
+| Local register-chain and jump/delay-slot search hints | ✓ | ✓ | ✓ | ✓ | — reader planned | — reader planned | — reader planned | ✓ MIPS; other readers planned |
 | Targeted scalar scheduling repairs and experiment costs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Portable last-exact evidence | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ historical, own build |
 | Stack slot layout diagnostics | ✓ | ✓ | ✓ | ✓ | — reader planned | — reader planned | — reader planned | — GUI adapter planned |
@@ -2117,6 +2124,12 @@ percentage, saved/best match, current best profile and exact-match count; projec
 actions are hidden in function scope. Navigation guards prevent late results updating another
 function or overwriting the project-wide progress card.
 
+Compiler profile groups offer a read-only “Test this profile as default” diagnostic for ROM
+projects. It checks saved matching C currently using default settings through the ordinary
+linked-byte judge, with checked/passed/failed counts and failure reasons. Other profiles and
+unmatched functions are excluded; changed inputs invalidate the conclusion. No settings or
+saved scores change. PROJECT-mode per-file compiler compatibility trials remain planned: their
+own build configuration needs a separate temporary-build implementation.
 - Done: project map first-paint ordering and canvas-cache reset on navigation, with stale-response
   ordering guards and lazy compiler-colour loading. Maps no longer wait for a resize after being
   measured under a hidden loading cover or display cached pixels from the previous project.
