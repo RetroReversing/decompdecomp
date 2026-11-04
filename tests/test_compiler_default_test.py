@@ -170,3 +170,33 @@ def test_apply_refuses_active_claims(net, monkeypatch):
     monkeypatch.setattr(net, '_judge_with', lambda *args:pytest.fail('busy functions must be skipped'))
     result = trial.apply_matches(net, 'game', PROFILE, ['f3'])
     assert result['failed'] == 1 and 'agent is working' in result['failures'][0]['reason']
+
+
+def test_apply_returns_structured_affected_matches(net, monkeypatch):
+    monkeypatch.setattr(net, '_comparison_source', lambda fn:'saved C')
+    monkeypatch.setattr(net, '_judge_with', lambda *args:(True, NS(score=0), ''))
+    def blocked(*args):
+        error = NetworkError('Existing match would fail')
+        error.compiler_blockers = [{'function':'f0', 'reason':'different bytes'}]
+        raise error
+    monkeypatch.setattr(net, 'apply_function_compiler', blocked)
+    result = trial.apply_matches(net, 'game', PROFILE, ['f3'])
+    failure = result['failures'][0]
+    assert failure['category'] == 'affected_matches'
+    assert failure['blockers'][0]['function'] == 'f0'
+
+
+def test_check_affected_uses_matched_source_and_changes_nothing(net, monkeypatch):
+    before = [dict(row) for row in net.store.all('SELECT * FROM functions')]
+    config = net._project('game')['config']
+    seen = []
+    def judge(proj, fn, tc, flags, source):
+        seen.append((fn['name'], source, tc, flags))
+        return fn['name'] == 'f0', NS(score=0), ''
+    monkeypatch.setattr(net, '_judge_with', judge)
+    out = trial.check_affected(net, 'game', PROFILE, ['f0','f1','f0'])
+    assert out['passed'] == 1 and out['total'] == 2
+    assert seen[0][1] == before[0]['matched_source']
+    assert seen[0][2:] == (PROFILE['toolchain'], PROFILE['flags'])
+    assert [dict(row) for row in net.store.all('SELECT * FROM functions')] == before
+    assert net._project('game')['config'] == config

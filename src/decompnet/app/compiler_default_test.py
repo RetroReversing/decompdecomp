@@ -145,9 +145,43 @@ def apply_matches(net, slug, selected, functions, log=print):
             state['passed'] += 1
         except (NetworkError, toolchains.ToolchainError, OSError) as error:
             reason = str(error)
-            state['failures'].append({'function':name, 'reason':reason})
+            state['failures'].append({'function':name, 'reason':reason,
+                                      'blockers':getattr(error, 'compiler_blockers', []),
+                                      'category':'affected_matches' if getattr(error, 'compiler_blockers', []) else
+                                      'busy' if 'agent is working' in reason else
+                                      'overlay' if 'overlay address' in reason else
+                                      'no_source' if 'No saved C' in reason else
+                                      'changed' if 'No longer unmatched' in reason or 'no longer matches' in reason else 'verification'})
             state['failed'] += 1
         state['checked'] += 1
         report({**state, 'phase':'Applying verified matches'})
         log(f"{state['checked']}/{state['total']}: {name}: {reason or 'verified match saved'}")
     return state
+
+
+def check_affected(net, slug, selected, functions, log=print):
+    """Read-only check of affected matches with the selected profile, never inferred callers."""
+    net._rom_only(slug, 'checking affected compiler-profile functions')
+    if (not isinstance(selected, dict) or not isinstance(selected.get('toolchain'), str)
+            or not isinstance(selected.get('flags'), list) or not all(isinstance(f, str) for f in selected['flags'])
+            or not isinstance(functions, list) or not functions or len(functions) > 10000
+            or not all(isinstance(name, str) for name in functions)):
+        raise NetworkError('Choose affected functions and a compiler profile to check.')
+    results = []
+    names = list(dict.fromkeys(functions))
+    for index, name in enumerate(names, 1):
+        getattr(log, 'check_cancel', lambda:None)()
+        try:
+            proj = net._project(slug)
+            fn = net._function(name, slug)
+            source = fn['matched_source'] if fn['status'] == 'matched' else net._source_of(fn)
+            if not source:
+                raise NetworkError('No saved C is available.')
+            ok, _, _ = net._judge_with(proj, fn, selected['toolchain'], selected['flags'], source)
+            result = {'function':name, 'passed':ok, 'reason':'Matches this profile byte for byte.' if ok else 'Does not match this profile.'}
+        except (NetworkError, toolchains.ToolchainError, OSError) as error:
+            result = {'function':name, 'passed':False, 'reason':str(error)}
+        results.append(result)
+        getattr(log, 'progress', lambda value:None)({'done':index, 'total':len(names), 'phase':'Checking affected functions'})
+        log(f"{index}/{len(names)}: {name}: {result['reason']}")
+    return {'results':results, 'passed':sum(r['passed'] for r in results), 'total':len(results)}

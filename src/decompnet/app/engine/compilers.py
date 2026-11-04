@@ -967,8 +967,10 @@ class CompilerMixin:
                                      header_for=lambda f: self._context(proj["id"], f["unit"])["header"],
                                      progress=matched_progress) if matched else []
         if broken and not reopen:
-            raise NetworkError(f"{len(broken)} matched function(s) wouldn't match with it any more "
+            error = NetworkError(f"{len(broken)} matched function(s) wouldn't match with it any more "
                                f"({', '.join(n for n, _ in broken[:5])}): narrow the ranges or keep their compiler settings; when removing a range, reopen those functions explicitly")
+            error.compiler_blockers = [{"function": name, "reason": reason} for name, reason in broken]
+            raise error
         broken_names = {n for n, _ in broken}
         scores = {}
         rescored = [f for f in affected if f["status"] == "open" or f["name"] in broken_names]
