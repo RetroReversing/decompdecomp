@@ -1541,6 +1541,12 @@ Team-room member cards show both matched and improved function counts. Improveme
 functions across each person's agents, include matches, and retain credit when another person later
 improves the same function. The host supplies these counts to everyone in the room.
 
+Room matches require the host's exact linked-byte and data check. Compiler profiles and private declarations
+travel with submitted C; a small source containing neighbouring definitions is recompiled as the selected
+function before acceptance. Overlay functions keep separate compiler profiles even when they share a RAM
+address. Pending-match retries show the current failure once and recheck cached failures after a host update.
+Use updated host and guest clients to preserve overlay identities when syncing profiles, headers and matches.
+
 Applying a compiler suggestion opens a progress dialog immediately. It reports affected-match
 checks, saved-score updates and progress-file saving while the work runs in the background. Errors
 remain in the dialog, and repeated clicks reuse the running job. Closing the dialog does not cancel
@@ -1674,3 +1680,19 @@ shows checked/total/percentage progress while preparation is underway. Never-tri
 scope comparisons; completed/error records still receive them. Shared headers, declaration indexes and symbol
 lookups are reused during preparation. Each dispatched search checks fresh build inputs, preserving existing
 completion fingerprints, cancellation and normal byte verification.
+
+### Incremental history and map refreshes
+
+History readers track the latest correction for each attempt. Attaching score metadata to a new attempt no
+longer forces a full recount; corrections behind the reader's cursor, deletions and layout changes still rebuild
+results. Contributor summaries copy only changed nested records when extending a snapshot.
+
+Function maps retain immutable previous snapshots and reread changed function rows, falling back to full maps
+for structural or shared-evidence changes. Latest-row markers are retained per function rather than recording
+an unbounded stream of map events. Boundary analysis ignores score-only changes. SDK identity caches depend on
+fingerprints, naming metadata, selected libraries and inventory changes; imported objects keep a short expiry.
+Session handoffs use indexed lookups within the selected helper's project sessions.
+
+Slow-read logs now break out connection setup, Python lock waiting, SQL execution and row fetching. With
+`DECOMP_PERF=1`, these phases also appear in `Server-Timing`. Execution includes waiting within SQLite or the
+operating system; the lock-wait figure measures the app's Python lock only. Logs do not include SQL or bindings.

@@ -19,6 +19,7 @@ from ..project import compiler_for
 from . import repository_sync_build
 
 STATE = 'decompdecomp-sync.json'
+MAX_CHECKOUT_CHANGES = 40
 _LOCK = threading.Lock()
 
 
@@ -76,13 +77,48 @@ def git(root, *args):
     return res.stdout
 
 
+def checkout_changes(raw):
+    """Describe staged and working-tree changes, preserving renamed and unusual file names."""
+    records = iter(raw.split(b'\0'))
+    changes = []
+    labels = {'M': 'modified', 'A': 'added', 'D': 'deleted', 'R': 'renamed',
+              'C': 'copied', 'T': 'type changed', 'U': 'conflicted'}
+    for record in records:
+        if not record:
+            continue
+        code = record[:2].decode('ascii', errors='replace')
+        name = json.dumps(record[3:].decode('utf-8', errors='replace'), ensure_ascii=True)
+        if 'R' in code or 'C' in code:
+            original = json.dumps(next(records).decode('utf-8', errors='replace'), ensure_ascii=True)
+            name = f'{original} -> {name}'
+        if code == '??':
+            state = 'untracked'
+        elif code in {'DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU'}:
+            state = 'conflicted'
+        else:
+            state = '; '.join(f"{labels.get(flag, 'changed')} ({area})"
+                              for flag, area in zip(code, ('staged', 'unstaged')) if flag != ' ')
+        changes.append(f'  {state}: {name}')
+    return changes
+
+
 def checkout(folder):
     """Require a clean checkout root before starting or publishing verified work."""
     root = Path(folder).expanduser().resolve()
     if not root.is_dir() or Path(git(root,'rev-parse','--show-toplevel').decode().strip()).resolve() != root:
         raise NetworkError('Choose the root folder of a local Git checkout.')
-    if git(root,'status','--porcelain','--untracked-files=normal').strip():
-        raise NetworkError('Commit or move the checkout’s existing changes before syncing. Nothing was overwritten.')
+    raw = git(root, 'status', '--porcelain=v1', '-z', '--untracked-files=all')
+    if raw:
+        changes = checkout_changes(raw)
+        # Large autosaved projects can have thousands of dirty files; keep the error readable.
+        shown = changes[:MAX_CHECKOUT_CHANGES]
+        count = f"{len(changes)} path{'s' if len(changes) != 1 else ''}"
+        location = json.dumps(str(root), ensure_ascii=True)
+        details = f'\n\nExisting changes in {location} ({count}):\n' + '\n'.join(shown)
+        if len(changes) > len(shown):
+            details += f'\n  ... and {len(changes) - len(shown)} more. Open this checkout in Git to see all changes.'
+        raise NetworkError(f'Commit or move the checkout’s existing changes ({count}) before syncing. '
+                           'Nothing was overwritten.' + details)
     return root
 
 
@@ -189,14 +225,14 @@ def integrate(net, proj, root, stage, log):
         unchanged=False
         if target.exists():
             for h in contexts(net,proj,row):
-                ctx=source_text(toolchains.get(compiler_for(cfg,row['vram'])['toolchain']).prelude+h,row['name'],fn['name'])
+                ctx=source_text(toolchains.get(compiler_for(cfg,row['vram'], row)['toolchain']).prelude+h,row['name'],fn['name'])
                 hn='decompdecomp_sync_'+hashlib.sha256(ctx.encode()).hexdigest()[:20]+'.h'
                 original=source_text(canonical_source(row,row['matched_source']),row['name'],fn['name'])
                 original=re.sub(r'(?m)^([ \t]*#[ \t]*include[ \t]*)"context\.h"',lambda m,hn=hn:m[1]+'"'+hn+'"',original)
                 if target.read_text(encoding='utf-8')==f'#include "{hn}"\n#line 1 "func.c"\n'+original+'\n':
                     unchanged=True;break
         if unchanged:continue
-        profile=compiler_for(cfg,row['vram'])
+        profile=compiler_for(cfg,row['vram'], row)
         from .repository_candidates import select
         prepared,reason=select(net,proj,row)
         if prepared is None:
@@ -219,7 +255,14 @@ def integrate(net, proj, root, stage, log):
         inside(stage,header).parent.mkdir(parents=True,exist_ok=True);inside(stage,header).write_text(context,encoding='utf-8')
         target.parent.mkdir(parents=True,exist_ok=True);target.write_text(rendered,encoding='utf-8')
         trial=json.loads(before)
-        trial.setdefault('compiler_ranges',[]).insert(0,{**profile,'start':row['vram'],'end':row['vram']+1})
+        scoped=fn.get('rom') is not None and 'function_of =' in (stage/'build.py').read_text(encoding='utf-8')
+        from ..project import function_compiler_key
+        profile_key=function_compiler_key(fn)
+        old_profile=trial.get('function_compilers',{}).get(profile_key)
+        if scoped:
+            trial.setdefault('function_compilers',{})[profile_key]={**profile,'vram':fn['vram'],'function':fn['name']}
+        else:
+            trial.setdefault('compiler_ranges',[]).insert(0,{**profile,'start':row['vram'],'end':row['vram']+1})
         for symbol in net.store.all('SELECT name,address FROM symbols WHERE project_id=?',proj['id']):
             trial['symbols'].setdefault(symbol['name'],symbol['address'])
         for symbol in net.store.all('SELECT name,vram FROM functions WHERE project_id=?',proj['id']):
@@ -233,7 +276,8 @@ def integrate(net, proj, root, stage, log):
             else:target.write_bytes(old_source)
             skipped.append({'function':row['name'],'reason':text[-1200:]});log(row['name']+': kept the repository version; standalone check failed.');continue
         manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
-        rollbacks[fn['name']]={'path':relative,'function':dict(fn),'range':trial['compiler_ranges'][0],'app_name':row['name']}
+        rollbacks[fn['name']]={'path':relative,'function':dict(fn),'range':None if scoped else trial['compiler_ranges'][0],
+                              'profile_key':profile_key if scoped else None,'old_profile':old_profile,'app_name':row['name']}
         files.update((relative,header));accepted.append(row['name'])
     return manifest,owned,files,accepted,skipped,rollbacks
 
