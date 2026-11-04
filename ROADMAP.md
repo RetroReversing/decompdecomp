@@ -2229,3 +2229,7 @@ external imported-project expiry, explicit checks and the ordinary byte judge ar
 - Done: batch deep-pass queue reads, bound inspector chart/note payloads, reuse function
   records, coalesce worker snapshots, move response encoding to workers with bounded
   full-map wire caching, and add opt-in request/SQL/browser timing diagnostics.
+
+- Done: batched compiler-comparison eligibility preparation with live checked/total/percentage progress,
+  shared input encoding and preserved completed-comparison fingerprints. Saved best C avoids a needless
+  latest-attempt lookup.

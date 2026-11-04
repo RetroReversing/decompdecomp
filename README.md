@@ -1635,3 +1635,8 @@ Function inspectors now bound chart payloads and load older notes on demand. Dee
 queues batch their reads, and worker progress updates coalesce while improvements and
 completion remain immediate. Optional request and browser timings are documented in
 [interactive app performance](docs/APP_PERFORMANCE.md#queue-and-inspector-throughput).
+
+Compiler-comparison preparation reports checked functions, total functions and a percentage while checking
+eligibility. Each pass batches previous-result lookups and reads shared headers, symbols and compiler
+installations once. Shared JSON encoding is reused without changing the comparison digest format, so
+unchanged completed comparisons continue to be skipped. Compilation and byte verification still run normally.
