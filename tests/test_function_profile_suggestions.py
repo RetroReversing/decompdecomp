@@ -168,3 +168,19 @@ def test_invalid_function_extent_cannot_fall_back_to_project_default(monkeypatch
     with pytest.raises(NetworkError,match='boundary'):
         net.suggest(agent,'game','flags',compiler='gcc',flags='-O3',function='f',source='C')
     assert not net.cfg(net.project_row('game')).get('suggestions')
+
+
+def test_extent_changed_while_claiming_is_rejected(monkeypatch):
+    net,agent=fixture(monkeypatch)
+    bundle=profiles.capture(net,net.project_row('game'),'f',[],'winning source')
+    with net.store.tx() as db:db.execute('DELETE FROM claims')
+    hold=net.permuter._hold
+    def claim(*args,**kwargs):
+        result=hold(*args,**kwargs)
+        with net.store.tx() as db:db.execute('UPDATE functions SET size=8 WHERE id=1')
+        return result
+    net.permuter._hold=claim
+    with pytest.raises(NetworkError,match='changed while claiming'):
+        profiles.apply(net,agent,net.project_row('game'),bundle,'gcc',['-O2'])
+    assert not net.store.one('SELECT 1 FROM claims WHERE function_id=1')
+    assert net.store.one('SELECT COUNT(*) n FROM attempts')['n']==0

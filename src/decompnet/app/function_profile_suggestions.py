@@ -47,6 +47,8 @@ def apply(net, agent, proj, bundle, toolchain, flags):
         raise NetworkError('This function became busy. Apply the suggestion after it is released.')
     try:
         fresh=net.project_row(proj['slug']);fn=net._function(fn['name'],proj['slug'])
+        if fn['status']!='open' or (fn['vram'],fn['size'])!=(bundle['vram'],bundle['size']):
+            raise NetworkError('This function changed while claiming it. Review a fresh suggestion.')
         expected=source_preparation.inputs(net,fresh,fn)
         prepared_evidence.promote_measured(net,fresh,fn,bundle['source'],bundle['header'],
                                           {'toolchain':toolchain,'flags':list(flags)},agent,expected)
