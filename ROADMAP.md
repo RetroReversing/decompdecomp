@@ -2123,3 +2123,6 @@ linked-byte judge, with checked/passed/failed counts and failure reasons. Other 
 unmatched functions are excluded; changed inputs invalidate the conclusion. No settings or
 saved scores change. PROJECT-mode per-file compiler compatibility trials remain planned: their
 own build configuration needs a separate temporary-build implementation.
+- Done: project map first-paint ordering and canvas-cache reset on navigation, with stale-response
+  ordering guards and lazy compiler-colour loading. Maps no longer wait for a resize after being
+  measured under a hidden loading cover or display cached pixels from the previous project.
