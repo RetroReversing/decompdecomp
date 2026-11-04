@@ -47,6 +47,8 @@ def test_audit_quarantines_fragments_but_not_valid_small_functions(game):
     assert net._function('normal','game')['id'] not in blocked
     agent,_=net.local_agent('worker')
     assert net.claim_row(agent,'game')['name']=='normal'
+    why,todo=net.selection_wait_reason('game',agent)
+    assert 'waiting for boundary review' in why and 'Review & repair boundaries' in todo
     with pytest.raises(NetworkError,match='review'):
         other,_=net.local_agent('other')
         net.claim_row(other,'game','head')
