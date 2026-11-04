@@ -200,3 +200,34 @@ def test_check_affected_uses_matched_source_and_changes_nothing(net, monkeypatch
     assert seen[0][2:] == (PROFILE['toolchain'], PROFILE['flags'])
     assert [dict(row) for row in net.store.all('SELECT * FROM functions')] == before
     assert net._project('game')['config'] == config
+
+
+def test_safe_range_isolates_overlapping_extent_and_preserves_other_match(net, monkeypatch):
+    from decompnet.project import compiler_for
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET size=64 WHERE name='f3'")
+        db.execute("INSERT INTO functions(project_id,name,vram,size,status,matched_source) VALUES(1,'neighbor',?,16,'matched','saved neighbor')", (0x80001040,))
+    before = net.cfg(net._project('game'))
+    monkeypatch.setattr(net, '_comparison_source', lambda fn:'saved candidate')
+    monkeypatch.setattr(net, '_judge_with', lambda *args:(True, NS(score=0), ''))
+    verified = []
+    def regression(proj, agent, only, **kwargs):
+        verified.extend(fn['name'] for fn in only)
+        return [(fn['name'], 'different bytes') for fn in only if fn['name'] == 'neighbor']
+    monkeypatch.setattr(net, 'regression_test', regression)
+    def save(agent, proj, fn, source):
+        with net.store.tx() as db:
+            db.execute("UPDATE functions SET status='matched',matched_source=? WHERE id=?", (source, fn['id']))
+    monkeypatch.setattr(net, 'try_quietly', save)
+    selected = {'toolchain':'ido-5.3','flags':['-O3']}
+    with pytest.raises(NetworkError, match="wouldn't match"):
+        net.apply_function_compiler('game', 'f3', **selected)
+    assert net.cfg(net._project('game')) == before
+    result = trial.apply_matches(net, 'game', selected, ['f3'], safe_ranges=True)
+    assert result['passed'] == 1
+    after = net.cfg(net._project('game'))
+    assert compiler_for(after, 0x80001030)['flags'] == ['-O3']
+    assert compiler_for(after, 0x80001040) == compiler_for(before, 0x80001040)
+    assert net._function('neighbor', 'game')['matched_source'] == 'saved neighbor'
+    assert net._function('neighbor', 'game')['status'] == 'matched'
+    assert next(r for r in after['compiler_ranges'] if r['start'] == 0x80001030)['end'] == 0x80001040

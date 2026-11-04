@@ -837,8 +837,8 @@ function profileFailureGroups(failures) {
     groups.get(key).push(failure);
   }
   return [...groups].map(([key, rows]) => `<details class="panel settings-disclosure" open><summary class="panel-head"><h3>${esc(titles[key] || key)} <span class="disclosure-context">— ${rows.length}</span></h3></summary><div class="panel-body">
-    ${key==='affected_matches' ? '<p class="small muted">The candidate matched, but its compiler range also changes other saved matches. These are affected functions, not necessarily callers. No range change was saved.</p>' : ''}
-    <table><thead><tr><th>Function</th><th>Result</th></tr></thead><tbody>${rows.map(f => `<tr><td>${link(f.function)}</td><td>${f.blockers?.length ? `Existing matches that would fail: ${f.blockers.map(b=>link(b.function)).join(', ')}<div><button class="ghost small-btn" type="button" data-check-profile-blockers="${esc(JSON.stringify(f.blockers.map(b=>b.function)))}">Check affected functions with this profile</button><div data-blocker-result></div></div>` : esc(f.reason)}</td></tr>`).join('')}</tbody></table></div></details>`).join('');
+    ${key==='affected_matches' ? '<p class="small muted">The candidate matched, but its compiler range also changes other saved matches. These are affected functions, not necessarily callers. No range change was saved. Fix range &amp; apply match narrows the override to this function’s start, preserving the profiles of other functions.</p>' : ''}
+    <table><thead><tr><th>Function</th><th>Result</th></tr></thead><tbody>${rows.map(f => `<tr><td>${link(f.function)}</td><td>${f.blockers?.length ? `Existing matches that would fail: ${f.blockers.map(b=>link(b.function)).join(', ')}<div><button class="ghost small-btn" type="button" data-check-profile-blockers="${esc(JSON.stringify(f.blockers.map(b=>b.function)))}">Check affected functions with this profile</button> <button class="primary small-btn" type="button" data-safe-profile-range="${esc(f.function)}">Fix range &amp; apply match</button><div data-blocker-result></div></div>` : esc(f.reason)}</td></tr>`).join('')}</tbody></table></div></details>`).join('');
 }
 
 async function testProfileAsDefault(button, action="test") {
@@ -860,6 +860,18 @@ async function testProfileAsDefault(button, action="test") {
   body.addEventListener('click', async event=>{
     const fn=event.target.closest('[data-profile-function]');
     if(fn){$("dialog").hidden=true;openFn(fn.dataset.profileFunction);return;}
+    const fix=event.target.closest('[data-safe-profile-range]');
+    if(fix){
+      const result=fix.parentElement.querySelector('[data-blocker-result]');
+      const done=beginWork(result,'Narrowing range and verifying match',[fix],'Range check finished.');
+      try{
+        const {job}=await api('/api/compiler/test-default',{method:'POST',body:{slug,profile,action:'apply-safe-range',functions:[fix.dataset.safeProfileRange]}});
+        const saved=await followJob(job,result);
+        if(saved)result.appendChild(Object.assign(document.createElement('p'),{textContent:saved.passed ? 'Match saved. The range stops before the next function; other functions keep their profiles.' : saved.failures.map(f=>f.reason).join(' ')}));
+        if(saved?.passed && S.slug===slug){S.ov=await api(`/api/project?slug=${encodeURIComponent(slug)}`);renderStats(S.ov);}
+      }catch(error){showJobError(result,error.message);}finally{done();}
+      return;
+    }
     const check=event.target.closest('[data-check-profile-blockers]');
     if(!check)return;
     const result=check.parentElement.querySelector('[data-blocker-result]');

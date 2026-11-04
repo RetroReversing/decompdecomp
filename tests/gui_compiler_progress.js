@@ -248,6 +248,8 @@ const grouped=failureContext.profileFailureGroups([
 assert.match(grouped,/data-profile-function="affected"/);
 assert.match(grouped,/not necessarily callers/);
 assert.match(grouped,/data-check-profile-blockers=/);
+assert.match(grouped,/data-safe-profile-range="candidate"/);
+assert.match(grouped,/Fix range &amp; apply match/);
 assert.match(grouped,/Functions currently claimed/);
 assert.match(grouped,/— 2/);
 assert(!failureContext.profileFailureGroups([{function:'<unsafe>',reason:'<unsafe>'}]).includes('<unsafe>'));

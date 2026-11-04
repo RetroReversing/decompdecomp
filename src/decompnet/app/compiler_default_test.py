@@ -106,7 +106,7 @@ def replace_default(net, slug, selected, log=print):
         return {'replaced':True, 'preserved':len(failures)}
 
 
-def apply_matches(net, slug, selected, functions, log=print):
+def apply_matches(net, slug, selected, functions, log=print, safe_ranges=False):
     """Recheck selected trial successes and save through the ordinary compiler/match path."""
     net._rom_only(slug, 'applying compiler profile matches')
     if (not isinstance(functions, list) or not functions or len(functions) > 100000
@@ -138,7 +138,8 @@ def apply_matches(net, slug, selected, functions, log=print):
             if not ok:
                 raise NetworkError('Saved C no longer matches this profile; rerun the test.')
             cancel()
-            result = net.apply_function_compiler(slug, name, selected['toolchain'], selected['flags'])
+            result = net.apply_function_compiler(slug, name, selected['toolchain'], selected['flags'],
+                                                 **({'preserve_other_profiles':True} if safe_ranges else {}))
             if not result['newly_matched']:
                 raise NetworkError('Settings applied, but final verification did not save a new match. Review this function.')
             state['matches'].append(name)
