@@ -15,7 +15,7 @@ def order(families, rows):
             'comparison_operand_order', 'integer_product_order', 'arithmetic_operand_order', 'typed_temporary', 'value_lifetime', 'split_integer_lifetime', 'merge_integer_lifetimes',
             'split_scalar_lifetime', 'array_index_width', 'local_width', 'declaration_order')
     if diagnose(rows)['register_cycles']:
-        preferred = ('pointer_integer_phase_union','paired_integer_lifetimes','split_integer_lifetime',
+        preferred = ('later_local_reuse','pointer_integer_phase_union','paired_integer_lifetimes','split_integer_lifetime',
                      'merge_integer_lifetimes','block_accumulator_lifetime','local_declaration_order') + register_priority
     elif paired_loads(rows):
         preferred = ('paired_load_order','scalar_schedule_order','local_declaration_order','small_helper_expansion','combined_scheduling')
@@ -26,7 +26,7 @@ def order(families, rows):
         preferred = ('argument_home_slot', 'callee_array_extent', 'spill_normalization', 'split_narrow_lifetime', 'call_return_normalization',
                      'stack_address_temporary', 'combined_scheduling', 'stack_padding')
     elif diagnose(rows)['register_only'] or diagnose(rows)['copy_near_miss']:
-        preferred = ('cfg_equal_value_increment','equal_value_increment','loop_weight_scope',
+        preferred = ('later_local_reuse','cfg_equal_value_increment','equal_value_increment','loop_weight_scope',
                      'shared_branch_locals','paired_operand_reuse','allocation_schedule_bridge','copy_register_reuse','masked_value_reuse') + register_priority
     elif diagnose(rows)['scheduling']:
         preferred = ('call_one_shot_scope', 'debug_initialization_group', 'debug_constant_initialization', 'typed_global_identity', 'block_accumulator_lifetime', 'shared_branch_locals', 'loop_exit_value', 'success_pointer_update', 'affine_counter_guard', 'affine_counter', 'initialization_cluster','allocation_initialization_order','byte_fill_constant','scalar_schedule_order','combined_scheduling')

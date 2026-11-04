@@ -1,7 +1,7 @@
 """Share scratch storage across disjoint pointer/integer phases; never reinterpret a stored value."""
 import re
 
-from . import local_flow, pointer_pair_repairs
+from . import integer_abi, local_flow, pointer_pair_repairs
 from .allocator_call_guards import dominators
 from .call_lifetime_repairs import block_path
 from .integer_repair_support import IDENT, edit, locals_for, refs, view
@@ -34,12 +34,8 @@ def variants(source,name,arch,flags=(),header=''):
         typ = scalar['type']
         if typ not in {'u8','unsigned char','u32','s32','int','unsigned int'}:
             continue
-        if typ in {'u8','u32','s32'}:
-            allowed = {'u8':r'unsigned\s+char','u32':r'unsigned\s+int','s32':r'(?:signed\s+)?int'}[typ]
-            definitions = re.findall(r'\btypedef\s+([^;{}]+?)\s+'+typ+r'\s*;',header+'\n'+source)
-            if not definitions or any(not re.fullmatch(allowed,d.strip()) for d in definitions):
-                continue
-        if re.search(r'^\s*#\s*define\s+'+re.escape(typ)+r'\b',source+'\n'+header,re.M):
+        width = integer_abi.scalar(typ,header+'\n'+source,arch)
+        if width not in {(8,False),(32,False),(32,True)}:
             continue
         a = scalar['name']
         for pointer in pointers:
