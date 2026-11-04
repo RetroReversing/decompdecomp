@@ -836,7 +836,7 @@ function profileFailureGroups(failures) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(failure);
   }
-  return [...groups].map(([key, rows]) => `<details class="panel settings-disclosure" open><summary>${esc(titles[key] || key)} <span class="disclosure-context">— ${rows.length}</span></summary><div class="panel-body">
+  return [...groups].map(([key, rows]) => `<details class="panel settings-disclosure" open><summary class="panel-head"><h3>${esc(titles[key] || key)} <span class="disclosure-context">— ${rows.length}</span></h3></summary><div class="panel-body">
     ${key==='affected_matches' ? '<p class="small muted">The candidate matched, but its compiler range also changes other saved matches. These are affected functions, not necessarily callers. No range change was saved.</p>' : ''}
     <table><thead><tr><th>Function</th><th>Result</th></tr></thead><tbody>${rows.map(f => `<tr><td>${link(f.function)}</td><td>${f.blockers?.length ? `Existing matches that would fail: ${f.blockers.map(b=>link(b.function)).join(', ')}<div><button class="ghost small-btn" type="button" data-check-profile-blockers="${esc(JSON.stringify(f.blockers.map(b=>b.function)))}">Check affected functions with this profile</button><div data-blocker-result></div></div>` : esc(f.reason)}</td></tr>`).join('')}</tbody></table></div></details>`).join('');
 }
