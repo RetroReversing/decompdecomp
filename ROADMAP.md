@@ -2213,6 +2213,14 @@ existing peers disclosure request, for both ROM and imported projects.
   invalidate completed scopes when it changes. Imported-build and host-owned room profile search
   needs separate build/host support and remains planned.
 
+
+
+Completed: deep-pass polling reuses revision-scoped queue/error checks; ROM maps cache cross-project
+byte relationships; compiler display reads use covering metadata and separate automatic maintenance;
+profile hypothesis extraction is compact and cached using the existing project/example index.
+Optional startup console/SDK work is staggered and yields briefly to navigation. Scope invalidation,
+external imported-project expiry, explicit checks and the ordinary byte judge are preserved.
+
 - Done: batch deep-pass queue reads, bound inspector chart/note payloads, reuse function
   records, coalesce worker snapshots, move response encoding to workers with bounded
   full-map wire caching, and add opt-in request/SQL/browser timing diagnostics.
