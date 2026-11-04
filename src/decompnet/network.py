@@ -731,12 +731,15 @@ class Network:
                 "your claim on it, not a new one. Compile the next step; release_function goes through once you've "
                 "compiled it, when you ask again.\n\n")
 
-    def _own_release_cutoff(self, db, agent_id: int, now: float) -> float:
+    def _own_release_cutoff(self, db, agent_id: int, now: float, proj=None) -> float:
         """Releases by this agent after this time keep it off those functions: the last SELF_RELEASE_WINDOW, and
         only since its run started (its last 'freed' event, release_stopped's, or 'stopped', a helper's own)."""
         row = db.execute("SELECT MAX(created_at) AS t FROM events WHERE agent_id=? AND kind IN ('freed', 'stopped')",
                          (agent_id,)).fetchone()
-        return max(now - SELF_RELEASE_WINDOW, (row["t"] if row else None) or 0)
+        from .pause_scope import cooldown_start
+        worker=db.execute('SELECT id,name FROM agents WHERE id=?',(agent_id,)).fetchone()
+        boundary=cooldown_start(self,proj,worker) if proj is not None and worker else 0
+        return max(now - SELF_RELEASE_WINDOW, (row["t"] if row else None) or 0, boundary)
 
     def nothing_to_claim(self, agent: Agent, proj, scope: str = "") -> str:
         """What a claim that found nothing tells the agent: whether the open functions are held (by whom, for how
@@ -752,7 +755,7 @@ class Network:
             "LEFT JOIN agents a ON a.id=c.agent_id WHERE f.project_id=? AND f.status='open' ORDER BY c.expires_at",
             proj["id"])
         with self.store.tx() as db:
-            cutoff = self._own_release_cutoff(db, agent.id, now)
+            cutoff = self._own_release_cutoff(db, agent.id, now, proj)
         mine = self.store.all(
             "SELECT DISTINCT f.name FROM functions f JOIN events e ON e.project_id=f.project_id AND e.detail=f.name "
             "WHERE f.project_id=? AND f.status='open' AND e.agent_id=? AND e.kind='release' AND e.created_at > ? "
@@ -1069,7 +1072,7 @@ class Network:
                 args = {"retry_grants":json.dumps(retry_grants), "batch_sdk": json.dumps(batch_from.get("deferred",[]) if batch_from is not None else []), "batch_unit": batch_from["unit"] if batch_from is not None else None,
                         "batch_limit": batch_from["limit"] if batch_from is not None else None, "model_tried": json.dumps(list(excluded)), "stalled":json.dumps(blocked), "sdk": json.dumps(list(sdk)), "pid": proj["id"], "agent": agent.id, "kin": json.dumps(kin), "cooled": now - RELEASE_COOLDOWN,
                         "overall": overall, "escalate": escalate, "weak": route == "weak", "strong": route == "strong",
-                        "mine": self._own_release_cutoff(db, agent.id, now), "custom": custom,
+                        "mine": self._own_release_cutoff(db, agent.id, now, proj), "custom": custom,
                         "below": policy.get("match_below"), "tries": policy.get("max_tries")}
                 fn = db.execute(query, args).fetchone()
                 if fn is None and route == "weak":  # only what stronger models are for is left: better tried than idle

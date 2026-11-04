@@ -12,7 +12,7 @@ def setup(tmp_path,n=1):
     with net.store.tx() as db:
         db.execute("UPDATE functions SET best_source='void f(){}',best_score=10")
         db.execute('CREATE TABLE helpers(project TEXT,name TEXT,model TEXT)')
-        db.execute('CREATE TABLE helper_sessions(id INTEGER PRIMARY KEY,project TEXT,agent TEXT,model TEXT,ended_at REAL)')
+        db.execute('CREATE TABLE helper_sessions(id INTEGER PRIMARY KEY,project TEXT,agent TEXT,model TEXT,ended_at REAL,started_at REAL DEFAULT 0)')
         db.executemany('INSERT INTO helpers VALUES(?,?,?)',[('game','a','alpha#low'),('game','b','beta'),('game','c','alpha#low')])
     return net,[net.local_agent(x)[0] for x in ('a','b','c')]
 
@@ -40,7 +40,7 @@ def test_unknown_workers_remain_independent_and_active_session_model_wins(tmp_pa
     net,(a,b,c)=setup(tmp_path)
     fn=net._function('f0','game');proj=net._project('game')
     with net.store.tx() as db:
-        db.execute('INSERT INTO helper_sessions VALUES(1,?,?,?,NULL)',('game','a','beta'))
+        db.execute('INSERT INTO helper_sessions(id,project,agent,model,ended_at) VALUES(1,?,?,?,NULL)',('game','a','beta'))
     claim_stalls.released(net,fn,agent=a,exhausted=True)
     assert claim_stalls.blocked(net,proj,b)==[fn['id']]
     assert not claim_stalls.blocked(net,proj,c)
@@ -138,3 +138,16 @@ def test_claim_rechecks_a_grant_consumed_by_another_worker_before_transaction(tm
     monkeypatch.setattr(net,'_expire_claims',interleave)
     assert net.claim_row(a,'game') is None
     assert net.store.one('SELECT COUNT(*) n FROM claims')['n']==0
+
+
+def test_same_worker_switching_models_does_not_inherit_old_release_cooldown(tmp_path):
+    import time
+
+    from decompnet.network import Network
+    net,(a,_,_)=setup(tmp_path)
+    net.claim_row(a,'game','f0');Network.release(net,a,'f0','','game')
+    assert net.claim_row(a,'game') is None
+    with net.store.tx() as db:
+        db.execute('INSERT INTO helper_sessions(id,project,agent,model,ended_at) VALUES(1,?,?,?,?)',('game','a','alpha#low',time.time()))
+        db.execute("UPDATE helpers SET model='beta' WHERE name='a'")
+    assert net.claim_row(a,'game')['name']=='f0'

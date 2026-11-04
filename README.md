@@ -277,7 +277,8 @@ an updated host. Polishing uses its separate queue.
 
 **Paused unchanged candidates.** Three unchanged releases, or reported exhaustion, pause automatic
 selection for that recorded model. Other models can still try; workers using the same model share the
-pause, including explicit effort qualifiers. Unspecified models use a worker-local pause. Source,
+pause, including explicit effort qualifiers. Switching a worker to another recorded model does not
+inherit the previous model’s release cooldown. Unspecified models use a worker-local pause. Source,
 build/header, symbol, project-instruction or repair-rule changes make new inputs eligible. Old global
 pause records are retained but are not attributed to models without evidence.
 
