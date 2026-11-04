@@ -55,10 +55,11 @@ class GuiMixin:
             "AND f.status='matched' AND a.origin='local' AND a.name NOT IN ('you','autopilot')", proj["id"])["n"]
         twins = self.twins.jobs.get(proj["slug"])
         base = self._overview(slug, proj, room_members=room_members)
+        from ..code_coverage import snapshot as coverage_snapshot
         from ..libultra import report as libultra_report
         from ..source_assembly import breakdown
         from ..source_preparation import settings as source_settings
-        return base | {"status_breakdown":breakdown(self,proj),"libultra": base["libultra"] if "libultra" in base else libultra_report(self, proj), "last_activity": last, "autopilot": self.autopilot_status(slug),
+        return base | {"code_coverage":coverage_snapshot(self,proj),"status_breakdown":breakdown(self,proj),"libultra": base["libultra"] if "libultra" in base else libultra_report(self, proj), "last_activity": last, "autopilot": self.autopilot_status(slug),
                        "permuter": self.permuter.status(proj["slug"]), "source_preparation": source_settings(self, proj),
                        "twins": None if twins is None else {
                            k: getattr(twins, k) for k in ("state", "pairs", "tried", "matched", "asm",
@@ -177,12 +178,15 @@ class GuiMixin:
             owners.setdefault(peer['target'], set()).add(peer['project_id'])
         cross_project = {peer['id'] for peer in peers if peer['project_id'] == proj['id']
                          and len(owners[peer['target']]) > 1}
+        from ..code_coverage import boundaries
+        incomplete={r["function"]:r["reason"] for r in boundaries(self,proj)}
         sdk = self.sdk_functions(proj)
         return [{"cross_project": r["id"] in cross_project, **name_state(r), **{k: recency.get(r["id"], {}).get(k) for k in ("last_checked", "last_improved")}, "sdk": sdk.get(r["id"]), "name": r["name"], "vram": r["vram"], "size": r["size"], "insns": r["n_insns"], "unit": r["unit"],
                  "status": r["status"] if r["status"] in ("matched", "asm") else "working" if (r["agent"] or key(r) in remote) else "open",
                  "best": r["best_score"], "attempts": r["attempts"], "agent": r["agent"] or remote.get(key(r)),
                  "matched_at": r["matched_at"], "matched_by": r["matched_by"],
-                 "boundary_review":json.loads(r["meta"] or "{}").get("boundary_review") if r["status"]!="matched" else None,
+                 "analysis_state":"boundary_review" if r["name"] in incomplete else None,
+                 "boundary_review":incomplete.get(r["name"]) or (json.loads(r["meta"] or "{}").get("boundary_review") if r["status"]!="matched" else None),
                  "not_c": r["status"] == "asm" and '"not_c"' in (r["meta"] or ""),
                  "polished": r["status"] == "matched" and bool(r["readable"])} for r in rows]
 

@@ -1642,3 +1642,5 @@ body:has(.pwa-status:not([hidden])) { padding-bottom:80px; }
 .agent-note-content[open] .agent-note-preview { display:none; }
 .agent-note-content[open] .agent-note-text { margin-top:12px; }
 .agent-note-content > summary:focus-visible { outline:2px solid var(--hl); outline-offset:4px; }
+
+.st.boundary { background:var(--hl); color:var(--ink); }
