@@ -812,6 +812,7 @@ function openJoin(project = null) {
     <label class="field" ${project ? "hidden" : ""}><span>Your copy of the game: its path on this computer (it's read where it is)</span><span class="pick-row"><input id="jPath" class="mono" placeholder="/home/you/games/game.iso"><button class="ghost small-btn" type="button" data-pick="file" data-for="jPath" data-title="Your copy of the game">Choose…</button></span></label>
     <label class="check"><input type="checkbox" id="jOwn"><span>This is my own copy of this game, obtained legally. I'll keep what the room makes private.</span></label>
     <p class="muted small">A GameCube, Wii or PC project comes with its whole source tree from the host, and is then built here with your copy and your compilers: the first time takes a few minutes.</p>
+    <p class="muted small">If you have saved work, the host checks it before sharing it. This can take a few minutes; progress below shows the current stage and function.</p>
     <div class="row"><button class="primary" id="jGo" type="button" disabled>Join</button><span class="muted small" id="jWhy"></span></div><pre class="joblog" id="jLog" hidden></pre>`);
   const fields = () => ({ link: $("jLink").value, name: $("jName").value, copy: project || $("jPath").value.trim(), own: $("jOwn").checked });
   // the sentence waits until something is typed: a fresh dialog shouldn't open on a complaint
@@ -823,6 +824,7 @@ function openJoin(project = null) {
     if (joinProblem(fields())) return check();
     const log = body.querySelector("#jLog");
     showJobError(log, "");
+    log._showJobProgress = true;
     const finish = beginWork(log, "Joining room", [...body.querySelectorAll("input"), $("jGo")], "Joined the room.");
     try {
       // by its path, never through the page: a GameCube disc picked as a file turned the window black on Join

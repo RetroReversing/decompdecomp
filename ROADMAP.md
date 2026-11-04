@@ -2101,3 +2101,8 @@ they record donor history and do not themselves change a function's symbol.
   verification and no repeated file selection. Source projects use their declared original file or
   an identity-verified program in their configured original directory; missing originals report an
   actionable error rather than selecting unrelated files.
+
+- Done: foreground room joins expose live saved-work transfer counters, current host-checked function,
+  confirmed matches and better-attempt submissions through existing job polling. Stage-aware progress
+  covers connection, game checking, project setup, host approval, transfer and synchronization without
+  presenting a stage's percentage as whole-join completion.
