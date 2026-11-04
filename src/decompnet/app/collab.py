@@ -537,6 +537,8 @@ def host_app(net, rooms: dict[str, Room]) -> Starlette:
     ]
     from . import room_browser
     routes.extend(room_browser.routes(net, endpoint))
+    from . import public_directory
+    routes.extend(public_directory.routes(net, rooms))
     return Starlette(routes=routes)
 
 

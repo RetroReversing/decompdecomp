@@ -1,0 +1,26 @@
+name: Public directory
+on:
+  pull_request:
+    paths: ['directory/**', '.github/workflows/directory.yml']
+  push:
+    branches: [main]
+    paths: ['directory/**', '.github/workflows/directory.yml']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: directory
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: directory/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: node --check public/app.js
+      - run: npm run check

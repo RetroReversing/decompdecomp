@@ -1667,3 +1667,9 @@ C and assembly before generating a machine draft or loading history, calls, comp
 A separate status bar follows those details, with retry on failure. Imported projects show saved C first and
 then load their current source and object comparison. Late responses are scoped to the selected function and
 never overwrite unsaved edits. Existing full function API responses and the normal byte judge are unchanged.
+
+## Public project directory
+
+The optional [Cloudflare directory](directory/README.md) lists explicitly published room
+metadata and cached function maps. Project owners retain their own rooms and game files;
+the directory runs no compilers or permutation jobs and stores no source or transcripts.

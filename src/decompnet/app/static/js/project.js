@@ -820,6 +820,12 @@ function renderHost(box, info) {
     ${waiting ? `<div class="setup-group"><h3>Waiting to join</h3>${waiting}</div>` : ""}
     <div class="setup-group"><h3>In the room · ${members.length} member${members.length === 1 ? "" : "s"}, ${online} online</h3>${people || `<p class="muted small">Nobody yet.</p>`}</div>
     ${opts(info)}
+    <div class="setup-group"><h3>Public project directory</h3>
+      <p class="muted small">Publish the project title, function names, sizes, scores and progress. Game files, source, assembly and transcripts stay on this computer. Requires a public room. A directory may retain its last snapshot while you are offline; use its removal key to remove an existing listing.</p>
+      <label class="check"><input type="checkbox" id="directoryEnabled" ${info.directory?.enabled ? "checked" : ""}><span>Allow public directory metadata</span></label>
+      <label class="field"><span>Publishing code from the directory</span><input id="directoryProof" maxlength="64" value="${esc(info.directory?.proof || "")}" autocomplete="off" spellcheck="false"></label>
+      <button class="ghost" id="saveDirectory" type="button">Save directory settings</button><pre class="joblog" id="directoryLog" hidden></pre>
+    </div>
     <div class="row"><button class="ghost" data-room-matches>Review pending matches</button>${!info.stable_link ? `<button class="ghost" id="stableAddress" type="button">Use stable address…</button>` : ""}<button class="ghost" id="rotate" type="button">New invite link</button><button class="ghost danger" id="stopShare" type="button">Stop sharing</button></div>`);
   wireCopies(box);
   wireRoomMatchReview(box);
@@ -833,6 +839,17 @@ function renderHost(box, info) {
   box.querySelectorAll("[data-decline]").forEach((b) => { b.onclick = () => manage({ action: "decline", name: b.dataset.decline }); });
   box.querySelectorAll("[data-vis]").forEach((b) => { b.onclick = () => manage({ action: "settings", visibility: b.dataset.vis }); });
   box.querySelector("#apprChk").onchange = (e) => manage({ action: "settings", approve: e.target.checked });
+  box.querySelector("#saveDirectory").onclick = async () => {
+    const button = box.querySelector("#saveDirectory"), log = box.querySelector("#directoryLog");
+    box._working = true;
+    const finish = beginWork(log, "Saving directory settings", [button], "Directory settings saved.");
+    try {
+      await api("/api/collab/directory", {method: "POST", body: {slug: S.slug,
+        enabled: box.querySelector("#directoryEnabled").checked, proof: box.querySelector("#directoryProof").value}});
+      toast("Directory settings saved.", "match");
+    } catch (error) { showJobError(log, error.message); }
+    finally { finish(); box._working = false; }
+  };
   if (box.querySelector('#stableAddress')) box.querySelector('#stableAddress').onclick = () => {
     box._editingAddress = true;
     renderHost(box, {...info, sharing:false, was_sharing:true, mode:'address', changing_address:true});

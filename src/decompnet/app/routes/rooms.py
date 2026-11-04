@@ -121,12 +121,26 @@ def register(app: App) -> None:
                                                                        "approve": bool(cfg.get("approve"))},
                              "pending": room.pending() if room else [],
                              "mode": cfg.get("mode", "tunnel"), "address": cfg.get("address", ""), "port": cfg.get("port", 6481),
+                             "directory": cfg.get("directory", {}),
                              "was_sharing": bool(cfg.get("open")) and room is None,
                              "restoring": bool(share['restore_job'] and jobs.jobs.get(share['restore_job'], {}).get('state') == 'running'),
                              "restore_error": share['restore_errors'].get(slug),
                              "stable_link": cfg.get('mode') == 'address',
                              "addresses": await anyio.to_thread.run_sync(collab.local_addresses),
                              "tunnel_supported": collab.cloudflared_available()})
+
+    @mcp.custom_route('/api/collab/directory', methods=['POST'])
+    async def api_directory(request: Request) -> Response:
+        if (bad := guard(request, write=True)):
+            return bad
+        from .. import public_directory
+        data = await body(request)
+        try:
+            await call(public_directory.configure, net, str(data.get('slug', '')),
+                       data.get('enabled') is True, str(data.get('proof', '')).strip())
+            return JSONResponse({'saved': True})
+        except NetworkError as error:
+            return fail(error)
 
     @mcp.custom_route('/api/collab/matches', methods=['GET','POST'])
     async def api_room_matches(request: Request) -> Response:

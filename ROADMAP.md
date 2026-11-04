@@ -2253,3 +2253,11 @@ bounded asynchronous CPU handoffs with cancellation and existing repair-trial hi
   then load history, drafts, calls, verification and compiler details with visible progress and retry. Both ROM
   and imported projects retain full analysis; late detailed responses preserve edits and navigation. Baseline
   evidence lookups use a function/score index and no longer materialize entire historical attempts.
+
+### Public project directory
+
+- Implemented: optional Cloudflare Workers + D1 + R2 directory, explicit host consent and
+  proof of control, metadata-only snapshots for ROM and imported projects, searchable
+  function maps, offline timestamps, public-room links and owner removal keys.
+- Planned: measured refresh scaling beyond the initial bounded free-tier batch, independent
+  compiler services and project-history hosting (not part of the metadata directory).
