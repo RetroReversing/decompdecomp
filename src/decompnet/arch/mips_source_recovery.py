@@ -188,4 +188,3 @@ def pointer_snapshot_order(asm):
             tail.append(line)
         if sum(bool(re.search(r'\bsb\b',line)) for line in tail)>=2:return True
     return False
-
