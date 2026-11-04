@@ -947,6 +947,10 @@ class Network:
         paused = max(0, selected - eligible)
         filtered = max(0, total - selected)
         facts = [f"{paused} unchanged candidates paused in this worker's selection"] if paused else []
+        from .app.boundary_repairs import blocked as boundary_blocked
+        review_ids=boundary_blocked(self,self._project(project))
+        review_count=self.store.one("SELECT COUNT(*) n FROM functions WHERE status='open' AND gone_mark IS NULL AND id IN (SELECT value FROM json_each(?))",json.dumps(list(review_ids)))['n']
+        if review_count:facts.append(f"{review_count} incomplete entries waiting for boundary review")
         if filtered:
             facts.append(f"{filtered} open functions excluded by this worker's Work selection")
         if not facts:
@@ -959,6 +963,7 @@ class Network:
                 "Candidate pauses are shared across agents using the same recorded model after repeated releases or reported exhaustion; other models can still try. "
                 "Work resumes when source, build context, symbols, project instructions or repair rules change. "
                 "Use Retry paused functions for a bounded fresh turn with this model, or claim an individual function explicitly by name. Change Work selection if functions are filtered out.")
+        if review_count:todo += " Boundary entries require Settings → Code coverage → Review & repair boundaries. Keep an intentional entry explicitly to allow agent work."
         return why, todo
 
     def sdk_functions(self, proj) -> dict:
