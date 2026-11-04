@@ -3260,3 +3260,22 @@ without `--freeze` under identical `--trials` / `--seconds` limits for both revi
 The ordinary synthetic CI tests cover eligibility and rejection boundaries without game
 content. The private gate uses `DECOMPNET_FROZEN_REPAIR_SUITE` and
 `DECOMPNET_FROZEN_REPAIR_PROJECT` with `tests/test_frozen_repair_cases.py`.
+
+Equal-budget private replay against main `7ba9dc2b`, on the same isolated exported
+image and frozen source/header/profile inputs: **64 candidates / 45 seconds per
+precursor**, four saved precursors of the one 253-instruction function. Main recovered
+none and retained scores **1355, 725, 525, 270**. This revision recovered three, with
+best scores **800, 0, 0, 0** and first exact trials **none, 14, 17, 1**. Both runs
+evaluated 256 candidates because the suite continues collecting exact alternatives.
+These are three rediscoveries of one known function, not three new game functions.
+The earliest precursor still fails under this budget; its retained failure belongs
+in the benchmark. No AI helper was started and the live project/database was not
+changed. Single-run timings are not a speed guarantee.
+
+Direct generator checks also reproduced the isolated stages with the copied linked
+judge: typed snapshot 1355→820, inline count 725→525, grouped scalar branches
+525→270, embedded assignment 270→0. The composed search independently generated
+the three-step branch/count/argument exact path from the score-725 precursor.
+The opt-in frozen private test checks the exact control and asserts all three
+expected recoveries within 20 candidates / 30 seconds each. No target, data check,
+compiler setting or match-acceptance gate was weakened.

@@ -526,3 +526,9 @@ The helpers require an explicit compatible prototype and must actually inline.
 Snapshot ordering currently needs MIPS target evidence and known byte fields.
 Unsafe aliases, cross-argument dependencies, escaped locals and opaque macros are
 left for manual investigation. An available family is not a guarantee of recovery.
+
+Controlled private replay recovered three saved precursors of this **same known
+253-instruction function** at trials 14, 17 and 1, versus none on main under an
+equal 64-candidate allowance. The earliest precursor improved but stayed unresolved.
+This demonstrates coverage of these source shapes, not three new matches or a
+recovery rate for other games. Keep the failed precursor in future comparisons.
