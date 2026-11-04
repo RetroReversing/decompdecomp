@@ -636,8 +636,8 @@ class Network:
     def _compile(self, proj, header: str, source: str, fn=None):
         """Compiled with the project's compiler, or for `fn` the one its address range is built with."""
         cfg = json.loads(proj["config"])
-        if fn is not None and cfg.get("compiler_ranges"):
-            cfg = {**cfg, "compiler": compiler_for(cfg, fn["vram"])}
+        if fn is not None and (cfg.get("compiler_ranges") or cfg.get('function_compilers')):
+            cfg = {**cfg, "compiler": compiler_for(cfg, fn["vram"], fn)}
         invocation = compiler_config(Path(proj["root"]), cfg)
         identity = dict(fn) if fn is not None else {}
         c = cfg['compiler']
@@ -776,6 +776,10 @@ class Network:
                  f"{'are' if n_open != 1 else 'is'} open, but none is free for you.{selection_note}"]
         from . import claim_stalls
         paused = claim_stalls.blocked(self,proj,agent)
+        from .app.data_regions import blocked as data_blocked
+        data_paused = data_blocked(self,proj)
+        if data_paused:
+            lines.append(f'{len(data_paused)} entries are paused for data-region review in Settings. Existing work is retained.')
         if paused:
             lines.append(f'{len(paused)} unchanged candidates are paused after repeated releases. Quality warnings do not block work. Exhausted candidates retry when '
                          'source, build context, symbols or repair rules change. Explicit claim_function(function=name) '
@@ -915,20 +919,23 @@ class Network:
         raise NetworkError(f"Max tries reached for {fn['name']} ({used}/{limit}). Your work is saved. "
                            "Call claim_function for another function, or ask the user to raise the limit.")
 
-    def selection_remaining(self, project: str, agent: Agent, *, include_paused: bool = False) -> int:
+    def selection_remaining(self, project: str, agent: Agent, *, include_paused: bool = False, available_only: bool = False) -> int:
         policy = self.selection(project, agent.name)
         from .model_checks import tried
         excluded = tried(self, project, agent) if policy.get('model_untried') else set()
         from . import claim_stalls
         if not include_paused:
             excluded.update(claim_stalls.blocked(self,self._project(project),agent))
+        from .app.data_regions import blocked as data_blocked
+        excluded.update(data_blocked(self,self._project(project)))
         return self.store.one(
             "SELECT COUNT(*) AS n FROM functions f JOIN projects p ON p.id=f.project_id WHERE p.slug=? "
             "AND f.id NOT IN (SELECT value FROM json_each(?)) "
+            "AND (?=0 OR f.id NOT IN (SELECT function_id FROM claims WHERE expires_at>?)) "
             "AND f.status='open' AND (? IS NULL OR f.best_score IS NULL OR "
             "MAX(0.0, 100.0 * (1.0 - CAST(f.best_score AS REAL) / MAX(1, f.n_insns * 100))) < ?) "
             "AND (? IS NULL OR (SELECT COUNT(*) FROM attempts a WHERE a.function_id=f.id AND a.agent_id=?) < ?)",
-            project, json.dumps(list(excluded)), policy.get("match_below"), policy.get("match_below"), policy.get("max_tries"), agent.id,
+            project, json.dumps(list(excluded)), available_only, time.time(), policy.get("match_below"), policy.get("match_below"), policy.get("max_tries"), agent.id,
             policy.get("max_tries"))["n"]
 
     def selection_wait_reason(self, project: str, agent: Agent) -> tuple[str, str]:
@@ -979,10 +986,15 @@ class Network:
         sdk = self.sdk_functions(proj) if proj is not None and not function else {}
         from . import claim_stalls
         blocked = claim_stalls.blocked(self,proj,agent) if proj is not None and not function else []
+        from .app.data_regions import blocked as data_blocked
+        region_blocked = data_blocked(self,proj) if proj is not None else []
+        blocked = list(set(blocked) | set(region_blocked))
         retry_grants = claim_stalls.grants(self,proj,agent) if proj is not None else []
         now = time.time()
         with self.store.tx() as db:
             self.ensure_agent_active(agent)
+            region_blocked = data_blocked(self,proj) if proj is not None else []
+            blocked = list(set(blocked) | set(region_blocked))
             self._expire_claims(db)
             held = db.execute("SELECT f.* FROM claims c JOIN functions f ON f.id=c.function_id WHERE c.agent_id=?",
                               (agent.id,)).fetchone()
@@ -1008,6 +1020,8 @@ class Network:
                 if fn["status"] == "asm":
                     raise NetworkError(f"{fn['name']} is set aside ({set_aside(fn)['set_aside']}): claim another")
                 slug = proj["slug"] if proj else db.execute("SELECT slug FROM projects WHERE id=?", (fn["project_id"],)).fetchone()["slug"]
+                if fn['id'] in (region_blocked if proj is not None else data_blocked(self,db.execute('SELECT * FROM projects WHERE id=?',(fn['project_id'],)).fetchone())):
+                    raise NetworkError('This entry is paused for data-region review. Resume the region in Settings before claiming it.')
                 self.check_attempt_limit(agent, fn)
                 selected = self.selection(slug, agent.name)
                 if selected.get('model_untried'):
@@ -1324,7 +1338,7 @@ class Network:
                  f"size {fn['size']} bytes, {fn['n_insns']} instructions, arch {proj['arch']}, "
                  f"context.h v{ctx['version']} ({len(ctx['header'].splitlines())} lines)"]
         cfg = json.loads(proj["config"])
-        own = compiler_for(cfg, fn["vram"])
+        own = compiler_for(cfg, fn["vram"], fn)
         if own is not cfg.get("compiler"):  # a range built by another compiler than the rest of the game
             lines.append(f"compiled with {own['toolchain']} {' '.join(own['flags'])}: this address range's compiler, "
                          f"not the project's")
@@ -1663,7 +1677,7 @@ class Network:
             # Keep that attempt as evidence, but never turn its old-profile verdict into a new green status.
             config = json.loads(db.execute("SELECT config FROM projects WHERE id=?", (fn["project_id"],)).fetchone()["config"])
             used = (effective_settings or {}).get("compiler")
-            own = compiler_for(config, current["vram"]) if used else None
+            own = compiler_for(config, current["vram"], current) if used else None
             stale = bool(score is not None and used and any(used.get(k) != own.get(k) for k in ("toolchain", "flags")))
             if restoring_exact and not (matched and score==0 and prepared_header is not None and prepared_inputs is not None):
                 raise NetworkError('Saved-match restoration requires a fresh exact source/header verdict.')

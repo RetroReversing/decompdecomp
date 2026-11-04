@@ -1,5 +1,14 @@
 # Roadmap
 
+Implemented: overlay-scoped data-region review with reversible new-claim pauses, explicit investigation
+outcomes, independent-model verification requests, function-scoped prepared compiler evidence with a bounded
+fresh byte recheck, and actual CLI tool handshakes before function handoff. See docs/AGENT_WORKFLOW_EFFICIENCY.md.
+
+Implemented: room verification resolves compact automatic overlay names and can independently recompile an
+entry from a small multi-function C submission, retaining declarations and line positions. Exact linked bytes/data
+remain required; updated host builds invalidate failed-profile caches and pending explanations do not accumulate.
+Function compiler profiles use original image offsets when overlays share RAM addresses; saves, exports, room
+headers/results and the shared judging/search paths retain that identity.
 Implemented: revision-scoped agent blocker review and retry explanations, validated structured
 handoff experiments, bounded claim evidence, and immediate shared CLI usage-limit publication.
 See docs/AGENT_WORKFLOW_EFFICIENCY.md.
@@ -160,6 +169,8 @@ Implemented: bounded same-project verified-neighbour context hypotheses, direct 
 checks, and explicit fresh rechecks of saved exact profile bundles for ROM projects. Imported-project
 context reuse/pair submission needs an adapter for its own build headers; planned. MIPS internal
 temporary-argument caller evidence is advisory; equivalent readers for other architectures are planned.
+
+Implemented: referenced enum/object declaration recovery, strict aligned MIPS relocation hypotheses, unique independently linked small-helper naming and bounded helper/profile retries across budget boundaries. Source call/branch diagnostics retain adjacent instructions and mapped statements. Relocation recovery for other processors/imported-build targets and imported private-header application remain planned; behavioral source changes are advisory only.
 
 Implemented: source preparation advances cached private profile searches, retains scoped link failures,
 and explains reference/saved-draft call differences plus explicit helper declaration conflicts.
@@ -507,6 +518,8 @@ Project-mode similar-transfer support is planned: align target-object relocation
 similar C through objdiff. Other processors need an instruction reader for this search.
 
 ## Recently done
+
+- Polishing agents skip matching-only preparation and waits on start, restart and resume; agent creation remains visible in the Agents panel when the launcher closes.
 
 - **Your own compiler on every ROM console.** N64, PS1, PS2, PSP and GBA games can be built with your own copy of
   a compiler they use, a build no pack has (an EE-GCC, a CodeWarrior PS2, an SNC, a PSP GCC, a KMC GCC, an IDO, an
@@ -2257,6 +2270,10 @@ bounded asynchronous CPU handoffs with cancellation and existing repair-trial hi
   then load history, drafts, calls, verification and compiler details with visible progress and retry. Both ROM
   and imported projects retain full analysis; late detailed responses preserve edits and navigation. Baseline
   evidence lookups use a function/score index and no longer materialize entire historical attempts.
+
+- Done: pipeline deep-pass preparation and execution with shuffled lightweight identities, bounded queued turns,
+  live candidate-scan progress, shared header/symbol/declaration preparation, skipped unnecessary historical
+  fingerprints and fresh dispatch validation.
 
 - Done: correction-aware incremental history and agent counters, copy-on-write summary records, incremental
   map row reads with structural fallbacks, score-independent boundary/SDK caches, indexed worker handoffs,

@@ -31,6 +31,8 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
 
 ## Match through the live app
 
+Local source preparation recovers referenced enums/object declarations, tries private MIPS symbol aliases only when instruction layouts fully agree, and combines independently verified small helper context with bounded compiler profiles. Source evidence locates branch/statement differences for review; it does not automatically rewrite behavior. See [local source preparation](docs/LOCAL_SOURCE_PREPARATION.md).
+
 Reviewed MIPS raw tails can be recovered through the coverage panel or operator API, with staged disassembly, unchanged original prefixes and export guards. A known-demo corruption benchmark measures detection independently of matching; see [coverage review](docs/CODE_COVERAGE_REVIEW.md).
 
 
@@ -1541,6 +1543,12 @@ Team-room member cards show both matched and improved function counts. Improveme
 functions across each person's agents, include matches, and retain credit when another person later
 improves the same function. The host supplies these counts to everyone in the room.
 
+Room matches require the host's exact linked-byte and data check. Compiler profiles and private declarations
+travel with submitted C; a small source containing neighbouring definitions is recompiled as the selected
+function before acceptance. Overlay functions keep separate compiler profiles even when they share a RAM
+address. Pending-match retries show the current failure once and recheck cached failures after a host update.
+Use updated host and guest clients to preserve overlay identities when syncing profiles, headers and matches.
+
 Applying a compiler suggestion opens a progress dialog immediately. It reports affected-match
 checks, saved-score updates and progress-file saving while the work runs in the background. Errors
 remain in the dialog, and repeated clicks reuse the running job. Closing the dialog does not cancel
@@ -1667,6 +1675,13 @@ C and assembly before generating a machine draft or loading history, calls, comp
 A separate status bar follows those details, with retry on failure. Imported projects show saved C first and
 then load their current source and object comparison. Late responses are scoped to the selected function and
 never overwrite unsaved edits. Existing full function API responses and the normal byte judge are unchanged.
+
+Deep passes shuffle lightweight function identities and dispatch eligible work while preparing the queue.
+The queue keeps at most two turns per worker outstanding, loads candidate source data in small batches, and
+shows checked/total/percentage progress while preparation is underway. Never-tried candidates skip historical
+scope comparisons; completed/error records still receive them. Shared headers, declaration indexes and symbol
+lookups are reused during preparation. Each dispatched search checks fresh build inputs, preserving existing
+completion fingerprints, cancellation and normal byte verification.
 
 ### Incremental history and map refreshes
 

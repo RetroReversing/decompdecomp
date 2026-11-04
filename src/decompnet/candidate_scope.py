@@ -52,16 +52,25 @@ def callees(net, proj, fn, source):
                          'AND name IN (SELECT value FROM json_each(?)) ORDER BY name',proj['id'],json.dumps(names))
 
 
-def state(net,proj,fn):
+def context(net, proj, unit, shared=None):
+    def load():
+        if hasattr(net.store, 'read_cache'):
+            return net.store.read_cache.get(('candidate-header', proj['id'], unit),
+                (net.store.read_version('scope_context', proj['id']), getattr(net._context, '__func__', net._context)),
+                lambda: net._context(proj['id'], unit))
+        return net._context(proj['id'], unit)
+    if shared is None:
+        return load()
+    if unit not in shared['contexts']:
+        shared['contexts'][unit] = load()
+    return shared['contexts'][unit]
+
+
+def state(net,proj,fn,shared=None):
     cfg=json.loads(proj['config'])
     build={key:cfg.get(key) for key in ('kind','platform','big_endian','gp')}
-    build['compiler']=compiler_for(cfg,fn['vram']) if cfg.get('compiler') else None
-    if hasattr(net.store, 'read_cache'):
-        ctx = net.store.read_cache.get(('candidate-header', proj['id'], fn['unit']),
-            (net.store.read_version('scope_context', proj['id']), getattr(net._context, '__func__', net._context)),
-            lambda: net._context(proj['id'],fn['unit']))
-    else:
-        ctx = net._context(proj['id'],fn['unit'])
+    build['compiler']=compiler_for(cfg,fn['vram'], fn) if cfg.get('compiler') else None
+    ctx=context(net,proj,fn['unit'],shared)
     text='\n'.join(str(fn[key] or '') for key in ('name','asm','best_source','seed','relocs'))
     names=set(re.findall(r'\b[A-Za-z_]\w*\b',text))
     addresses={int(x,16) for x in re.findall(r'\b0x([0-9a-fA-F]+)\b',text)}
@@ -105,5 +114,5 @@ def state(net,proj,fn):
     return result
 
 
-def key(net,proj,fn):
-    return hashlib.sha256(repr(state(net,proj,fn)).encode()).hexdigest()
+def key(net,proj,fn,shared=None):
+    return hashlib.sha256(repr(state(net,proj,fn,shared)).encode()).hexdigest()

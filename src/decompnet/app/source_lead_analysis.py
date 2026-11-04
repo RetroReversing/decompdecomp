@@ -19,7 +19,7 @@ def destination(net, proj, fn):
         return key(net,proj,fn)
     context=net._context(proj['id'],fn['unit']) or {'header':''}
     symbols=[tuple(r) for r in net.store.all('SELECT name,address,size,kind FROM symbols WHERE project_id=? ORDER BY name',proj['id'])]
-    return hashlib.sha256(repr((compiler_for(cfg,fn['vram']) if cfg.get('compiler') else {},cfg.get('gp'),proj['arch'],
+    return hashlib.sha256(repr((compiler_for(cfg,fn['vram'], fn) if cfg.get('compiler') else {},cfg.get('gp'),proj['arch'],
                                fn['target'],fn['relocs'],fn['size'],fn['vram'],context['header'],symbols,build_state(proj))).encode()).hexdigest()
 
 
@@ -87,20 +87,22 @@ def rejected(net, fn, scope, source, header, lead, profile):
 def profile(net, proj, fn):
     if getattr(net,'fork_slug',lambda slug:None)(proj['slug']):
         return {'build_owned':True,'scope':destination(net,proj,fn)}
-    return compiler_for(json.loads(proj['config']),fn['vram'])
+    return compiler_for(json.loads(proj['config']),fn['vram'], fn)
 
 
-def record(net, proj, fn, source, header, score, rows, lead=None, elapsed_ms=0, error='', scope=None):
+def record(net, proj, fn, source, header, score, rows, lead=None, elapsed_ms=0, error='', scope=None, source_locations=None):
     lead=lead or {};family=lead.get('family','original-context')
     scope=scope or destination(net,proj,fn);settings=profile(net,proj,fn)
     signature=key(scope,source,header,family,settings)
     comparison=compare(rows,proj['arch'],source,fn['name'])
     from .matching_investigations import hints as investigation_hints
+    from .source_branch_review import review
     from .source_context_diagnostics import hints as context_hints
     from .source_context_diagnostics import route
     from .source_next_steps import recommendations
+    comparison['control_flow_review']=review(source,rows,proj['arch'],source_locations)
     comparison['context_route']=route(fn['asm'] or '',rows or [],proj['arch'])
-    comparison['next_steps']=context_hints(source,comparison,fn['asm'] or '',rows or [],proj['arch'])+investigation_hints(rows,proj['arch'])+recommendations(source,dict(fn).get('best_source') or '',comparison)
+    comparison['next_steps']=context_hints(source,comparison,fn['asm'] or '',rows or [],proj['arch'],source_locations)+investigation_hints(rows,proj['arch'])+recommendations(source,dict(fn).get('best_source') or '',comparison)
     from .source_storage import object_hints, scope_hints, typed_object_hints
     comparison['next_steps']+=scope_hints(dict(fn).get('best_source') or '',source,header,fn['name'])+object_hints(rows,header)+typed_object_hints(rows,source,header)
     if proj['arch']=='mips':
@@ -221,7 +223,7 @@ def brief(net, proj, fn):
 def rank_pairs(net, proj, fn, pairs, families):
     """Use local measured family yield after 32 trials; interleave the original order for exploration."""
     from itertools import zip_longest
-    own=compiler_for(json.loads(proj['config']),fn['vram'])
+    own=compiler_for(json.loads(proj['config']),fn['vram'], fn)
     evidence=listing(net,proj)
     groups=[g for g in evidence['families'] if g['profile']==own and g['tested']>=32]
     weights={g['family']:(g['improved']+3*g['matched']+1)/(g['tested']+32) for g in groups}
