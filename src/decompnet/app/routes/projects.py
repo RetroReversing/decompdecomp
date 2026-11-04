@@ -62,6 +62,14 @@ def register(app: App) -> None:
                     jobs.logger.warning('Slow UI request %s %.3fs (includes worker queue and response encoding)', path, elapsed)
         return handler
 
+    def g_agent_reviews(slug, request, data):
+        from ..agent_review import listing
+        return listing(net,slug)
+
+    def p_agent_review(slug, request, data):
+        from ..agent_review import acknowledge
+        return acknowledge(net,slug,data.get('function',''))
+
     def p_overview(slug, request, data):
         settings.data["last_project"] = slug
         settings.save()
@@ -625,6 +633,7 @@ def register(app: App) -> None:
         "/api/compiler/cleanup": (p_compiler_cleanup, ["POST"]), "/api/export": (p_export, ["POST"]), "/api/open": (p_open, ["POST"]),
         "/api/reimport": (p_reimport, ["POST"]), "/api/code-audit": (p_code_audit, ["POST"]),
         "/api/recover-code": (p_recover_code, ["POST"]),
+        "/api/agent-reviews": (g_agent_reviews, ["GET"]), "/api/agent-review": (p_agent_review, ["POST"]),
         "/api/code-audit-results": (g_code_audit, ["GET"]), "/api/code-audit-review": (p_code_audit_review, ["POST"]),
         "/api/delete": (p_delete, ["POST"]),
         "/api/try": (p_try, ["POST"]), "/api/release": (p_release, ["POST"]), "/api/claim/handover": (p_claim_handover, ["POST"]), "/api/reopen": (p_reopen, ["POST"]), "/api/setaside": (p_set_aside, ["POST"]),
