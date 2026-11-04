@@ -1,5 +1,9 @@
 # Roadmap
 
+Implemented: overlay-scoped data-region review with reversible new-claim pauses, explicit investigation
+outcomes, independent-model verification requests, function-scoped prepared compiler evidence with a bounded
+fresh byte recheck, and actual CLI tool handshakes before function handoff. See docs/AGENT_WORKFLOW_EFFICIENCY.md.
+
 Implemented: room verification resolves compact automatic overlay names and can independently recompile an
 entry from a small multi-function C submission, retaining declarations and line positions. Exact linked bytes/data
 remain required; updated host builds invalidate failed-profile caches and pending explanations do not accumulate.
@@ -518,6 +522,8 @@ Project-mode similar-transfer support is planned: align target-object relocation
 similar C through objdiff. Other processors need an instruction reader for this search.
 
 ## Recently done
+
+- Polishing agents skip matching-only preparation and waits on start, restart and resume; agent creation remains visible in the Agents panel when the launcher closes.
 
 - **Your own compiler on every ROM console.** N64, PS1, PS2, PSP and GBA games can be built with your own copy of
   a compiler they use, a build no pack has (an EE-GCC, a CodeWarrior PS2, an SNC, a PSP GCC, a KMC GCC, an IDO, an
@@ -2276,3 +2282,7 @@ bounded asynchronous CPU handoffs with cancellation and existing repair-trial hi
 - Done: correction-aware incremental history and agent counters, copy-on-write summary records, incremental
   map row reads with structural fallbacks, score-independent boundary/SDK caches, indexed worker handoffs,
   covering history metadata reads and separate database connection/lock/execute/fetch diagnostics.
+
+- Done: indexed metadata-first cross-project suggestion ranking, narrow and single-flight ROM fingerprint
+  invalidation, transactionally maintained compact profile evidence, coalesced/batched room members, shared
+  worker scope inputs and an LRU read cache that protects active builds from eviction.
