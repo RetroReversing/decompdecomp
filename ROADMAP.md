@@ -2149,3 +2149,8 @@ services, plus all live app thread names. It delegates Stop to existing safe wor
 exposes the shared draft/permuter thread limit. CPU is measured for the Python process only
 (100% per core); accurate per-job and compiler-subprocess attribution remains planned work.
 Automatic evidence checks and room services remain read-only here and use their project controls.
+
+- Done: explicit ROM export **Verify, commit and push** saves all portable progress and
+  verified build changes, commits only sync-owned paths and pushes the configured upstream.
+  Failed pushes retain the commit for retry. Imported-project commit/push UI remains planned;
+  those projects already keep their source in their own checkout.
