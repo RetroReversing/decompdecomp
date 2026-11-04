@@ -5,6 +5,7 @@ async function loadPromptSettings(host, log, helper = '') {
     const info=await api(`/api/agent-prompts${helper ? `?helper=${encodeURIComponent(helper)}` : ''}`);
     if (!host.isConnected) return;
     const opened=new Set((host._promptFields || []).filter(f=>f.box.open).map(f=>f.key));
+    if (!helper) { const count=info.fields.filter(f=>f.custom).length; disclosureContext('agPromptsContext', count ? `${count} custom override${count===1 ? '' : 's'}` : 'Built-in defaults'); }
     const fields=info.fields.map(field=>{
       const box=document.createElement('details'); box.className='panel settings-disclosure prompt-setting'; box.open=opened.has(field.key);
       const summary=document.createElement('summary'); summary.className='panel-head';
