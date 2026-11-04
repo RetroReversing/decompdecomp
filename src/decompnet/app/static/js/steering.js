@@ -1215,7 +1215,7 @@ function renderDeepQueueState(status) {
     : left ? `${rotated ? `${rotated} paused early without further progress. ` : ""}Continue gives remaining functions a fresh search; completed turns stay saved.`
     : blocked ? "Open the reasons below, fix the affected functions, then run again."
     : waiting ? `${waiting} functions need saved C with a measured score before they can be searched.`
-    : status.has_activity ? "Each eligible function finished a bounded turn; more rewrites may still be possible." : "Start with untested or changed functions that have saved C.");
+    : status.has_activity ? "Each eligible function finished a bounded turn. Run again repeats completed turns to try more rewrites." : "Start with untested or changed functions that have saved C.");
   $("deepSweepStart").hidden = running;
   $("deepSweepStart").textContent = left && status.has_activity ? "Continue search" : status.has_activity ? "Run again" : "Start search";
   $("deepSweepStart").disabled = false;
@@ -1333,8 +1333,9 @@ $("deepSweepStart").onclick = async () => {
   $("deepSweepLogSection").hidden = false;
   const done = beginWork(log, "Starting deep pass", [$("deepSweepStart")], "Deep pass started");
   let job = null;
+  const runAgain = deepSweepSnapshot?.has_activity && !deepSweepSnapshot.queue_left && !!deepSweepSnapshot.queue_done;
   try {
-    const result = await api("/api/permuter/pass", {method:"POST", body:{slug, action:"start", minutes:Number($("deepSweepMinutes").value), max_variants:Number($("deepSweepVariants").value), repeat:$("deepSweepRepeat").checked, threads:Number($("deepSweepThreads").value) || 0}});
+    const result = await api("/api/permuter/pass", {method:"POST", body:{slug, action:"start", minutes:Number($("deepSweepMinutes").value), max_variants:Number($("deepSweepVariants").value), repeat:$("deepSweepRepeat").checked || runAgain, threads:Number($("deepSweepThreads").value) || 0}});
     job = result.job;
     if (S.slug === slug) renderDeepQueueState(result);
   } catch (error) { showJobError(log, error.message); }
