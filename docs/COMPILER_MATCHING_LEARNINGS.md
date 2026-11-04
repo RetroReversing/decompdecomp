@@ -2912,3 +2912,105 @@ Read-only generation checks produced candidates for all four original captures. 
 live linked-byte replay. Synthetic controls compiled with pinned KMC GCC 2.7.2 `-O2` recover the
 independently written control function bytes for all four shapes. New ROM acceptance still requires
 ordinary linked bytes; source projects retain their ordinary objdiff acceptance check.
+
+### KMC: call scopes, mixed scratch phases and initialization groups
+
+Measured context: a private 519-instruction / 2,076-byte sound-update routine;
+KMC GCC 2.7.2, GNU as 2.6, `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. Target, shared
+header and compiler profile were unchanged. The final source's linked bytes were
+verified identical through the live app's ordinary judge; export layout passed,
+which does not itself establish a complete-image rebuild.
+
+The new deterministic generators were replayed read-only against saved alternates:
+
+| Candidate step | Before → after | Proposals judged |
+| --- | --- | --- |
+| Pointer/integer scratch union with distinct initialized phases | 495 → 200 | 1 |
+| Repeated float staging and grouped initialization | 200 → 60 | 14 |
+| Single-call `do { ... } while (0)` scope | 60 → 0, linked bytes exact | 2 |
+
+This is a controlled replay of an existing match, not three new matches or a timing
+benchmark. Independent initialization replay also reproduced 180 → 40; its eight
+remaining rows were an `s0`/`s1` register cycle. The successful score-60 path had
+one moved call-argument preparation instruction. The single-iteration scope let
+KMC put that move in the target delay slot. Source shape affecting scheduling is
+observed; neither the historical source spelling nor the exact internal optimizer
+cause has been proven.
+
+Negative evidence: changing gear widths, adding redundant masks, staging call
+arguments, reordering declarations and joining the frequency statements did not
+solve the case individually. A bounded full-function random pass also failed to
+improve its score-40 seed before it was stopped after the separate exact discovery.
+Some alternatives had fewer numerical differences but worse paths to an exact
+result; retain different allocation/scheduling shapes under the existing budgets.
+
+The union generator preserves each phase's type and initialization, never type-puns
+a stored pointer. It requires explicit 32-bit metadata and rejects overlap, escapes,
+shadowing, macro captures and unknown narrowing aliases. Call scopes do not wrap
+macros or swallow surrounding loop control. Debug grouping is disabled without
+known debug flags and for line-sensitive macro contexts. All are candidate-only
+hypotheses submitted to the ordinary judge; none weakens byte, data or export checks.
+## Diagnostic compiler matches and function-only promotion (November 2026)
+
+A 126-instruction / 504-byte GCC candidate was exact with pinned KMC GCC 2.7.2
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3 -ffast-math`. Its saved single-function range
+suggestion waited for neighbouring evidence, although `auto_compiler` was enabled.
+A copied replay of the saved C under the current shared header scored 2013 with the
+project-default profile and zero with the function-specific fast-math profile. This
+revalidates an existing diagnostic result; it is not an additional live match.
+
+The workflow now separates evidence for one exact C/profile pair from evidence for a
+broader compiler range. Diagnostics still do not publish automatically. An explicit
+function-specific suggestion rechecks and atomically publishes source, private header
+and flags through the existing prepared-bundle judge, respecting automatic-change and
+claim settings. A matching diagnostic string or an old score alone cannot change flags.
+Neighbour rejection does not invalidate a freshly verified single-entry bundle.
+Preserve source line breaks and leading blank lines across checking and publication;
+period debug-enabled compilers can schedule differently after formatting changes.
+
+## Separate later scalar lifetimes prevent unwanted local coalescing (3 November 2026)
+
+**Evidence: verified case and controlled private replay.** Native KMC GCC 2.7.2,
+32-bit MIPS, `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. The unresolved 567-instruction /
+2,268-byte function already agreed everywhere except the operand order of one
+commutative addition. A fresh subtotal and fresh result retained the intended
+operand order, but local allocation tied the dying subtotal to the result. Reusing
+a separate later scalar lifetime prevented that tie without disturbing the rest
+of the function. The ordinary running-app API accepted score zero, linked bytes
+and instructions exact; independent linking and a complete cartridge comparison
+also passed. Target bytes, extents, profile and judge were unchanged.
+
+Useful failed alternatives: reusing an earlier display handle fixed the addition
+but moved an early mask before an argument move. Type/mask spellings, line changes,
+unused-return declarations, inline helpers and synthetic branch boundaries did not
+resolve that alternate. An overall worse score could therefore contain the crucial
+local repair. Do not repeatedly broaden random search or compiler flags for this
+specific register-only residual.
+
+Implementation: `later_local_repairs.py` pairs subtotal separation with a compatible
+existing scalar whose old value is dead and whose later reads follow redefinition
+on every CFG path. It uses the shared liveness model, rejects escapes/unknown
+macros/unsupported widths, and emits at most 20 hypotheses. `allocation_search`
+puts it before broad mutation; the shared draft path reaches ROM and project mode.
+The ordinary and iterative frontiers reserve a bounded slot for a candidate that
+repairs original target positions even when its scalar score worsens. Nothing is
+adopted on that basis. ABI checks resolve aliases with the target's 32-bit layout,
+not the host's `long` width.
+
+The generated repair recovered the frozen pre-match source on candidate 3 (four
+compiler invocations including baseline), approximately 1.7 seconds on this Mac.
+This replay did not alter the live app or create an additional match; it does not
+measure all prior exploratory work or prove a general speedup. Homemade safety,
+execution, type, lane-priority, beam and budget regressions live in
+`tests/test_later_local_repairs.py`. The optional private case pins source/header
+hashes, target, manifest and compiler identity, and skips in CI without game data:
+
+```
+DECOMPNET_LIFETIME_REPLAY=/private/frozen-case.json uv run pytest tests/test_later_local_repairs.py -q
+```
+
+The private JSON has `project`, `function`, `before`, `header`, `source_sha256`,
+`header_sha256` and `scope` (the full scope from `linked_repair_benchmark`). Keep the
+JSON, source, header, target and ROM outside this repository. The existing benchmark
+CLI also supports `--families later_local_reuse --trials 20 --seconds 120`; use a
+saved unresolved draft rather than today's matched source.

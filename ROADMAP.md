@@ -1,5 +1,16 @@
 # Roadmap
 
+Implemented: bounded single-call one-shot scopes, debug-aware initialization grouping and
+repeated-float staging, and disjoint pointer/integer scratch unions. Closed register cycles
+prioritize these lifetime hypotheses. One private KMC known-match replay recovered exact
+bytes through three generated steps. Unknown imported per-file debug/ABI metadata keeps the
+corresponding grouping/union trials disabled; build-owned metadata adapters and wider-pointer
+union support remain planned. Call scopes and allocation advice use the shared source pipeline.
+Implemented: explicit ROM function compiler suggestions freshly verify and atomically save
+source/header/profile for one entry without neighbour confirmation. Disabled auto-apply waits
+for review; legacy single-function range suggestions with saved C recheck on Apply. Broader
+ranges and imported file/build settings retain their existing verification workflows.
+
 Implemented: NOP-only MIPS targets remain rebuildable as set-aside assembly in ROM imports and project objects;
 Check again applies the same classification to existing targets.
 Incomplete nonzero targets still receive advisory boundary review; original bytes, symbols, matches and explicit
@@ -2054,3 +2065,11 @@ and provider failures also remains planned; saved candidates/experiments still s
   reassociation in owned inline helpers and branch-tail stores are available to shared local
   repairs, agent experiments and deep permutation. Added scoped narrow-index handling and corrected
   a logical-and false positive in pointer escape checks; the normal judges remain unchanged.
+
+
+ROM compiler suggestion application now rescores affected saved attempts in the existing bounded
+judge pool, alongside the already parallel matched-function regression checks. Phase progress
+reports checked/total counts and percentages; suggestion cards distinguish default changes
+from local address ranges. All affected byte-match checks and atomic stale-input validation
+remain mandatory. Broad default changes can still be expensive; narrow range suggestions
+avoid rechecking functions whose effective settings do not change.
