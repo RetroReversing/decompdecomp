@@ -163,6 +163,7 @@ def test_release_evidence_does_not_follow_a_concurrent_source_edit(tmp_path):
 
 def test_completed_diagnostic_builds_do_not_count_as_no_compile_blocker_releases(tmp_path):
     import time
+
     from decompnet.app.session_followups import diagnostic_completed
     net,agent,fn=game(tmp_path)
     progress={'compiles':0,'claimed_at':time.time()-1}
