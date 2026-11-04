@@ -1,5 +1,9 @@
 # Roadmap
 
+Implemented: revision-scoped agent blocker review and retry explanations, validated structured
+handoff experiments, bounded claim evidence, and immediate shared CLI usage-limit publication.
+See docs/AGENT_WORKFLOW_EFFICIENCY.md.
+
 Implemented: explicit reviewed MIPS raw-tail recovery with staged disassembly, original-prefix and overlap guards,
 saved progress, and raw/export boundary reconciliation. Added a source-independent corruption benchmark
 and bounded leaf review hints. New-function adoption and other-processor/imported-build extent recovery remain planned.
@@ -2255,3 +2259,7 @@ bounded asynchronous CPU handoffs with cancellation and existing repair-trial hi
   then load history, drafts, calls, verification and compiler details with visible progress and retry. Both ROM
   and imported projects retain full analysis; late detailed responses preserve edits and navigation. Baseline
   evidence lookups use a function/score index and no longer materialize entire historical attempts.
+
+- Done: correction-aware incremental history and agent counters, copy-on-write summary records, incremental
+  map row reads with structural fallbacks, score-independent boundary/SDK caches, indexed worker handoffs,
+  covering history metadata reads and separate database connection/lock/execute/fetch diagnostics.
