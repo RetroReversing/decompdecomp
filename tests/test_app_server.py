@@ -2196,7 +2196,7 @@ def test_map_encoding_runs_in_worker_reuses_bytes_and_invalidates_on_edit(app, m
     assert len(encoded)==2
 
 
-def test_agent_blocker_review_routes_are_guarded_and_acknowledgment_keeps_status(app,tmp_path):
+def test_agent_blocker_review_routes_are_guarded_and_acknowledgment_keeps_status(app,tmp_path,monkeypatch):
     client,net,_=app
     slug='blocker-review-test'
     agent,_=net.local_agent('review-worker')
@@ -2210,6 +2210,7 @@ def test_agent_blocker_review_routes_are_guarded_and_acknowledgment_keeps_status
     response=client.get('/api/agent-reviews',params={'slug':slug})
     assert response.status_code==200 and response.json()['items'][0]['historical']
     assert client.post('/api/agent-review',json={'slug':slug,'function':'review_fn'}).status_code==403
+    monkeypatch.setattr(net.progress,'sync',lambda *args,**kwargs:pytest.fail('Acknowledging evidence must not reverify project code'))
     response=client.post('/api/agent-review',json={'slug':slug,'function':'review_fn'},headers={'X-Decomp':'1'})
     assert response.status_code==200 and response.json()['reviewed']
     assert client.get('/api/agent-reviews',params={'slug':slug}).json()['items']==[]
