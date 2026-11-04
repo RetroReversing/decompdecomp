@@ -2070,6 +2070,11 @@ and provider failures also remains planned; saved candidates/experiments still s
   matched-function check counts, score-update stages and persistent errors in the UI; ROM ranges
   and source-project file ranges retain their existing regression protection.
 
+- Done: common scaled-store offsets, immediate conditional pointer-load inlining, subscript
+  reassociation in owned inline helpers and branch-tail stores are available to shared local
+  repairs, agent experiments and deep permutation. Added scoped narrow-index handling and corrected
+  a logical-and false positive in pointer escape checks; the normal judges remain unchanged.
+
 
 ROM compiler suggestion application now rescores affected saved attempts in the existing bounded
 judge pool, alongside the already parallel matched-function regression checks. Phase progress
@@ -2077,3 +2082,10 @@ reports checked/total counts and percentages; suggestion cards distinguish defau
 from local address ranges. All affected byte-match checks and atomic stale-input validation
 remain mandatory. Broad default changes can still be expensive; narrow range suggestions
 avoid rechecking functions whose effective settings do not change.
+
+
+Naming upgrades preserve descriptive names when a donor proposes a `func_*` placeholder.
+Cross-project name actions reject these placeholders server-side and hide their Use name controls;
+automatic name inference ignores them. ROM batch/single renames and PROJECT-mode renames also
+reject descriptive-to-placeholder downgrades. Source-reuse provenance comments remain intact:
+they record donor history and do not themselves change a function's symbol.
