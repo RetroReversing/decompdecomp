@@ -517,3 +517,12 @@ permit it. Preserve real widths, call effects and nonoverlapping lifetimes. Thes
 hypotheses still require the ordinary exact linked-byte/data judge. This case
 passed that judge and standalone layout checks, not a complete ROM rebuild; see
 `docs/COMPILER_MATCHING_LEARNINGS.md` for the measured steps and failed trials.
+
+The automatic families for these shapes are `branch_scalar_lifetime`,
+`inline_call_count`, `embedded_call_assignment`, `extracted_call_assignment` and
+`typed_pointer_snapshot`. Autopilot/deep local search share them. Complementary
+repairs use the existing budget and measured frontier; they do not spend AI tokens.
+The helpers require an explicit compatible prototype and must actually inline.
+Snapshot ordering currently needs MIPS target evidence and known byte fields.
+Unsafe aliases, cross-argument dependencies, escaped locals and opaque macros are
+left for manual investigation. An available family is not a guarantee of recovery.
