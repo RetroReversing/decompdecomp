@@ -5,7 +5,23 @@ from . import code_audit_reviews
 LIMITS=('candidate_limit','mapping_limit','pointer_probe_limit','callback_scan_limit','hint_scan_limit')
 
 
-def boundaries(net,proj):
+def _view(net, proj, kind, build):
+    # Target decoding is diagnostic work, not a per-poll scan. Function edits
+    # invalidate the map revision; audit reviews and project mappings have their own keys.
+    from .view_snapshots import cache
+    if getattr(net.store._local, 'in_tx', False):
+        return build()
+    row = net.store.one('SELECT map_revision FROM project_totals WHERE project_id=?', proj['id'])
+    audit = net.store.one('SELECT value FROM settings WHERE key=?', code_audit_reviews.key(proj['id']))
+    key = (kind, proj['id'], row['map_revision'] if row else None, proj['config'], audit['value'] if audit else None)
+    return cache(net).get(key, build, weight=lambda result: len(result) if isinstance(result, list) else 1)
+
+
+def boundaries(net, proj):
+    return _view(net, proj, 'coverage-boundaries', lambda: _boundaries(net, proj))
+
+
+def _boundaries(net,proj):
     """Compute a review state from frozen bytes, including legacy assembly classifications.
 
     Keep the persisted status, claims and history: an operator decision is not
@@ -20,7 +36,11 @@ def boundaries(net,proj):
     return out
 
 
-def snapshot(net,proj):
+def snapshot(net, proj):
+    return _view(net, proj, 'code-coverage', lambda: _snapshot(net, proj))
+
+
+def _snapshot(net,proj):
     """Cheap current boundary checks plus the last scoped CPU gap audit, never an implicit completion."""
     if not net.is_rom(proj):return None
     findings=boundaries(net,proj)

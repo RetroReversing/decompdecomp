@@ -104,3 +104,20 @@ def test_coverage_gui_escapes_evidence_runs_cpu_once_and_exposes_retry():
     node=shutil.which('node')
     if node is None:pytest.skip('needs node')
     subprocess.run([node,str(Path(__file__).with_name('gui_code_coverage.js'))],check=True,capture_output=True,text=True,timeout=60)
+
+
+def test_coverage_polling_reuses_decoded_boundaries_and_invalidates_target_edits(tmp_path, monkeypatch):
+    net, proj = fixture(tmp_path)
+    calls = []
+    original = code_coverage._boundaries
+    def checked(*args):
+        calls.append(True)
+        return original(*args)
+    monkeypatch.setattr(code_coverage, '_boundaries', checked)
+    assert code_coverage.snapshot(net, proj)['incomplete_entries']
+    assert code_coverage.snapshot(net, proj)['incomplete_entries']
+    assert len(calls) == 1
+    with net.store.tx() as db:
+        db.execute('UPDATE functions SET target=?', (words(0x03e00008, 0),))
+    assert not code_coverage.snapshot(net, proj)['incomplete_entries']
+    assert len(calls) == 2
