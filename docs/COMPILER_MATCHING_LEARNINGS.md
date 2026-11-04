@@ -3279,3 +3279,46 @@ the three-step branch/count/argument exact path from the score-725 precursor.
 The opt-in frozen private test checks the exact control and asserts all three
 expected recoveries within 20 candidates / 30 seconds each. No target, data check,
 compiler setting or match-acceptance gate was weakened.
+
+## Narrow-call donor staging and measured sequence continuations
+
+`narrow_call_destination` now takes the actual 8/16-bit conversion from a consistent
+ANSI prototype and stages it through a proven-dead, unescaped 32-bit local. CFG
+liveness rejects donors used by this call or still needed after it. Signed narrow
+values use signed word donors; no ABI width is inferred from an identifier. A donor
+can cover independent braced arms in one candidate. Candidates retain the original
+call count, conversions, arguments and normal exact judge. Donors already used in
+other phases rank ahead of otherwise unused scratch storage, after eligibility is
+proved; this source-reference heuristic is advice, not allocator proof.
+
+Do not reject an already narrowed value just because another cast is numerically
+idempotent. Changing the destination's lifetime can still change allocation. An
+exploratory filter which removed those candidates, combined with grouping-order
+changes, lost the early recovery and one later recovery under the same budget. It
+was removed. Preserve these failures instead of assuming semantic redundancy means
+identical compiler output.
+
+Output feedback now follows the same parent machine-code/relocation fingerprint
+across different parent source spellings. Two measured unchanged outputs can defer
+that family under equivalent other parents; a third direct sibling retains its
+short probe before deferral. Deferred work still gets one in eight opportunities
+when ordinary work exists; no source shapes are discarded. Missing outputs and
+cached deep trials do not teach a no-effect result. Input/profile changes clear
+advice rather than comparing incompatible builds. This is scheduling feedback,
+never a matching verdict or permission to skip linked data checks.
+
+The normal search depth remains four. A separate earned continuation permits at
+most two extra levels, two measured parents and four proposals, all spending the
+existing compile/time allowance. Eligibility needs at least three complementary
+families, two prior measured improvements, fresh changed output, a further score
+improvement and preserved instruction/frame counts. Each source transform still
+runs its own type/liveness checks and its ordinary judge; no distant raw token
+edits are spliced together. This combines repairs affecting different branches
+without enlarging every search. One-function deep search uses the same feedback
+and continuation rules. Connected longer exact recipes are retained only when
+that explicit continuation allowance was granted.
+
+Imported projects retain their own build/objdiff workflow. Scalar staging is
+shared; a build without a genuine function-output fingerprint keeps ordinary
+ordering and cannot earn the extended lane. Supplying equivalent fingerprint
+readers for every imported toolchain remains planned.
