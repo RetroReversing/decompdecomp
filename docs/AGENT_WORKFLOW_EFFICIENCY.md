@@ -23,7 +23,7 @@ mechanism. The existing manager eligibility checks remain authoritative.
 Successful saved-C diagnostic baselines are shared across workers through the existing
 bounded single-flight read cache. Keys include build inputs, the saved-source hash and scoring
 revision. Imported build dependencies are hashed too. Shared entries expire after ten seconds
-for imported projects or thirty seconds for ROM projects. Input changes and source-only edits
+for imported projects; ROM entries last while their input scope and bounded cache entry remain valid. Input changes and source-only edits
 invalidate them; transactional callers bypass sharing. Failed probes are not shared verdicts.
 
 Feedback distinguishes the historical saved score, the saved C rechecked with current inputs,

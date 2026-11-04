@@ -67,6 +67,8 @@ def test_saved_baseline_singleflight_across_workers_and_scope_invalidation(tmp_p
         second=pool.submit(agent_evidence.baseline,net,b,'game',fn,fn['best_source'])
         release.set()
         assert first.result()['score']==second.result()['score']==30
+        first.result()['rows'].append(('r','left','right'))
+        assert second.result()['rows']==[]
     assert len(calls)==1
     exploratory={'score':45,'source':'int f(){return 2;}'}
     note=agent_evidence.baseline_note(fn,exploratory,net)

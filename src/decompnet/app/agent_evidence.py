@@ -46,7 +46,7 @@ def shared_baseline(net, agent, slug, fn, source, diagnostic=False):
         return result
     # Imported build files can change externally; key hashes them, expiry also bounds restoration state.
     try:
-        result=net.store.read_cache.get(('agent-saved-baseline',fn['id']),stamp,measure,ttl=10 if net.fork_slug(slug) else 30)
+        result=net.store.read_cache.get(('agent-saved-baseline',fn['id']),stamp,measure,ttl=10 if net.fork_slug(slug) else None)
     except Unavailable as error:
         return error.report if diagnostic else None
     fresh=net.store.one('SELECT * FROM functions WHERE id=?',fn['id'])

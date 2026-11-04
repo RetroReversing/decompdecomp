@@ -28,8 +28,14 @@ def instruction_window(rows, index=None):
     if index is None:
         return ''
     window=rows[max(0,index-2):index+3]
+    def display(row):
+        if row[0]==' ':
+            # One equivalent context instruction, so normalized noise does not reappear as an apparent mismatch.
+            text=row[2] if '%' not in row[2] else row[1]
+            return '  = '+text[:120]
+        return f'{row[0]} T: {row[1][:120]} | C: {row[2][:120]}'
     return ('Advisory instruction window (normalized; exact-byte verdict unchanged):\n'+
-            '\n'.join(f'{r[0]} T: {r[1][:120]} | C: {r[2][:120]}' for r in window)+
+            '\n'.join(display(r) for r in window)+
             '\nMore target instructions: get_assembly(focus="mismatch"). Raw/paged diff: last_diff.')
 
 
