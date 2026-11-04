@@ -4,7 +4,15 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from decompnet import candidate_quality
-from decompnet.app import agent_evidence, agent_tokens, deep_permuter, efficiency_feedback, release_repairs, session_budget, tools
+from decompnet.app import (
+    agent_evidence,
+    agent_tokens,
+    deep_permuter,
+    efficiency_feedback,
+    release_repairs,
+    session_budget,
+    tools,
+)
 from decompnet.app.deep_sweep import Sweeps
 from decompnet.app.support import Jobs
 from tests.test_claims import _game
