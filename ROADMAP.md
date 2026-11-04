@@ -2116,3 +2116,10 @@ template and renderer. The function drawer consumes live job progress for combin
 percentage, saved/best match, current best profile and exact-match count; project queue/result
 actions are hidden in function scope. Navigation guards prevent late results updating another
 function or overwriting the project-wide progress card.
+
+Compiler profile groups offer a read-only “Test this profile as default” diagnostic for ROM
+projects. It checks saved matching C currently using default settings through the ordinary
+linked-byte judge, with checked/passed/failed counts and failure reasons. Other profiles and
+unmatched functions are excluded; changed inputs invalidate the conclusion. No settings or
+saved scores change. PROJECT-mode per-file compiler compatibility trials remain planned: their
+own build configuration needs a separate temporary-build implementation.
