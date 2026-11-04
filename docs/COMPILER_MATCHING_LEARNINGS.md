@@ -3322,3 +3322,22 @@ Imported projects retain their own build/objdiff workflow. Scalar staging is
 shared; a build without a genuine function-output fingerprint keeps ordinary
 ordering and cannot earn the extended lane. Supplying equivalent fingerprint
 readers for every imported toolchain remains planned.
+
+Controlled replay against main `c20eb95b` uses the same frozen source/header/target
+hashes, GCC KMC 2.7.2 flags `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`, linked-byte judge,
+and 64-candidate / 45-second allowance per precursor. These are four saved stages
+of **one already matched function**, not four new game matches. Lower scores are
+better; exact recovery is score zero.
+
+| Starting score | Main: first exact trial | New search: first exact trial |
+| --- | --- | --- |
+| 1355 | None (best 800) | 10 |
+| 725 | 14 | 18 |
+| 525 | 17 | 18 |
+| 270 | 1 | 1 |
+
+The earliest precursor now recovers through a six-transform path, including the
+bounded continuation. Later precursors sometimes take more trials: this improves
+recovery coverage, not universal speed or token savings. All variants still spend
+the existing budget. The replay collects the full 64 trials even after recovery;
+it is not an elapsed-time benchmark. No full exported-ROM rebuild was run.
