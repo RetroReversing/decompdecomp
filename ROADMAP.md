@@ -2106,3 +2106,6 @@ they record donor history and do not themselves change a function's symbol.
   confirmed matches and better-attempt submissions through existing job polling. Stage-aware progress
   covers connection, game checking, project setup, host approval, transfer and synchronization without
   presenting a stage's percentage as whole-join completion.
+
+- Done: room match verification offers Retry all for the full pending snapshot, with sequential checks,
+  per-item error reporting, counted progress and immediate busy spinners on retry actions.
