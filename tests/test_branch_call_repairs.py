@@ -207,3 +207,17 @@ def test_uncompiled_machine_draft_gets_the_same_advisory_without_renaming():
     notes=hints(SOURCE,'f')
     assert any('branch-local lifetimes' in n and 'does not rewrite' in n for n in notes)
     assert '__repair_' not in SOURCE
+
+
+def test_snapshot_reader_is_architecture_owned_and_stops_at_control_boundaries():
+    from decompnet import arch
+    reader=arch.get('mips').source_pointer_snapshot
+    assert reader(ASM)
+    for branch in ['beql $v0,$zero,1f','bc1t 1f','b 1f','jr $ra']:
+        assert not reader(ASM.replace('addiu $v0,$zero,1',branch))
+    assert arch.get('arm').source_pointer_snapshot is None
+
+
+def test_byte_field_width_comes_from_typedef_evidence_not_its_name():
+    header=HEADER.replace('unsigned char u8','unsigned short u8')
+    assert not snapshots.variants(POINTER_SOURCE,'f',header,'mips',ASM)
