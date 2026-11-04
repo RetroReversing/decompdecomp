@@ -3054,3 +3054,11 @@ allocation lane, and a 54-instruction jump/delay-slot residual is classified as 
 miss. Broader lifetime syntax alone did not solve either one. Use these frozen failures to
 measure future chain-allocation and control-flow classification changes before increasing
 budgets.
+
+Integration check: the newly merged call-scope family displaced saved-draft ABI/type
+refinement in three existing priority regressions on unchanged main. Keep the first
+`m2c_refinement` proposal ahead of scope speculation while still rotating all remaining
+families; the existing regressions and call-scope tests pass together. A later live-export
+manifest update correctly invalidated the old private fixture. Repeat comparisons against
+an isolated export snapshot instead of weakening the input guard or updating a fixture
+silently to fit the current live project.

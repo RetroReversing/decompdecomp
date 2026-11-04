@@ -373,6 +373,10 @@ def _finish(source,name,proposals,labels,allocation_candidates,limit):
         if ACTIVE.get() is None and invalid_call(text, name):
             continue
         groups.setdefault(labels[text],[]).append(text)
+    # Missing argument positions and unknown-object types need refinement before speculative
+    # call scopes; adding a scope family must not displace this existing short preflight lane.
+    if 'm2c_refinement' in groups:
+        groups = {'m2c_refinement':groups['m2c_refinement'],**groups}
     ordered = []
     while any(groups.values()):
         for items in groups.values():
