@@ -2253,3 +2253,7 @@ bounded asynchronous CPU handoffs with cancellation and existing repair-trial hi
   then load history, drafts, calls, verification and compiler details with visible progress and retry. Both ROM
   and imported projects retain full analysis; late detailed responses preserve edits and navigation. Baseline
   evidence lookups use a function/score index and no longer materialize entire historical attempts.
+
+- Done: pipeline deep-pass preparation and execution with shuffled lightweight identities, bounded queued turns,
+  live candidate-scan progress, shared header/symbol/declaration preparation, skipped unnecessary historical
+  fingerprints and fresh dispatch validation.
