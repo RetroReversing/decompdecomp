@@ -222,12 +222,6 @@
   </header>
 
   <div class="notice" id="coverageNotice" hidden></div>
-  <section class="panel" id="codeCoveragePanel" hidden aria-label="Code coverage review">
-    <div class="pad"><h3>Code coverage review</h3><div id="codeCoverageSummary" aria-live="polite"></div>
-      <button class="ghost small-btn" type="button" id="coverageAuditBtn">Audit coverage with CPU</button>
-      <pre class="joblog" id="coverageAuditLog" hidden></pre>
-    </div>
-  </section>
   <div class="panel" id="progressPopulations" hidden></div>
   <div class="notice" id="compilerNotice" hidden></div>
   <section class="fork-setup" id="forkSetup" hidden></section>
@@ -400,6 +394,28 @@
 
   <!-- settings -->
   <section class="ptab" data-pane="settings">
+    <details class="panel settings-disclosure" id="codeCoveragePanel" hidden>
+      <summary class="panel-head"><h2>Code coverage review</h2><span class="disclosure-context small muted" id="coverageReviewContext">Find missing code</span></summary>
+      <div class="pad coverage-review">
+        <p class="small muted coverage-intro">Look for code missing from the function list, then review the evidence before recovering it.</p>
+        <div id="codeCoverageSummary" aria-live="polite"></div>
+        <div class="coverage-actions">
+          <button class="primary small-btn" type="button" id="coverageAuditBtn">Scan for missing code</button>
+          <button class="ghost small-btn" type="button" id="coverageReviewBtn" hidden>Review candidates</button>
+          <span class="small muted">CPU only · no AI tokens · does not change code</span>
+        </div>
+        <p class="small coverage-audit-status" id="coverageAuditStatus" role="status" hidden></p>
+        <details id="codeAuditPanel" class="coverage-findings" hidden>
+          <summary>Raw-region candidates <span class="muted small">— inspect evidence and save your review</span></summary>
+          <p class="small muted">These regions may contain code, data or microcode. Save a review and notes for each lead; confirming code does not import it.</p>
+          <button id="codeAuditBtn" type="button" hidden>Scan again</button><pre id="codeAuditLog" hidden></pre>
+          <div id="codeAuditResult" aria-live="polite"></div>
+        </details>
+        <details class="coverage-help"><summary>What these results mean</summary><p>Progress percentages cover detected functions. A clean scan, an empty queue or an identical rebuild does not prove every function has been found. Raw-byte totals are unclassified space, not confirmed missing code.</p></details>
+        <details id="coverageAuditTechnical" class="coverage-help"><summary>Technical output</summary><pre class="joblog" id="coverageAuditLog" hidden></pre></details>
+      </div>
+    </details>
+
     <details class="panel settings-disclosure" id="sourcePrepPanel">
       <summary class="panel-head"><h2>Local source preparation</h2><span class="muted small">optional · no AI tokens</span></summary>
       <div class="pad">
@@ -538,6 +554,7 @@
             <summary>Find better compiler settings</summary><div class="compiler-test-body">
             <div><p class="small muted">Test saved C locally, then review and apply the results. No AI tokens are used.</p></div>
             <div class="compiler-test-options"><label class="check"><input type="checkbox" id="compilerFlagsOnly"><span><b>Flag variations only</b><small>Faster: keep each function’s compiler and test different flags.</small></span></label>
+            <label class="check"><input type="checkbox" id="compilerUsedProfilesOnly"><span><b>Only profiles used in this project</b><small>Faster: test exact compiler and flag combinations already assigned to functions.</small></span></label>
             <label class="check"><input type="checkbox" id="compilerRetest"><span><b>Retest completed functions</b><small>Leave off to continue with new or changed attempts.</small></span></label>
             <label class="check"><input type="checkbox" id="compilerAutoApply"><span><b>Automatically apply better settings</b><small>Apply each function’s best settings when its comparison finishes. Each change is rechecked; busy or changed functions stay available for review.</small></span></label></div>
             <p class="small muted" id="compilerTestScope">All installed compilers and supported flag variations · new or changed attempts only.</p>
@@ -585,12 +602,6 @@
           <div class="pad">
             <dl class="facts one" id="projFacts"></dl>
             <div class="row"><button class="ghost small-btn" id="folderBtn" type="button">Open project folder</button></div>
-            <div id="codeAuditPanel" hidden>
-              <p class="muted small">Audit binary gaps for incoming transfers and possible code. This reads original bytes without changing targets or using AI. Save evidence and review states here; confirming a lead does not import it. Data and microcode can resemble code.</p>
-              <button class="ghost small-btn" id="codeAuditBtn" type="button">Audit unanalysed code</button>
-              <pre class="joblog" id="codeAuditLog" hidden></pre>
-              <div id="codeAuditResult" aria-live="polite"></div>
-            </div>
             <div id="reimportGame">
               <p class="muted small">Choose your copy of the game again and replace its analysis. Matched C is kept only for functions whose target bytes are unchanged; changed functions reopen. Notes, settings and saved progress are kept. Helpers stop while the game is reimported.</p>
               <div class="row"><button class="ghost small-btn" id="reimportBtn" type="button">Choose game and reimport</button></div>
@@ -768,7 +779,8 @@
       <details id="fnCompilerTest" class="collapsible-box" hidden>
         <summary>Compiler settings</summary><div class="collapsible-box-body"><div id="fnCurrentCompiler" class="small"></div><div id="fnCompilerMatches"></div>
         <div class="fn-compiler-controls"><button class="primary small-btn" id="fnTestCompilers" type="button">Test installed compilers &amp; flags</button>
-        <label class="check"><input type="checkbox" id="fnCompilerFlagsOnly"><span>Current compiler only · test flag variations</span></label></div>
+        <label class="check"><input type="checkbox" id="fnCompilerFlagsOnly"><span>Current compiler only · test flag variations</span></label>
+        <label class="check"><input type="checkbox" id="fnCompilerUsedProfilesOnly"><span>Only profiles used in this project · exact flags</span></label></div>
         <p class="small muted fn-compiler-explainer">Local compiler search · no AI tokens. Tests the saved C against supported compiler and flag combinations. Settings change only when you apply a result.</p>
         <p class="small muted" id="fnCompilerHistory">Not tested yet.</p>
         <section class="compiler-progress" id="fnCompilerProgress" data-mode="function" aria-label="Function compiler comparison progress" hidden></section>
@@ -896,7 +908,7 @@
 <script src="/assets/js/source-mismatches.js"></script>
 <script src="/assets/js/function.js"></script>
 <template id="compilerProgressTemplate">
-              <div class="compiler-queue-count"><span data-queue>Counting eligible functions…</span><progress data-queue-bar max="1" value="0" aria-label="Functions completed in this run"></progress></div>
+              <div class="compiler-queue-count"><span data-queue>Preparing eligibility checks…</span><progress data-queue-bar max="1" value="0" aria-label="Functions completed in this run"></progress></div>
               <div class="compiler-progress-heading"><span class="small muted compiler-current-label">Current function</span><b class="mono" data-current>Preparing…</b></div>
               <div class="compiler-progress-count"><span data-tested>Waiting for the first result</span><progress data-bar max="1" value="0" aria-label="Settings tested for current function"></progress></div>
               <dl class="compiler-progress-stats">

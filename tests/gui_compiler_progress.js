@@ -15,6 +15,10 @@ vm.createContext(ctx);
 vm.runInContext(read("compiler-progress"), ctx);
 ctx.renderCompilerProgress(null);
 assert.equal(fields.get("[data-best]").textContent, "—");
+ctx.renderCompilerProgress({phase:'eligibility',checked:250,scan_total:4000,eligible:20,skipped:230});
+assert.equal(fields.get('[data-queue]').textContent, 'Checking eligibility: 250 / 4,000 · 6%');
+assert.equal(fields.get('[data-queue-bar]').value, 250);
+assert.equal(fields.get('[data-queue-bar]').max, 4000);
 ctx.renderCompilerProgress({ function: "<synthetic>", tested: 80, combinations: 196, before: 99.72, best: 99.94,
   completed: 3, total: 10, remaining: 7, deferred: 2, improved: 2, exact: 1, profile: ["Example GCC", ["-O2", "-g3"]] });
 assert.equal(fields.get("[data-current]").textContent, "<synthetic>");
@@ -154,7 +158,7 @@ async function checkStopButton() {
     updateCompilerTestScope() { get("testInstalledCompilers").textContent = "Find better settings"; },
     followJob: () => polling,
     api: async (url, options) => {
-      if (url === '/api/compilermap') { assert.equal(options.body.auto_apply, true); return {job:'only-this-job'}; }
+      if (url === '/api/compilermap') { assert.equal(options.body.auto_apply, true); assert.equal(options.body.used_profiles_only, true); return {job:'only-this-job'}; }
       assert.equal(url, '/api/job/cancel'); assert.equal(options.body.id, 'only-this-job');
       if (++cancels === 1) throw new Error('Connection failed');
       return {cancelled:true};
@@ -162,7 +166,7 @@ async function checkStopButton() {
   vm.createContext(context);
   const source = read('steering'), start = source.indexOf('$("testInstalledCompilers").onclick');
   vm.runInContext(source.slice(start, source.indexOf('\nfunction renderCompilerImprovements', start)), context);
-  get('compilerAutoApply').checked = true;
+  get('compilerAutoApply').checked = true; get('compilerUsedProfilesOnly').checked = true;
   const running = get('testInstalledCompilers').onclick();
   for (let i = 0; i < 20; i++) await Promise.resolve();
   const stop = get('testInstalledCompilers');
@@ -184,7 +188,7 @@ async function checkStopButton() {
 checkStopButton().catch((error) => { console.error(error); process.exitCode = 1; });
 
 // Scope and button text must agree with the actual comparison options.
-const scopeFields = new Map(['compilerFlagsOnly','compilerRetest','compilerTestScope','testInstalledCompilers'].map(id => [id, {}]));
+const scopeFields = new Map(['compilerFlagsOnly','compilerUsedProfilesOnly','compilerRetest','compilerTestScope','testInstalledCompilers'].map(id => [id, {}]));
 const scopeContext = {$: id => scopeFields.get(id)};
 vm.createContext(scopeContext);
 const scopeSource = read('steering');
@@ -197,6 +201,14 @@ scopeContext.updateCompilerTestScope();
 assert.match(scopeFields.get('compilerTestScope').textContent, /Current compiler only/);
 assert.match(scopeFields.get('compilerTestScope').textContent, /including completed attempts/);
 assert.equal(scopeFields.get('testInstalledCompilers').textContent, 'Retest compiler settings');
+scopeFields.get('compilerUsedProfilesOnly').checked = true;
+scopeFields.get('compilerUsedProfilesOnly').onchange();
+assert.equal(scopeFields.get('compilerFlagsOnly').checked, false);
+assert.match(scopeFields.get('compilerTestScope').textContent, /Only profiles used.*exact flags/);
+scopeFields.get('compilerFlagsOnly').checked = true;
+scopeFields.get('compilerFlagsOnly').onchange();
+assert.equal(scopeFields.get('compilerUsedProfilesOnly').checked, false);
+
 
 ctx.renderCompilerProgress(null, {tried:1, total:1, auto_apply:true, applied_count:1, results:[{function:'applied',applied:true,best:99,improved:true}],improvements:[{}]});
 assert.match(fields.get('[data-profile]').textContent, /1 function profiles applied and rechecked/);

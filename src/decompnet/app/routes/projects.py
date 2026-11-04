@@ -77,6 +77,9 @@ def register(app: App) -> None:
         except ValueError:
             since = {}
         out["sessions"] = manager.snapshot(since, project=slug)
+        if q.get('compact') == '1':
+            from ..live_sections import compact
+            out = compact(out, q.get('v'))
         return out
 
     def p_transcript(slug, request, data):
@@ -88,7 +91,7 @@ def register(app: App) -> None:
 
     def p_compiler_default_test(slug, request, data):
         from .. import compiler_default_test
-        return {"job": jobs.start("Test compiler profile as default", lambda log:(compiler_default_test.replace_default(net, slug, data.get('profile'), log) if data.get('action') == 'replace' else compiler_default_test.run(net, slug, data.get('profile'), log, nonmatches=data.get('action') == 'nonmatches')))}
+        return {"job": jobs.start("Test compiler profile as default", lambda log:(compiler_default_test.apply_matches(net, slug, data.get('profile'), data.get('functions'), log) if data.get('action') == 'apply-matches' else compiler_default_test.replace_default(net, slug, data.get('profile'), log) if data.get('action') == 'replace' else compiler_default_test.run(net, slug, data.get('profile'), log, nonmatches=data.get('action') == 'nonmatches')))}
 
     def p_compiler_cleanup(slug, request, data):
         limit = int(data.get("rare_limit", 3))
@@ -180,7 +183,7 @@ def register(app: App) -> None:
             if type(data.get("auto_apply", False)) is not bool:
                 raise NetworkError("Auto-apply must be true or false.")
             return {"job": jobs.start("installed compilers", lambda log: net.run_compiler_comparison(
-                slug, log=log, function=data.get("function", ""), untested_only=data.get("untested_only", True), flags_only=bool(data.get("flags_only", False)), auto_apply=data.get("auto_apply", False)),
+                slug, log=log, function=data.get("function", ""), untested_only=data.get("untested_only", True), flags_only=bool(data.get("flags_only", False)), used_profiles_only=bool(data.get("used_profiles_only", False)), auto_apply=data.get("auto_apply", False)),
                 cancel_message="Compiler comparison stopped. Completed results are saved.")}
         if request.method == 'POST':
             return net.compiler_answer(slug, check_now=True)

@@ -2234,3 +2234,11 @@ Completed: transcript-driven agent workflow improvements: structured empty-queue
 shared scoped saved-C diagnostics, normalized assembly focus and inline mismatch windows,
 broader unverified correctness-report capture with explicit alternative references, and
 bounded asynchronous CPU handoffs with cancellation and existing repair-trial history.
+
+- Done: batched compiler-comparison eligibility preparation with live checked/total/percentage progress,
+  shared input encoding and preserved completed-comparison fingerprints. Saved best C avoids a needless
+  latest-attempt lookup.
+- Done: incremental agent card measurement counters with correction/reset invalidation, batched polishing
+  totals, compact live sections and deferred hidden map refreshes, persistent revision-checked ROM fingerprints
+  and cross-project map identities, narrow SDK naming reads with bounded unchanged-check reuse, and scoped
+  autosave project/contributor reads. External progress-file checks and byte verification are preserved.

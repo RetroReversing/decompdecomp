@@ -835,11 +835,11 @@ async function testProfileAsDefault(button, action="test") {
   const replacing=action==='replace', nonmatches=action==='nonmatches';
   const body = dialog(replacing ? 'Replace project default compiler' : nonmatches ? 'Test all non-matches' : 'Test compiler profile as default', `<p>${nonmatches ? 'Check saved C for all non-matching functions against' : 'Check currently matched functions that use the project default against'} <b>${esc(group.compiler)}</b>.</p>
     <code class="compiler-arguments">${esc(profile.flags.join(' '))}</code>
-    <p class="small muted">${replacing ? 'Make this profile the default. Existing matches that need the previous default keep it as a non-default override. Other profiles keep their settings. Saved attempts are rescored before settings are saved.' : nonmatches ? 'Test only. Checks all non-matching functions, including other profiles. Functions without saved C are reported. No settings or matches are changed.' : 'Test only. Compiler settings, ranges and saved matches stay unchanged. Functions using other profiles are excluded.'}</p>
+    <p class="small muted">${replacing ? 'Make this profile the default. Existing matches that need the previous default keep it as a non-default override. Other profiles keep their settings. Saved attempts are rescored before settings are saved.' : nonmatches ? 'Test only. Checks all non-matching functions, including other profiles. Functions without saved C are reported. Testing changes nothing; you can apply passing results when it finishes.' : 'Test only. Compiler settings, ranges and saved matches stay unchanged. Functions using other profiles are excluded.'}</p>
     <section class="default-profile-test" aria-label="Default profile test progress"><p data-default-status role="status">Counting default-profile matches…</p>
     <progress class="deep-sweep-bar" data-default-bar value="0" max="1" aria-label="Functions checked"></progress>
     <dl class="default-profile-counts"><div><dt>Passed</dt><dd class="ok" data-default-passed>0</dd></div><div><dt>Did not pass</dt><dd data-default-failed>0</dd></div><div><dt>Remaining</dt><dd data-default-left>—</dd></div></dl></section>
-    <p data-default-verdict></p><details data-default-matches hidden><summary>Functions that match this profile</summary><div data-default-match-list class="mono"></div></details><details data-default-failures hidden><summary>Functions that did not pass</summary><div class="compiler-table" data-default-failure-list></div></details>
+    <p data-default-verdict></p><div data-apply-matches hidden><button type="button" class="primary" data-apply-matches-button>Apply verified matches</button><p class="small muted">Rechecks the saved C, assigns this profile to passing functions and saves exact byte matches. Busy functions are skipped.</p></div><details data-default-matches hidden><summary>Functions that match this profile</summary><div data-default-match-list class="mono"></div></details><details data-default-failures hidden><summary>Functions that did not pass</summary><div class="compiler-table" data-default-failure-list></div></details>
     <div data-default-work></div><details class="more"><summary>Test log</summary><pre class="joblog" data-default-log></pre></details>`, 'compiler-default-test');
   const get = selector=>body.querySelector(selector), log=get('[data-default-log]'), work=get('[data-default-work]');
   const active=()=>S.dialogKind==='compiler-default-test' && !$("dialog").hidden && get('[data-default-log]')===log;
@@ -865,7 +865,23 @@ async function testProfileAsDefault(button, action="test") {
     if(!active() || !out)return;
     if(out.replaced){get('[data-default-verdict]').textContent=`Default replaced. ${out.preserved} functions kept their previous compiler profile. All existing matches remain verified.`; if(S.slug===slug){S.ov=await api(`/api/project?slug=${encodeURIComponent(slug)}`);renderStats(S.ov);renderProjectSettings();await loadCompilerAnswer();} return;}
     render(out);
-    if(nonmatches){get('[data-default-verdict]').textContent=out.stale ? 'Inputs changed during testing; rerun before using these results.' : `${out.passed} of ${out.total} non-matching functions match this compiler profile. No settings or saved matches changed.`;return;}
+    if(nonmatches){get('[data-default-verdict]').textContent=out.stale ? 'Inputs changed during testing; rerun before using these results.' : `${out.passed} of ${out.total} non-matching functions match this compiler profile. No settings or saved matches changed.`;
+      if(!out.stale && out.matches?.length){
+        get('[data-apply-matches]').hidden=false;
+        const apply=get('[data-apply-matches-button]');apply.textContent=`Apply ${out.matches.length} matches`;
+        apply.onclick=async()=>{
+          const done=beginWork(work,'Rechecking and applying matches',[apply],'Apply finished.');
+          try{
+            const {job}=await api('/api/compiler/test-default',{method:'POST',body:{slug,profile,action:'apply-matches',functions:out.matches}});
+            const saved=await followJob(job,log,(_lines,state)=>{if(active())render(state.progress);},active);
+            if(!active() || !saved)return;
+            render(saved);get('[data-default-verdict]').textContent=`${saved.passed} new matches saved. ${saved.failed} functions skipped or could not be applied; see the results below.`;
+            get('[data-apply-matches]').hidden=true;
+            if(S.slug===slug){S.ov=await api(`/api/project?slug=${encodeURIComponent(slug)}`);renderStats(S.ov);renderProjectSettings();await loadCompilerAnswer();}
+          }catch(error){if(active())showJobError(work,error.message);}
+          finally{done();}
+        };
+      }return;}
     get('[data-default-verdict]').textContent=out.stale ? 'Inputs changed while testing. Results are outdated; rerun before deciding.' : !out.total ? 'No matched functions currently use the default. No compatibility conclusion can be drawn.' : out.compatible ? 'All tested default-profile matches still match byte for byte. This profile is a compatible default candidate for this population. Nothing has been changed.' : `${out.failed} functions did not pass. These functions need their previous compiler profile if you replace the default. Nothing has been changed.`;
   } catch(error){if(active())showJobError(work,error.message);}
   finally{finish();}
@@ -949,12 +965,16 @@ $("deleteBtn").onclick = () => {
 };
 
 function updateCompilerTestScope() {
-  const flagsOnly = $("compilerFlagsOnly").checked, retest = $("compilerRetest").checked;
-  $("compilerTestScope").textContent = `${flagsOnly ? "Current compiler only, with supported flag variations" : "All installed compilers and supported flag variations"} · ${retest ? "including completed attempts" : "new or changed attempts only"}.`;
+  const usedOnly = $("compilerUsedProfilesOnly").checked, flagsOnly = $("compilerFlagsOnly").checked, retest = $("compilerRetest").checked;
+  $("compilerTestScope").textContent = `${usedOnly ? "Only profiles used in this project, with exact flags" : flagsOnly ? "Current compiler only, with supported flag variations" : "All installed compilers and supported flag variations"} · ${retest ? "including completed attempts" : "new or changed attempts only"}.`;
   if ($("testInstalledCompilers")._compilerRun) return;
   $("testInstalledCompilers").textContent = retest ? "Retest compiler settings" : "Find better settings";
 }
-for (const id of ["compilerFlagsOnly", "compilerRetest"]) $(id).onchange = updateCompilerTestScope;
+for (const id of ["compilerFlagsOnly", "compilerUsedProfilesOnly", "compilerRetest"]) $(id).onchange = () => {
+  if (id === "compilerUsedProfilesOnly" && $(id).checked) $("compilerFlagsOnly").checked = false;
+  if (id === "compilerFlagsOnly" && $(id).checked) $("compilerUsedProfilesOnly").checked = false;
+  updateCompilerTestScope();
+};
 $("testInstalledCompilers").onclick = async () => {
   const slug = S.slug;
   const button = $("testInstalledCompilers"), log = $("installedCompilerLog");
@@ -962,7 +982,7 @@ $("testInstalledCompilers").onclick = async () => {
   const work = $("installedCompilerWork");
   const stop = button, stopError = $("compilerStopError");
   let jobId = null;
-  const controls = [$("compilerFlagsOnly"), $("compilerRetest"), $("compilerAutoApply")];
+  const controls = [$("compilerUsedProfilesOnly"), $("compilerFlagsOnly"), $("compilerRetest"), $("compilerAutoApply")];
   const disabled = controls.map(control => control.disabled);
   controls.forEach(control => { control.disabled = true; });
   button.disabled = true; button.textContent = "Starting…";
@@ -1000,7 +1020,7 @@ $("testInstalledCompilers").onclick = async () => {
   renderCompilerProgress(null);
   showJobError(work, "");
   try {
-    const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, flags_only: $("compilerFlagsOnly").checked, untested_only: !$("compilerRetest").checked, auto_apply: $("compilerAutoApply").checked } });
+    const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, flags_only: $("compilerFlagsOnly").checked, used_profiles_only: $("compilerUsedProfilesOnly").checked, untested_only: !$("compilerRetest").checked, auto_apply: $("compilerAutoApply").checked } });
     jobId = job; stop.disabled = false; stop.textContent = "Stop comparison";
     const result = await followJob(job, log, (_lines, snapshot) => {
       if (S.slug === slug && snapshot.progress) renderCompilerProgress(snapshot.progress);
