@@ -184,3 +184,13 @@ def test_extent_changed_while_claiming_is_rejected(monkeypatch):
         profiles.apply(net,agent,net.project_row('game'),bundle,'gcc',['-O2'])
     assert not net.store.one('SELECT 1 FROM claims WHERE function_id=1')
     assert net.store.one('SELECT COUNT(*) n FROM attempts')['n']==0
+
+
+def test_function_can_return_to_default_profile_without_changing_neighbors(monkeypatch):
+    net,agent=fixture(monkeypatch)
+    net._compile=lambda *a:SimpleNamespace(ok=True,obj=b'object',effective_settings={'compiler':{'toolchain':'gcc','flags':['-O2']}})
+    net.suggest(agent,'game','exact default profile',compiler='gcc',flags='-O2',function='f',source='new exact C')
+    cfg=net.cfg(net.project_row('game'))
+    assert compiler_for(cfg,4096)['flags']==['-O2']
+    assert compiler_for(cfg,4100)['flags']==['-O1']
+    assert net._function('f','game')['status']=='matched'

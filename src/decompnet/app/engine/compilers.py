@@ -545,7 +545,7 @@ class CompilerMixin:
                 raise NetworkError("a fork builds with its project's own compilers: suggest the change in words only")
             tc = self._toolchain_named(cfg, compiler)
             flag_list = flags.split() or consoles.default_flags(cfg, tc)
-            if not spans and (tc, flag_list) == (cfg["compiler"]["toolchain"], cfg["compiler"]["flags"]):
+            if not spans and not function and (tc, flag_list) == (cfg["compiler"]["toolchain"], cfg["compiler"]["flags"]):
                 raise NetworkError("that's already the project's compiler and flags")
             if function:
                 check = self._check_compiler(proj, tc, flag_list, function, source)
