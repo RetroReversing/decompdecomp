@@ -2881,3 +2881,8 @@ O1 alternative), with 1,256 bytes classified as verified assembly and zero C cre
 An unchanged second pass performed zero compiles and reused all five scoped proofs.
 The source inputs were the existing prepared original-assembly references; SDK
 preparation itself was not inferred. The live app and its project were untouched.
+
+Installed-driver regressions cover IDO 5.3, KMC GCC 2.7.2 and PS1 GCC 2.7.2
+through maspsx/GNU as. The PS1 wrapper requires explicit pinned assembly-stage
+commands: replacing its shell's `-c` with `-E` is invalid. Registry templates now
+provide those stages, keeping console decisions out of the shared verifier.

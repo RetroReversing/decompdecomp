@@ -94,6 +94,8 @@ class CompilerConfig:
     prelude: str = ""  # the toolchain's prelude (Toolchain.prelude)
     cplusplus: bool = False  # it compiles C++ too: what doesn't compile as C is tried as C++ (Toolchain.cplusplus)
     linux_vm: bool = False  # Linux-only compiler on macOS, isolated local VM jobs
+    assembly_preprocess: tuple[str, ...] = ()
+    assembly_compile: tuple[str, ...] = ()
 
 
 @dataclass
@@ -304,9 +306,10 @@ def compile_assembly(cfg: CompilerConfig, prelude: str, source: str) -> CompileR
         (work/'input.c').write_text(text,encoding='utf-8',newline='\n')
         def argv(src,obj,preprocess=False):
             subst={'{src}':root+'/'+src,'{obj}':root+'/'+obj,'{include}':root}
-            args=[a.replace('{include}',root) if a not in subst else subst[a] for a in cfg.cmd]
-            if preprocess:
-                if '-c' not in args:raise SourceRejected('Assembly verification needs a compiler driver with a -c command.')
+            explicit=cfg.assembly_preprocess if preprocess else cfg.assembly_compile
+            args=[a.replace('{include}',root) if a not in subst else subst[a] for a in explicit or cfg.cmd]
+            if preprocess and not explicit:
+                if Path(args[0]).name in ('sh','bash','cmd.exe') or '-c' not in args:raise SourceRejected('Assembly verification needs a compiler driver with a -c command.')
                 args[args.index('-c')]='-E'
             return args
         try:
@@ -319,7 +322,7 @@ def compile_assembly(cfg: CompilerConfig, prelude: str, source: str) -> CompileR
                     if check:check()
                 try:
                     if check:check()
-                    proc=run_in(cfg,work,args,timeout=cfg.timeout,inputs=[src],outputs=[obj])
+                    proc=_exec(cfg,work,args,cfg.timeout,**({'inputs':[src],'outputs':[obj],'stage':root} if _sandbox_mode(cfg) in ('wsl','linux-vm') else {}))
                 finally:_SLOTS.release()
                 log=(proc.stdout+proc.stderr).replace(root+'/','')
                 # IDO writes -E output to stdout even with -o; GCC writes the file.

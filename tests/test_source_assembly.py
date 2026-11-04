@@ -73,7 +73,7 @@ def test_assembly_compilation_rejects_file_and_binary_directives():
         assert not compile_assembly(cfg,'',text).ok
 
 
-@pytest.mark.parametrize('toolchain,flags',[('ido-5.3',['-O2','-mips2','-G','0','-non_shared']),('gcc-2.7.2-kmc',['-O2','-G0','-mips3','-mgp32','-mfp32'])])
+@pytest.mark.parametrize('toolchain,flags',[('ido-5.3',['-O2','-mips2','-G','0','-non_shared']),('gcc-2.7.2-kmc',['-O2','-G0','-mips3','-mgp32','-mfp32']),('gcc-2.7.2-psx',['-O2','-G0'])])
 def test_installed_pinned_driver_assembles_preprocessed_homemade_source(tmp_path,toolchain,flags):
     from io import BytesIO
 
@@ -87,7 +87,8 @@ def test_installed_pinned_driver_assembles_preprocessed_homemade_source(tmp_path
     assert result.ok,result.log
     e=ELFFile(BytesIO(result.obj));section,start,size=_function_symbols(e)['entry']
     assert size==8
-    assert e.get_section(section).data()[start:start+8]==bytes.fromhex('03e0000824820001')
+    code=e.get_section(section).data()[start:start+8];order='little' if e.little_endian else 'big'
+    assert [int.from_bytes(code[i:i+4],order) for i in (0,4)]==[0x03e00008,0x24820001]
     assert hashlib.sha256(result.obj).hexdigest()
 
 
@@ -140,3 +141,22 @@ def test_assembly_reorder_profile_is_private_and_each_candidate_is_judged(tmp_pa
     proof=json.loads(net._function('entry','game')['meta'])['verified_assembly']
     assert proof['compiler']['flags']==['-O1']
     assert json.loads(proj['config'])['compiler']['flags']==['-O2']
+
+
+@pytest.mark.parametrize('mode',['wsl','linux-vm'])
+def test_assembly_stages_use_the_same_explicit_remote_work_path(monkeypatch,mode):
+    from subprocess import CompletedProcess
+
+    from decompnet import compiler
+    cfg=CompilerConfig(cmd=['cc','-c','{src}','-o','{obj}'],wsl=mode=='wsl',linux_vm=mode=='linux-vm')
+    monkeypatch.setattr(compiler,'_root',lambda *a:'/work-assembly')
+    calls=[]
+    def execute(cfg,work,argv,timeout,**stage):
+        calls.append(stage)
+        output=stage['outputs'][0]
+        (work/output).write_bytes(b'.text\n' if output=='func.s' else b'compiled object')
+        return CompletedProcess(argv,0,'','')
+    monkeypatch.setattr(compiler,'_exec',execute)
+    assert compile_assembly(cfg,'','.text').ok
+    assert [x['stage'] for x in calls]==['/work-assembly','/work-assembly']
+    assert [x['inputs'] for x in calls]==[['input.c'],['func.s']]
