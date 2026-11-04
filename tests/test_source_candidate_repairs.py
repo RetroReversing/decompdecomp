@@ -263,3 +263,7 @@ def test_unsigned_low_instruction_cannot_supply_a_signed_address_guess(monkeypat
     raw=words(0x3c010000,0x34220000)
     object_fixture(monkeypatch,raw,[(0,5,1),(4,6,1)])
     assert not mips.bindings(b'obj','entry',words(0x3c018001,0x34228000),0x80001000,lambda n:None)
+
+
+def test_unresolved_call_relocation_is_symbol_work_not_a_behavioral_diagnosis():
+    assert not branches.review('void f(void){other();}', [('i','jal func_80001000','jal ?other')],'mips')

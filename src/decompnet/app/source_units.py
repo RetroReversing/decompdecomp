@@ -7,6 +7,7 @@ from .source_next_steps import called
 
 MAX_BODIES = 4
 MAX_SOURCE = 128 * 1024
+MAX_UNLOCATED_SOURCE = 512
 
 
 def variants(reader, cfg, mapping, aliases, source, header):
@@ -28,9 +29,9 @@ def variants(reader, cfg, mapping, aliases, source, header):
         entry_span = find(original,mapping[1])
         for name in sorted(called(original[slice(*entry_span)]) if entry_span else []):
             span = find(original,name)
-            if name not in names and span and len(original[span[0]:span[1]].encode()) <= 512:
+            if name not in names and span and len(original[span[0]:span[1]].encode()) <= MAX_UNLOCATED_SOURCE:
                 unlocated.add(name)
-                if len(unlocated) >= 3:break
+                if len(unlocated) >= MAX_BODIES-1:break
         names.update(unlocated)
     bodies = {}
     for name in sorted(names):
