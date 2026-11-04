@@ -2,6 +2,7 @@
 import hashlib
 import logging
 import threading
+import time
 
 from .permute import Permuter, State
 
@@ -65,10 +66,18 @@ def handoff(net, slug, fn):
                 if fresh_scope!=scope:
                     return {'skipped':'Inputs changed; the next deep pass uses the new saved C.'}
                 log.progress({'phase':'local repairs; up to 6 trials / 8 seconds','function':fn['name']})
-                result=run(net,slug,current,stop=log.cancel_event)
+                from . import deep_permuter
+                log.maximum_seconds=8
+                log.parallel_claims=False  # Background handoffs never search alongside a newly acquired paid claim.
+                from ..network import NetworkError
+                try:
+                    result=deep_permuter.run(net,slug,current['name'],1,6,log)
+                except NetworkError:
+                    if net.store.one('SELECT 1 FROM claims WHERE function_id=? AND expires_at>?',fn['id'],time.time()):
+                        return {'skipped':'Another worker claimed this function; its lease is unchanged.'}
+                    raise
                 log.check_cancel()
-                log(result or 'No available repair within this bounded turn; remaining work is retained.')
-                return {'function':fn['name'],'summary':result,'compile_limit':6,'seconds':8}
+                return {'function':fn['name'],'search':result,'compile_limit':6,'seconds':8}
             finally:
                 if entered:
                     gate.release()

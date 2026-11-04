@@ -52,13 +52,14 @@ reporting and user review remain available.
 ## CPU handoff
 
 After an agent releases compiled work without a dependency or assembly verdict, the existing
-bounded deterministic repair lane runs as a background job. It uses the same six-compile,
+deep-permuter pipeline runs as a background job, including its shared local-repair proposal
+pools and ordinary judging. It uses the same six-compile,
 eight-second allowance as the previous synchronous release repair. The time limit is soft:
 generation or one in-flight compile may cross it. No model calls are made.
 
 The app allows one handoff job per function, eight queued/running handoffs and one active CPU
 handoff slot. It reloads inputs at dispatch and skips changed, removed or matched functions.
-The repair lane acquires its ordinary lease before compiling. A running deep pass owns the
+The repair lane acquires its ordinary lease before compiling and disables parallel side searches. A running deep pass owns the
 work instead of receiving a duplicate job. Room guests retain host ownership and skip local
 handoffs. Jobs publish progress and can be cancelled; shutdown cancels queued/running handoffs.
 An update can defer new handoffs without undoing the release. Interrupted queues themselves

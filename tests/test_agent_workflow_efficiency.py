@@ -4,7 +4,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from decompnet import candidate_quality
-from decompnet.app import agent_evidence, agent_tokens, efficiency_feedback, release_repairs, session_budget, tools
+from decompnet.app import agent_evidence, agent_tokens, deep_permuter, efficiency_feedback, release_repairs, session_budget, tools
 from decompnet.app.deep_sweep import Sweeps
 from decompnet.app.support import Jobs
 from tests.test_claims import _game
@@ -127,10 +127,11 @@ def test_cpu_handoff_is_async_bounded_and_deduplicates(tmp_path,monkeypatch):
     sweeps=net.deep_sweeps=Sweeps(net,Jobs())
     entered,release=threading.Event(),threading.Event()
     calls=[]
-    def repair(net,slug,fn,*,stop=None):
+    def repair(net,slug,name,minutes,variants,log):
+        assert (minutes,variants,log.maximum_seconds,log.parallel_claims)==(1,6,8,False)
         calls.append(1);entered.set();assert release.wait(3)
-        return '2 trials; saved source unchanged'
-    monkeypatch.setattr(release_repairs,'run',repair)
+        return {'tested':2,'matched':False}
+    monkeypatch.setattr(deep_permuter,'run',repair)
     response=release_repairs.handoff(net,'game',fn)
     assert 'CPU handoff queued' in response and entered.wait(3)
     assert 'already queued' in release_repairs.handoff(net,'game',fn)
@@ -179,7 +180,7 @@ def test_cpu_handoff_rechecks_inputs_at_dispatch_and_skips_rooms(tmp_path,monkey
     sweeps=net.deep_sweeps=Sweeps(net,Jobs())
     gate=net.__dict__.setdefault('_repair_handoff_gate',threading.BoundedSemaphore(1))
     gate.acquire()
-    monkeypatch.setattr(release_repairs,'run',lambda *a,**kw:(_ for _ in ()).throw(AssertionError('Stale inputs must not compile')))
+    monkeypatch.setattr(deep_permuter,'run',lambda *a,**kw:(_ for _ in ()).throw(AssertionError('Stale inputs must not compile')))
     release_repairs.handoff(net,'game',fn)
     with net.store.tx() as db:
         db.execute("UPDATE functions SET best_source='int f(){return 2;}' WHERE id=?",(fn['id'],))
@@ -207,7 +208,7 @@ def test_shutdown_cancels_queued_cpu_work_and_rejects_new_handoffs(tmp_path,monk
     net,a,fn=game(tmp_path)
     sweeps=net.deep_sweeps=Sweeps(net,Jobs())
     gate=net.__dict__.setdefault('_repair_handoff_gate',threading.BoundedSemaphore(1));gate.acquire()
-    monkeypatch.setattr(release_repairs,'run',lambda *a,**kw:(_ for _ in ()).throw(AssertionError('Cancelled job must not compile')))
+    monkeypatch.setattr(deep_permuter,'run',lambda *a,**kw:(_ for _ in ()).throw(AssertionError('Cancelled job must not compile')))
     release_repairs.handoff(net,'game',fn)
     sweeps.shutdown()
     gate.release()
@@ -216,3 +217,17 @@ def test_shutdown_cancels_queued_cpu_work_and_rejects_new_handoffs(tmp_path,monk
         time.sleep(.01)
     assert job['state']=='cancelled'
     assert 'deferred' in release_repairs.handoff(net,'game',fn)
+
+
+def test_cpu_handoff_limits_the_real_search_deadline_and_claim_policy(tmp_path):
+    net,a,fn=game(tmp_path)
+    def log(line):
+        pass
+    log.maximum_seconds=8;log.parallel_claims=False
+    search=deep_permuter.Search(net,1,6,log,fn)
+    assert search.limit==6 and search.seconds==8 and search.deadline-search.started_at==8
+    assert not search.parallel_claims
+    net.claim_row(a,'game','f')
+    cpu,_=net.local_agent('cpu')
+    assert not search._hold(cpu,fn,count_turn=False)
+    assert net.store.one('SELECT agent_id FROM claims WHERE function_id=?',fn['id'])['agent_id']==a.id
