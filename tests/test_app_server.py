@@ -1342,12 +1342,13 @@ def test_deep_permuter_route_starts_a_cancellable_job_for_one_function(app, monk
     client, _, _ = app
     checked = []
     monkeypatch.setattr(deep_permuter, 'validate', lambda *args: checked.append(args[1:]))
-    def run(net, slug, name, minutes, variants, log):
+    def run(net, slug, name, minutes, variants, log, compiler_profiles=1):
+        assert compiler_profiles == 2
         log('Testing only '+name)
         log.progress({'tested':1, 'skipped':0, 'phase':'local repairs'})
         return {'function':name, 'matched':False, 'tested':1}
     monkeypatch.setattr(deep_permuter, 'run', run)
-    payload = {'slug':'selected-game','function':'selected_function','minutes':10,'max_variants':99}
+    payload = {'slug':'selected-game','function':'selected_function','minutes':10,'max_variants':99,'compiler_profiles':2}
     response = client.post('/api/permuter/function', json=payload, headers={'X-Decomp':'1'})
     assert response.status_code == 200
     job_id = response.json()['job']

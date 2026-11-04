@@ -19,8 +19,12 @@ SCHEMA = '''CREATE TABLE IF NOT EXISTS deep_permutation_passes(
  result TEXT NOT NULL DEFAULT '{}', error TEXT NOT NULL DEFAULT '')'''
 
 
-def signature(net, proj, fn, minutes, variants):
-    inputs = ('deep-pass-v1', agent_tokens.target_scope(net, fn, ''), fn['best_source'], minutes, variants)
+def signature(net, proj, fn, minutes, variants, compiler_profiles=None):
+    sweeps = getattr(net, 'deep_sweeps', None)
+    count = compiler_profiles
+    if count is None:
+        count = sweeps.config(proj['slug']).get('compiler_profiles', 1) if sweeps else 1
+    inputs = ('deep-pass-profiles-v1', count, agent_tokens.target_scope(net, fn, ''), fn['best_source'], minutes, variants)
     # Retry the two formerly blocked states once under the new recovery rules. Keep unrelated
     # completed passes resumable; users can explicitly repeat them to try the new search recipes.
     if fn['status'] == 'open' and fn['best_score'] == 0:
@@ -132,7 +136,7 @@ class Sweeps:
     def config(self, slug):
         proj = self.net.project_row(slug)
         row = self.net.store.one('SELECT value FROM settings WHERE key=?', f'deep-sweep:{proj["id"]}')
-        return {'threads': 0} | (json.loads(row['value']) if row else {'enabled': False, 'minutes': 5, 'max_variants': 10000})
+        return {'threads': 0, 'compiler_profiles': 1} | (json.loads(row['value']) if row else {'enabled': False, 'minutes': 5, 'max_variants': 10000})
 
     def save(self, slug, cfg):
         proj = self.net.project_row(slug)
@@ -220,7 +224,7 @@ class Sweeps:
         # Matching the current build can inspect project files. Cache the result briefly so opening
         # details or polling a running pass does not repeatedly hash every completed function.
         ready = counts['ready'] or 0
-        cache_key = (proj['id'], cfg['minutes'], cfg['max_variants'])
+        cache_key = (proj['id'], cfg['minutes'], cfg['max_variants'], cfg.get('compiler_profiles', 1))
         with self.lock:
             cached = self.queue_cache.get(cache_key)
             current = dict(self.active.get(slug, {}))
@@ -258,7 +262,11 @@ class Sweeps:
                                    'completed': completed, 'errors': errors, 'attention': attention, 'state': job.get('state', 'idle'), **current,
                                    'progress': job.get('progress', {}), 'error': job.get('error')}
 
-    def start(self, slug, minutes=5, max_variants=10000, repeat=False, threads=0):
+    def start(self, slug, minutes=5, max_variants=10000, repeat=False, threads=0, compiler_profiles=1):
+        from . import deep_profiles
+        deep_profiles.validate(compiler_profiles)
+        if compiler_profiles > 1 and (self.net.fork_slug(slug) or slug in self.net.links):
+            raise NetworkError('Multiple compiler profiles require a local ROM project.')
         if (isinstance(minutes, bool) or not isinstance(minutes, int) or not 1 <= minutes <= 120 or
                 isinstance(max_variants, bool) or not isinstance(max_variants, int) or not 1 <= max_variants <= 1000000):
             raise NetworkError('Choose 1–120 minutes and 1–1,000,000 variants per function.')
@@ -275,7 +283,7 @@ class Sweeps:
                     db.execute("DELETE FROM deep_permutation_passes WHERE function_id IN "
                                "(SELECT id FROM functions WHERE project_id=? AND status='open')",
                                (self.net.project_row(slug)['id'],))
-            self.save(slug, {'enabled': True, 'minutes': minutes, 'max_variants': max_variants, 'threads': threads, 'metrics_started': True})
+            self.save(slug, {'enabled': True, 'minutes': minutes, 'max_variants': max_variants, 'threads': threads, 'compiler_profiles': compiler_profiles, 'metrics_started': True})
             job = self.jobs.start('deep-permutation-pass', lambda log: self.run(slug, minutes, max_variants, log, threads),
                                   cancel_message='Deep pass stopped. Verified improvements and completed passes are saved.')
             self.active[slug] = {'job': job}
@@ -311,7 +319,7 @@ class Sweeps:
         fresh = self.net._function(before['name'], slug)
         proj = self.net.project_row(slug)
         stable = build_scope == candidate_scope.key(self.net, proj, before)
-        self.record(fresh, signature(self.net, proj, fresh, minutes, variants),
+        self.record(fresh, signature(self.net, proj, fresh, minutes, variants, result.get('compiler_profiles')),
                     ('rotated' if str(result.get('reason','')).startswith('Budget rotation:') else 'completed') if stable else 'pending', minutes, variants, result)
 
     def record(self, fn, scope, state, minutes, variants, result=None, error=''):
@@ -409,7 +417,11 @@ class Sweeps:
         function_log.progress = progress
         function_log.adaptive_budget = True
         try:
-            result = deep_permuter.run(self.net, slug, fn['name'], minutes, variants, function_log)
+            count = self.config(slug).get('compiler_profiles', 1)
+            if count == 1:
+                result = deep_permuter.run(self.net, slug, fn['name'], minutes, variants, function_log)
+            else:
+                result = deep_permuter.run(self.net, slug, fn['name'], minutes, variants, function_log, compiler_profiles=count)
             # Also records test backends and older search providers that do not publish history.
             # The actual single-function search uses the same completion gate.
             self.completed(slug, fn, minutes, variants, result, build_scope)

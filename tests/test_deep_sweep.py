@@ -547,3 +547,20 @@ def test_queue_separates_rotated_errors_and_removed_functions(sweep):
     assert (status['queue_left'], status['queue_rotated'], status['queue_blocked']) == (0, 0, 1)
     assert obj.run('game', 1, 10, Log())['functions_tested'] == 0
     assert calls == []
+
+
+def test_profile_count_is_remembered_forwarded_and_invalidates_completion(sweep, monkeypatch):
+    obj, net, _, _ = sweep
+    counts = []
+    def search(net, slug, name, minutes, variants, log, compiler_profiles=1):
+        counts.append(compiler_profiles)
+        return {'tested':2, 'matched':False, 'reason':'Time limit reached', 'best_score':50,
+                'compiler_profiles':compiler_profiles}
+    monkeypatch.setattr(deep_permuter, 'run', search)
+    obj.save('game', {'enabled':False, 'minutes':1, 'max_variants':10, 'compiler_profiles':1})
+    assert obj.run('game', 1, 10, Log())['functions_tested'] == 2
+    assert obj.run('game', 1, 10, Log())['functions_tested'] == 0
+    obj.save('game', {**obj.config('game'), 'compiler_profiles':2})
+    assert obj.config('game')['compiler_profiles'] == 2
+    assert obj.run('game', 1, 10, Log())['functions_tested'] == 2
+    assert counts == [1, 1, 2, 2]
