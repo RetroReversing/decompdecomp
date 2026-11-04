@@ -1,6 +1,7 @@
 """Keep automatic workers from passing an unchanged failed candidate around indefinitely."""
 import hashlib
 import json
+from functools import lru_cache
 from pathlib import Path
 
 VERSION = 'local-repairs-v21'
@@ -16,16 +17,23 @@ def common_state(net, proj):
 def repair_rules():
     """Persist across restarts; invalidate when installed repair implementations change."""
     app = Path(__file__).parent / 'app'
-    paths = sorted(set(app.glob('*repairs.py')) | {app / 'pointer_index_scope.py', app / 'first_difference.py', app / 'match_reconciliation.py', app / 'minimized_recipes.py', app / 'rtl_value_trace.py', app / 'verified_unit_context.py', app / 'repair_promotion.py', app / 'prototype_reuse.py', app / 'equal_value_flow.py', app / 'allocator_call_guards.py', app / 'initializer_clusters.py', app / 'local_experiments.py', app / 'loop_liveness.py', app / 'local_flow.py', app / 'repair_selection.py', app / 'operand_focus.py', app / 'repair_effects.py', app / 'lifetime_diagnostics.py', app / 'compiler_diagnostics.py', app / 'stack_layout.py', app / 'permuter_focus.py', app / 'search_frontier.py', app / 'allocation_evidence.py', app / 'repair_sequences.py', app / 'expression_recipes.py', app / 'repair_tokens.py', app / 'matching_preflight.py', app / 'allocation_search.py', app / 'repair_ranking.py', app / 'later_local_operations.py', app / 'later_local_phases.py', app / 'lifetime_donor_ranking.py', app / 'residual_followups.py'})
-    paths += [Path(__file__).parent/'arch/mips_materializations.py',Path(__file__).parent/'arch/mips_regions.py',Path(__file__).parent/'arch/mips_search.py']
+    paths = sorted(set(app.glob('*repairs.py')) | {app / 'branch_call_support.py', app / 'pointer_index_scope.py', app / 'first_difference.py', app / 'match_reconciliation.py', app / 'minimized_recipes.py', app / 'rtl_value_trace.py', app / 'verified_unit_context.py', app / 'repair_promotion.py', app / 'prototype_reuse.py', app / 'equal_value_flow.py', app / 'allocator_call_guards.py', app / 'initializer_clusters.py', app / 'local_experiments.py', app / 'loop_liveness.py', app / 'local_flow.py', app / 'repair_selection.py', app / 'operand_focus.py', app / 'repair_effects.py', app / 'lifetime_diagnostics.py', app / 'compiler_diagnostics.py', app / 'stack_layout.py', app / 'permuter_focus.py', app / 'search_frontier.py', app / 'allocation_evidence.py', app / 'repair_sequences.py', app / 'expression_recipes.py', app / 'repair_tokens.py', app / 'matching_preflight.py', app / 'allocation_search.py', app / 'repair_ranking.py', app / 'later_local_operations.py', app / 'later_local_phases.py', app / 'lifetime_donor_ranking.py', app / 'residual_followups.py'})
+    paths += [Path(__file__).parent/'arch/mips_source_recovery.py',Path(__file__).parent/'arch/mips_materializations.py',Path(__file__).parent/'arch/mips_regions.py',Path(__file__).parent/'arch/mips_search.py']
     return [(p.name,file_digest(p)) for p in paths]
 
 
 def file_digest(path):
     try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
+        stamp = path.stat()
+        return _code_digest(path, stamp.st_mtime_ns, stamp.st_ctime_ns, stamp.st_size, stamp.st_ino)
     except OSError:
         return 'unavailable'
+
+
+@lru_cache(maxsize=512)
+def _code_digest(path, mtime, ctime, size, inode):
+    # Only implementation files use this cache; game/header byte verification is unchanged.
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def signature(net, proj, fn, common=None):

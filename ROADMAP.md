@@ -1,5 +1,9 @@
 # Roadmap
 
+Implemented: explicit reviewed MIPS raw-tail recovery with staged disassembly, original-prefix and overlap guards,
+saved progress, and raw/export boundary reconciliation. Added a source-independent corruption benchmark
+and bounded leaf review hints. New-function adoption and other-processor/imported-build extent recovery remain planned.
+
 Implemented: source-free MIPS fallthrough/delay-slot review, legacy incomplete-entry visibility,
 derived boundary-review filters and map state, raw/interior audit metrics, and a bounded
 completion audit in the overview. Detected progress is never whole-image completion proof.
@@ -306,6 +310,7 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Agents' verdict "no C makes this" (3 agents of 2 models: set aside, red in the map) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Check again (and before helpers start, once after each update) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Kernel stubs set aside and named | — | set aside (BIOS calls) | ✓ | set aside, named by library and NID | — | ✓ import thunks | — | — |
+| Reviewed existing raw-tail recovery (local ROM) | ✓ | ✓ | ✓ (scalar decoder) | ✓ | — | — | — | — |
 | Derived incomplete state / raw coverage / completion audit | ✓ | ✓ | ✓ (scalar decoder) | ✓ | — | — | — | — |
 | Read-only gap/pointer/interior audit / incomplete-target warnings | ✓ | ✓ | ✓ (scalar decoder) | ✓ | — | — | — | — |
 | Guarded jump-table / local callback-consumer audit (scalar MIPS ROM) | ✓ | ✓ | ✓ | ✓ | — | — | — | — |
@@ -2206,3 +2211,21 @@ have a worker-specific index. Global agent views and reset/lifetime accounting r
 
 Completed: the function drawer defers optional cross-project and SDK name similarity work to the
 existing peers disclosure request, for both ROM and imported projects.
+
+- Done: local ROM deep searches offer 1–16 compiler profiles per C candidate, default first then
+  distinct profiles ranked by matched-function usage. Tests and exact-bundle verification share the
+  compile allowance; misses are cached per profile. Project-wide passes remember the count and
+  invalidate completed scopes when it changes. Imported-build and host-owned room profile search
+  needs separate build/host support and remains planned.
+
+
+
+Completed: deep-pass polling reuses revision-scoped queue/error checks; ROM maps cache cross-project
+byte relationships; compiler display reads use covering metadata and separate automatic maintenance;
+profile hypothesis extraction is compact and cached using the existing project/example index.
+Optional startup console/SDK work is staggered and yields briefly to navigation. Scope invalidation,
+external imported-project expiry, explicit checks and the ordinary byte judge are preserved.
+
+- Done: batch deep-pass queue reads, bound inspector chart/note payloads, reuse function
+  records, coalesce worker snapshots, move response encoding to workers with bounded
+  full-map wire caching, and add opt-in request/SQL/browser timing diagnostics.

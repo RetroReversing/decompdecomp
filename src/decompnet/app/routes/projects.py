@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import secrets
 import shutil
+import threading
 import time
 from pathlib import Path
 
@@ -47,7 +48,10 @@ def register(app: App) -> None:
                         net.progress.sync(slug, force=True)
                     return result
                 reader = app.fast_call if request.url.path == '/api/live' else app.ui_call
-                return JSONResponse(await ((reader or call) if request.method == "GET" else call)(perform))
+                from ...request_timing import response
+                def respond():
+                    return response(perform, started, JSONResponse, request.url.path)
+                return await ((reader or call) if request.method == "GET" else call)(respond)
             except (NetworkError, ValueError, toolchains.ToolchainError, OSError) as e:
                 return fail(e)
             finally:
@@ -126,6 +130,10 @@ def register(app: App) -> None:
         from .. import rom_gap_audit
         return {"job": jobs.start("code-audit",lambda log:rom_gap_audit.run(net,slug,log))}
 
+    def p_recover_code(slug, request, data):
+        from ..reviewed_code import run
+        return {"job":jobs.start('reviewed-code-recovery',lambda log:run(net,slug,data.get('changes'),log))}
+
     def g_code_audit(slug, request, data):
         from ..code_audit_reviews import decorated, load
         return decorated(load(net,net.project_row(slug)['id']))
@@ -160,6 +168,9 @@ def register(app: App) -> None:
         return {"job": jobs.start(
             "reimport", lambda log: net.reimport_rom(slug, path, confirmed=True, name=path.name, log=log))}
 
+    compiler_maintenance = {}
+    compiler_maintenance_lock = threading.Lock()
+
     def p_compilermap(slug, request, data):
         """The compiler answer (GET): which compiler built the game, and its parts; the app checks by itself when the
         answer is old. POST: check again now (the survey and the applied ranges)."""
@@ -171,7 +182,25 @@ def register(app: App) -> None:
             return {"job": jobs.start("installed compilers", lambda log: net.run_compiler_comparison(
                 slug, log=log, function=data.get("function", ""), untested_only=data.get("untested_only", True), flags_only=bool(data.get("flags_only", False)), auto_apply=data.get("auto_apply", False)),
                 cancel_message="Compiler comparison stopped. Completed results are saved.")}
-        return net.compiler_answer(slug, check_now=request.method == "POST")
+        if request.method == 'POST':
+            return net.compiler_answer(slug, check_now=True)
+        project = net.store.one('SELECT id FROM projects WHERE slug=?', slug)
+        version = net.store.read_version('inputs', project['id'] if project else None)
+        with compiler_maintenance_lock:
+            previous = compiler_maintenance.get(slug)
+            if previous is None or (not previous['running'] and (previous['version'] != version or time.monotonic()-previous['at'] > 60)):
+                state = {'version': version, 'at': time.monotonic(), 'running': True}
+                compiler_maintenance[slug] = state
+                def maintain():
+                    try:
+                        net.compiler_answer(slug)
+                    except Exception:
+                        jobs.logger.exception('Automatic compiler checks failed for %s', slug)
+                    finally:
+                        with compiler_maintenance_lock:
+                            state['running'] = False
+                threading.Thread(target=maintain, daemon=True, name=f'compiler-status-{slug}').start()
+        return net.compiler_answer(slug, display_only=True)
 
     def p_verification(slug, request, data):
         if data.get("paused"):
@@ -390,7 +419,12 @@ def register(app: App) -> None:
         if not isinstance(data.get('repeat', False), bool):
             raise ValueError('Repeat must be true or false.')
         return sweeps.start(slug, data.get('minutes', 5), data.get('max_variants', 10000), data.get('repeat', False),
-                            data.get('threads', 0))
+                            data.get('threads', 0), data.get('compiler_profiles', 1))
+
+    def p_function_notes(slug, request, data):
+        from ..function_history import notes_page
+        fn = net._function(request.query_params.get('name', ''), slug)
+        return notes_page(net.store, fn, request.query_params.get('before'))
 
     function_searches = {}
 
@@ -413,12 +447,14 @@ def register(app: App) -> None:
         from .. import deep_permuter
         name = str(data.get('function') or '')
         minutes, variants = data.get('minutes', 30), data.get('max_variants', 100000)
+        from .. import deep_profiles
+        profiles = deep_profiles.validate(data.get('compiler_profiles', 1))
         with jobs._lock:
             previous = function_searches.get((slug, name))
             if previous and jobs.jobs.get(previous, {}).get('state') == 'running':
                 return {'job': previous}
             deep_permuter.validate(net, slug, name, minutes, variants)
-            job = jobs.start('deep-permuter', lambda log: deep_permuter.run(net, slug, name, minutes, variants, log),
+            job = jobs.start('deep-permuter', lambda log: deep_permuter.run(net, slug, name, minutes, variants, log, compiler_profiles=profiles),
                              cancel_message='Deep permuter stopped. Verified improvements are saved.')
             function_searches[slug, name] = job
             return {'job': job}
@@ -577,12 +613,14 @@ def register(app: App) -> None:
         "/api/live": (p_live, ["GET"]),
         "/api/transcript": (p_transcript, ["GET", "POST"]),
         "/api/function": (p_function, ["GET"]),
+        "/api/function-notes": (p_function_notes, ["GET"]),
         "/api/diff": (lambda s, r, d: net.function_diff(s, r.query_params.get("name", ""),
                                                         r.query_params.get("which", "latest")), ["GET"]),
         "/api/compiler": (p_compiler, ["POST"]),
         "/api/compiler/test-default": (p_compiler_default_test, ["POST"]),
         "/api/compiler/cleanup": (p_compiler_cleanup, ["POST"]), "/api/export": (p_export, ["POST"]), "/api/open": (p_open, ["POST"]),
         "/api/reimport": (p_reimport, ["POST"]), "/api/code-audit": (p_code_audit, ["POST"]),
+        "/api/recover-code": (p_recover_code, ["POST"]),
         "/api/code-audit-results": (g_code_audit, ["GET"]), "/api/code-audit-review": (p_code_audit_review, ["POST"]),
         "/api/delete": (p_delete, ["POST"]),
         "/api/try": (p_try, ["POST"]), "/api/release": (p_release, ["POST"]), "/api/claim/handover": (p_claim_handover, ["POST"]), "/api/reopen": (p_reopen, ["POST"]), "/api/setaside": (p_set_aside, ["POST"]),

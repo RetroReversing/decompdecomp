@@ -547,3 +547,74 @@ def test_queue_separates_rotated_errors_and_removed_functions(sweep):
     assert (status['queue_left'], status['queue_rotated'], status['queue_blocked']) == (0, 0, 1)
     assert obj.run('game', 1, 10, Log())['functions_tested'] == 0
     assert calls == []
+
+
+def test_profile_count_is_remembered_forwarded_and_invalidates_completion(sweep, monkeypatch):
+    obj, net, _, _ = sweep
+    counts = []
+    def search(net, slug, name, minutes, variants, log, compiler_profiles=1):
+        counts.append(compiler_profiles)
+        return {'tested':2, 'matched':False, 'reason':'Time limit reached', 'best_score':50,
+                'compiler_profiles':compiler_profiles}
+    monkeypatch.setattr(deep_permuter, 'run', search)
+    obj.save('game', {'enabled':False, 'minutes':1, 'max_variants':10, 'compiler_profiles':1})
+    assert obj.run('game', 1, 10, Log())['functions_tested'] == 2
+    assert obj.run('game', 1, 10, Log())['functions_tested'] == 0
+    obj.save('game', {**obj.config('game'), 'compiler_profiles':2})
+    assert obj.config('game')['compiler_profiles'] == 2
+    assert obj.run('game', 1, 10, Log())['functions_tested'] == 2
+    assert counts == [1, 1, 2, 2]
+
+
+def test_status_reuses_scope_checks_until_header_or_pass_changes(sweep, monkeypatch):
+    obj, net, _, _ = sweep
+    obj.save('game', {'enabled': False, 'minutes': 1, 'max_variants': 10})
+    obj.run('game', 1, 10, Log())
+    calls = []
+    original = deep_sweep.signature
+    def measured(*args):
+        calls.append(1)
+        return original(*args)
+    monkeypatch.setattr(deep_sweep, 'signature', measured)
+    obj.status('game')
+    first = len(calls)
+    obj.status('game')
+    assert len(calls) == first
+    with net.store.tx() as db:
+        db.execute("INSERT INTO context_versions(project_id,version,unit,header,created_at) VALUES(1,1,'','/* declaration edit */',0)")
+    obj.status('game')
+    assert len(calls) > first
+
+def test_queue_batches_state_and_loads_fresh_function_at_dispatch(sweep, monkeypatch):
+    obj, net, calls, _ = sweep
+    reads=[]
+    original=net.store.all
+    def read(sql,*args):
+        reads.append(sql)
+        return original(sql,*args)
+    monkeypatch.setattr(net.store,'all',read)
+    def shuffle(batch):
+        assert all(set(fn) == {'id','name','size'} for fn,scope in batch)
+        # A concurrent worker removes this candidate after the queue snapshot.
+        with net.store.tx() as db:
+            db.execute("UPDATE functions SET status='matched' WHERE name='f0'")
+    monkeypatch.setattr(deep_sweep.random,'shuffle',shuffle)
+    obj.run('game',1,10,Log())
+    assert calls == ['f1']
+    assert any('LEFT JOIN deep_permutation_passes' in sql and 'LIMIT 128' in sql for sql in reads)
+
+
+def test_cached_queue_and_attention_refresh_when_profile_count_changes(sweep):
+    obj, net, _, _ = sweep
+    cfg={'enabled':False,'minutes':1,'max_variants':10,'compiler_profiles':1}
+    obj.save('game',cfg)
+    proj=net.project_row('game')
+    for name,state in [('f0','completed'),('f1','error')]:
+        fn=net._function(name,'game')
+        obj.record(fn,deep_sweep.signature(net,proj,fn,1,10),state,1,10,error='compile failed' if state=='error' else '')
+    first=obj.status('game')
+    assert first['queue_done']==1 and first['queue_blocked']==1 and len(first['attention'])==1
+    obj.save('game',cfg | {'compiler_profiles':2})
+    changed=obj.status('game')
+    assert changed['queue_done']==0 and changed['queue_blocked']==0 and changed['queue_left']==2
+    assert changed['attention']==[]

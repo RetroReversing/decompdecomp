@@ -31,6 +31,9 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
 
 ## Match through the live app
 
+Reviewed MIPS raw tails can be recovered through the coverage panel or operator API, with staged disassembly, unchanged original prefixes and export guards. A known-demo corruption benchmark measures detection independently of matching; see [coverage review](docs/CODE_COVERAGE_REVIEW.md).
+
+
 Local MIPS ROM projects expose incomplete function boundaries and raw-region
 coverage separately from matching progress. When the detected queue empties, the
 overview runs a bounded CPU coverage audit; it never infers whole-game completion
@@ -1071,6 +1074,17 @@ reach it. No AI tokens are used by these searches.
 
 For a longer search of one function, open its drawer and expand **Deep permuter · this function**.
 Choose a time limit and maximum candidate compiles, then select **Run deep permuter**.
+For local ROM projects, **Compiler profiles per candidate** selects how many profiles each local/random
+C variant is tried against: **1** uses the project default; **2** adds the distinct alternative used by
+the most matched functions. Higher counts add further profiles in that order, including differences in
+flags. Profiles with no matches are excluded. The same setting is available on the project-wide pass.
+Each source/profile test uses the shared compile allowance, so increasing this count tests fewer distinct
+C variants within the same budget. Exact alternatives reserve verification allowance and go through the
+existing function-only source/header/profile check, respecting automatic compiler changes. Alternative
+near-miss scores are retained as diagnostic evidence, without replacing the saved current-profile score.
+Changing the profile count makes completed project-pass entries eligible again. Imported projects and
+rooms keep their build/host compiler settings; multiple-profile searches are not available there.
+
 The scorecard shows the freshly measured starting score and percentage, the current best, and how many
 verified score reductions this run found. Local repairs and random rewrites share that improvement count.
 Expand **Technical output** for compiler diagnostics; the progress bar stays visible when output is closed. **Stop** ends the job
@@ -1595,3 +1609,29 @@ such as polishing or restored match attribution. The global agents overview stil
 Opening a function loads its core detail without waiting for cross-project/SDK name searches.
 Expand **Other projects and local SDKs** to load those suggestions through its separate progress
 indicator. This applies to both ROM and imported projects; agent detail requests can still include hints.
+
+
+### Cached project read paths and startup maintenance
+
+Deep-pass queue totals and blocked-candidate explanations reuse validated scope results until their
+project's sources, declarations, symbols, compiler inputs or pass records change. Imported projects
+also expire these results after ten seconds to detect external file changes. Repair implementation
+hashes are reused while file identity, size, modification and change timestamps stay unchanged.
+Actual search eligibility and byte verification still use the normal scope and judge checks.
+
+The ROM map caches cross-project byte relationships and invalidates them on target/layout changes;
+ordinary progress or source edits do not reread every open project's bytes. Compiler panels use
+indexed, cached metadata and schedule automatic surveys/range audits separately from display reads.
+Explicit compiler checks retain their existing verification path. Compiler-profile hypotheses share
+compact evidence extraction across flag requests and refresh when examples change; every proposed
+profile still requires normal rejudging before use.
+
+Optional console initialization and SDK naming begin after a seven-second startup grace period,
+with two seconds between tasks and the last-opened project first. Foreground navigation can postpone
+a task briefly (up to three additional seconds). Autosave, claim cleanup, room reconnects and agent
+resume retain their existing startup paths. Deferred maintenance stops when the app quits/restarts.
+
+Function inspectors now bound chart payloads and load older notes on demand. Deep-pass
+queues batch their reads, and worker progress updates coalesce while improvements and
+completion remain immediate. Optional request and browser timings are documented in
+[interactive app performance](docs/APP_PERFORMANCE.md#queue-and-inspector-throughput).

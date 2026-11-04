@@ -157,3 +157,12 @@ vm.runInContext(source.slice(source.indexOf("let deepSweepFollowing"), source.in
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(finished,1);
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
+// Integration with the match-ranked profile controls: one field in the compact Advanced disclosure.
+const html=fs.readFileSync('src/decompnet/app/static/index.html','utf8');
+const panel=html.slice(html.indexOf('id="deepSweepPanel"'),html.indexOf('id="deepSweepAttention"'));
+for (const id of ['deepSweepMinutes','deepSweepVariants','deepSweepProfiles','deepSweepThreads','deepSweepRepeat']) {
+  assert.equal((panel.match(new RegExp('id="'+id+'"','g')) || []).length,1,`${id} must occur exactly once`);
+}
+assert.match(panel,/<details class="deep-advanced">[\s\S]*?id="deepSweepProfiles"[^>]*min="1"[^>]*max="16"[\s\S]*?<\/details>/);
+assert.match(panel,/<div class="deep-dashboard">/);
