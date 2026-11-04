@@ -2154,3 +2154,9 @@ Automatic evidence checks and room services remain read-only here and use their 
   verified build changes, commits only sync-owned paths and pushes the configured upstream.
   Failed pushes retain the commit for retry. Imported-project commit/push UI remains planned;
   those projects already keep their source in their own checkout.
+
+The background-work thread table explains registered thread roles, shows native IDs and sorts
+by measured CPU, name or purpose. macOS uses proc_pidinfo(PROC_PIDTHREADID64INFO); Linux
+uses /proc/self/task counters. First observations show Measuring; unsupported/failed reads show
+Unavailable. Metrics exclude compiler subprocesses and do not attribute shared pool work to
+individual jobs. Windows per-thread counters remain planned work.
