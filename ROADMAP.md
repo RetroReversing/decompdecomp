@@ -1,5 +1,12 @@
 # Roadmap
 
+Implemented: bounded single-call one-shot scopes, debug-aware initialization grouping and
+repeated-float staging, and disjoint pointer/integer scratch unions. Closed register cycles
+prioritize these lifetime hypotheses. One private KMC known-match replay recovered exact
+bytes through three generated steps. Unknown imported per-file debug/ABI metadata keeps the
+corresponding grouping/union trials disabled; build-owned metadata adapters and wider-pointer
+union support remain planned. Call scopes and allocation advice use the shared source pipeline.
+
 Implemented: NOP-only MIPS targets remain rebuildable as set-aside assembly in ROM imports and project objects;
 Check again applies the same classification to existing targets.
 Incomplete nonzero targets still receive advisory boundary review; original bytes, symbols, matches and explicit
