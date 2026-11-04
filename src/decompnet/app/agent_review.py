@@ -3,6 +3,7 @@ import hashlib
 import json
 import re
 import time
+from contextlib import nullcontext
 
 from ..network import NetworkError
 
@@ -16,7 +17,16 @@ def digest(value):
     return hashlib.sha256(repr(value).encode()).hexdigest()
 
 
+def view(net):
+    return net.progress.view() if hasattr(net,'progress') else nullcontext()
+
+
 def facts(net, proj, fn):
+    with view(net):
+        return _facts(net,proj,fn)
+
+
+def _facts(net, proj, fn):
     from .. import candidate_scope, claim_stalls
     state = candidate_scope.state(net, proj, fn)
     return {'compiler':digest(state[0]), 'project/build inputs':digest(state[1:4]), 'header':digest(state[4]), 'symbols':digest(state[5]),
@@ -66,6 +76,11 @@ def entry(net, proj, fn, state):
 
 
 def listing(net, slug):
+    with view(net):
+        return _listing(net,slug)
+
+
+def _listing(net, slug):
     proj = net.project_row(slug)
     rows = net.store.all('SELECT f.*,s.value AS review FROM functions f LEFT JOIN settings s ON s.key=? || f.id '
                          "WHERE f.project_id=? AND f.status='open' AND (s.value IS NOT NULL OR EXISTS("
@@ -92,9 +107,18 @@ def listing(net, slug):
 
 
 def acknowledge(net, slug, name):
-    fn = net._function(name, slug)
-    state = load(net,PREFIX+str(fn['id']))
+    with view(net):
+        return _acknowledge(net,slug,name)
+
+
+def _acknowledge(net, slug, name):
+    # Review metadata uses the saved row; resolving an engine function can start
+    # whole-project verification, which is unnecessary for acknowledgment.
     proj = net.project_row(slug)
+    fn = net.store.one('SELECT * FROM functions WHERE project_id=? AND name=?',proj['id'],name)
+    if fn is None:
+        raise NetworkError('That function is no longer in this project. Refresh the review.')
+    state = load(net,PREFIX+str(fn['id']))
     if state and state.get('facts') != facts(net,proj,fn):
         raise NetworkError('Inputs changed; refresh the review before acknowledging it.')
     if not state:
