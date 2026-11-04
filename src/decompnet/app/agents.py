@@ -165,6 +165,7 @@ SCHEMA = (
       cache_write_tokens INTEGER NOT NULL DEFAULT 0, tokens INTEGER NOT NULL DEFAULT 0,
       turns INTEGER NOT NULL DEFAULT 0, tool_calls INTEGER NOT NULL DEFAULT 0, compiles INTEGER NOT NULL DEFAULT 0,
       matches INTEGER NOT NULL DEFAULT 0, task TEXT NOT NULL DEFAULT '')""",
+    "CREATE INDEX IF NOT EXISTS idx_helper_sessions_handoff ON helper_sessions(helper_id,project,id)",
     "CREATE INDEX IF NOT EXISTS idx_helper_sessions_model ON helper_sessions(project, model)",
     "CREATE INDEX IF NOT EXISTS idx_helper_sessions_worker ON helper_sessions(helper_id,agent,ended_at)",
 )
@@ -1708,6 +1709,13 @@ class Manager:
         if LIMIT.search(everything):
             s.limited = True  # whatever the exit code: Claude Code says so in an ordinary result
             s.limit_until = limit_reset(everything)
+            # Publish the account cooldown before closing this session, so siblings
+            # do not launch another paid request while its exit is being recorded.
+            from . import session_followups
+            session_followups.remember_limit(self, s, (s.limit_until or time.time()+LIMIT_WAIT_FIRST)+LIMIT_RESET_MARGIN)
+            s.error = "Provider usage limit reached; waiting for reset."
+            s.push('info', s.error)
+            return False
         elif code != 0 and (why := no_credit(everything)):
             raise Fatal(why)  # every agent on this account fails the same way until it's topped up
         if re.search(r"invalid API token|(?:decomp tools|decomp MCP server)[^\n]{0,100}(?:not available|aren't available|not connected|unavailable)|none of the decomp tools|no decomp tools", everything, re.I):
