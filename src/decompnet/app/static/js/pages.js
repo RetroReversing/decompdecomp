@@ -17,6 +17,7 @@ async function renderPairings() {
   let pending;
   try { pending = (await api("/api/pair/requests")).requests; } catch { return; }
   panel.hidden = !pending.length;
+  disclosureContext('agPairContext', `${pending.length} pending`);
   if (!pending.length) return;
   const projects = S.projects && S.projects.length ? S.projects : (S.projects = await api("/api/projects").catch(() => []));
   box.innerHTML = `<p class="muted small">Agents outside the app asked to work on a project. Approving mints one a token for the single project you pick; it reads the token itself, with the secret only it holds.</p>` +
@@ -43,6 +44,7 @@ async function renderPairings() {
 setInterval(() => { if (!$("agentsPage").hidden) renderPairings(); }, 5000);
 function renderAgentsPage() {
   const rows = S.st.agents.filter((a) => !a.uses_endpoints);
+  disclosureContext('agAppsContext', `${rows.filter(a=>a.installed).length} installed${S.st.agents_detecting ? ' · checking…' : ''}`);
   $("agList").innerHTML = rows.map((a) => `<div class="agent-row">
       <div class="ar-head"><b>${esc(a.name)}</b><span class="muted small">${esc(a.vendor)}</span><span class="grow"></span>
         ${a.installed ? `<span class="ok-mark">installed</span>` : `<button class="primary small-btn" data-inst="${esc(a.id)}" type="button" ${a.needs ? "disabled" : ""}>Install</button>`}</div>
@@ -66,6 +68,7 @@ function renderAgentsPage() {
     };
   });
   const eps = S.st.settings.endpoints || [];
+  disclosureContext('agApiContext', `${eps.length} saved endpoint${eps.length===1 ? '' : 's'}`);
   const card = (e) => `<div class="ep-card" data-id="${esc(e.id || "")}">
       ${e.id ? `<div class="ar-head"><b>${esc(e.name)}</b><span class="muted small mono">${esc(e.model)} · ${esc(hostOf(e.base_url))}</span></div>` : `<div class="ar-head"><b>A new endpoint</b></div>`}
       <div class="lz-fields">${endpointFields(e)}</div>
@@ -96,7 +99,14 @@ function renderAgentsPage() {
   });
   if ($("epAdd")) $("epAdd").onclick = () => { S.addingEndpoint = true; renderAgentsPage(); };
 }
-$("agRefresh").onclick = showAgentsPage;
+$("agRefresh").onclick = async event => {
+  event.preventDefault(); // Refresh without toggling the disclosure.
+  event.stopPropagation();
+  const button=$("agRefresh"); button.disabled=true; button.textContent='↻ Checking…';
+  try { await showAgentsPage(); }
+  catch(error) { toast(esc(error.message),'err'); }
+  finally { button.disabled=false; button.textContent='↻ Refresh'; }
+};
 
 /* ------------------------------------------------------------------ compilers & tools page */
 let toolFilter = "";
@@ -303,7 +313,7 @@ async function showSettingsPage() {
   const from = inst.channel === "branch" ? `the ${esc(inst.branch)} branch @ <code>${esc((inst.commit || "?").slice(0, 7))}</code>` : "releases on GitHub";
   $("setAbout").innerHTML = `<p class="small">${esc(versionLine(st))} on ${esc(st.platform)}. Free and open source (AGPL-3.0): <a class="link" href="https://github.com/RetroReversing/decompdecomp" target="_blank" rel="noopener">its source</a>. Everything runs on this computer: no account, nothing sent to us.</p>
     <p class="small muted">A continuation of <a class="link" href="https://github.com/i12bp8/decomp.wtf" target="_blank" rel="noopener">decomp.wtf</a> by Sam Wolfs, who built it up to 0.10.6. Thank you, Sam.</p>
-    ${st.dev ? `<div class="field"><span>Updates</span><p class="muted small">Running from a Git checkout. Use the source launcher below to pull main and restart when idle.</p></div>` : `
+    ${st.dev ? `<div class="field"><span>Updates</span><p class="muted small">Running from a Git checkout. Use the source launcher below to prepare main updates in the background and enable automatic updates.</p></div>` : `
     <div class="field"><span>Updates come from ${esc(inst.repo || "RetroReversing/decompdecomp")} · ${from}</span><div class="row"><span class="muted small grow" id="upText">Checking…</span><button class="ghost small-btn" id="upCheck" type="button">Check now</button></div></div>
     <label class="check"><input type="checkbox" id="checkUpdateSet" ${st.settings.check_updates ? "checked" : ""}><span><b>Look for updates</b> now and then (it only asks ${inst.channel === "branch" ? "GitHub for the branch's newest commit" : "GitHub which version is current"}; nothing about you or your projects is sent).</span></label>
     <label class="check"><input type="checkbox" id="autoUpdateSet" ${st.settings.auto_update ? "checked" : ""}><span><b>Install updates by itself</b> when no helper agent is working (it restarts in a few seconds; agents carry on).</span></label>
@@ -319,7 +329,7 @@ async function showSettingsPage() {
     <div class="row"><a class="link small" href="https://github.com/RetroReversing/decompdecomp" target="_blank" rel="noopener">Source code</a></div>`;
   const runtimeButton = document.createElement("button");
   runtimeButton.type = "button"; runtimeButton.className = "ghost";
-  runtimeButton.textContent = "Run from Git / update when idle…";
+  runtimeButton.textContent = "Run from Git / background updates…";
   runtimeButton.onclick = sourceRuntimeDialog;
   $("setAbout").append(runtimeButton);
   const showUpdate = (u) => {
@@ -614,16 +624,27 @@ setTimeout(() => checkUpdate(false, true), 4000);
 setInterval(() => checkUpdate(false, true), 10 * 60 * 1000);
 
 /* Manual clients have project-scoped credentials, independent of managed helper processes. */
-let manualMcpRead = 0;
+let manualMcpRead = 0, manualMcpProjectsRead = 0;
 async function loadManualMcp() {
   loadGlobalPrompts();
   loadGlobalAgentTools();
   const select = $("mcpProject"), previous = select.value;
-  select.innerHTML = S.projects.map(p => `<option value="${esc(p.slug)}">${esc(p.title || p.name || p.slug)}</option>`).join("");
-  if (S.projects.some(p => p.slug === previous)) select.value = previous;
+  select.innerHTML='<option value="">Loading projects…</option>';select.disabled=true;
+  const read=++manualMcpProjectsRead, log=$("mcpLog");
+  const done=beginWork(log,'Loading MCP projects');
+  $("mcpCreate").disabled=true;
+  let projects;
+  try { projects=await api('/api/projects?brief=1'); }
+  catch(error){if(read===manualMcpProjectsRead){select.innerHTML='<option value="">Could not load projects — try Refresh</option>';showJobError(log,error.message);}return;}
+  finally{done();}
+  if(read!==manualMcpProjectsRead)return;
+  select.innerHTML = projects.map(p => `<option value="${esc(p.slug)}">${esc(p.title || p.name || p.slug)}</option>`).join("");
+  select.disabled=!projects.length;
+  if(!projects.length)select.innerHTML='<option value="">No open projects</option>';
+  select.value=projects.some(p=>p.slug===previous) ? previous : projects[0]?.slug || "";
   $("mcpCreate").disabled = !select.value;
-  select.onchange = () => { $("mcpConfig").replaceChildren(); refreshManualMcp(); };
-  $("mcpRefresh").onclick = refreshManualMcp;
+  select.onchange = () => { $("mcpCreate").disabled=!select.value; $("mcpConfig").replaceChildren(); refreshManualMcp(); };
+  $("mcpRefresh").onclick = loadManualMcp;
   $("mcpCreate").onclick = async () => {
     const slug = select.value, button = $("mcpCreate"), log = $("mcpLog");
     const finish = beginWork(log, "Creating MCP connection", [], "Connection created.");
@@ -647,8 +668,10 @@ async function refreshManualMcp() {
     const info = await api(`/api/manual-mcp${slug ? `?slug=${encodeURIComponent(slug)}` : ""}`);
     if (read !== manualMcpRead) return;
     const port = new URL(info.url).port;
+    disclosureContext('agMcpContext', `${info.connections.length} connection${info.connections.length===1 ? '' : 's'} · local server`);
     $("mcpStatus").innerHTML = `<p><b>Running locally</b> · ${esc(info.transport)} · Port ${esc(port)}</p>${cmdBox(info.url)}<p class="small muted">Local clients only (127.0.0.1). No public endpoint or OAuth sign-in. Choose a project to see its tools.</p>`;
     wireCopies($("mcpStatus"));
+    if(!slug)$("mcpStatus").insertAdjacentHTML?.('beforeend','<p class="small muted">No projects are open. Add a project before creating an MCP connection.</p>');
     $("mcpToolCount").textContent = `(${info.tools.length})`;
     $("mcpTools").replaceChildren(toolCatalog(info.tools));
     $("mcpConnections").innerHTML = info.connections.length ? info.connections.map(c => `<div class="row mcp-connection"><code class="grow">${esc(c.name)} · ${esc(c.slug)}</code><button class="ghost small-btn" data-revoke-mcp="${c.id}" type="button">Revoke</button></div>`).join("") : `<p class="muted small">No manual connections yet.</p>`;
@@ -673,17 +696,24 @@ async function sourceRuntimeDialog() {
     <label class="field"><span>Projects and settings</span><select data-runtime-data><option value="development">Separate development data (~/Decomp-dev)</option><option value="current">Keep this app’s current projects and settings</option></select></label>
     <button type="button" class="ghost small-btn" data-runtime-download>Download a new checkout…</button>
     <p class="small muted" data-runtime-home></p>
-    <p class="small muted">New agent sessions and jobs are held while current work finishes. Keeping current data restarts this process; separate development data opens another app and leaves this one running. Long-running background tasks must finish or be stopped from their panels. The checkout is then pulled with fast-forward only, dependencies are prepared, and the checkout launches. Existing work is not migrated or copied. Close this dialog and return here to check progress.</p>
-    <div class="row"><button class="primary" type="button" data-runtime-go>Pull main & launch when idle</button><button class="ghost" type="button" data-runtime-cancel hidden>Cancel queued restart</button></div>
+    <label class="check"><input type="checkbox" data-runtime-auto><span><b>Automatically update from main</b><br><span class="small muted">Download and prepare updates while work continues. Try a brief restart checkpoint; if work needs longer, release the hold and retry later. Agents resume with saved usage limits.</span></span></label>
+    <p class="small muted">Updates are prepared in a separate runtime; your checkout and its Python environment stay unchanged. Python changes require a brief restart. Active sessions and finite jobs are allowed to finish; each restart check holds new sessions for at most 15 seconds, then work continues until the next check. Separate development data opens another app without pausing this one.</p>
+    <div class="row"><button class="primary" type="button" data-runtime-go>Prepare update in background</button><button class="ghost" type="button" data-runtime-cancel hidden>Cancel queued restart</button></div>
     <p role="status" aria-live="polite" data-runtime-status></p><div class="workbar" role="progressbar" aria-label="Preparing source runtime" data-runtime-bar hidden><i></i></div>`);
   const get = selector => body.querySelector(selector), go=get('[data-runtime-go]'), cancel=get('[data-runtime-cancel]'), path=get('[data-runtime-path]');
   const render = info => {
-    const job=info.job || {}, busy=['waiting','updating','restarting'].includes(job.state);
+    const job=info.job || {}, busy=['preparing','waiting','deferred','updating','restarting'].includes(job.state);
     go.disabled=busy; path.disabled=busy; get('[data-runtime-data]').disabled=busy; get('[data-runtime-browse]').disabled=busy;
-    cancel.hidden=job.state!=='waiting'; get('[data-runtime-bar]').hidden=!busy;
+    cancel.hidden=!['preparing','waiting','deferred'].includes(job.state); get('[data-runtime-auto]').checked=!!info.automatic; get('[data-runtime-bar]').hidden=!busy;
     get('[data-runtime-status]').textContent=job.message || (info.source_running ? 'Running from source. Pull main here to update without rebuilding the app.' : 'Choose a checkout and which app data to use.');
     get('[data-runtime-home]').textContent=`Current app data: ${info.home}. Keeping it switches this process to source code; the installed app bundle stays unchanged.`;
     if (!path.value) path.value=info.path || '';
+  };
+  get('[data-runtime-auto]').onchange=async()=>{
+    const control=get('[data-runtime-auto]'); control.disabled=true;
+    try {render(await api('/api/update/runtime',{method:'POST',body:{action:'automatic',enabled:control.checked}}));}
+    catch(error){control.checked=!control.checked;get('[data-runtime-status]').textContent=error.message;}
+    finally {control.disabled=false;}
   };
   get('[data-runtime-download]').onclick=()=>{ get('[data-runtime-download]').hidden=true; sourceCheckoutPanel(body); };
   get('[data-runtime-browse]').onclick=async()=>{

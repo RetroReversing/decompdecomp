@@ -1826,6 +1826,11 @@ def test_source_runtime_route_reports_home_and_requires_explicit_data_choice(app
     assert status.status_code==200 and status.json()['home']
     rejected=client.post('/api/update/runtime',json={'path':'/not/a/checkout'},headers={'X-Decomp':'1'})
     assert rejected.status_code==400 and 'Choose current' in rejected.json()['error']
+    configured=client.post('/api/update/runtime',json={'action':'automatic','enabled':True},headers={'X-Decomp':'1'})
+    assert configured.status_code==200 and configured.json()['automatic'] is True
+    assert client.get('/api/update/runtime').json()['automatic'] is True
+    invalid=client.post('/api/update/runtime',json={'action':'automatic','enabled':'yes'},headers={'X-Decomp':'1'})
+    assert invalid.status_code==400
 
 
 def test_background_agent_creation_keeps_server_responsive_and_reports_steps(tmp_path,monkeypatch):
@@ -1969,3 +1974,191 @@ def test_global_tool_preset_route_applies_and_validates_atomically(app):
                 db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)', (tool_policy.KEY, previous['value']))
             else:
                 db.execute('DELETE FROM settings WHERE key=?', (tool_policy.KEY,))
+
+
+def test_focused_agent_start_passes_scope_and_duration_and_rejects_multiple(app,monkeypatch):
+    from .test_loading import tiny_game
+
+    client,net,manager=app
+    tiny_game(net)
+    seen=[]
+    monkeypatch.setattr(manager,'start',lambda kind,slug,count=1,options=None:seen.append(options) or ['focused'])
+    response=client.post('/api/agents/start',headers={'X-Decomp':'1'},json={
+        'kind':'codex','slug':'game','options':{'focus_function':'f0','focus_minutes':15,'model':'test'}})
+    assert response.status_code==200,response.text
+    assert seen[0]['focus_function']=='f0' and seen[0]['focus_minutes']==15
+    response=client.post('/api/agents/start',headers={'X-Decomp':'1'},json={
+        'kind':'codex','slug':'game','count':2,'options':{'focus_function':'f0','focus_minutes':15}})
+    assert response.status_code==400
+    assert len(seen)==1
+
+
+def test_compiler_suggestion_background_reports_progress_and_reuses_job(app, monkeypatch):
+    client, net, *_ = app
+    entered, release = threading.Event(), threading.Event()
+    calls, saves = [], []
+    def resolve(slug, sid, apply, log):
+        calls.append((slug, sid, apply))
+        log('Checking 2 matched functions before changing compiler settings.')
+        entered.set()
+        assert release.wait(5)
+        log('Compiler checks passed; settings and scores saved.')
+    monkeypatch.setattr(net, 'resolve_suggestion', resolve)
+    monkeypatch.setattr(net.progress, 'sync', lambda *a, **kw: saves.append(a) if a[0] == 'suggestion-progress' else None)
+    monkeypatch.setattr(net, 'overview', lambda slug: {'slug': slug, 'suggestions': []})
+    payload = {'slug': 'suggestion-progress', 'id': 1, 'action': 'apply', 'background': True}
+    try:
+        first = client.post('/api/suggestion', json=payload, headers={'X-Decomp': '1'})
+        assert first.status_code == 200
+        assert entered.wait(2)
+        job = first.json()['job']
+        assert saves == []  # the initial request must not wait for project-wide disk synchronization
+        second = client.post('/api/suggestion', json=payload, headers={'X-Decomp': '1'})
+        assert second.json()['job'] == job
+        status = client.get('/api/job', params={'id': job}).json()
+        assert status['state'] == 'running'
+        assert any('Checking 2 matched' in line for line in status['log'])
+    finally:
+        release.set()
+    for _ in range(100):
+        status = client.get('/api/job', params={'id': job}).json()
+        if status['state'] != 'running':
+            break
+        time.sleep(.01)
+    assert status['state'] == 'done' and status['result']['slug'] == payload['slug']
+    assert calls == [(payload['slug'], 1, True)] and saves == [(payload['slug'],)]
+
+
+def test_failed_compiler_suggestion_keeps_job_error_visible(app, monkeypatch):
+    from decompnet.network import NetworkError
+    client, net, *_ = app
+    def reject(*args, **kwargs):
+        raise NetworkError('One matched function would no longer match. Narrow the range.')
+    monkeypatch.setattr(net, 'resolve_suggestion', reject)
+    response = client.post('/api/suggestion', json={'slug': 'failed-suggestion', 'id': 2,
+                           'action': 'apply', 'background': True}, headers={'X-Decomp': '1'})
+    assert response.status_code == 200
+    for _ in range(100):
+        status = client.get('/api/job', params={'id': response.json()['job']}).json()
+        if status['state'] != 'running':
+            break
+        time.sleep(.01)
+    assert status['state'] == 'error' and 'Narrow the range' in status['error']
+
+
+def test_join_existing_project_passes_stored_copy_to_normal_join(app, tmp_path, monkeypatch):
+    from decompnet.app import collab
+    client, net, *_ = app
+    stored = tmp_path / 'game.z64'
+    stored.write_bytes(b'own copy')
+    calls = []
+    monkeypatch.setattr(collab,'project_game',lambda n, slug: stored if slug == 'existing' else None)
+    def join(n, link, name, game, log):
+        calls.append((link,name,game))
+        return 'joined-existing'
+    monkeypatch.setattr(collab,'join_room',join)
+    response = client.post('/api/collab/join?project=existing&confirmed=1&link=http://host/join/open&name=sam',
+                           content=b'', headers={'X-Decomp':'1'})
+    assert response.status_code == 200
+    for _ in range(100):
+        job = client.get('/api/job',params={'id':response.json()['job']}).json()
+        if job['state'] != 'running':
+            break
+        time.sleep(.01)
+    assert job['state'] == 'done' and job['result']['slug'] == 'joined-existing'
+    assert calls == [('http://host/join/open','sam',stored)] and stored.is_file()
+    rejected = client.post('/api/collab/join?project=existing&link=http://host/join/open&name=sam',
+                           content=b'', headers={'X-Decomp':'1'})
+    assert rejected.status_code == 400
+
+
+def test_room_retry_all_processes_snapshot_beyond_five_and_continues_errors(app, monkeypatch, tmp_path):
+    from decompnet.app import room_matches
+    from decompnet.network import NetworkError
+    client, net, *_ = app
+    slug='retry-all-room'
+    with net.store.tx() as db:
+        pid=db.execute("INSERT INTO projects(slug,root,config) VALUES(?,?,'{\"kind\":\"rom\"}')",(slug,str(tmp_path))).lastrowid
+    rows=[{'key':f'{room_matches.PREFIX}{pid}:{i}','function':f'f{i}','direction':'host'} for i in range(8)]
+    monkeypatch.setattr(room_matches,'pending',lambda *args:rows)
+    calls=[]
+    def retry(n,s,key):
+        calls.append(key)
+        if key==rows[1]['key']:raise NetworkError('Compiler unavailable')
+        return {'matched':True}
+    monkeypatch.setattr(room_matches,'retry',retry)
+    response=client.post('/api/collab/matches',json={'slug':slug,'all':True},headers={'X-Decomp':'1'})
+    assert response.status_code==200
+    for _ in range(100):
+        job=client.get('/api/job',params={'id':response.json()['job']}).json()
+        if job['state']!='running':break
+        time.sleep(.01)
+    assert job['state']=='done' and job['result']=={'matched':7,'failed':1,'total':8}
+    assert calls==[r['key'] for r in rows]
+    assert job['progress']['finished']==8 and job['progress']['total']==8
+    calls.clear()
+    response=client.post('/api/collab/matches',json={'slug':slug,'key':rows[0]['key']},headers={'X-Decomp':'1'})
+    for _ in range(100):
+        job=client.get('/api/job',params={'id':response.json()['job']}).json()
+        if job['state']!='running':break
+        time.sleep(.01)
+    assert job['state']=='done' and calls==[rows[0]['key']]
+
+
+def test_background_work_routes_are_guarded(app):
+    client, *_=app
+    endpoint='/api/background-work'
+    assert client.get(endpoint, headers={'User-Agent':'external'}).status_code==401
+    assert client.get(endpoint).status_code==200
+    snapshot=client.get(endpoint).json()
+    assert 'cpu_note' in snapshot and 'threads' in snapshot
+    assert client.post(endpoint,json={'kind':'service','key':'x'}).status_code==403
+    assert client.post(endpoint,json={'kind':'service','key':'x'},headers={'X-Decomp':'1'}).status_code==400
+
+
+def test_brief_project_list_skips_progress_summaries(app, monkeypatch, tmp_path):
+    client, net, _ = app
+    with net.store.tx() as db:
+        db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                   ('brief-mcp-test', 'Brief MCP test', 'mips', str(tmp_path), '{}'))
+    monkeypatch.setattr(net, 'summary', lambda *args:pytest.fail('MCP picker must not calculate project progress'))
+    response=client.get('/api/projects?brief=1')
+    assert response.status_code==200
+    assert {'slug':'brief-mcp-test','name':'Brief MCP test'} in response.json()
+    assert client.get('/api/projects?brief=1', headers={'User-Agent':'external'}).status_code==401
+
+
+def test_manual_mcp_catalog_uses_read_only_ui_snapshot(app, monkeypatch, tmp_path):
+    from decompnet.app import tools
+    client, net, _=app
+    with net.store.tx() as db:
+        db.execute('INSERT INTO projects(slug,name,arch,root,config) VALUES(?,?,?,?,?)',
+                   ('catalog-snapshot', 'Catalog', 'mips', str(tmp_path), '{}'))
+    def names(*args):
+        assert net.progress.viewing
+        return ['project_info']
+    monkeypatch.setattr(tools, 'project_tools', names)
+    response=client.get('/api/manual-mcp?slug=catalog-snapshot')
+    assert response.status_code==200
+    assert [t['name'] for t in response.json()['tools']]==['project_info']
+
+
+def test_retry_paused_route_is_bounded_guarded_and_does_not_start_helpers(tmp_path):
+    from decompnet import claim_stalls
+
+    from .test_loading import tiny_game
+    net=RomNetwork(tmp_path/'decomp.db',tmp_path);tiny_game(net)
+    mcp,manager,security,_=build(net,tmp_path,PORT,SECRET)
+    session=manager._record('game','codex','worker','Worker',{'model':'model-a'})
+    agent,_=net.local_agent(session.agent_name)
+    with net.store.tx() as db:db.execute("UPDATE functions SET best_source='void f(){}',best_score=10")
+    for fn in net.store.all('SELECT * FROM functions'):claim_stalls.released(net,fn,agent=agent,exhausted=True)
+    client=TestClient(mcp.streamable_http_app(transport_security=security,host='127.0.0.1'),base_url=f'http://127.0.0.1:{PORT}',headers=WINDOW)
+    payload={'id':session.id,'limit':1}
+    assert client.post('/api/agents/retry-paused',json=payload).status_code==403
+    assert client.post('/api/agents/retry-paused',json={**payload,'limit':True},headers={'X-Decomp':'1'}).status_code==400
+    response=client.post('/api/agents/retry-paused',json=payload,headers={'X-Decomp':'1'})
+    assert response.status_code==200,response.text
+    assert response.json()['resumed']==1
+    assert session.runs==0 and not net.store.all('SELECT * FROM claims')
+    assert client.post('/api/agents/retry-paused',json={'id':'missing'},headers={'X-Decomp':'1'}).status_code==400

@@ -40,7 +40,7 @@ def register(app: App) -> None:
                         with net.progress.view():
                             return fn(slug, request, data)
                     result = fn(slug, request, data)
-                    if request.method == "POST" and request.url.path != "/api/verification" and net.store.one("SELECT 1 FROM projects WHERE slug=?", slug):
+                    if request.method == "POST" and request.url.path not in ("/api/verification", "/api/compiler/test-default") and not (request.url.path == "/api/suggestion" and data.get("background") and data.get("action") == "apply") and net.store.one("SELECT 1 FROM projects WHERE slug=?", slug):
                         net.progress.sync(slug, force=True)
                     return result
                 return JSONResponse(await ((app.ui_call or call) if request.method == "GET" else call)(perform))
@@ -71,6 +71,10 @@ def register(app: App) -> None:
             return manager.transcripts.export(slug, int(data.get('helper', 0)))
         return manager.transcript(slug, int(q.get('helper', 0)), int(q.get('session', 0)),
                                   int(q.get('after', 0)), int(q.get('before', 0)), whole=q.get('whole') == '1')
+
+    def p_compiler_default_test(slug, request, data):
+        from .. import compiler_default_test
+        return {"job": jobs.start("Test compiler profile as default", lambda log:(compiler_default_test.replace_default(net, slug, data.get('profile'), log) if data.get('action') == 'replace' else compiler_default_test.run(net, slug, data.get('profile'), log, nonmatches=data.get('action') == 'nonmatches')))}
 
     def p_compiler_cleanup(slug, request, data):
         limit = int(data.get("rare_limit", 3))
@@ -277,7 +281,27 @@ def register(app: App) -> None:
             raise ValueError("write the note first")
         return {"message": net.add_note(agent, slug, text[:2000], str(data.get("function", "")) or None)}
 
+    suggestion_jobs = {}
+
     def p_suggestion(slug, request, data):
+        if data.get("background") and data.get("action") == "apply":
+            sid = int(data.get("id", 0))
+            with jobs._lock:
+                previous = suggestion_jobs.get((slug, sid))
+                if previous and jobs.jobs.get(previous, {}).get('state') == 'running':
+                    return {"job": previous}
+                def apply_suggestion(log):
+                    log("Checking the suggested settings. Existing matches must still match byte for byte.")
+                    net.resolve_suggestion(slug, sid, True, log=log)
+                    log.progress({'phase':'Saving project progress', 'done':0, 'total':1})
+                    log("Saving project progress to disk.")
+                    net.progress.sync(slug, force=True, logger=log)
+                    log.progress({'phase':'Refreshing project results', 'done':0, 'total':1})
+                    log("Refreshing project results.")
+                    return net.overview(slug)
+                job = jobs.start("Apply compiler suggestion", apply_suggestion)
+                suggestion_jobs[slug, sid] = job
+                return {"job": job}
         net.resolve_suggestion(slug, int(data.get("id", 0)), data.get("action") == "apply")
         return net.overview(slug)
 
@@ -475,6 +499,8 @@ def register(app: App) -> None:
 
     def p_cross_name(slug, request, data):
         old, new = str(data.get("function") or ""), str(data.get("name") or "")
+        if new.startswith('func_'):
+            raise ValueError('This is a generated function name. Keep the current name or choose a descriptive naming lead.')
         if data.get('peer_id'):
             from ..project_functions import listing
             peers = listing(net, slug, old)['rows']
@@ -542,6 +568,7 @@ def register(app: App) -> None:
         "/api/diff": (lambda s, r, d: net.function_diff(s, r.query_params.get("name", ""),
                                                         r.query_params.get("which", "latest")), ["GET"]),
         "/api/compiler": (p_compiler, ["POST"]),
+        "/api/compiler/test-default": (p_compiler_default_test, ["POST"]),
         "/api/compiler/cleanup": (p_compiler_cleanup, ["POST"]), "/api/export": (p_export, ["POST"]), "/api/open": (p_open, ["POST"]),
         "/api/reimport": (p_reimport, ["POST"]), "/api/code-audit": (p_code_audit, ["POST"]),
         "/api/code-audit-results": (g_code_audit, ["GET"]), "/api/code-audit-review": (p_code_audit_review, ["POST"]),

@@ -295,3 +295,36 @@ def test_export_renames_callback_forward_declaration_in_private_header(project,m
     header=next((root/'include').glob('decompdecomp_sync_*.h')).read_text()
     assert 'void f(void);' in header and '/* old_entry stays in comments */' in header
     assert 'callback=f;' in (root/'src/game/f.c').read_text()
+def test_commit_push_saves_all_progress_and_removes_old_owned_drafts(project, monkeypatch):
+    from decompnet.app import repository_git, saves
+    root, net, _ = project
+    (root/'progress/best').mkdir(parents=True)
+    (root/'progress/best/old.c').write_text('old draft')
+    commit(root)
+    snapshot = {'decompdecomp.json':'{"notes":["all notes"],"compiler_ranges":[]}',
+                'best/new.c':'newer draft', 'include/common.h':'typedef int s32;'}
+    monkeypatch.setattr(saves, '_render', lambda *args, **kwargs:(snapshot, {}))
+    monkeypatch.setattr(saves, '_read_owned', lambda folder:{'best/old.c':'old draft'})
+    monkeypatch.setattr(repository_git, 'prepare', lambda *args:('origin', 'refs/heads/main'))
+    captured = {}
+    def finish(root, files, upstream, log):
+        captured['files'] = files
+        assert (root/'progress/best/new.c').read_text() == 'newer draft'
+        assert not (root/'progress/best/old.c').exists()
+        return {'commit':'abc', 'pushed':True}
+    monkeypatch.setattr(repository_git, 'finish', finish)
+    result = sync.run(net, 'game', str(root), commit_push=True)
+    assert result['pushed']
+    assert {'progress/'+name for name in snapshot} <= captured['files']
+    assert 'progress/best/old.c' in captured['files']
+
+
+def test_snapshot_failure_does_not_publish_verified_sources(project, monkeypatch):
+    from decompnet.app import repository_git, saves
+    root, net, _ = project
+    monkeypatch.setattr(repository_git, 'prepare', lambda *args:('origin', 'refs/heads/main'))
+    def fail(*args, **kwargs):raise NetworkError('snapshot failed')
+    monkeypatch.setattr(saves, '_render', fail)
+    with pytest.raises(NetworkError, match='snapshot failed'):
+        sync.run(net, 'game', str(root), commit_push=True)
+    assert not sync.git(root, 'status', '--porcelain').strip()

@@ -419,6 +419,7 @@ class Session:
     def snapshot(self, since: int = 0) -> dict:
         return {"id": self.id, "kind": self.kind, "kind_name": agents.get(self.kind).name, "can_login": agents.get(self.kind).supports_login, "label": self.label,
                 "selection": self.options.get("selection") or {},
+                "focus_function":self.options.get("focus_function"), "focus_until":self.options.get("focus_until"),
                 "per_session": self.options.get("per_session", PER_SESSION),
                 "task": self.options.get("task") or "",  # "readable": it polishes matched code
                 "slug": self.slug, "agent": self.agent_name, "model": self.model, "state": self.state, "why": self.why,
@@ -651,6 +652,8 @@ class Manager:
         report_start("Validating worker selection…")
         options = dict(options or {})
         options["selection"] = self.net.validate_selection(options.get("selection"))
+        from . import focused_agents
+        options = focused_agents.configure(self.net,slug,options,count)
         agent = agents.get(kind)  # (an unknown kind is a ValueError that says which there are)
         if agent.id != kind:
             kind = agent.id
@@ -690,6 +693,15 @@ class Manager:
             s.label = label.strip()
             self._save(s)
             return s.label
+
+    def retry_paused(self, sid, limit=5):
+        from . import retry_paused
+        with self._lock:
+            session=self.sessions.get(sid)
+            if session is None:raise ValueError('This agent no longer exists. Refresh the agents list.')
+            if session.options.get('task')=='readable':raise ValueError('Retry paused functions applies to matching agents.')
+            agent,_=self.net.local_agent(session.agent_name)
+            return retry_paused.retry(self.net,session.slug,agent,limit)
 
     def set_selection(self, sid: str, policy: dict, per_session: int | None = None) -> dict:
         with self._lock:
@@ -756,6 +768,10 @@ class Manager:
         s.cooldown_observed = 0
         s.continuation_attempts, s.continuation_note = 0, ""
         s.started_at = time.time()
+        if s.options.get('focus_id'):
+            s.options.setdefault('focus_until',s.started_at+s.options['focus_minutes']*60)
+            with self.net.store.tx() as db:
+                db.execute('UPDATE helpers SET options=? WHERE id=?',(json.dumps({k:v for k,v in s.options.items() if k!='api_key'}),s.id))
         self._save(s)
         s.thread = threading.Thread(target=self._run, args=(s,), daemon=True, name=f"agent-{s.agent_name}")
         s.thread.start()
@@ -775,6 +791,7 @@ class Manager:
             options = self.options_now(s.kind, dict(s.options))
             if options is None:
                 raise ValueError("its API endpoint was removed: start a new helper on another one")
+            options.pop('focus_until',None)  # A manual restart explicitly begins a fresh time allowance.
             s.options, s.restarts = options, 0
             self._prepare(s.slug)
             self._launch(s)
@@ -1146,9 +1163,15 @@ class Manager:
         return True
 
     def _run(self, s: Session) -> None:
+        from .focused_agents import run
+        run(self,s)
+
+    def _run_work(self, s: Session) -> None:
+        from . import focused_agents
         agent, token = self.net.local_agent(s.agent_name)
         self.net.set_selection(s.slug, agent.name, s.options.get("selection"))
         self.assignments[agent.id] = s.slug
+        focused_agents.bind(self.net,s,agent)
         if not hasattr(self.net, '_agent_tool_tasks'): self.net._agent_tool_tasks = {}
         self.net._agent_tool_tasks[agent.id] = 'polishing' if s.options.get('task') == 'readable' else 'matching'
 
@@ -1165,11 +1188,12 @@ class Manager:
             twins.ordered.wait(ORDER_WAIT)
         failures = fast = throttles = limits = auths = connection_failures = 0
         while not s.stop.is_set():
+            if not focused_agents.ready(self,s,agent):continue
             if getattr(self, 'source_update_pending', False):
-                why = 'Source update queued: letting existing work finish before restart'
+                why = 'Update ready: brief restart check (up to 15 seconds)'
                 if s.why != why:
                     self._set(s, 'waiting', why, None,
-                              'No new AI session starts until the update finishes or is cancelled.')
+                              'Your work is saved. Sessions resume after restart, or within 15 seconds if active work needs longer.')
                 s.stop.wait(1)
                 continue
             if self._left(s.slug, task := s.options.get("task") or "") == 0:
@@ -1184,7 +1208,7 @@ class Manager:
                     self._pause(s, why + " for this worker (unscored functions also count)",
                                 "Change Work selection, then press Start again.")
                     break
-            if task != 'readable' and not self.net.selection_remaining(s.slug,agent) and not self.net.store.one(
+            if not s.options.get('focus_id') and task != 'readable' and not self.net.selection_remaining(s.slug,agent) and not self.net.store.one(
                     'SELECT 1 FROM claims WHERE agent_id=?',agent.id):
                 why, todo = self.net.selection_wait_reason(s.slug, agent)
                 self._wait(s, why, time.time()+30, todo)
@@ -1220,6 +1244,14 @@ class Manager:
             kind = agents.get(s.kind)
             try:
                 ok = self._run_cli(s, token, workdir) if kind.command else kind.run(self, s, agent)
+                while (ok and kind.command and kind.focus_resume and s.options.get('focus_id')
+                       and s.options.get('focus_conversation') and not s.stop.is_set()
+                       and not s.limited and not s.throttled and not s.auth_failed
+                       and not focused_agents.completion(self,s)
+                       and not getattr(self, 'source_update_pending', False)):
+                    s.push('info','Continuing the same focused conversation; provider context compaction stays enabled.')
+                    if s.stop.wait(SESSION_GAP):break
+                    ok = self._run_cli(s, token, workdir)
             except ToolConnectionUnavailable as error:
                 connection_failures += 1
                 s.error = str(error)
@@ -1434,8 +1466,13 @@ class Manager:
         s.startup_context = '\n\n'.join(parts)
 
     def prompt(self, s: Session) -> str:
+        from . import focused_agents
         from .session_handoffs import previous
-        text = self._prompt(s) + previous(self.net, s.id, s.slug)
+        text = (focused_agents.prompt(s) if s.options.get('focus_id') else self._prompt(s)) + previous(self.net, s.id, s.slug)
+        if s.options.get('focus_id'):
+            text += (f"\nUSER FOCUS: Work only on {s.options['focus_function']} until the app's deadline. "
+                     'Do not move to other functions, even after repeated failures. Read callees as needed, save improved candidates and notes. '
+                     'Keep this conversation running; compact older context rather than ending the session. The app stops this worker on a match or timeout.\n')
         if s.continuation_note:
             text += '\n\nSession continuation guidance:\n' + s.continuation_note
             s.continuation_note = ""
@@ -1491,12 +1528,17 @@ class Manager:
         # other agent leaves prompt_file at None and keeps getting the prompt on stdin. Written before the command:
         # a prompt zcode cannot attach fails the session before its settings file exists, and pauses the helper
         # instead of retrying a prompt only the user can shorten.
-        prompt = self.prompt(s)
+        if s.options.get('focus_id') and s.options.get('focus_conversation') and k.focus_resume:
+            from .focused_agents import prompt as focus_prompt
+            prompt = focus_prompt(s) + '\nContinue from your existing context; retrieve current saved C if needed.'
+        else:
+            prompt = self.prompt(s)
         try:
             prompt_file = k.prompt_file(workdir, prompt)
         except ValueError as e:
             raise Fatal(str(e)) from e
-        cmd, more = k.session_command(exe, workdir, self.mcp_url, token, s.model)
+        cmd, more = (k.focused_session_command(exe, workdir, self.mcp_url, token, s.model, s.options.get('focus_conversation'))
+                     if s.options.get('focus_id') else k.session_command(exe, workdir, self.mcp_url, token, s.model))
         cmd = k.launch_command(agents.cli_argv(cmd))
         # PWD too: opencode 2 works in $PWD, not the folder it starts in, and the app's PWD was the user's home, so
         # Mario Kart 64's helpers worked there without their folder's settings: no tools, and a free shell
@@ -1608,6 +1650,14 @@ class Manager:
         last_error = refused = ""
         for line in proc.stdout:
             for kind, text in k.parse_line(line, state):
+                if kind == "conversation":
+                    if s.options.get('focus_id'):
+                        import uuid
+                        try: conversation = str(uuid.UUID(text))
+                        except (ValueError, TypeError, AttributeError): continue
+                        s.options['focus_conversation'] = conversation
+                        self._save(s)
+                    continue
                 if kind == "usage":
                     self.account(s, json.loads(text))
                     continue
@@ -1619,7 +1669,7 @@ class Manager:
                     last_error = text
                     refused = refused or (text if k.fatal(text) else "")
                 s.push(kind, text)
-            if s.context_budget and s.context_budget.ready() and not s.stop.is_set():
+            if not s.options.get('focus_id') and s.context_budget and s.context_budget.ready() and not s.stop.is_set():
                 s.rotated=True
                 s.push('info','Starting a fresh session to keep context small; saved work and claims are retained.')
             if s.stop.is_set() or s.rotated:

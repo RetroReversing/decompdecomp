@@ -5,6 +5,38 @@ private-header declaration renaming during repository sync, and separately verif
 assembly through installed ROM compiler drivers. Source proofs retain provenance but are
 reverified after restore. The overview separates four status counts and all-code C coverage.
 Imported-build assembly verification and non-MIPS compiler-unit discovery remain planned.
+Implemented: recorded-model exhaustion with worker-local fallback for unspecified models, plus explicit
+bounded Retry paused functions grants. Same-model workers share pauses; different models retain their
+own turns. Grants respect filters and held work, bypass only selected recent-release cooldowns and
+are consumed in the claim transaction. Legacy unattributed pauses remain for audit, not as model
+evidence. Room workers without recorded model metadata use the worker-local fallback.
+
+Implemented: processor-owned MIPS local acyclic register-chain advice routes a bounded eight-proposal
+lifetime/declaration lane in iterative and deep search without diagnostic compiles. Branch-target and
+delay-slot residuals prioritize source control-flow repairs over literal edits. Closed-cycle budgets
+and exact acceptance are unchanged. Readers for other processors and numeric register aliases remain
+planned.
+
+Implemented: temporary room HTTP failures (including gateway errors) preserve queued saved progress for retry
+in ROM and project rooms, instead of treating them as the host rejecting the candidate.
+
+Implemented: bounded residual follow-ups in iterative and deep search; typed later-local reuse for
+subtraction, bitwise operations, unsigned literal shifts and scalar call results; dominated acyclic
+branch regions and optional unambiguous GCC donor ranking. Shared source hypotheses retain the
+normal judge and budget. Private frozen multi-case MIPS export comparisons pin all inputs; other
+architectures/imported builds retain copied-evaluator replay. Wider shifts and cyclic live regions
+remain unsupported.
+
+Implemented: bounded single-call one-shot scopes, debug-aware initialization grouping and
+repeated-float staging, and disjoint pointer/integer scratch unions. Closed register cycles
+prioritize these lifetime hypotheses. One private KMC known-match replay recovered exact
+bytes through three generated steps. Unknown imported per-file debug/ABI metadata keeps the
+corresponding grouping/union trials disabled; build-owned metadata adapters and wider-pointer
+union support remain planned. Call scopes and allocation advice use the shared source pipeline.
+Implemented: explicit ROM function compiler suggestions freshly verify and atomically save
+source/header/profile for one entry without neighbour confirmation. Disabled auto-apply waits
+for review; legacy single-function range suggestions with saved C recheck on Apply. Broader
+ranges and imported file/build settings retain their existing verification workflows.
 
 Implemented: NOP-only MIPS targets remain rebuildable as set-aside assembly in ROM imports and project objects;
 Check again applies the same classification to existing targets.
@@ -231,6 +263,10 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 
 | Feature | N64 | PS1 | PS2 | PSP | GameCube · Wii | Windows PC | DS | Public decomps |
 | :-- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| Typed later-local reuse and bounded residual follow-ups | ✓ | ✓ | ✓ 32-bit scalars | ✓ | ✓ 32-bit scalars | ✓ 32-bit scalars | ✓ | ✓ by target ABI |
+| Frozen multi-case exported-ROM repair CLI | ✓ MIPS | ✓ MIPS | ✓ MIPS | ✓ MIPS | — copied evaluator | — copied evaluator | — copied evaluator | — copied evaluator |
+| Local register-chain and jump/delay-slot search hints | ✓ | ✓ | ✓ | ✓ | — reader planned | — reader planned | — reader planned | ✓ MIPS; other readers planned |
+| Per-model pauses and bounded fresh-turn retry | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓; room model metadata falls back to worker |
 | Targeted scalar scheduling repairs and experiment costs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Portable last-exact evidence | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ historical, own build |
 | Stack slot layout diagnostics | ✓ | ✓ | ✓ | ✓ | — reader planned | — reader planned | — reader planned | — GUI adapter planned |
@@ -1932,10 +1968,14 @@ had identical statuses, scores and saved sources. Actual game import speed depen
 
 ## Source checkout runtime
 
-Implemented: explicit clean-main Git/uv runtime handoff from Settings. Users choose current data or
-separate development data; new managed agent sessions/jobs are held until known background work
-finishes, then fast-forward/locked sync/import preflight precede a process replacement. Waiting can
-be cancelled. Ordinary development launch remains isolated by default; packaged bundles are untouched.
+Implemented: explicit clean-main Git/uv runtime handoff from Settings, with opt-in automatic main
+updates. Git clones and locked dependency/import preflight run in a separate managed runtime while
+agents and jobs continue. Current checkouts/environments are never pulled or synced in place. A safe
+restart check holds new sessions for at most 15 seconds; if active sessions/finite jobs need longer,
+all holds release and the app retries after 60 seconds. Continuous draft/permutation services park
+between joined batches. Usage-limit waits are idle and provider cooldowns survive restart. Separate
+development data launches without pausing current work. Managed runtime directories are retained
+for recovery; automatic pruning and seamless backend replacement remain planned.
 
 Implemented: checkout-only frontend revision polling, in-place CSS updates and debounced interface
 reload for scripts/markup/assets. Project/tab, open function, disclosure and main scroll state are
@@ -2016,3 +2056,121 @@ GC; cancelled compiler stdout/stderr pipes close even when exception frames are 
 These shared fixes cover both project modes; Windows retains its native handle limits.
 A scratch run of 300 short-lived reader threads under a 256-descriptor limit with GC
 disabled completed without errors. The app does not change machine-wide launch limits.
+
+- Done: captured index/lifetime repair candidates shared by local repairs, agent experiments and
+  deep permutation: dead unsigned scaling, pointer lifetime endings, indexed-store local reuse,
+  constant-trip loops and type-preserving mask staging. Unknown syntax and macro-heavy inputs skip
+  these candidates; every result still passes the ordinary mode's judge.
+### Timed single-function agents
+
+Done: the function dialog can create one configured CLI/API agent for a named function
+and a 1–240 minute wall-clock allowance. Shared claim enforcement pins the function by
+stable ID (including batch claims, PROJECT mode and room requests), preserving normal
+leases. Busy targets wait before a paid session starts. Context rotations stay on the
+same target; matches/set-aside status or expiry stop the worker through normal process
+termination and claim release. Deadlines persist across app restart; a manual agent
+restart grants a new allowance. The Agents card shows the target and deadline; the
+launcher has its own Stop control. No model is started until the user clicks Start.
+The function drawer groups AI and local search in matching shared collapsible boxes,
+with aligned cost labels and controls in both themes and narrow layouts.
+
+
+## Focused conversation continuity
+
+Focused workers bypass ordinary 80-tool/160,000-character rotation and receive a continuous-work
+prompt until match, user stop or deadline. Codex and Claude persist and resume their exact provider
+conversation between turns (never a global latest session), leaving native compaction enabled.
+The compatible API loop removes its ordinary step/function cap for focused runs and summarizes
+older context in place near its context budget, preserving instructions and the latest complete
+tool exchange; summary requests are accounted and recorded. Failed summary requests fall back
+to existing context fitting. Paid summarization uses the selected endpoint/model.
+Other CLI connectors retain their provider's in-process context management, but exact conversation
+resumption after those programs exit remains planned. API history persistence across app restarts
+and provider failures also remains planned; saved candidates/experiments still survive.
+- Done: project-scoped distinct improved-function totals per room member, alongside matches in the
+  host/guest room dialog and room agent cards, including attribution from older attempt histories.
+
+- Done: compiler-suggestion applications run as reusable background jobs with immediate progress,
+  matched-function check counts, score-update stages and persistent errors in the UI; ROM ranges
+  and source-project file ranges retain their existing regression protection.
+
+- Done: common scaled-store offsets, immediate conditional pointer-load inlining, subscript
+  reassociation in owned inline helpers and branch-tail stores are available to shared local
+  repairs, agent experiments and deep permutation. Added scoped narrow-index handling and corrected
+  a logical-and false positive in pointer escape checks; the normal judges remain unchanged.
+
+
+ROM compiler suggestion application now rescores affected saved attempts in the existing bounded
+judge pool, alongside the already parallel matched-function regression checks. Phase progress
+reports checked/total counts and percentages; suggestion cards distinguish default changes
+from local address ranges. All affected byte-match checks and atomic stale-input validation
+remain mandatory. Broad default changes can still be expensive; narrow range suggestions
+avoid rechecking functions whose effective settings do not change.
+
+
+Naming upgrades preserve descriptive names when a donor proposes a `func_*` placeholder.
+Cross-project name actions reject these placeholders server-side and hide their Use name controls;
+automatic name inference ignores them. ROM batch/single renames and PROJECT-mode renames also
+reject descriptive-to-placeholder downgrades. Source-reuse provenance comments remain intact:
+they record donor history and do not themselves change a function's symbol.
+
+- Done: a common “Join an existing room” entry in Decompile together for open projects, including
+  hosting, guest, unfinished-project and room-restoration states; reuses the existing verified join
+  flow with file selection and progress.
+
+- Done: joining a room from an open project reuses its stored game automatically, with host identity
+  verification and no repeated file selection. Source projects use their declared original file or
+  an identity-verified program in their configured original directory; missing originals report an
+  actionable error rather than selecting unrelated files.
+
+- Done: foreground room joins expose live saved-work transfer counters, current host-checked function,
+  confirmed matches and better-attempt submissions through existing job polling. Stage-aware progress
+  covers connection, game checking, project setup, host approval, transfer and synchronization without
+  presenting a stage's percentage as whole-join completion.
+
+- Done: room match verification offers Retry all for the full pending snapshot, with sequential checks,
+  per-item error reporting, counted progress and immediate busy spinners on retry actions.
+
+
+Single-function compiler testing and the project-wide compiler search now share one progress
+template and renderer. The function drawer consumes live job progress for combination count,
+percentage, saved/best match, current best profile and exact-match count; project queue/result
+actions are hidden in function scope. Navigation guards prevent late results updating another
+function or overwriting the project-wide progress card.
+
+- Done: project map first-paint ordering and canvas-cache reset on navigation, with stale-response
+  ordering guards and lazy compiler-colour loading. Maps no longer wait for a resize after being
+  measured under a hidden loading cover or display cached pixels from the previous project.
+Compiler profile groups offer a read-only “Test this profile as default” diagnostic for ROM
+projects. It checks saved matching C currently using default settings through the ordinary
+linked-byte judge, with checked/passed/failed counts and failure reasons. Other profiles and
+unmatched functions are excluded; changed inputs invalidate the conclusion. No settings or
+saved scores change. PROJECT-mode per-file compiler compatibility trials remain planned: their
+own build configuration needs a separate temporary-build implementation.
+- Done: project map first-paint ordering and canvas-cache reset on navigation, with stale-response
+  ordering guards and lazy compiler-colour loading. Maps no longer wait for a resize after being
+  measured under a hidden loading cover or display cached pixels from the previous project.
+
+ROM compiler profiles can replace the default while retaining previous-default overrides for
+saved matches that fail the new profile. The guarded compiler commit rechecks affected matches
+and rescores attempts before publishing. A separate read-only trial checks all non-matches'
+saved C against a selected profile, reporting exact matches and unavailable sources. PROJECT
+mode still needs the temporary own-build implementation described above.
+
+Background work has a global inventory for GUI jobs, managed agents, machine drafts, the
+background permuter, autopilot, twin reuse, saved-file verification, compiler surveys and room
+services, plus all live app thread names. It delegates Stop to existing safe worker controls and
+exposes the shared draft/permuter thread limit. CPU is measured for the Python process only
+(100% per core); accurate per-job and compiler-subprocess attribution remains planned work.
+Automatic evidence checks and room services remain read-only here and use their project controls.
+
+- Done: explicit ROM export **Verify, commit and push** saves all portable progress and
+  verified build changes, commits only sync-owned paths and pushes the configured upstream.
+  Failed pushes retain the commit for retry. Imported-project commit/push UI remains planned;
+  those projects already keep their source in their own checkout.
+
+The background-work thread table explains registered thread roles, shows native IDs and sorts
+by measured CPU, name or purpose. macOS uses proc_pidinfo(PROC_PIDTHREADID64INFO); Linux
+uses /proc/self/task counters. First observations show Measuring; unsupported/failed reads show
+Unavailable. Metrics exclude compiler subprocesses and do not attribute shared pool work to
+individual jobs. Windows per-thread counters remain planned work.

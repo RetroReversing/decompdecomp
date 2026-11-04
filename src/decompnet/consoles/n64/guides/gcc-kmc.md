@@ -392,3 +392,105 @@ Keep structurally different near misses: the lowest numeric score can be a poor
 starting point for a declaration/context repair. Deep search now reserves half
 its remaining time and compile allowance for random rewriting after the initial
 local phase (one in-flight compile can cross the time boundary).
+
+### Call scopes, phase storage and grouped initializers
+
+For a moved argument instruction near a call, try `call_one_shot_scope`: a single
+`do { call(...); } while (0)` can constrain KMC scheduling without duplicating the
+call or changing its arguments. The generator excludes control-bearing macros
+and already wrapped calls. This is a compiler-shape experiment, not a loop the
+original game must have contained.
+
+`pointer_integer_phase_union` proposes separate union members for a pointer phase
+and a later integer phase only when CFG liveness proves non-overlap and every read
+has a dominating initialization. It never reads a pointer's representation as an
+integer. Narrow integer values keep their original casts at reads and writes.
+Escaped storage, captured macro locals, overlapping lifetimes and unknown ABI
+widths are excluded. Do not hand-edit assembly registers to resolve a closed swap.
+
+With known debug flags, `debug_initialization_group` joins existing initializer
+statements; `debug_constant_initialization` can stage an already repeated float
+literal and group the run. A leading initializer may move after independent
+private address calculations, preserving their dependencies. Physical line groups
+can change scheduling with `-g3`; avoid reformatting a verified source wholesale.
+`__LINE__`, line directives and opaque macro effects are not safe grouping targets.
+
+Controlled replay: a previously matched 519-instruction sound update, KMC GCC 2.7.2 /
+GNU as 2.6, `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. From a saved score-495 alternate,
+the generated union, constant-initialization and call-scope steps yielded
+495 → 200 → 60 → 0, with exact linked bytes at the end. Separately, initialization
+staging reduced a score-180 seed to 40; its remaining eight rows formed a closed
+`s0`/`s1` swap. Numeric proximity alone did not select the successful path. These
+replay results establish coverage of this known match, not recovery rates for
+other functions or evidence of the original source spelling.
+
+## An exact operation can still need a different temporary lifetime
+
+A measured 567-instruction function under KMC GCC 2.7.2,
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`, had just one remaining addition with reversed
+source operands. Commutativity did not make its bytes an exact match. A fresh
+subtotal preserved operand order, but the local allocator merged the dying
+subtotal with the result. Reusing an earlier handle prevented that merge but
+changed the early instruction schedule. Reusing a compatible scalar with a
+separate **later** lifetime reproduced the complete function exactly.
+
+The `later_local_reuse` family now tries this bounded repair before broad mutation
+for register-only cycle misses. It checks CFG liveness: the donor's old value must
+be dead, its declaration must be in scope, and its later value must be assigned
+before use on every path. It rejects escaped storage, incompatible/unknown widths,
+qualified locals and unknown macro effects. It can pair a compound sum's separate
+subtotal with the reused destination. No padding operations or fixed registers
+are introduced. All candidates still require the normal exact judge.
+
+Retain alternatives that repair the original target locations even if a new
+scheduling difference raises their score; neither score nor source equivalence is
+an acceptance verdict. The search reserves one such alternative within its
+existing beam and budget. Recognize integer typedefs through the target ABI, not
+the host: a verified 32-bit `long` alias can be compatible with `int`, while a
+64-bit/qualified/ambiguous alias is not.
+
+A private frozen pre-match replay recovered this case in three candidate compiles
+plus one baseline compile (about 1.7 seconds locally). This is a regression result
+for one saved source/context/profile, not a general runtime guarantee or a new
+match. The real accepted source also passed the complete cartridge rebuild.
+
+### Follow the new residual, and keep reuse type-safe
+
+When a measured alternative fixes the original operation but exposes a new schedule or
+allocation miss, try a small follow-up on that alternative before broad mutation. The
+search reserves up to two probes in each of three bursts within its existing budget;
+a worse intermediate is retained only as a hypothesis, never adopted as a match.
+
+Later-local reuse also supports ordered subtraction, bitwise operations, unsigned
+32-bit literal shifts and explicit same-width call results. A dominated acyclic branch
+can be safe; a live loop or bypass join is not. Keep operand order, conversions and
+single call evaluations. Unknown macros, escaped locals, uncertain widths and ambiguous
+prototypes disable these hypotheses. Same-input, uniquely mapped GCC allocation lines
+can rank donor lifetimes by call crossings; stale or ambiguous mappings give no advice.
+See the matching-learnings ledger for frozen multi-case replay commands and limitations.
+
+A four-case equal-budget replay retained the existing candidate-3 exact recovery, with
+no additional recoveries or score gains on the other three. Keep the short direct donor
+lane ahead of residual detours. A remaining acyclic register chain needs different
+allocation targeting; a jump/delay-slot residual should not be treated as a literal
+constant change. The wider hypotheses are supported/tested, not evidence of a general
+speedup or extra matches.
+
+### Register-only does not require a closed global cycle
+
+A pointer-load chain can use different registers locally even when reused physical registers
+prevent a single global substitution map. Search now gives proven local acyclic chains up
+to eight existing source-lifetime/declaration proposals, within the normal budget and
+without extra diagnostic captures. This is allocation advice, not permission to substitute
+register names or infer original variable names. Ambiguous runs and changed frames/counts
+do not get this lane.
+
+A differing jump destination or delay-slot instruction is a control-flow residual, even
+when the displayed marker is `i`. Try structured backedges, guard/goto/branch orientation or
+loop-update placement before treating a label as a literal constant. Calls and true literal
+changes keep their own priorities; all acceptance still requires exact normal judging.
+
+Four frozen cases retained the same exact recovery and best scores under equal budgets;
+these additions have not yet demonstrated an extra match. A moved instruction multiset
+keeps scheduling priority, and a literal-only edit inside an existing delay slot remains a
+constant residual. The compiler-matching ledger records failed trials as well as recoveries.

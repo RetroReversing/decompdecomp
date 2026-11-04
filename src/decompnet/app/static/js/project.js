@@ -22,7 +22,7 @@ async function openProject(slug, tab = "overview") {
   $("projectRetry").hidden = true;
   $("projectLoading").querySelector(".workbar").hidden = false;
   S.slug = slug; S.lastEvent = 0; S.lastAttempt = 0; S.seq = {}; S.scores = new Map(); S.flash = new Map(); S.sessions = []; S.claims = []; S.covered = false; S.roomSig = null;
-  S.apFeed = null; S.stats = null; S.map = []; S.mapSig = null; geo = null;
+  S.apFeed = null; S.stats = null; S.map = []; S.byName = new Map(); S.mapSig = null; resetMap();
   S.primed = false; S.openedAt = Date.now() / 1000;
   $("activity").innerHTML = ""; $("thoughts").innerHTML = ""; $("now").innerHTML = ""; S.logFor = null; renderLog();
   const expectedFunctions = (S.projects || []).find(p => p.slug === slug)?.functions;
@@ -110,6 +110,8 @@ function finishProjectLoading(gen) {
   $("project").removeAttribute("data-loading");
   $("project").setAttribute("aria-busy", "false");
   $("projectLoading").hidden = true;
+  // data-loading hides the map's ancestors: only measure after removing it.
+  if (S.tab === "overview" && S.map.length) layoutMap();
 }
 
 function stopPolling() {
@@ -143,8 +145,9 @@ document.querySelectorAll("[data-goto]").forEach((a) => {
 /* The whole map only when something changed (`force`: a rename or a split, which the signature can't see). */
 async function refreshMap(force = true, prefetched = null) {
   const slug = S.slug, gen = S.gen;
+  const request = S.mapRequestToken = (S.mapRequestToken || 0) + 1;
   const data = await (prefetched || api(`/api/map?slug=${slug}${!force && S.mapSig ? `&since=${encodeURIComponent(S.mapSig)}` : ""}`));
-  if (slug !== S.slug || gen !== S.gen) return;
+  if (slug !== S.slug || gen !== S.gen || request !== S.mapRequestToken) return;
   S.lastMapFetch = Date.now();
   if (data.same) return;
   S.mapSig = data.sig;
@@ -160,11 +163,13 @@ async function refreshMap(force = true, prefetched = null) {
   baseDirty = true;
   renderMapView();
   $("fnTabCount").textContent = S.map.length.toLocaleString();
-  if (S.tab === "overview") layoutMap(); else applyClaims(false);
+  // Initial rows arrive under the loading cover; finishProjectLoading performs
+  // their first layout once the panel has a measurable width.
+  if (S.tab === "overview" && !prefetched) layoutMap(); else applyClaims(false);
   renderList();
   renderProgress();
   renderOverview();
-  if (S.ov && S.ov.kind !== "fork") loadMapColumns(slug);
+  if (S.mapView === "compiler" && S.ov && S.ov.kind !== "fork") loadMapColumns(slug);
 }
 
 /* A poll belongs to the opening of the project it was made for (S.gen). With one flag for all of them, the left
@@ -381,7 +386,8 @@ let teamTimer = null;
 const TEAM_HOST_EVERY_MS = 5000, TEAM_GUEST_EVERY_MS = 4000;
 const ROOM_PORT = 6481;  // the port a room shared at your own address listens on, unless you pick another
 function openTeam() {
-  const box = dialog("Decompile together", `<p class="muted">Looking at this computer's network…</p>`, "team");
+  const box = dialog("Decompile together", `${teamJoinHtml()}<p class="muted">Looking at this computer's network…</p>`, "team");
+  wireTeamJoin(box);
   renderTeam(box);
 }
 const teamOpen = () => S.dialogKind === "team" && !$("dialog").hidden && !!S.slug;
@@ -606,23 +612,41 @@ async function openRoomMatchReview() {
   const load=async () => {
     const data=await api('/api/collab/matches?slug='+encodeURIComponent(slug));
     box.innerHTML=`<p class="muted small">Client matches count on the host only after its own byte verification. Compiler profiles and private headers travel with new submissions. Older submissions can be recovered using bounded searches of installed host compilers.</p>
-      ${data.rows.length ? `<div class="project-peer-table"><table><thead><tr><th>Function</th><th>Agent</th><th>Why pending</th><th></th></tr></thead><tbody>${data.rows.map(r=>`<tr><td class="mono">${esc(r.function)}</td><td>${esc(r.agent)}</td><td>${esc(r.reason)}</td><td><button class="ghost small-btn" data-retry-match="${esc(r.key)}">Retry</button></td></tr>`).join('')}</tbody></table></div>` : '<p>No pending submissions.</p>'}
+      ${data.rows.length ? `<div class="row"><button class="primary" type="button" data-retry-all-matches>Retry all · ${data.rows.length}</button></div><div class="project-peer-table"><table><thead><tr><th>Function</th><th>Agent</th><th>Why pending</th><th></th></tr></thead><tbody>${data.rows.map(r=>`<tr><td class="mono">${esc(r.function)}</td><td>${esc(r.agent)}</td><td>${esc(r.reason)}</td><td><button class="ghost small-btn" data-retry-match="${esc(r.key)}">Retry</button></td></tr>`).join('')}</tbody></table></div>` : '<p>No pending submissions.</p>'}
       <div class="row"><button class="ghost" data-refresh-matches>Refresh</button>${!data.guest ? '<button class="ghost" data-recover-matches>Recover older submissions</button>' : ''}</div><pre class="joblog" id="roomMatchLog" hidden></pre>`;
-    const run=async payload=>{
-      const log=box.querySelector('#roomMatchLog');log.hidden=false;
+    let retrying=false;
+    const run=async (payload,button)=>{
+      if(retrying)return;
+      retrying=true;
+      const log=box.querySelector('#roomMatchLog');log.hidden=false;log._showJobProgress=true;
+      const original=button.innerHTML;
       const done=beginWork(log,'Verifying saved room matches',[...box.querySelectorAll('button')]);
+      button.innerHTML='<span class="spin-dot" aria-hidden="true"></span> Retrying…';
+      button.setAttribute('aria-busy','true');
       try { const {job}=await api('/api/collab/matches',{method:'POST',body:{slug,...payload}}); await followJob(job,log);await load(); }
-      catch(error){showJobError(log,error.message);}finally{done();}
+      catch(error){showJobError(log,error.message);}finally{done();button.innerHTML=original;button.removeAttribute('aria-busy');retrying=false;}
     };
-    box.querySelectorAll('[data-retry-match]').forEach(b=>{b.onclick=()=>run({key:b.dataset.retryMatch});});
+    box.querySelectorAll('[data-retry-match]').forEach(b=>{b.onclick=()=>run({key:b.dataset.retryMatch},b);});
+    const retryAll=box.querySelector('[data-retry-all-matches]');
+    if(retryAll)retryAll.onclick=()=>run({all:true},retryAll);
     box.querySelector('[data-refresh-matches]').onclick=()=>load().catch(e=>toast(e.message));
-    if(box.querySelector('[data-recover-matches]'))box.querySelector('[data-recover-matches]').onclick=()=>run({recover:true});
+    if(box.querySelector('[data-recover-matches]'))box.querySelector('[data-recover-matches]').onclick=(event)=>run({recover:true},event.currentTarget);
   };
   try{await load();}catch(error){box.textContent=error.message;}
 }
 function wireRoomMatchReview(box) {
   const button=box.querySelector('[data-room-matches]');
   if(button)button.onclick=openRoomMatchReview;
+}
+
+function teamJoinHtml() {
+  return `<div class="note"><h3>Join an existing room</h3>
+    <p class="muted small">Have an invite link or a public room address? Join someone else's room using your own copy of the game. Your existing projects stay in the sidebar.</p>
+    <button class="ghost" type="button" data-team-join>Join room…</button></div>`;
+}
+function wireTeamJoin(box) {
+  const button = box.querySelector('[data-team-join]');
+  if (button) button.onclick = () => openJoin(S.slug);
 }
 
 async function renderTeam(box) {
@@ -635,12 +659,17 @@ async function renderTeam(box) {
     return;
   }
   if (S.ov.kind === "fork" && !S.ov.ready) {
-    box.innerHTML = `<p class="muted">Set the project up first (Overview): then friends who own the game can join it from their own decompdecomp.</p>
-      <div class="row"><button class="ghost" id="tmJoin" type="button">Join a team's room</button></div>`;
-    $("tmJoin").onclick = openJoin;
+    box.innerHTML = `${teamJoinHtml()}<p class="muted">Set the project up first (Overview): then friends who own the game can join it from their own decompdecomp.</p>`;
+    wireTeamJoin(box);
     return;
   }
-  const info = await api(`/api/collab?slug=${S.slug}`).catch((e) => { box.innerHTML = `<p class="bad">${esc(e.message)}</p>`; return null; });
+  const info = await api(`/api/collab?slug=${S.slug}`).catch((e) => {
+    if (teamOpen()) {
+      setHtml(box, `${teamJoinHtml()}<p class="bad">${esc(e.message)}</p>`);
+      wireTeamJoin(box);
+    }
+    return null;
+  });
   if (!info || !teamOpen()) return;
   renderHost(box, info);
   teamTimer = setInterval(async () => {
@@ -656,16 +685,17 @@ function renderGuest(box, room) {
   const members = room.members || [];
   const waiting = room.state === "waiting";
   const people = members.map((m) => `<div class="line-item"><span class="dot ${m.online ? "on" : ""}"></span><div class="txt"><b>${esc(m.name)}${m.name === room.member ? " (you)" : ""}</b>
-      <span>${m.agents && m.agents.length ? esc(m.agents.join(", ")) : "no agents yet"} · ${m.matched || 0} matched${m.working && m.working.length ? ` · on ${esc(m.working.slice(0, 3).join(", "))}` : ""}</span></div></div>`).join("");
+      <span>${m.agents && m.agents.length ? esc(m.agents.join(", ")) : "no agents yet"} · ${m.matched || 0} matched · <span title="Distinct functions improved by this person’s agents, including matches">${m.improved || 0} improved</span>${m.working && m.working.length ? ` · on ${esc(m.working.slice(0, 3).join(", "))}` : ""}</span></div></div>`).join("");
   $("dialogTitle").textContent = waiting ? "Waiting for the host to let you in" : room.state === "out" ? "Not in the room"
     : room.connected ? "In a team room" : "The room is offline";
-  setHtml(box, `<p class="muted">${waiting ? `You asked to join as <b>${esc(room.member)}</b>. Your agents start working with the room as soon as the host lets you in.`
+  setHtml(box, `${teamJoinHtml()}<p class="muted">${waiting ? `You asked to join as <b>${esc(room.member)}</b>. Your agents start working with the room as soon as the host lets you in.`
       : room.connected ? `You're <b>${esc(room.member)}</b>. Your agents claim functions through the room, so nobody does the same one twice; matches are checked and shared by the host.`
       : `${esc(room.error || "Waiting for the host…")} Your agents wait and carry on when it's back.`}</p>
     <dl class="facts"><div><dt>Host</dt><dd>${esc(room.host)}</dd></div><div><dt>Members</dt><dd>${members.length}</dd></div><div><dt>Online</dt><dd>${members.filter((m) => m.online).length}</dd></div></dl>
     ${people ? `<div class="setup-group"><h3>In the room</h3>${people}</div>` : ""}
     <div class="row"><button class="ghost" data-room-matches>Review pending matches</button><button class="ghost" id="roomReconnect" type="button">${room.connected ? "The host shared a new link?" : "Reconnect with a new link"}</button><button class="ghost danger" id="roomLeave" type="button">Leave room</button></div>`);
   wireRoomMatchReview(box);
+  wireTeamJoin(box);
   $("roomReconnect").onclick = openReconnect;
   $("roomLeave").onclick = async () => {
     if (!confirm("Leave this room? Your local copy of the project stays; it stops syncing.")) return;
@@ -673,10 +703,23 @@ function renderGuest(box, room) {
   };
 }
 
+// Sharing preferences belong to this computer; each project's saved room still takes precedence.
+function roomAddressPreferences() {
+  try { return JSON.parse(localStorage.getItem("room-address-preferences") || "null") || {}; }
+  catch { return {}; }
+}
+
+function rememberRoomAddress(box) {
+  const value = {mode: box.querySelector('[name="mode"]:checked')?.value || "tunnel",
+    address: box.querySelector("#addrIn").value, port: box.querySelector("#addrPort").value};
+  try { localStorage.setItem("room-address-preferences", JSON.stringify(value)); } catch { /* storage off */ }
+}
+
 function renderHost(box, info) {
   if (box._working) return;
   if (info.restoring && !info.sharing) {
-    setHtml(box, '<p role="status">Reopening your hosted room… Saved members and the invite are being restored.</p><div class="workbar" role="progressbar" aria-label="Reopening room"><i></i></div>');
+    setHtml(box, `${teamJoinHtml()}<p role="status">Reopening your hosted room… Saved members and the invite are being restored.</p><div class="workbar" role="progressbar" aria-label="Reopening room"><i></i></div>`);
+    wireTeamJoin(box);
     return;
   }
   const intro = `${info.sharing ? `<p class="notice">${info.stable_link ? "This room reopens automatically after restart. Clients can reconnect using this same link while the configured address remains reachable." : "This room reopens automatically after restart and remembers members. Quick tunnels get a new address each time; for a permanent reconnect link, use an address you control (LAN, Tailscale or a server)."}</p>` : ""}<p class="muted">Your team works on this game from their own computers, each with <b>their own copy of exactly this game</b> (decompdecomp checks it's identical) using a browser or their own app and agents. This computer is the room's host: it keeps the shared work and checks every match against your copy.${S.ov.kind === "fork" ? " Members get this project's source tree from you (only what git tracks: never your game or its extracted files) and follow every commit made here." : ""} Only the work travels, never ROM data. You host the room and decide who's in.</p>`;
@@ -684,8 +727,13 @@ function renderHost(box, info) {
       <div class="seg" id="visSeg"><button type="button" data-vis="private" class="${inf.settings.visibility !== "public" ? "on" : ""}">Private: invite link</button><button type="button" data-vis="public" class="${inf.settings.visibility === "public" ? "on" : ""}">Public: anyone with the address</button></div>
       <label class="check"><input type="checkbox" id="apprChk" ${inf.settings.approve ? "checked" : ""}><span>I let each new member in (they wait until you approve)</span></label></div>`;
   if (!info.sharing) {
+    if (!info.address && !info.was_sharing) {
+      const saved = roomAddressPreferences();
+      info = {...info, mode: saved.mode === "address" ? "address" : info.mode,
+        address: typeof saved.address === "string" ? saved.address : "", port: saved.port || info.port};
+    }
     const sugg = (info.addresses || []).map((a) => `<button type="button" class="chip" data-addr="${esc(a.address)}">${esc(a.label)}: <span>${esc(a.address)}</span></button>`).join("");
-    setHtml(box, `${intro}${info.was_sharing ? `<div class="notice"><span>${info.changing_address ? "Choose a reachable fixed address. The room stays online while you edit; members and the invite will be kept." : info.restore_error ? `Automatic room restore failed: ${esc(info.restore_error)}. Retry below; members and the invite are kept.` : "This saved room is not online. Reopen it below; members and the invite are kept."}</span></div>` : ""}
+    setHtml(box, `${teamJoinHtml()}${intro}${info.was_sharing ? `<div class="notice"><span>${info.changing_address ? "Choose a reachable fixed address. The room stays online while you edit; members and the invite will be kept." : info.restore_error ? `Automatic room restore failed: ${esc(info.restore_error)}. Retry below; members and the invite are kept.` : "This saved room is not online. Reopen it below; members and the invite are kept."}</span></div>` : ""}
       <div class="setup-group"><h3>How teammates reach this computer</h3>
         <label class="check"><input type="radio" name="mode" value="tunnel" ${info.mode !== "address" ? "checked" : ""} ${info.tunnel_supported ? "" : "disabled"}><span><b>Quick tunnel</b>: works from anywhere, nothing to set up (Cloudflare's free tunnel). Reopens automatically after restart and keeps members and the invite, but Cloudflare assigns a new address; members must paste the new link. Choose an address you control to keep the same link.</span></label>
         <label class="check"><input type="radio" name="mode" value="address" ${info.mode === "address" ? "checked" : ""}><span><b>An address you control</b>: this network, Tailscale, or a server with its own domain. It stays the same, so the room reopens by itself after a restart.</span></label>
@@ -695,12 +743,14 @@ function renderHost(box, info) {
       ${opts(info)}
       <div class="row"><button class="ghost" data-room-matches>Review pending matches</button><button class="primary" id="startShare" type="button">${info.changing_address ? "Use this address" : "Start sharing"}</button>${info.changing_address ? `<button class="ghost" id="cancelAddress" type="button">Keep current link</button>` : ""}</div><pre class="joblog" id="shareLog" hidden></pre>`);
     wireRoomMatchReview(box);
+    wireTeamJoin(box);
     if (info.changing_address) box.querySelector('#cancelAddress').onclick = async () => {
       box._editingAddress = false;
       renderHost(box, await api(`/api/collab?slug=${S.slug}`));
     };
-    box.querySelectorAll('[name="mode"]').forEach((r) => { r.onchange = () => { box.querySelector("#addrBox").hidden = r.value !== "address" || !r.checked; }; });
-    box.querySelectorAll("[data-addr]").forEach((b) => { b.onclick = () => { box.querySelector("#addrIn").value = b.dataset.addr; }; });
+    box.querySelectorAll('[name="mode"]').forEach((r) => { r.onchange = () => { box.querySelector("#addrBox").hidden = r.value !== "address" || !r.checked; rememberRoomAddress(box); }; });
+    box.querySelectorAll("[data-addr]").forEach((b) => { b.onclick = () => { box.querySelector("#addrIn").value = b.dataset.addr; rememberRoomAddress(box); }; });
+    ["#addrIn", "#addrPort"].forEach((id) => { box.querySelector(id).oninput = () => rememberRoomAddress(box); });
     box.querySelectorAll("[data-vis]").forEach((b) => { b.onclick = () => box.querySelectorAll("[data-vis]").forEach((x) => x.classList.toggle("on", x === b)); });
     box.querySelector("#startShare").onclick = async () => {
       const mode = box.querySelector('[name="mode"]:checked')?.value || "tunnel";
@@ -725,11 +775,11 @@ function renderHost(box, info) {
   const members = info.room?.members || [];
   const online = members.filter((m) => m.online).length;
   const people = members.map((m) => `<div class="line-item"><span class="dot ${m.online ? "on" : ""}"></span><div class="txt"><b>${esc(m.name)}</b>
-      <span>${m.agents.length ? esc(m.agents.join(", ")) : "no agents yet"} · ${m.matched} matched${m.working.length ? ` · on ${esc(m.working.slice(0, 3).join(", "))}` : ""}</span></div>
+      <span>${m.agents.length ? esc(m.agents.join(", ")) : "no agents yet"} · ${m.matched} matched · <span title="Distinct functions improved by this person’s agents, including matches">${m.improved || 0} improved</span>${m.working.length ? ` · on ${esc(m.working.slice(0, 3).join(", "))}` : ""}</span></div>
       <button class="ghost small-btn danger" data-remove="${esc(m.name)}" type="button">Remove</button></div>`).join("");
   const waiting = (info.pending || []).map((p) => `<div class="line-item"><div class="txt"><b>${esc(p.name)}</b><span>asks to join</span></div>
       <button class="primary small-btn" data-approve="${esc(p.name)}" type="button">Let in</button><button class="ghost small-btn" data-decline="${esc(p.name)}" type="button">Decline</button></div>`).join("");
-  setHtml(box, `${intro}<label class="field"><span>${info.settings.visibility === "public" ? "The room's address (anyone with it and their own copy of the game can join)" : "Invite link (send it to teammates who own this game)"}</span></label>${cmdBox(info.link || "")}
+  setHtml(box, `${teamJoinHtml()}${intro}<label class="field"><span>${info.settings.visibility === "public" ? "The room's address (anyone with it and their own copy of the game can join)" : "Invite link (send it to teammates who own this game)"}</span></label>${cmdBox(info.link || "")}
     ${info.link ? `<a class="btn ghost" href="${esc(info.link)}" target="_blank" rel="noopener noreferrer">Open browser workspace ↗</a>` : ""}
     <p class="muted small">${info.mode === "address" ? "Shared at your own address: the room reopens by itself when this app restarts." : "Shared through a quick tunnel: the address changes if this app restarts."} Teammates can open this link in a browser and contribute without installing the app. They need their own copy of the game; checks run on your computer. Desktop users can also choose <i>New project → Join a team's room</i>.</p>
     ${waiting ? `<div class="setup-group"><h3>Waiting to join</h3>${waiting}</div>` : ""}
@@ -738,6 +788,7 @@ function renderHost(box, info) {
     <div class="row"><button class="ghost" data-room-matches>Review pending matches</button>${!info.stable_link ? `<button class="ghost" id="stableAddress" type="button">Use stable address…</button>` : ""}<button class="ghost" id="rotate" type="button">New invite link</button><button class="ghost danger" id="stopShare" type="button">Stop sharing</button></div>`);
   wireCopies(box);
   wireRoomMatchReview(box);
+  wireTeamJoin(box);
   const manage = async (payload) => {
     try { await api("/api/collab/manage", { method: "POST", body: { slug: S.slug, ...payload } }); renderHost(box, await api(`/api/collab?slug=${S.slug}`)); }
     catch (e) { toast(esc(e.message), "err"); }
@@ -794,28 +845,32 @@ function joinProblem({ link, name, copy, own }) {
       : !own ? "Confirm it's your own copy of the game." : "");
 }
 
-function openJoin() {
-  const body = dialog("Join a team's room", `<p class="muted">Paste the invite link (or a public room's address), then pick <b>your own copy</b> of the same game. decompdecomp checks it's identical to the host's; your copy itself is never sent.</p>
+function openJoin(project = null) {
+  project = typeof project === "string" ? project : null;
+  const body = dialog("Join a team's room", `<p class="muted">${project ? "Using the game copy already stored in your current project. Paste the invite link or public room address; decompdecomp will check your game matches the host's." : "Paste the invite link (or a public room's address), then pick <b>your own copy</b> of the same game. decompdecomp checks it's identical to the host's; your copy itself is never sent."}</p>
     <label class="field"><span>Invite link</span><input id="jLink" class="mono" placeholder="https://….trycloudflare.com/join/…"></label>
     <label class="field"><span>Your name in the room</span><input id="jName" maxlength="24" placeholder="e.g. alex"></label>
-    <label class="field"><span>Your copy of the game: its path on this computer (it's read where it is)</span><span class="pick-row"><input id="jPath" class="mono" placeholder="/home/you/games/game.iso"><button class="ghost small-btn" type="button" data-pick="file" data-for="jPath" data-title="Your copy of the game">Choose…</button></span></label>
+    <label class="field" ${project ? "hidden" : ""}><span>Your copy of the game: its path on this computer (it's read where it is)</span><span class="pick-row"><input id="jPath" class="mono" placeholder="/home/you/games/game.iso"><button class="ghost small-btn" type="button" data-pick="file" data-for="jPath" data-title="Your copy of the game">Choose…</button></span></label>
     <label class="check"><input type="checkbox" id="jOwn"><span>This is my own copy of this game, obtained legally. I'll keep what the room makes private.</span></label>
     <p class="muted small">A GameCube, Wii or PC project comes with its whole source tree from the host, and is then built here with your copy and your compilers: the first time takes a few minutes.</p>
+    <p class="muted small">If you have saved work, the host checks it before sharing it. This can take a few minutes; progress below shows the current stage and function.</p>
     <div class="row"><button class="primary" id="jGo" type="button" disabled>Join</button><span class="muted small" id="jWhy"></span></div><pre class="joblog" id="jLog" hidden></pre>`);
-  const fields = () => ({ link: $("jLink").value, name: $("jName").value, copy: $("jPath").value.trim(), own: $("jOwn").checked });
+  const fields = () => ({ link: $("jLink").value, name: $("jName").value, copy: project || $("jPath").value.trim(), own: $("jOwn").checked });
   // the sentence waits until something is typed: a fresh dialog shouldn't open on a complaint
   const check = () => { const f = fields(), why = joinProblem(f); $("jGo").disabled = !!why; $("jWhy").textContent = f.link.trim() || f.name ? why : ""; };
   body.querySelectorAll("input").forEach((el) => { el.oninput = check; el.onchange = check; });
   body.querySelector("#jGo").onclick = async () => {
+    const existingProject = typeof project === "string" ? project : null;
     const path = $("jPath").value.trim();
     if (joinProblem(fields())) return check();
     const log = body.querySelector("#jLog");
     showJobError(log, "");
+    log._showJobProgress = true;
     const finish = beginWork(log, "Joining room", [...body.querySelectorAll("input"), $("jGo")], "Joined the room.");
     try {
       // by its path, never through the page: a GameCube disc picked as a file turned the window black on Join
       const q = `link=${encodeURIComponent($("jLink").value.trim())}&name=${encodeURIComponent($("jName").value)}`
-        + `&confirmed=1&path=${encodeURIComponent(path)}`;
+        + `&confirmed=1&${existingProject ? `project=${encodeURIComponent(existingProject)}` : `path=${encodeURIComponent(path)}`}`;
       const { job } = await api(`/api/collab/join?${q}`, { method: "POST", raw: new Blob([]) });
       const res = await followJob(job, log);
       if ($("jLog") === log) closeDialog();

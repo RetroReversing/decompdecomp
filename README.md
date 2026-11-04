@@ -281,6 +281,22 @@ claim one function at a time so neighbouring batches cannot bypass the filter. T
 an updated host. Polishing uses its separate queue.
 
 
+**Paused unchanged candidates.** Three unchanged releases, or reported exhaustion, pause automatic
+selection for that recorded model. Other models can still try; workers using the same model share the
+pause, including explicit effort qualifiers. Switching a worker to another recorded model does not
+inherit the previous model’s release cooldown. Unspecified models use a worker-local pause. Source,
+build/header, symbol, project-instruction or repair-rule changes make new inputs eligible. Old global
+pause records are retained but are not attributed to models without evidence.
+
+On a worker's **Agents → ⋮ → Retry paused functions** action (also on waiting cards), choose up to
+50 functions; the default is five. Each free function meeting that worker's filters gets **one fresh
+automatic claim** for that model. Grants survive restart and are consumed atomically when claimed,
+including if a worker subsequently crashes. This bypasses only those functions' recent-release
+cooldown. Active claims, compile/attempt limits, match filters and never-tried filters remain in place.
+Waiting workers check within 30 seconds; stopped workers stay stopped. Normal provider charges apply
+when running agents resume. The button does not start an agent itself.
+
+
 For local library research, see [Comparing local SDK libraries and source](docs/local-sdk-comparisons.md).
 
 ## RetroReversing fork
@@ -1166,6 +1182,9 @@ Session transcripts now retain structured handoffs with remaining claims, recent
 experiment history and the last exposed reply. A later session receives this as historical data and must
 refresh its candidate/claim state. Credit-required model failures pause with guidance to add credits or
 choose another model.
+Function notes record measured before/after scores, including zero change. Deep permuter summaries
+carry these scores through room sync; older notes recover comparisons when measured history exists.
+Notes written before any measured baseline remain explicitly unscored.
 
 Repair examples offer target-function, supporting-source and full-source diff views. Pattern candidates
 identify edits reproducible by bounded repair families; supporting declarations can still be essential.
@@ -1288,9 +1307,8 @@ inherit the global defaults. Global initial templates are separate for ROM work,
 projects and polishing. Use the displayed placeholders, and double literal braces as
 `{{` / `}}` in initial-prompt templates. App instructions are literal text.
 
-Preview shows the proposed text without saving; an agent preview expands project values
-and includes its current continuation context. Restore built-in defaults globally or use
-global defaults for one agent. Changes apply to its next session. Project instructions,
+Save prompts applies changes to new sessions. Restore built-in defaults removes global overrides;
+individual agents can return to the global defaults. Project instructions,
 guides and handoff context are still appended to the initial prompt. App instructions are
 decompdecomp’s MCP/API instructions, not the CLI provider’s private system prompt.
 Effective session text is recorded in transcripts; prompt profiles distinguish efficiency cohorts.
@@ -1395,6 +1413,8 @@ reachable LAN/Tailscale/server address and its room port. Share that fixed link 
 must remain assigned/reachable and any external proxy/named tunnel must be running. This serves only
 the room API, not the app GUI or agent MCP endpoint. A fixed endpoint does not make an offline host
 available; clients reconnect when the host and endpoint return.
+The sharing dialog remembers the address, port and connection type on this computer for new rooms,
+even when closed before sharing. Existing rooms keep their own saved settings.
 
 Agent creation in **Add agents** is a background job. Its progress bar, elapsed time and log distinguish
 request acceptance, project/model checks, project preparation, identity reservation and worker launch.
@@ -1467,3 +1487,57 @@ sizes; these are not token or billing estimates. Task counts backfill surviving
 session transcripts once, then accumulate new calls (including failed calls).
 Connection probes are excluded. Detailed experiment guidance is available on demand
 with `guide(topic="agent-experiments")`; user prompt overrides are preserved.
+
+Local repairs also try bounded index and lifetime alternatives: in-place or separately staged
+unsigned index scaling, clearing dead pointer locals, reusing compatible dead locals for indexed
+stores, constant-count `for` loops, and splitting mask assignments without changing their types or
+mask values. These candidates are shared with the deep permuter and agent local experiments;
+only the normal compiler and exact-match judge can save a result.
+
+Team-room member cards show both matched and improved function counts. Improvements count distinct
+functions across each person's agents, include matches, and retain credit when another person later
+improves the same function. The host supplies these counts to everyone in the room.
+
+Applying a compiler suggestion opens a progress dialog immediately. It reports affected-match
+checks, saved-score updates and progress-file saving while the work runs in the background. Errors
+remain in the dialog, and repeated clicks reuse the running job. Closing the dialog does not cancel
+the checks. Existing matches must still pass the normal byte checks before settings change.
+
+Captured repair patterns also guide shared scaled offsets across nearby stores, immediate
+pointer-field null tests, byte-array address association inside candidate-owned inline helpers
+(including helpers reached through wrapper macros), and trailing stores placed inside both branch
+arms. Searches keep these alternatives bounded, preserve protected macro regions and volatile
+accesses, and require the normal compiler and byte/object judge before keeping any improvement.
+
+With any project open, choose **Decompile together → Join room…** to join someone else's existing
+room. Paste their invite link or public room address and enter your room name. Joining from a project
+uses its stored game copy automatically; New project → Join a team’s room still offers a file picker. Existing projects remain in the sidebar. The join option is also available while hosting,
+waiting for a room, or restoring a hosted room.
+
+While joining, the progress display identifies connection, game checks, local setup, host verification
+and synchronization stages. During saved-work transfer it shows the current function, processed
+count, stage percentage, confirmed matches and submitted better attempts. The host rechecks each
+result; 100% of that transfer stage does not mean later synchronization has finished.
+
+In **Room match verification**, **Retry all** checks the current pending submissions one at a time,
+continuing past individual errors. Individual Retry buttons and Retry all immediately show a spinner,
+with duplicate clicks disabled while the job runs. The shared progress display shows processed counts.
+
+Project maps clear the previous project's canvas as soon as you switch games and draw their first
+frame only after the loading cover is removed. Late map responses cannot replace a newer refresh.
+Compiler-colour analysis is requested when you select the Compiler map, keeping it off the default
+Progress view's loading path.
+
+### Commit verified progress from Settings
+
+For ROM projects with a decompdecomp export, open **Settings → Sync to Git repository**,
+choose the checkout root, and click **Verify, commit and push**. The app checks new matches
+in a private build, saves all portable progress under `progress/` (including drafts, names,
+notes, headers and compiler settings), commits those files and pushes the current branch
+to its configured upstream using your existing Git credentials. The result shows the commit
+and, for GitHub remotes, a link. **Verify and sync** still leaves changes for manual review.
+
+Start with a clean checkout, a configured Git author and an upstream branch. If the remote
+has commits missing locally, pull them first. A failed push keeps the local commit; fix the
+credentials or upstream and retry. Nothing is force-pushed. Imported projects already work
+in their own source checkout; this export-sync button is currently for ROM projects.

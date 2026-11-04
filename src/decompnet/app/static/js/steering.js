@@ -135,9 +135,11 @@ const saidText = (text) => `<div class="said-text">${miniMarkdown(text)}</div>`;
 const tcName = (id) => (S.st?.toolchains || []).find((t) => t.id === id)?.name || id;
 function suggestionHtml(s) {
   const ok = s.check && s.check.includes("matches the game");
+  const single = s.function_scope?.function;
   return `<div class="note">${saidHead(s.agents.length > 1 ? `${s.agents.length} agents agree` : "suggested", s.agents, s.t, true)}${saidText(s.text)}
     ${s.check ? `<p class="said-check${ok ? " ok" : ""}">${ok ? "✓ " : ""}${esc(s.check)}</p>` : ""}
-    <div class="row">${s.toolchain ? `<button class="primary small-btn" type="button" data-apply="${s.id}">Use ${esc(tcName(s.toolchain))} ${esc(s.flags.join(" "))}${(s.ranges || []).length ? ` for ${plural(s.ranges.length, "part")}` : ""}</button>` : ""}<button class="ghost small-btn" type="button" data-dismiss="${s.id}">${s.toolchain ? "Not now" : "Dismiss"}</button></div></div>`;
+    ${s.toolchain ? `<p class="small muted">${single ? `Scope: ${esc(single)} only. Rechecks and saves its exact source, header and flags together; neighbours are unchanged.` : (s.ranges || []).length ? 'Scope: selected address ranges. Only functions whose settings change are checked.' : 'Scope: project default. This can require checking thousands of existing matches; use a range suggestion for a local change.'}</p>` : ''}
+    <div class="row">${s.toolchain ? `<button class="primary small-btn" type="button" data-apply="${s.id}">Use ${esc(tcName(s.toolchain))} ${esc(s.flags.join(" "))}${single ? ` for ${esc(single)} only` : (s.ranges || []).length ? ` for ${plural(s.ranges.length, "part")}` : ""}</button>` : ""}<button class="ghost small-btn" type="button" data-dismiss="${s.id}">${s.toolchain ? "Not now" : "Dismiss"}</button></div></div>`;
 }
 $("suggestList").onclick = $("compilerWaiting").onclick = async (e) => {
   const cut = e.target.closest("button[data-bapply], button[data-bdismiss]");
@@ -153,11 +155,48 @@ $("suggestList").onclick = $("compilerWaiting").onclick = async (e) => {
   const b = e.target.closest("button[data-apply], button[data-dismiss]");
   if (!b) return;
   const apply = b.dataset.apply != null;
+  const slug = S.slug;
+  if (apply) {
+    const body = dialog("Applying compiler suggestion", `<p>Checking affected functions with the suggested compiler and flags. Existing matches must still match byte for byte; saved attempts are rescored before the settings are saved.</p>
+      <p class="muted small">You can close this dialog; the checks will continue in the background.</p>
+      <p class="small" data-suggestion-progress role="status">Preparing checks…</p>
+      <progress class="deep-sweep-bar" data-suggestion-meter aria-label="Current compiler-check phase" max="100" value="0" hidden></progress>
+      <pre class="log" id="suggestionApplyLog" aria-label="Compiler checks"></pre>
+      <button class="ghost" type="button" data-close>Close</button>`);
+    const log = body.querySelector("#suggestionApplyLog");
+    const finish = beginWork(log, "Checking compiler settings and protecting existing matches", [b], "Compiler settings applied.");
+    try {
+      const { job } = await api("/api/suggestion", { method: "POST", body: { slug, id: Number(b.dataset.apply), action: "apply", background: true } });
+      const overview = await followJob(job, log, (_lines, snapshot) => {
+        const progress = snapshot.progress;
+        if (!progress?.phase) return;
+        const total = Number(progress.total || 0), done = Number(progress.done || 0);
+        const percent = total ? Math.round(100 * done / total) : 100;
+        body.querySelector('[data-suggestion-progress]').textContent = `${progress.phase} · ${done.toLocaleString()} / ${total.toLocaleString()} · ${percent}%${progress.affected != null ? ` · ${progress.affected.toLocaleString()} affected functions` : ''}`;
+        const meter = body.querySelector('[data-suggestion-meter]'); meter.hidden=false; meter.value=percent;
+        const waitingBar = log.previousElementSibling;
+        if (waitingBar?.classList.contains('workbar')) waitingBar.hidden=true;
+      });
+      body.querySelector('[data-suggestion-progress]').textContent = 'Compiler settings applied; project progress saved.';
+      body.querySelector('[data-suggestion-meter]').value = 100;
+      if (S.slug === slug) {
+        S.ov = overview;
+        renderStats(S.ov);
+        renderProjectSettings();
+      }
+      toast("Applied. Agents use the new settings from their next attempt.");
+    } catch (err) { showJobError(log, err.message); }
+    finally { finish(); }
+    return;
+  }
   try {
-    S.ov = await api("/api/suggestion", { method: "POST", body: { slug: S.slug, id: Number(b.dataset.apply || b.dataset.dismiss), action: apply ? "apply" : "dismiss" } });
-    renderStats(S.ov);
-    renderProjectSettings();
-    toast(apply ? "Applied. Agents compile with it from their next attempt on." : "Dismissed.");
+    const overview = await api("/api/suggestion", { method: "POST", body: { slug, id: Number(b.dataset.dismiss), action: "dismiss" } });
+    if (S.slug === slug) {
+      S.ov = overview;
+      renderStats(S.ov);
+      renderProjectSettings();
+    }
+    toast("Dismissed.");
   } catch (err) { toast(esc(err.message), "err"); }
 };
 // a disc's title is often only its serial (GTA San Andreas imports as SLES-52541): the user names it
@@ -619,6 +658,8 @@ $("autoAdjust").onchange = async () => {
 $("compilerParts").onclick = async (e) => {
   const fn = e.target.closest("[data-compiler-function]");
   if (fn) { openFn(fn.dataset.compilerFunction); return; }
+  const testDefault = e.target.closest("button[data-profile-test-default]");
+  if (testDefault) { await testProfileAsDefault(testDefault, testDefault.dataset.profileAction || "test"); return; }
   const profileButton = e.target.closest("button[data-profile-default]");
   if (profileButton) { await compareProfileWithDefault(profileButton); return; }
   const b = e.target.closest("button[data-unrange]");
@@ -720,6 +761,7 @@ $("saveGo").onclick = async () => {
 const COMPILER_ANSWER_EVERY_MS = 5000;  // while the app checks, the answer is asked again this often
 const PART_STATE = {
   confirmed: ["checked", "its neighbours agree"],
+  function_applied: ["function applied", "exact source and compiler settings saved for this function only"],
   quirk: ["doubtful", "its neighbours don't agree: it may be one function's quirk"],
   checking: ["being checked", "the app tries its neighbours with that compiler"],
   waiting: ["waiting", "agents try its neighbours when they take them"],
@@ -772,7 +814,7 @@ async function compareProfileWithDefault(button) {
   const item = {running:true, message:"Comparing matched functions against the default…"};
   compilerProfileJobs.set(key, item); renderCompilerParts(compilerPartsAnswer);
   try {
-    const {job} = await api("/api/compiler/cleanup", {method:"POST", body:{slug,profile}});
+    const {job} = await api("/api/compiler/cleanup", {method:"POST", body:{slug,profile,action}});
     const out = await followJob(job, null, lines => {
       item.message = lines[lines.length - 1] || "Comparing against default…";
       if (S.slug === slug) renderCompilerParts(compilerPartsAnswer);
@@ -785,6 +827,50 @@ async function compareProfileWithDefault(button) {
     if (S.slug === slug) { renderCompilerParts(compilerPartsAnswer); await loadCompilerAnswer(); }
   }
 }
+async function testProfileAsDefault(button, action="test") {
+  const group = compilerDisplayedGroups[Number(button.dataset.profileTestDefault)], part = group?.parts[0];
+  if (!part || group.default) return;
+  const slug = S.slug;
+  const profile = {toolchain:part.toolchain, flags:part.flag_list || part.flags.split(/\s+/).filter(Boolean)};
+  const replacing=action==='replace', nonmatches=action==='nonmatches';
+  const body = dialog(replacing ? 'Replace project default compiler' : nonmatches ? 'Test all non-matches' : 'Test compiler profile as default', `<p>${nonmatches ? 'Check saved C for all non-matching functions against' : 'Check currently matched functions that use the project default against'} <b>${esc(group.compiler)}</b>.</p>
+    <code class="compiler-arguments">${esc(profile.flags.join(' '))}</code>
+    <p class="small muted">${replacing ? 'Make this profile the default. Existing matches that need the previous default keep it as a non-default override. Other profiles keep their settings. Saved attempts are rescored before settings are saved.' : nonmatches ? 'Test only. Checks all non-matching functions, including other profiles. Functions without saved C are reported. No settings or matches are changed.' : 'Test only. Compiler settings, ranges and saved matches stay unchanged. Functions using other profiles are excluded.'}</p>
+    <section class="default-profile-test" aria-label="Default profile test progress"><p data-default-status role="status">Counting default-profile matches…</p>
+    <progress class="deep-sweep-bar" data-default-bar value="0" max="1" aria-label="Functions checked"></progress>
+    <dl class="default-profile-counts"><div><dt>Passed</dt><dd class="ok" data-default-passed>0</dd></div><div><dt>Did not pass</dt><dd data-default-failed>0</dd></div><div><dt>Remaining</dt><dd data-default-left>—</dd></div></dl></section>
+    <p data-default-verdict></p><details data-default-matches hidden><summary>Functions that match this profile</summary><div data-default-match-list class="mono"></div></details><details data-default-failures hidden><summary>Functions that did not pass</summary><div class="compiler-table" data-default-failure-list></div></details>
+    <div data-default-work></div><details class="more"><summary>Test log</summary><pre class="joblog" data-default-log></pre></details>`, 'compiler-default-test');
+  const get = selector=>body.querySelector(selector), log=get('[data-default-log]'), work=get('[data-default-work]');
+  const active=()=>S.dialogKind==='compiler-default-test' && !$("dialog").hidden && get('[data-default-log]')===log;
+  const finish=beginWork(work,'Preparing compatibility test',[button],replacing ? 'Default replacement finished.' : 'Test complete; no settings changed.');
+  const waitingBar=work.previousElementSibling;
+  const render=p=>{
+    if(!p)return;
+    if(p.checked===undefined){get('[data-default-status]').textContent=`${p.phase || 'Checking settings'} · ${p.done || 0} / ${p.total || 0}`;get('[data-default-bar]').max=p.total || 1;get('[data-default-bar]').value=p.done || 0;return;}
+    if(work._workStatus)work._workStatus.textContent=nonmatches ? 'Testing non-matches…' : 'Testing default-profile matches…';
+    get('[data-default-status]').textContent=`${p.checked.toLocaleString()} / ${p.total.toLocaleString()} functions checked · ${p.total ? Math.round(100*p.checked/p.total) : 100}%`;
+    get('[data-default-bar]').max=p.total || 1;get('[data-default-bar]').value=p.checked;
+    get('[data-default-passed]').textContent=p.passed.toLocaleString();get('[data-default-failed]').textContent=p.failed.toLocaleString();
+    get('[data-default-left]').textContent=Math.max(0,p.total-p.checked).toLocaleString();
+    if(waitingBar?.classList.contains('workbar'))waitingBar.hidden=true;
+    get('[data-default-matches]').hidden=!p.matches?.length;
+    get('[data-default-match-list]').textContent=(p.matches || []).join(', ');
+    get('[data-default-failures]').hidden=!p.failures?.length;
+    get('[data-default-failure-list]').innerHTML=`<table><thead><tr><th>Function</th><th>Result</th></tr></thead><tbody>${(p.failures || []).map(f=>`<tr><td class="mono">${esc(f.function)}</td><td>${esc(f.reason)}</td></tr>`).join('')}</tbody></table>`;
+  };
+  try {
+    const {job}=await api('/api/compiler/test-default',{method:'POST',body:{slug,profile,action}});
+    const out=await followJob(job,log,(_lines,state)=>{if(active())render(state.progress);},active);
+    if(!active() || !out)return;
+    if(out.replaced){get('[data-default-verdict]').textContent=`Default replaced. ${out.preserved} functions kept their previous compiler profile. All existing matches remain verified.`; if(S.slug===slug){S.ov=await api(`/api/project?slug=${encodeURIComponent(slug)}`);renderStats(S.ov);renderProjectSettings();await loadCompilerAnswer();} return;}
+    render(out);
+    if(nonmatches){get('[data-default-verdict]').textContent=out.stale ? 'Inputs changed during testing; rerun before using these results.' : `${out.passed} of ${out.total} non-matching functions match this compiler profile. No settings or saved matches changed.`;return;}
+    get('[data-default-verdict]').textContent=out.stale ? 'Inputs changed while testing. Results are outdated; rerun before deciding.' : !out.total ? 'No matched functions currently use the default. No compatibility conclusion can be drawn.' : out.compatible ? 'All tested default-profile matches still match byte for byte. This profile is a compatible default candidate for this population. Nothing has been changed.' : `${out.failed} functions did not pass. These functions need their previous compiler profile if you replace the default. Nothing has been changed.`;
+  } catch(error){if(active())showJobError(work,error.message);}
+  finally{finish();}
+}
+
 const compilerGroupsOpen = new Set();
 const compilerReasonsOpen = new Set();
 function renderCompilerParts(a) {
@@ -808,7 +894,7 @@ function renderCompilerParts(a) {
   setHtml($("compilerParts"), mode === "range" ? `<ol class="compiler-range-list">${groups.flatMap(g => g.parts).map(p => row(p, true)).join("")}</ol>`
     : groups.map((g, index) => `<details class="compiler-profile" data-compiler-group="${esc(g.id)}"${compilerGroupsOpen.has(g.id) ? " open" : ""}>
       <summary><span><b>${esc(mode === "family" ? g.family.toUpperCase() : g.compiler)}</b>${g.default ? ` <span class="chip-s">${mode === "family" && g.profiles > 1 ? "Includes default" : "Default"}</span>` : ""}${mode === "settings" ? `<code class="compiler-arguments">${esc(g.flags || "No arguments")}</code>` : ""}<span class="compiler-profile-count">${plural(g.parts.length, "range")}${g.functions != null ? ` · ${plural(g.functions, "function")}` : ""}${mode === "family" ? ` · ${plural(g.profiles, "argument profile")}` : ""}</span></span></summary>
-      ${mode === "settings" && !g.default && S.ov.kind !== "fork" ? `<div class="compiler-profile-action"><button class="ghost small-btn" type="button" data-profile-default="${index}"${compilerProfileJobs.get(`${S.slug}:${g.id}`)?.running ? " disabled" : ""}>Compare all matches with default</button><p class="small muted">Only exact byte matches move to the project default. Drafts and non-matches keep their settings.</p><p class="small" role="status">${esc(compilerProfileJobs.get(`${S.slug}:${g.id}`)?.message || "")}</p></div>` : ""}
+      ${mode === "settings" && !g.default && S.ov.kind !== "fork" ? `<div class="compiler-profile-action"><button class="ghost small-btn" type="button" data-profile-default="${index}"${compilerProfileJobs.get(`${S.slug}:${g.id}`)?.running ? " disabled" : ""}>Compare all matches with default</button><button class="ghost small-btn" type="button" data-profile-test-default="${index}">Test this profile as default</button><button class="ghost small-btn" type="button" data-profile-test-default="${index}" data-profile-action="replace">Replace default with this profile</button><button class="ghost small-btn" type="button" data-profile-test-default="${index}" data-profile-action="nonmatches">Test all non-matches</button><p class="small muted">Only exact byte matches move to the project default. Drafts and non-matches keep their settings.</p><p class="small" role="status">${esc(compilerProfileJobs.get(`${S.slug}:${g.id}`)?.message || "")}</p></div>` : ""}
       <ol class="compiler-range-list">${g.parts.map(p => row(p, mode === "family")).join("")}</ol></details>`).join(""));
   $("compilerParts").querySelectorAll("details[data-range-reason]").forEach(d => d.ontoggle = () => {
     if (!d.isConnected) return;
@@ -1136,9 +1222,10 @@ async function renderDeepSweep() {
     $("deepSweepProgressText").textContent = "";
   }
   const version = deepSweepProjectVersion;
+  if (panel.dataset.resetting === slug) return;
   try {
     const status = await api(`/api/permuter/pass?slug=${encodeURIComponent(slug)}`);
-    if (S.slug !== slug || version !== deepSweepProjectVersion) return;
+    if (S.slug !== slug || version !== deepSweepProjectVersion || panel.dataset.resetting === slug) return;
     if (panel.dataset.loadedSlug !== slug) {
       panel.dataset.loadedSlug = slug;
       $("deepSweepMinutes").value = status.minutes;
@@ -1230,14 +1317,27 @@ $("deepSweepStop").onclick = async () => {
 };
 
 $("deepSweepReset").onclick = async () => {
+  const button = $("deepSweepReset"), panel = $("deepSweepPanel");
+  if (button.disabled || panel.dataset.resetting) return;
   if (!confirm("Reset this project’s deep permuter totals and visible improvement lists? Saved code, matches, completed passes and rewrite evidence are kept. Stop active deep searches first.")) return;
   const slug = S.slug, log = $("deepSweepLog");
-  const done = beginWork(log, "Resetting deep permuter metrics", [$("deepSweepReset")], "Metrics reset");
+  panel.dataset.resetting = slug;
+  deepSweepProjectVersion++; // Discard status requests that started before this reset.
+  const previousLabel = button.innerHTML;
+  button.innerHTML = '<span class="spin-dot" aria-hidden="true"></span> Resetting…';
+  button.setAttribute("aria-busy", "true");
+  $("deepSweepLogSection").hidden = false;
+  const done = beginWork(log, "Resetting deep permuter metrics", [button, $("deepSweepStart")], "Metrics reset");
   try {
     const status = await api("/api/permuter/pass", {method:"POST", body:{slug, action:"reset-metrics"}});
     if (S.slug === slug) { renderDeepSweepResults(status); renderDeepActivity({}); }
   } catch (error) { showJobError(log, error.message); }
-  finally { done(); }
+  finally {
+    done();
+    delete panel.dataset.resetting;
+    button.innerHTML = previousLabel;
+    button.removeAttribute("aria-busy");
+  }
 };
 
 
@@ -1247,19 +1347,27 @@ $("repositorySyncStop").onclick = async () => {
   try { if (repositorySyncJob) await api("/api/job/cancel", {method:"POST", body:{id:repositorySyncJob}}); }
   catch (error) { showJobError($("repositorySyncLog"), error.message); }
 };
-$("repositorySyncGo").onclick = async () => {
+async function syncRepository(commitPush = false) {
   const log = $("repositorySyncLog"), button = $("repositorySyncGo"), stop = $("repositorySyncStop");
-  const finish = beginWork(log, "Verifying repository progress", [button], "Repository sync finished.");
+  const finish = beginWork(log, "Verifying repository progress", [button, $("repositoryCommitGo")], "Repository sync finished.");
   showJobError(log, "");
   try {
-    const {job} = await api("/api/repository-sync", {method:"POST", body:{slug:S.slug, folder:$("repositoryFolder").value.trim()}});
+    const {job} = await api("/api/repository-sync", {method:"POST", body:{slug:S.slug, folder:$("repositoryFolder").value.trim(), commit_push:commitPush}});
     repositorySyncJob = job; stop.hidden = false;
     const result = await followJob(job, log);
     log.textContent += `\n${result.verified_build ? "Full rebuilt image verified." : "No source additions; no full rebuild was needed."}\n${result.accepted.length} functions synced; ${result.skipped.length} could not be integrated.\n${result.changes || "No Git changes."}`;
+    if (result.commit) log.textContent += `\nCommit: ${result.commit}\n${result.pushed ? "Pushed to " + result.upstream : result.push_error || "Saved locally."}`;
     for (const item of result.skipped) log.textContent += `\n${item.function}: ${item.reason}`;
+    if (result.commit_url && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/commit\/[a-f0-9]+$/.test(result.commit_url)) {
+      const link = document.createElement("a"); link.href = result.commit_url;
+      link.textContent = "View commit"; link.target = "_blank"; link.rel = "noopener noreferrer";
+      log.append(document.createTextNode("\n"), link);
+    }
   } catch (error) { showJobError(log, error.message); }
   finally { repositorySyncJob = null; stop.hidden = true; finish(); }
-};
+}
+$("repositorySyncGo").onclick = () => syncRepository();
+$("repositoryCommitGo").onclick = () => syncRepository(true);
 
 
 $("sourcePrepReviewsRefresh").onclick = async () => {

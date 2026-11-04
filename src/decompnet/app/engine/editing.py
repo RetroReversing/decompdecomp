@@ -258,6 +258,8 @@ class EditMixin:
             "status", "applied" if apply else "dismissed"))
 
     def rename_symbol(self, agent: Agent, project: str | None, old: str, new: str, message: str = "", *, progress=None) -> str:
+        from ..function_names import check_rename
+        check_rename(old.strip(), new.strip())
         if (fork := self.fork_slug(project)):  # the project's own config and files (ForkEngine.rename_symbol)
             return self.forks.rename_symbol(agent, fork, old, new, message)
         proj = self._project(project)
@@ -279,6 +281,9 @@ class EditMixin:
         pairs = [(old.strip(), new.strip()) for old, new in pairs]
         if not pairs:
             return "nothing to rename"
+        from ..function_names import check_rename
+        for old, new in pairs:
+            check_rename(old, new)
         syms = self.symbols(proj["id"])
         trial = SymbolTable([Symbol(s.name, s.address, s.size, s.kind) for s in syms.by_name.values()])
         addresses = {}
@@ -373,12 +378,12 @@ class EditMixin:
             link.sync()
         return text
 
-    def add_note(self, agent: Agent, project: str | None, text: str, function: str | None = None) -> str:
+    def add_note(self, agent: Agent, project: str | None, text: str, function: str | None = None, *, score_before=None, score_after=None) -> str:
         link = self._link(project)
         if link is None:
-            return super().add_note(agent, project, text, function)
+            return super().add_note(agent, project, text, function, score_before=score_before, score_after=score_after)
         name = self._function(function, project)["name"] if function else None
-        return link.call("/collab/note", agent, text=text, function=name) or "Noted, and shared with the room."
+        return link.call("/collab/note", agent, text=text, function=name, score_before=score_before, score_after=score_after) or "Noted, and shared with the room."
 
     def set_instructions(self, slug: str, text: str) -> None:
         """What the user wants agents to know or focus on, given to every agent on this project."""

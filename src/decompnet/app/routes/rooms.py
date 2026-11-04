@@ -147,19 +147,27 @@ def register(app: App) -> None:
             def work(log):
                 if data.get('recover') and slug not in net.links:
                     log(f'Recovered {room_matches.recover_legacy(net,slug)} older submissions.')
-                rows=[r for r in room_matches.pending(net,slug) if not key or r['key']==key][:5]
-                matched=0
+                rows=[r for r in room_matches.pending(net,slug) if not key or r['key']==key]
+                if data.get('all') is not True:
+                    rows=rows[:5]
+                matched=failed=0
                 for index,row in enumerate(rows):
                     if getattr(log,'cancelled',False):break
+                    if hasattr(log,'progress'):log.progress({'finished':index,'total':len(rows),'phase':'Host verification','function':row['function']})
                     log(f"Verifying {row['function']} ({index+1}/{len(rows)})")
-                    if row['direction']=='client':
-                        if slug not in net.links:raise NetworkError('Reconnect to this room before resubmitting.')
-                        result=room_matches.resend(net.links[slug],row['key'])
-                    else:result=room_matches.retry(net,slug,row['key'])
-                    matched+=bool(result.get('matched'))
-                    log(result.get('reason') or ('Host confirmed match' if result.get('matched') else 'Still pending'))
+                    try:
+                        if row['direction']=='client':
+                            if slug not in net.links:raise NetworkError('Reconnect to this room before resubmitting.')
+                            result=room_matches.resend(net.links[slug],row['key'])
+                        else:result=room_matches.retry(net,slug,row['key'])
+                        matched+=bool(result.get('matched'))
+                        log(result.get('reason') or ('Host confirmed match' if result.get('matched') else 'Still pending'))
+                    except (NetworkError,ValueError) as error:
+                        if data.get('all') is not True:raise
+                        failed+=1
+                        log(f"Could not verify {row['function']}: {error}")
                     if hasattr(log,'progress'):log.progress({'finished':index+1,'total':len(rows),'phase':'Host verification'})
-                return {'matched':matched}
+                return {'matched':matched,'failed':failed,'total':len(rows)}
             return JSONResponse({'job':jobs.start('room match verification',work)})
         except (NetworkError,ValueError) as error:return fail(error)
 
@@ -237,11 +245,13 @@ def register(app: App) -> None:
             return fail(ValueError("confirm that this is your own legally obtained copy of the game"))
         link, name = q.get("link", ""), q.get("name", "")
         game: Path | None = None
-        if q.get("path"):  # a file on this computer (a disc is gigabytes: not through the browser)
+        uploaded = False
+        project = q.get("project", "")
+        if not project and q.get("path"):  # a file on this computer (a disc is gigabytes: not through the browser)
             game = hostenv.local_path(q["path"])
             if not game.is_file():
                 return fail(ValueError(f"no file at {game}"))
-        else:  # the browser's upload, streamed to disk
+        elif not project:  # the browser's upload, streamed to disk
             upload = home / "uploads" / uuid.uuid4().hex[:8]
             upload.mkdir(parents=True, exist_ok=True)
             game = upload / (Path(q.get("filename") or "game.bin").name or "game.bin")
@@ -257,11 +267,14 @@ def register(app: App) -> None:
             if size == 0:
                 shutil.rmtree(upload, ignore_errors=True)
                 game = None
-        uploaded = game is not None and game.parent.parent == home / "uploads"
+            uploaded = game is not None
 
         def work(log):
             try:
-                slug = collab.join_room(net, link, name, game or b"", log=log)
+                copy = collab.project_game(net, project) if project else game
+                if project:
+                    log("Using the game copy already stored in your project; checking it against the host's game.")
+                slug = collab.join_room(net, link, name, copy or b"", log=log)
             finally:
                 if uploaded:
                     shutil.rmtree(game.parent, ignore_errors=True)

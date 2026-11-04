@@ -196,3 +196,31 @@
 
 .session-transcript .transcript-score-improvement { border-left: 4px solid var(--green, #219653); }
 .transcript-score-improvement .transcript-event-label { color: var(--green, #219653); }
+
+/* Focused work uses the same fields and surfaces as the function drawer. */
+.focus-target { display:grid; gap:10px; padding:18px; border:1px solid var(--line); border-radius:6px; background:var(--panel); }
+.focus-target strong { overflow-wrap:anywhere; font-size:18px; }
+.focus-form { max-width:none; margin:24px 0; gap:16px; }
+.focus-form select { width:100%; margin:0; }
+.focus-guidance { color:var(--ink-2); margin:0 0 22px; }
+.focus-guidance p { margin:6px 0 0; line-height:1.6; }
+.focus-result { margin-top:22px; padding:16px; border:1px solid var(--line); border-left:3px solid var(--hl); border-radius:4px; }
+.focus-result p { margin:6px 0 0; line-height:1.6; color:var(--ink-2); }
+.focus-log { margin-top:20px; border-top:1px solid var(--line); padding-top:14px; }
+.focus-log summary { cursor:pointer; color:var(--ink-2); font-size:12px; }
+.focus-log pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:240px; overflow:auto; font-size:12px; line-height:1.7; margin:12px 0 0; }
+
+.focus-target .eyebrow { font:600 11px "IBM Plex Mono",monospace; letter-spacing:.1em; color:var(--ink-2); }
+
+.tool-controls-catalog > p:first-child { display: none; }
+.tool-controls-catalog > .transcript-tool { margin: 0; border: 0; border-bottom: 1px solid var(--line-soft); border-radius: 0; background: transparent; }
+.tool-controls-catalog > .transcript-tool > summary { display: grid; grid-template-columns: 10px minmax(0,1fr) auto 18px; gap: 10px; padding: 12px 0; }
+.tool-controls-catalog > .transcript-tool > summary code { background: transparent; padding: 0; font-size: 12px; overflow-wrap: anywhere; }
+.tool-controls-catalog > .transcript-tool > summary input { grid-column: 4; grid-row: 1; margin: 0; }
+.tool-controls-catalog > .transcript-tool > summary > span { grid-column: 3; grid-row: 1; font-size: 11px; text-align: right; max-width: 130px; }
+.tool-controls-catalog > .transcript-tool > p, .tool-controls-catalog > .transcript-tool > dl { margin: 0 0 14px 20px; }
+
+.repair-dialog .settings-disclosure { margin-top:18px; margin-bottom:0; }
+.repair-dialog .settings-disclosure > summary h3 { margin:0; font-size:14px; display:flex; flex-wrap:wrap; align-items:baseline; gap:8px; }
+.repair-dialog .settings-disclosure > summary { justify-content:flex-start; }
+.repair-source-section > .pad > .repair-list > .repair-card:first-child { margin-top:0; }

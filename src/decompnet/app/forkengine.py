@@ -1743,6 +1743,8 @@ class ForkEngine:
         data_0222f194. The function's row keeps its history under the new name. Where the report keeps the original's
         symbol (Console.renames_in_report: a PC game's _func_0041B470@8), the row keeps that name too, and the new one
         is the function's real name (Console.real_names), how its source spells it."""
+        from .function_names import check_rename
+        check_rename(old.strip(), new.strip())
         # (`old` as the report gives a PC function: _func_0041B470@8, @func_0041B470@8)
         if not re.fullmatch(r"[A-Za-z_]\w*", new) or not re.fullmatch(r"@?[A-Za-z_]\w*(?:@\d+)?", old) or old == new:
             raise NetworkError("rename_symbol takes two different C names: old and new")
@@ -4112,7 +4114,7 @@ class ForkEngine:
                            "check": "confirmed", "said": f"{p['file']}: its matched functions match with it"}
                           for p in parts]}
 
-    def set_compiler_ranges(self, slug: str, ranges: list[list[int]], compiler: str | None) -> str:
+    def set_compiler_ranges(self, slug: str, ranges: list[list[int]], compiler: str | None, log=lambda line: None) -> str:
         """The Settings panel's "only for these address ranges", where each source file has a compiler: the files
         whose code is in them get `compiler` (None: the project's own again), each only when its matches hold."""
         _, fp, cfg = self.get(slug)
@@ -4125,7 +4127,8 @@ class ForkEngine:
         if not files:
             raise NetworkError("no source file's code is in those ranges")
         done, stayed = [], []
-        for f in files:
+        for index, f in enumerate(files, 1):
+            log(f"Checking source file {index} of {len(files)}: {f}")
             try:
                 self.set_file_compiler_by_hand(slug, f, compiler or own)
                 done.append(f)

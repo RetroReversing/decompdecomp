@@ -2845,8 +2845,10 @@ Both bodies independently linked byte-identically at their existing ROM slots:
 placement problems. Compiling either an unused static or inline constructor did
 not reproduce the result. The controlled reduction isolated the constructor's
 address-taking statement; it is evidence of compiler-unit dependence, not proof
-of which internal compiler pass causes it. This replay is not yet a live match
-or a full-cartridge verification.
+of which internal compiler pass causes it. The pair subsequently passed the normal live prepared-source API and
+repository-sync full-cartridge verification. Keep the callback forward declaration
+in the source unit too: export may rename its definition and earlier address
+reference together while retaining the private header unchanged.
 
 Keep the real verified constructor as context rather than inventing padding,
 helper bodies or target instructions. Bounded public context may occupy separate
@@ -2886,3 +2888,289 @@ Installed-driver regressions cover IDO 5.3, KMC GCC 2.7.2 and PS1 GCC 2.7.2
 through maspsx/GNU as. The PS1 wrapper requires explicit pinned assembly-stage
 commands: replacing its shell's `-c` with `-E` is invalid. Registry templates now
 provide those stages, keeping console decisions out of the shared verifier.
+## Captured index and lifetime repairs (3 November 2026)
+
+Evidence level: verified capture observations, plus controlled synthetic regressions. The review
+covered 500 recent records; 84 had comparable settings and distinct before/after source. These are
+not five newly measured live matches, and captures with several edits do not isolate causality.
+
+- Capture 21574: KMC GCC 2.7.2, `-O2`, score 20 to exact after in-place index scaling.
+  The existing last-shift family already covers some such expressions. The shared generator now
+  also tries a separate scaling statement, restricted to a dead, unescaped unsigned word local.
+- Capture 21580: KMC GCC 2.7.2, score 180 to exact after clearing a dead pointer local.
+  A separate pointer CFG permits unrelated volatile reads but never rewrites them or their order.
+- Capture 21581: GCC 2.8.1 with SN assembler, `-O2`, score 20 to exact after indexed-store staging
+  and declaration reordering. The new family isolates staging into a dead compatible word local;
+  declaration ordering remains a separate existing search. Neither edit alone is proven sufficient.
+- Capture 21578: KMC GCC 2.7.2, score 60 to exact after changing a constant-count loop to `for`.
+  The generator requires a positive bounded literal, a zero start and a single terminal increment;
+  escaping counters, other updates and control transfers are excluded.
+- Capture 21577: KMC GCC 2.7.2, score 5 to exact after selector staging and mask/suffix changes.
+  Only same-type assignment staging is automated here. No masks or literal suffixes are invented,
+  removed or changed: those additional edits are not established general equivalences.
+
+Synthetic controls use the pinned KMC GCC 2.7.2 compiler with `-O2`, comparing generated function
+bytes with independently written target shapes. They test generation, not ROM-linked acceptance.
+All production candidates still require the ordinary linked-byte or objdiff judge. Macro-heavy
+inputs, unsupported syntax and unsafe lifetimes yield no new candidates.
+
+## Shared offsets, conditional loads and branch stores (3 November 2026)
+
+Evidence level: captured verified cases plus controlled synthetic regressions. All four captures
+used KMC GCC 2.7.2, `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`, 32-bit big-endian MIPS.
+
+- Capture 21602: score 110 to exact after computing a shared `index * 32` offset once for two
+  word stores, also commuting their pointer additions. The index was a byte local with an unrelated
+  same-named inner-scope local. The generator resolves the applicable lexical scope and uses the
+  promoted word type; it retains intervening pure pointer rebases and rejects index writes/calls.
+- Capture 21601: score 15 to exact after replacing an immediate field-load temporary/null test/
+  assignment with field reads in the condition and assignment. The temporary was used earlier in
+  the function. CFG successor liveness, rather than whole-function textual uniqueness, proves the
+  removed definition is no longer needed. Volatile/qualified types and real address escapes skip.
+  An existing `&& ((temporary ...))` condition had been misclassified as address-taking; escape
+  checks now distinguish logical-and from a single address-of operator.
+- Capture 21599: score 20 to exact after changing `base[index + displacement]` to
+  `(base + index)[displacement]` in a candidate-owned inline helper reached through a wrapper macro.
+  The generator preserves the wrapper macro and every other definition. Pointer bounds and integer
+  wrap make association a compiler-judged hypothesis, not a universal algebraic equivalence.
+- Capture 21597: score 120 to exact after duplicating a trailing pair of stores at the end of both
+  branch arms. Existing branch rules handled calls, not stores. The new rule rejects early control
+  transfers, arm-local declarations and macro-dependent store operands.
+
+Read-only generation checks produced candidates for all four original captures. This is not a new
+live linked-byte replay. Synthetic controls compiled with pinned KMC GCC 2.7.2 `-O2` recover the
+independently written control function bytes for all four shapes. New ROM acceptance still requires
+ordinary linked bytes; source projects retain their ordinary objdiff acceptance check.
+
+### KMC: call scopes, mixed scratch phases and initialization groups
+
+Measured context: a private 519-instruction / 2,076-byte sound-update routine;
+KMC GCC 2.7.2, GNU as 2.6, `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. Target, shared
+header and compiler profile were unchanged. The final source's linked bytes were
+verified identical through the live app's ordinary judge; export layout passed,
+which does not itself establish a complete-image rebuild.
+
+The new deterministic generators were replayed read-only against saved alternates:
+
+| Candidate step | Before → after | Proposals judged |
+| --- | --- | --- |
+| Pointer/integer scratch union with distinct initialized phases | 495 → 200 | 1 |
+| Repeated float staging and grouped initialization | 200 → 60 | 14 |
+| Single-call `do { ... } while (0)` scope | 60 → 0, linked bytes exact | 2 |
+
+This is a controlled replay of an existing match, not three new matches or a timing
+benchmark. Independent initialization replay also reproduced 180 → 40; its eight
+remaining rows were an `s0`/`s1` register cycle. The successful score-60 path had
+one moved call-argument preparation instruction. The single-iteration scope let
+KMC put that move in the target delay slot. Source shape affecting scheduling is
+observed; neither the historical source spelling nor the exact internal optimizer
+cause has been proven.
+
+Negative evidence: changing gear widths, adding redundant masks, staging call
+arguments, reordering declarations and joining the frequency statements did not
+solve the case individually. A bounded full-function random pass also failed to
+improve its score-40 seed before it was stopped after the separate exact discovery.
+Some alternatives had fewer numerical differences but worse paths to an exact
+result; retain different allocation/scheduling shapes under the existing budgets.
+
+The union generator preserves each phase's type and initialization, never type-puns
+a stored pointer. It requires explicit 32-bit metadata and rejects overlap, escapes,
+shadowing, macro captures and unknown narrowing aliases. Call scopes do not wrap
+macros or swallow surrounding loop control. Debug grouping is disabled without
+known debug flags and for line-sensitive macro contexts. All are candidate-only
+hypotheses submitted to the ordinary judge; none weakens byte, data or export checks.
+## Diagnostic compiler matches and function-only promotion (November 2026)
+
+A 126-instruction / 504-byte GCC candidate was exact with pinned KMC GCC 2.7.2
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3 -ffast-math`. Its saved single-function range
+suggestion waited for neighbouring evidence, although `auto_compiler` was enabled.
+A copied replay of the saved C under the current shared header scored 2013 with the
+project-default profile and zero with the function-specific fast-math profile. This
+revalidates an existing diagnostic result; it is not an additional live match.
+
+The workflow now separates evidence for one exact C/profile pair from evidence for a
+broader compiler range. Diagnostics still do not publish automatically. An explicit
+function-specific suggestion rechecks and atomically publishes source, private header
+and flags through the existing prepared-bundle judge, respecting automatic-change and
+claim settings. A matching diagnostic string or an old score alone cannot change flags.
+Neighbour rejection does not invalidate a freshly verified single-entry bundle.
+Preserve source line breaks and leading blank lines across checking and publication;
+period debug-enabled compilers can schedule differently after formatting changes.
+
+## Separate later scalar lifetimes prevent unwanted local coalescing (3 November 2026)
+
+**Evidence: verified case and controlled private replay.** Native KMC GCC 2.7.2,
+32-bit MIPS, `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`. The unresolved 567-instruction /
+2,268-byte function already agreed everywhere except the operand order of one
+commutative addition. A fresh subtotal and fresh result retained the intended
+operand order, but local allocation tied the dying subtotal to the result. Reusing
+a separate later scalar lifetime prevented that tie without disturbing the rest
+of the function. The ordinary running-app API accepted score zero, linked bytes
+and instructions exact; independent linking and a complete cartridge comparison
+also passed. Target bytes, extents, profile and judge were unchanged.
+
+Useful failed alternatives: reusing an earlier display handle fixed the addition
+but moved an early mask before an argument move. Type/mask spellings, line changes,
+unused-return declarations, inline helpers and synthetic branch boundaries did not
+resolve that alternate. An overall worse score could therefore contain the crucial
+local repair. Do not repeatedly broaden random search or compiler flags for this
+specific register-only residual.
+
+Implementation: `later_local_repairs.py` pairs subtotal separation with a compatible
+existing scalar whose old value is dead and whose later reads follow redefinition
+on every CFG path. It uses the shared liveness model, rejects escapes/unknown
+macros/unsupported widths, and emits at most 20 hypotheses. `allocation_search`
+puts it before broad mutation; the shared draft path reaches ROM and project mode.
+The ordinary and iterative frontiers reserve a bounded slot for a candidate that
+repairs original target positions even when its scalar score worsens. Nothing is
+adopted on that basis. ABI checks resolve aliases with the target's 32-bit layout,
+not the host's `long` width.
+
+The generated repair recovered the frozen pre-match source on candidate 3 (four
+compiler invocations including baseline), approximately 1.7 seconds on this Mac.
+This replay did not alter the live app or create an additional match; it does not
+measure all prior exploratory work or prove a general speedup. Homemade safety,
+execution, type, lane-priority, beam and budget regressions live in
+`tests/test_later_local_repairs.py`. The optional private case pins source/header
+hashes, target, manifest and compiler identity, and skips in CI without game data:
+
+```
+DECOMPNET_LIFETIME_REPLAY=/private/frozen-case.json uv run pytest tests/test_later_local_repairs.py -q
+```
+
+The private JSON has `project`, `function`, `before`, `header`, `source_sha256`,
+`header_sha256` and `scope` (the full scope from `linked_repair_benchmark`). Keep the
+JSON, source, header, target and ROM outside this repository. The existing benchmark
+CLI also supports `--families later_local_reuse --trials 20 --seconds 120`; use a
+saved unresolved draft rather than today's matched source.
+
+## Follow the repaired region into its remaining mismatch (4 November 2026)
+
+The prior scalar-lifetime case demonstrated why overall score alone is insufficient:
+reusing one dead handle fixed the intended addition but moved an earlier mask. Shared
+iterative search and single-function deep search now prioritize at most two residual
+hypotheses per burst, at most three bursts. The parent must repair an original target
+location, preserve displayed instruction count and frame, and leave a recognized
+allocation or scheduling residual. Trials consume the existing deadline/compile budget;
+a worse intermediate never replaces saved best C. Lineage records the actual intermediate
+parent. Homemade regressions recover a two-step result from a 115-to-170 detour within
+three evaluations including baseline, and exercise the real deep-search loop separately.
+This establishes search behavior, not a new game match or a general speedup.
+
+The same local-reuse generator now covers subtraction, bitwise operations, unsigned
+32-bit literal shifts, and explicit same-width scalar call results. Subtraction preserves
+operand order; shifts require a literal count in 0–31. Call arguments remain single
+evaluations; unknown/conflicting/variadic/pointer return types are excluded. Dominated,
+acyclic branch regions may reuse a dead local; bypass joins, live loops, escapes,
+shadowing, unknown macros and incompatible widths are rejected. All candidates still
+pass the normal linked-byte/data judge. Synthetic C execution checks observable call
+counts and return values against the original source.
+
+Donor ordering may use same-input GCC source-line/allocation evidence: only a uniquely
+mapped future definition is ranked by call crossings and allocation rank. Stale,
+truncated, ambiguous or line-remapped evidence falls back to declaration order. A GCC
+pseudo or physical register is never treated as proof of a C variable's identity.
+
+### Frozen multi-case comparison
+
+The read-only MIPS export benchmark accepts a private manifest with 2–16 unique cases,
+each with `name`, `before` and `header` paths. Freeze it first to pin source/header hashes,
+target bytes, manifest and compiler identity. Replays reject changed inputs. Keep all
+manifests and game material outside this repository:
+
+```sh
+uv run python -m decompnet.app.linked_repair_benchmark --project /private/export \
+  --cases /private/input.json --freeze --output /private/frozen.json
+uv run python -m decompnet.app.linked_repair_benchmark --project /private/export \
+  --cases /private/frozen.json --trials 20 --seconds 30 --output /private/after.json \
+  --reference /private/before.json
+```
+
+The reference must use the same frozen cases and budgets. Reports include failed trials,
+recovery positions, scores, compile counts and elapsed time; no source is emitted into
+reports. The frozen manifest itself contains private paths and must remain private.
+Optional local coverage uses `DECOMPNET_FROZEN_REPAIR_SUITE` and
+`DECOMPNET_FROZEN_REPAIR_PROJECT`; CI skips without private inputs. This adapter reads an
+existing exported MIPS build; other architectures/imported builds retain their existing
+copied-evaluator benchmark entry points.
+
+Controlled four-case replay against main `07902a70`, with 20 candidates / 30 seconds per
+function: both revisions recovered **one of four**, on candidate **3**, and used **74**
+candidate evaluations overall. Baseline/best scores were 115→0, 790→790, 60→60 and
+230→230 on both revisions. All trials compiled/scored; none failed compilation or linking.
+Observed summed trial times were 58.39 seconds before / 56.89 after; these single local
+observations do not establish a speedup. The 999-instruction case reached its time budget
+with 14 trials; the other three reached 20 (replay intentionally collects after recovery).
+No live state was changed and no additional game match was produced.
+
+The first implementation delayed the known recovery from candidate 3 to 5 by interrupting
+direct sibling proposals with residual probes. Preserving up to three same-parent/family
+siblings restored candidate 3; retain this regression. The unchanged cases identify useful
+next work: a 30-instruction acyclic register-chain mismatch currently misses the cycle-only
+allocation lane, and a 54-instruction jump/delay-slot residual is classified as a constant
+miss. Broader lifetime syntax alone did not solve either one. Use these frozen failures to
+measure future chain-allocation and control-flow classification changes before increasing
+budgets.
+
+Integration check: the newly merged call-scope family displaced saved-draft ABI/type
+refinement in three existing priority regressions on unchanged main. Keep the first
+`m2c_refinement` proposal ahead of scope speculation while still rotating all remaining
+families; the existing regressions and call-scope tests pass together. A later live-export
+manifest update correctly invalidated the old private fixture. Repeat comparisons against
+an isolated export snapshot instead of weakening the input guard or updating a fixture
+silently to fit the current live project.
+
+Final isolated-export repetition, including the restored refinement priority: 20 candidates /
+30 seconds per case recovered the same one of four on candidate 3 in both main and this
+revision. Both evaluated 80 candidates with no compile/link failures; the other three
+scores remained 790, 60 and 230. Observed summed trial times were 49.57 seconds before /
+49.13 after. The changed per-case counts versus the earlier live-export run reflect the
+time cap and local load; they are not additional recovery evidence or a speed claim.
+
+## Local register chains and jump/delay-slot residuals (4 November 2026)
+
+The earlier frozen failures exposed two gaps in search advice, not in the judge. A short
+pointer-chain function had same-length register-only rows without a coherent global closed
+cycle. A separate loop residual changed a jump destination and delay-slot placement, but
+its `i` marker sent search toward literal constants.
+
+`Arch.repair_search_hints` now delegates bounded displayed-row analysis to the MIPS reader.
+It recognizes acyclic substitutions in contiguous 2–16-row runs, with unique outgoing and
+incoming mappings, ordinary named GPRs and chains of at most eight registers. Separate runs
+can describe unrelated values in the same physical register; no C identity is inferred.
+Ambiguous runs, special-register edits, changed operation/immediate forms and incomplete
+rows give no chain. A chain-only lane offers at most eight existing source lifetime,
+pointer reuse or declaration hypotheses, with unchanged instruction count/frame. It shares
+the existing iterative/deep budget and starts no optional diagnostic compiles. Closed
+cycles retain their 24-proposal allowance. Neither lane renames generated assembly.
+
+Changed direct branch/jump targets and changed instructions following a MIPS branch/jump
+are now control-flow advice ahead of literal changes. Ordinary constants remain constants;
+changed call rows retain call priority and pure register substitutions retain allocation
+priority. The reader requires canonical MIPS register spelling or the direct `j` opcode
+when legacy callers lack processor metadata, avoiding invented delay slots for ARM/PPC
+branch mnemonics. Labels/targets stay different for scoring and exact acceptance.
+
+Both search paths use the shared source generators and normal linked-byte/data or objdiff
+judge. Other processors retain existing repairs and need their own new hint readers; numeric
+MIPS register aliases and broader ambiguous allocation runs remain unsupported. Synthetic
+fixtures cover the evidence boundaries, category/priority changes, short-lane limit, no
+extra capture compiles, and unchanged cycle handling.
+
+Controlled replay against main `a6fce523` used the same isolated four-case export snapshot,
+20 candidates / 30 seconds each, native KMC GCC 2.7.2 and pinned per-case profiles (including
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3` for the 567-instruction case). Both recovered one of four
+on candidate 3. Both best-score sets were **0, 550, 60, 230**; there were no new recoveries
+or score regressions. Counts were 71 vs 73 candidate evaluations, because the 999-instruction
+case exhausted its time budget at 11 vs 13 trials. Observed summed trial times were 53.22
+vs 54.38 seconds; these single observations do not establish a speedup. All trials compiled
+and linked; no live project/database was changed and no AI helper was started.
+
+The 30-instruction case now offers spill declaration order and existing dead-pointer
+lifetime hypotheses first, but these do not improve its score. The 54-instruction case now
+reports branch-target/delay-slot advice rather than a constant miss, also without a new
+match. Preserve these failures for future generator work. Ordinary moved-instruction
+multisets must keep scheduling priority, and an immediate literal change inside an existing
+delay slot must remain a literal change; neither alone proves a control-flow repair is
+needed. The short chain lane rotates eligible families so one scalar/pointer pool cannot
+consume all eight slots.

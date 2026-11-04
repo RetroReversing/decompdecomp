@@ -48,6 +48,7 @@
     <a class="nav-item" href="#/tools" data-route="tools"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 1.6a3.9 3.9 0 0 0-3.9 5.2L1.9 11.6a1.5 1.5 0 0 0 2.1 2.1l4.8-4.8a3.9 3.9 0 0 0 5.2-3.9l-2.2 2.2-2.1-.6-.6-2.1 2.2-2.2c-.3 0-.5-.7-.7-.7Z"/></svg>Compilers &amp; tools</a>
     <a class="nav-item" href="#/settings" data-route="settings"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.9 1h2.2l.4 1.9 1.3.6 1.7-1 1.5 1.5-1 1.7.6 1.3L15 6.9v2.2l-1.9.4-.6 1.3 1 1.7-1.5 1.5-1.7-1-1.3.6L9.1 15H6.9l-.4-1.9-1.3-.6-1.7 1-1.5-1.5 1-1.7-.6-1.3L1 9.1V6.9l1.9-.4.6-1.3-1-1.7 1.5-1.5 1.7 1 1.3-.6L6.9 1ZM8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"/></svg>Settings</a>
     <a class="nav-item" id="reportLink" href="https://github.com/n-delic/decompdecomp/issues/new" target="_blank" rel="noopener" title="Opens a new issue on GitHub in your browser, and copies a report to paste into it"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5h1.5v13H3zM5.5 2.25h7.25L11.1 5.5l1.65 3.25H5.5z"/></svg>Report a problem</a>
+    <a class="nav-item" href="#/background" data-route="background">Background work</a>
     <a class="nav-branch" id="navBranch" href="#/settings" hidden></a>
     <div class="nav-meta">
       <span class="muted small" id="navVersion"></span>
@@ -521,19 +522,7 @@
             <p class="small" id="compilerStopError" role="alert" hidden></p>
 
             <div id="installedCompilerWork"></div>
-            <section class="compiler-progress" id="compilerProgress" aria-label="Compiler comparison progress" hidden>
-              <div class="compiler-queue-count"><span data-queue>Counting eligible functions…</span><progress data-queue-bar max="1" value="0" aria-label="Functions completed in this run"></progress></div>
-              <div class="compiler-progress-heading"><span class="small muted compiler-current-label">Current function</span><b class="mono" data-current>Preparing…</b></div>
-              <div class="compiler-progress-count"><span data-tested>Waiting for the first result</span><progress data-bar max="1" value="0" aria-label="Settings tested for current function"></progress></div>
-              <dl class="compiler-progress-stats">
-                <div class="compiler-percent"><dt>Saved match</dt><dd data-before>—</dd></div>
-                <div class="compiler-percent"><dt>Best tested</dt><dd data-best>—</dd></div>
-                <div><dt>Functions finished</dt><dd><button class="compiler-stat" type="button" data-results-filter="completed" aria-label="View finished function results" aria-controls="compilerImprovements" aria-expanded="false" disabled><span data-completed>0</span><span class="compiler-stat-action">View functions</span></button></dd></div>
-                <div><dt>Better settings found</dt><dd><button class="compiler-stat" type="button" data-results-filter="improved" aria-label="View functions with better settings" aria-controls="compilerImprovements" aria-expanded="false" disabled><span data-improved>0</span><span class="compiler-stat-action">Review &amp; apply</span></button></dd></div>
-                <div><dt>Exact matches found</dt><dd><button class="compiler-stat" type="button" data-results-filter="exact" aria-label="View exact match results" aria-controls="compilerImprovements" aria-expanded="false" disabled><span data-exact>0</span><span class="compiler-stat-action">Review &amp; apply</span></button></dd></div>
-              </dl>
-              <p class="small muted compiler-progress-profile" data-profile>Comparing the saved C. Compiler settings stay unchanged.</p>
-            </section>
+            <section class="compiler-progress" id="compilerProgress" aria-label="Compiler comparison progress" hidden></section>
             <div id="compilerImprovements" tabindex="-1" aria-label="Compiler comparison function results"></div>
             <details class="more"><summary>What gets tested?</summary><div class="more-body small muted">Up to 400 unmatched functions per run. Unless retesting is enabled, unchanged completed comparisons are skipped. Tests optimization, small-data and debug variants, using no AI tokens or downloads. This is a bounded search, not every possible flag combination.</div></details>
             <details class="more" id="compilerLogDetails" hidden><summary>Detailed output</summary><div class="more-body">
@@ -597,9 +586,9 @@
             <pre class="joblog" id="saveLog" hidden></pre>
             <section id="repositorySync" class="note">
               <h3>Sync to Git repository</h3>
-              <p class="muted small">Add verified app matches to an existing decompdecomp export checkout. Its build setup and hand-maintained C stay intact. Sync updates only sources it previously created, verifies in a private copy, then shows files ready to commit. Commit or move existing checkout changes first. No automatic commits or pushes.</p>
+              <p class="muted small">Add verified app matches to an existing decompdecomp export checkout. Its build setup and hand-maintained C stay intact. Sync updates only sources it previously created, verifies in a private copy, then shows files ready to commit. Commit or move existing checkout changes first. Verify and sync leaves files ready to review. Verify, commit and push also saves all portable progress and pushes the current branch to its configured upstream using your Git credentials.</p>
               <label class="field"><span>Git checkout root</span><span class="pick-row"><input id="repositoryFolder" class="mono" placeholder="/path/to/my-game-decomp"><button class="ghost small-btn" type="button" data-pick="folder" data-for="repositoryFolder" data-title="Git checkout root">Choose…</button></span></label>
-              <div class="row"><button class="primary small-btn" id="repositorySyncGo" type="button">Verify and sync</button><button class="ghost small-btn" id="repositorySyncStop" type="button" hidden>Stop</button></div>
+              <div class="row"><button class="primary small-btn" id="repositorySyncGo" type="button">Verify and sync</button><button class="primary small-btn" id="repositoryCommitGo" type="button">Verify, commit and push</button><button class="ghost small-btn" id="repositorySyncStop" type="button" hidden>Stop</button></div>
               <pre class="joblog" id="repositorySyncLog" hidden></pre>
             </section>
           </div>
@@ -633,19 +622,32 @@
   </section>
 </main>
 
+<main id="backgroundPage" class="view" hidden>
+  <header class="page-head"><p class="eyebrow">This computer</p><h1>Background work</h1><p class="muted">See active jobs, agents and project services. Stop requests preserve saved work; a running compile may need to finish first.</p></header>
+  <section class="panel"><header class="panel-head"><h2>Activity <span class="disclosure-context" id="backgroundCount"></span></h2><button id="backgroundRefresh" class="ghost small-btn" type="button">Refresh</button></header><div class="pad">
+    <div class="background-metrics"><div><span class="small muted">App CPU</span><strong id="backgroundCpu">Measuring…</strong></div><div><span class="small muted">Live threads</span><strong id="backgroundThreads">—</strong></div></div>
+    <p class="small muted" id="backgroundCpuNote"></p>
+    <div class="row"><label class="field"><span>Shared background worker limit</span><input id="backgroundLimit" type="number" min="0" step="1" placeholder="Automatic"></label><button class="ghost small-btn" id="backgroundLimitSave" type="button">Apply limit</button></div>
+    <p class="small muted">0 = automatic. Limits machine drafts and the background permuter across projects. Already queued work finishes at the old limit; new work uses the new limit. Agents, deep passes and imports have separate concurrency. Stopped automatic workers can start again when you open their project.</p>
+    <div id="backgroundWorkStatus" role="status"></div><div id="backgroundRows"></div>
+    <details class="more"><summary>All app threads <span class="small muted">— purpose &amp; CPU</span></summary><p class="small muted">Lists Python-managed threads; native library threads may not appear. CPU is measured between refreshes on macOS and Linux; 100% means one core. Compiler subprocesses are excluded. Low CPU does not prove a thread is idle. Purposes describe the thread’s role, not its current call stack.</p><label class="field background-thread-sort"><span>Sort threads</span><select id="backgroundThreadSort"><option value="cpu">Highest CPU first</option><option value="name">Thread name</option><option value="role">Purpose</option></select></label><div class="background-table" id="backgroundThreadNames"></div></details>
+  </div></section>
+</main>
+
 <!-- ================================================================ agents & models -->
 <main id="agentsPage" class="view" hidden>
   <header class="page-head"><p class="eyebrow">Agents &amp; models</p><h1>Your AI agents</h1>
     <p class="muted">Helper agents run in the background on a project. Install the ones you use, pick their models, or add any model with an API key.</p></header>
-  <section class="ag-apps" aria-labelledby="agAppsH">
-    <header class="ag-apps-head"><h2 id="agAppsH">Agent apps on this computer</h2><button class="ghost small-btn" id="agRefresh" type="button">Refresh</button></header>
-    <div class="ag-grid" id="agList"></div>
-  </section>
-  <details class="panel settings-disclosure"><summary class="panel-head"><h2>Agent prompts</h2></summary><div class="pad"><p class="small muted">Global defaults for new sessions. Agents can override them individually. Project instructions, guides and continuation context are still appended to the initial prompt.</p><div id="globalPromptSettings"></div><pre id="globalPromptLog" hidden></pre></div></details>
-  <details class="panel settings-disclosure"><summary class="panel-head"><h2>Agent tools &amp; usage</h2></summary><div class="pad"><p class="small muted">Disable optional tools to reduce agent context. Global switches apply to every agent; per-agent tools can disable additional tools. Required core tools stay enabled. New tool lists take effect at the next session or MCP reconnect; cached calls to disabled tools are rejected immediately.</p><button id="agentToolsRefresh" class="ghost small-btn" type="button">Refresh tools &amp; counts</button><p id="agentToolCoverage" class="small muted"></p><div id="agentToolCatalog"></div><pre id="agentToolLog" hidden></pre></div></details>
-  <section class="panel" id="pairPanel" hidden><header class="panel-head"><h2>Access requests</h2></header><div class="pad" id="pairBox"></div></section>
+  <details class="panel settings-disclosure ag-apps" aria-labelledby="agAppsH" open>
+    <summary class="panel-head"><h2 id="agAppsH">Agent apps on this computer <span class="disclosure-context" id="agAppsContext">— Checking installed apps…</span></h2><button class="disclosure-action" id="agRefresh" type="button" title="Refresh installed agent apps">↻ Refresh</button></summary><div class="pad">
+    <div class="ag-grid" id="agList"></div></div>
+  </details>
+  <details class="panel settings-disclosure"><summary class="panel-head"><h2>Agent prompts <span class="disclosure-context" id="agPromptsContext">— Global session defaults</span></h2></summary><div class="pad"><p class="small muted">Customize the prompts used for new agent sessions. Each agent can override these defaults; project context is added automatically.</p><div id="globalPromptSettings"></div><pre id="globalPromptLog" hidden></pre></div></details>
+  <details class="panel settings-disclosure"><summary class="panel-head"><h2>Agent tools &amp; usage <span class="disclosure-context" id="agToolsContext">— Optional tools and usage</span></h2><button id="agentToolsRefresh" class="disclosure-action" type="button" title="Refresh tools and usage counts">↻ Refresh</button></summary><div class="pad"><p class="small muted">Disable optional tools to reduce agent context. Global switches apply to every agent; per-agent tools can disable additional tools. Required core tools stay enabled. New tool lists take effect at the next session or MCP reconnect; cached calls to disabled tools are rejected immediately.</p><details class="tool-coverage more"><summary>About usage counts</summary><p id="agentToolCoverage" class="small muted"></p></details><div id="agentToolCatalog"></div><pre id="agentToolLog" hidden></pre></div></details>
+  <details class="panel settings-disclosure" id="pairPanel" hidden open><summary class="panel-head"><h2>Access requests <span class="disclosure-context" id="agPairContext">— Pending approval</span></h2></summary><div class="pad" id="pairBox"></div></details>
+  <div class="cols ag-cols">
   <details class="panel manual-mcp settings-disclosure" aria-labelledby="mcpHeading">
-    <summary class="panel-head"><h2 id="mcpHeading">Connect another AI tool with MCP</h2></summary>
+    <summary class="panel-head"><h2 id="mcpHeading">Connect another AI tool with MCP <span class="disclosure-context" id="agMcpContext">— Local connections</span></h2></summary>
     <div class="pad">
       <p>Use the local MCP server with an AI tool that supports Streamable HTTP and bearer authentication. Keep decompdecomp running on this computer.</p>
       <div id="mcpStatus" role="status"></div>
@@ -657,8 +659,7 @@
       <details><summary>Your manual connections</summary><div id="mcpConnections"></div></details>
     </div>
   </details>
-  <div class="cols ag-cols">
-    <section class="panel"><header class="panel-head"><h2>Models with an API key</h2></header><div class="pad" id="apiBox"></div></section>
+    <details class="panel settings-disclosure" open><summary class="panel-head"><h2>Models with an API key <span class="disclosure-context" id="agApiContext">— Checking saved endpoints…</span></h2></summary><div class="pad" id="apiBox"></div></details>
   </div>
 </main>
 
@@ -711,10 +712,12 @@
         <h2 id="fnName" class="mono"></h2>
         <p class="muted small" id="fnNaming" hidden></p>
       </div>
-      <div class="row">
+      <div class="row fn-header-actions">
         <span class="badge" id="fnStatus"></span><button class="ghost small-btn" id="fnClaimHandover" type="button" hidden>Let agents work on this</button>
         <button class="ghost small-btn pin" id="fnPin" type="button" title="Agents take this function next">★ Next</button>
         <button class="ghost small-btn" id="fnSetAside" type="button" hidden title="You know no C makes this function (hand-written assembly, a piece of another function): set it aside now, without waiting for agents to agree. It turns red, leaves agents' work and the percentage, and Give it back to the agents undoes it.">Set aside: no C makes it</button>
+      </div>
+      <div class="row fn-header-navigation">
         <button class="ghost icon" id="fnPrev" type="button" aria-label="Previous function" title="Previous function (K)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.3 2.7 11.4 3.8 7.2 8l4.2 4.2-1.1 1.1L5 8z"/></svg></button>
         <button class="ghost icon" id="fnNext" type="button" aria-label="Next function" title="Next function (J)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.7 2.7 4.6 3.8 8.8 8l-4.2 4.2 1.1 1.1L11 8z"/></svg></button>
         <button class="ghost icon" data-close type="button" aria-label="Close" title="Close (Esc)">✕</button>
@@ -726,10 +729,11 @@
       <p class="set-aside" id="fnAside" hidden><span id="fnAsideWhy"></span> <button class="link-btn" id="fnReopen" type="button">Give it back to the agents</button></p>
       <details id="fnCompilerTest" class="collapsible-box" hidden>
         <summary>Compiler settings</summary><div class="collapsible-box-body"><div id="fnCurrentCompiler" class="small"></div><div id="fnCompilerMatches"></div>
-        <label class="check"><input type="checkbox" id="fnCompilerFlagsOnly"><span>Flag variations only — use this function’s current compiler</span></label>
-        <button class="ghost small-btn" id="fnTestCompilers" type="button">Test installed compilers &amp; flags</button>
-        <p class="small muted">Tests this function’s saved C attempt locally with every installed compiler and supported flag-search variant. No AI tokens; settings stay unchanged. This is not every possible compiler option.</p>
+        <div class="fn-compiler-controls"><button class="primary small-btn" id="fnTestCompilers" type="button">Test installed compilers &amp; flags</button>
+        <label class="check"><input type="checkbox" id="fnCompilerFlagsOnly"><span>Current compiler only · test flag variations</span></label></div>
+        <p class="small muted fn-compiler-explainer">Local compiler search · no AI tokens. Tests the saved C against supported compiler and flag combinations. Settings change only when you apply a result.</p>
         <p class="small muted" id="fnCompilerHistory">Not tested yet.</p>
+        <section class="compiler-progress" id="fnCompilerProgress" data-mode="function" aria-label="Function compiler comparison progress" hidden></section>
         <p class="compiler-result" id="fnCompilerSummary" role="status" hidden></p>
         <button class="primary small-btn" id="fnApplyCompiler" type="button" hidden>Apply these settings to this function</button>
         <details class="more"><summary>Comparison details</summary><pre class="joblog" id="fnCompilerLog" hidden></pre></details>
@@ -743,30 +747,41 @@
         <p class="small muted" id="fnVerificationStatus"></p>
         <button class="ghost small-btn" type="button" id="fnVerificationDownload">Download source, header and verification inputs</button>
       </details>
-      <details class="more deep-search" id="fnDeepPanel" hidden>
-        <summary>Deep permuter · this function <span class="deep-free">No AI tokens</span></summary>
-        <p class="small muted" id="fnDeepHistory"></p>
-        <p class="small muted">Try local repairs, then random rewrites. Verified improvements save immediately.</p>
-        <div class="deep-controls">
-          <label class="field"><span>Time limit · minutes</span><input id="fnDeepMinutes" type="number" min="1" max="120" value="30"></label>
-          <label class="field"><span>Compile limit</span><input id="fnDeepVariants" type="number" min="1" max="1000000" value="100000"></label>
-          <div class="deep-actions"><button class="primary small-btn" id="fnDeepRun" type="button">Run deep permuter</button>
-          <button class="ghost small-btn" id="fnDeepStop" type="button" hidden>Stop</button></div>
-        </div>
-        <div class="deep-dashboard" id="fnDeepMetrics" hidden>
-          <dl class="deep-scores">
-            <div><dt>Starting match</dt><dd id="fnDeepStartPercent">—</dd><span id="fnDeepStartScore">Score —</span></div>
-            <div class="deep-best"><dt>Current best</dt><dd id="fnDeepBestPercent">—</dd><span id="fnDeepBestScore">Score —</span></div>
-            <div><dt>Improvements</dt><dd id="fnDeepImproved">0</dd><span>Verified score reductions</span></div>
-          </dl>
-          <div class="deep-counters"><span><b id="fnDeepTested">0</b> tested</span><span><b id="fnDeepSkipped">0</b> cached skips</span><span id="fnDeepTime">—</span></div>
-        </div>
-        <p class="small muted" id="fnDeepStatus" role="status"></p>
-        <div id="fnDeepWork"></div>
-        <details class="deep-output" id="fnDeepOutput"><summary>Technical output</summary>
-          <p class="small muted" id="fnDeepNow" role="status">Waiting for the first candidate.</p><pre class="joblog" id="fnDeepLog" hidden></pre></details>
-        <p class="small muted deep-note">Search is bounded by these limits; it cannot try every possible C program.</p>
-      </details>
+      <section class="function-work" id="fnWorkPanel" aria-labelledby="fnWorkTitle" hidden>
+        <header class="function-work-heading"><h3 id="fnWorkTitle">Work on this function</h3><p class="small muted">Choose an AI agent or a local compiler search.</p></header>
+        <details class="collapsible-box function-work-card" id="fnFocusPanel" hidden>
+          <summary><span class="function-work-cost">AI tokens</span>AI agent</summary>
+          <div class="collapsible-box-body"><p class="small muted">Give one agent a model and time limit. It stays on this function and saves verified improvements.</p>
+            <div class="row"><button class="primary small-btn" type="button" id="fnFocusAgent">Set up focused agent</button><span class="small muted">Stops on a match or when time runs out.</span></div>
+          </div>
+        </details>
+        <details class="collapsible-box function-work-card deep-search" id="fnDeepPanel" hidden>
+          <summary><span class="function-work-cost">No AI tokens</span>Deep permuter</summary>
+          <div class="collapsible-box-body">
+          <p class="small muted" id="fnDeepHistory"></p>
+          <p class="small muted">Try local repairs and random rewrites with your installed compiler. Verified improvements save automatically.</p>
+          <div class="deep-controls">
+            <label class="field"><span>Time limit · minutes</span><input id="fnDeepMinutes" type="number" min="1" max="120" value="30"></label>
+            <label class="field"><span>Compile limit</span><input id="fnDeepVariants" type="number" min="1" max="1000000" value="100000"></label>
+            <div class="deep-actions"><button class="primary small-btn" id="fnDeepRun" type="button">Run deep permuter</button>
+            <button class="ghost small-btn" id="fnDeepStop" type="button" hidden>Stop</button></div>
+          </div>
+          <div class="deep-dashboard" id="fnDeepMetrics" hidden>
+            <dl class="deep-scores">
+              <div><dt>Starting match</dt><dd id="fnDeepStartPercent">—</dd><span id="fnDeepStartScore">Score —</span></div>
+              <div class="deep-best"><dt>Current best</dt><dd id="fnDeepBestPercent">—</dd><span id="fnDeepBestScore">Score —</span></div>
+              <div><dt>Improvements</dt><dd id="fnDeepImproved">0</dd><span>Verified score reductions</span></div>
+            </dl>
+            <div class="deep-counters"><span><b id="fnDeepTested">0</b> tested</span><span><b id="fnDeepSkipped">0</b> cached skips</span><span id="fnDeepTime">—</span></div>
+          </div>
+          <p class="small muted" id="fnDeepStatus" role="status"></p>
+          <div id="fnDeepWork"></div>
+          <details class="deep-output" id="fnDeepOutput"><summary>Technical output</summary>
+            <p class="small muted" id="fnDeepNow" role="status">Waiting for the first candidate.</p><pre class="joblog" id="fnDeepLog" hidden></pre></details>
+          <p class="small muted deep-note">Search is bounded by these limits; it cannot try every possible C program.</p>
+          </div>
+        </details>
+      </section>
       <div class="fn-tabs">
         <div class="tabs" role="tablist" aria-label="Function view">
           <button role="tab" class="tab on" data-ftab="diff" type="button">Diff</button>
@@ -831,6 +846,7 @@
 <script src="/assets/js/tool-catalog.js"></script>
 <script src="/assets/js/tool-settings.js"></script>
 <script src="/assets/js/agents.js"></script>
+<script src="/assets/js/focused-agents.js"></script>
 <script src="/assets/js/transcripts.js"></script>
 <script src="/assets/js/candidate-recovery.js"></script>
 <script src="/assets/js/repair-replay.js"></script>
@@ -840,10 +856,25 @@
 <script src="/assets/js/rewrite-performance.js"></script>
 <script src="/assets/js/source-mismatches.js"></script>
 <script src="/assets/js/function.js"></script>
+<template id="compilerProgressTemplate">
+              <div class="compiler-queue-count"><span data-queue>Counting eligible functions…</span><progress data-queue-bar max="1" value="0" aria-label="Functions completed in this run"></progress></div>
+              <div class="compiler-progress-heading"><span class="small muted compiler-current-label">Current function</span><b class="mono" data-current>Preparing…</b></div>
+              <div class="compiler-progress-count"><span data-tested>Waiting for the first result</span><progress data-bar max="1" value="0" aria-label="Settings tested for current function"></progress></div>
+              <dl class="compiler-progress-stats">
+                <div class="compiler-percent"><dt>Saved match</dt><dd data-before>—</dd></div>
+                <div class="compiler-percent"><dt>Best tested</dt><dd data-best>—</dd></div>
+                <div><dt>Functions finished</dt><dd><button class="compiler-stat" type="button" data-results-filter="completed" aria-label="View finished function results" aria-controls="compilerImprovements" aria-expanded="false" disabled><span data-completed>0</span><span class="compiler-stat-action">View functions</span></button></dd></div>
+                <div><dt>Better settings found</dt><dd><button class="compiler-stat" type="button" data-results-filter="improved" aria-label="View functions with better settings" aria-controls="compilerImprovements" aria-expanded="false" disabled><span data-improved>0</span><span class="compiler-stat-action">Review &amp; apply</span></button></dd></div>
+                <div><dt>Exact matches found</dt><dd><button class="compiler-stat" type="button" data-results-filter="exact" aria-label="View exact match results" aria-controls="compilerImprovements" aria-expanded="false" disabled><span data-exact>0</span><span class="compiler-stat-action">Review &amp; apply</span></button></dd></div>
+              </dl>
+              <p class="small muted compiler-single-exact"><b data-single-exact>0</b> exact compiler/flag matches found</p>
+              <p class="small muted compiler-progress-profile" data-profile>Comparing the saved C. Compiler settings stay unchanged.</p>
+</template>
 <script src="/assets/js/compiler-progress.js"></script>
 <script src="/assets/js/compiler-groups.js"></script>
 <script src="/assets/js/code-audit.js"></script>
 <script src="/assets/js/steering.js"></script>
+<script src="/assets/js/background-work.js"></script>
 <script src="/assets/js/pages.js"></script>
 <script src="/assets/js/pwa.js"></script>
 </body>

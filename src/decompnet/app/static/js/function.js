@@ -86,7 +86,7 @@ function nameHintsHTML(hints, current) {
   return groupNameHints(hints).map((g) => {
     const sources = g.hints.length;
     const details = g.hints.map((h) => `<li>${relatedFunctionLink(h.source_slug, h.source_function, h.game.replace(/\s*\/\s*sha256:.*$/, ""))} · ${esc(h.kind)}${h.score < 1 ? ` · ${Math.round(h.score * 100)}% similar` : ""}</li>`).join("");
-    return `<div class="note"><b class="mono">${esc(g.name)}</b> · ${sources} source${sources === 1 ? "" : "s"}${sources > 1 ? " agree" : ""}${g.exact && g.name !== current ? ` <button class="link-btn" type="button" data-name="${esc(g.name)}">Use name</button>` : ""}<details><summary>Supporting sources</summary><ul>${details}</ul></details></div>`;
+    return `<div class="note"><b class="mono">${esc(g.name)}</b> · ${sources} source${sources === 1 ? "" : "s"}${sources > 1 ? " agree" : ""}${g.exact && g.name !== current && !g.name.startsWith('func_') ? ` <button class="link-btn" type="button" data-name="${esc(g.name)}">Use name</button>` : ""}<details><summary>Supporting sources</summary><ul>${details}</ul></details></div>`;
   }).join("");
 }
 let nameChangeBusy = false;
@@ -125,7 +125,7 @@ function projectPeersHTML(data, current) {
   const rows = data.rows || [];
   const note = data.unavailable ? esc(data.unavailable) : data.exact ? 'Identical target bytes in other open projects. C does not need to be matched.'
     : 'No identical target bytes found. These are instruction-pattern similarities, ignoring operands; names are suggestions, not proof of identity or matching C. At most 400 similarly sized functions are compared.';
-  return `<p class="small muted">${note}</p>${rows.length ? `<div class="project-peer-table"><table><thead><tr><th>Project</th><th>Function</th><th>Similarity</th><th>C status</th><th>Action</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.project)}</td><td class="mono">${relatedFunctionLink(r.slug, r.name)}</td><td>${r.identical ? 'Identical bytes' : (r.score * 100).toFixed(1) + '% instruction pattern'}</td><td>${r.status === 'matched' ? 'Matched' : 'Not matched'}</td><td>${r.name === current ? 'Same name' : `<button type="button" class="ghost small-btn" data-name="${esc(r.name)}" data-peer-id="${r.id}">Use name</button>`}</td></tr>`).join('')}</tbody></table></div>` : '<p class="small muted">No similar functions found in other open projects.</p>'}${data.total > rows.length ? `<p class="small muted">Showing ${rows.length} of ${data.total} identical functions.</p>` : ''}`;
+  return `<p class="small muted">${note}</p>${rows.length ? `<div class="project-peer-table"><table><thead><tr><th>Project</th><th>Function</th><th>Similarity</th><th>C status</th><th>Action</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.project)}</td><td class="mono">${relatedFunctionLink(r.slug, r.name)}</td><td>${r.identical ? 'Identical bytes' : (r.score * 100).toFixed(1) + '% instruction pattern'}</td><td>${r.status === 'matched' ? 'Matched' : 'Not matched'}</td><td>${r.name === current ? 'Same name' : r.name.startsWith('func_') ? 'Generated name' : `<button type="button" class="ghost small-btn" data-name="${esc(r.name)}" data-peer-id="${r.id}">Use name</button>`}</td></tr>`).join('')}</tbody></table></div>` : '<p class="small muted">No similar functions found in other open projects.</p>'}${data.total > rows.length ? `<p class="small muted">Showing ${rows.length} of ${data.total} identical functions.</p>` : ''}`;
 }
 let projectPeersRequest = 0;
 function prepareProjectPeers(detail) {
@@ -181,6 +181,7 @@ async function openFn(name) {
     $("fnCompilerSummary").hidden = true;
     $("fnCompilerLog").textContent = "";
     $("fnCompilerLog").hidden = true;
+    $("fnWorkPanel").hidden = true;
     $("fnDeepMetrics").hidden = true;
     $("fnDeepStatus").textContent = "";
     $("fnDeepLog").textContent = ""; $("fnDeepLog").hidden = true;
@@ -192,6 +193,7 @@ async function openFn(name) {
       const log = $(id); if (log._workStatus) { log._workStatus.remove(); log._workStatus = null; }
     }
     document.querySelectorAll("#fnCompilerTest .workbar").forEach(bar => bar.remove());
+    $("fnCompilerProgress").hidden = true;
     $("tryBtn").disabled = false;
     $("fnEdit").value = "";
     setEditorSourceMapping(null);
@@ -301,8 +303,11 @@ async function refreshFn(first) {
       }
     }
 
+    $("fnFocusPanel").hidden = d.status !== "open";
+    $("fnFocusAgent").onclick = () => openFocusedAgent(slug, d.name);
     if (d.deep_job && !deepPermuterTarget) followFunctionDeep(d.deep_job);
     $("fnDeepPanel").hidden = !deepPermuterBusy && (d.status !== "open" || d.best == null);
+    $("fnWorkPanel").hidden = $("fnFocusPanel").hidden && $("fnDeepPanel").hidden;
     const pass = d.deep_pass || {};
     $("fnDeepHistory").textContent = deepPermuterBusy ? "Following this function’s deep search. Improvements save immediately." : pass.completed ? `Deep pass completed · ${pass.minutes} min / ${Number(pass.max_variants).toLocaleString()} variants budget` : pass.stale ? "Previous pass saved; inputs changed, so this function is eligible again." : pass.state === "error" ? `Deep pass needs attention: ${pass.error}` : `Deep pass: ${pass.state || "not tried"}`;
     $("fnCompilerTest").hidden = S.ov.kind === "fork" || !S.ov.compilers?.length;
@@ -387,7 +392,7 @@ async function refreshFn(first) {
     prepareProjectPeers(d);
     // your own notes (written here, as "you") apart from the agents': they aren't notes from an agent
     const noteRow = (n) => {
-      const gain = n.score_before != null && n.score_after != null ? `Score ${n.score_before} → ${n.score_after} · reduced by ${n.score_before - n.score_after}` : 'Session score difference unavailable';
+      const gain = n.score_before != null && n.score_after != null ? `Score ${n.score_before} → ${n.score_after} · ${n.score_before === n.score_after ? "no change (0)" : `reduced by ${n.score_before - n.score_after}`}` : 'No measured baseline recorded for this older note';
       return `<div class="note"><small>${esc(n.agent)} · ${clock(n.created_at)} <button type="button" class="ghost small-btn" data-remove-note="${esc(JSON.stringify(n.ids || [n.id]))}">Remove</button></small>${n.agent === "you" ? "" : `<p class="small muted">${esc(gain)}</p>`}<div style="white-space:pre-wrap">${esc(n.text)}</div></div>`;
     };
     const notesOf = (mine, title) => { const ns = d.notes.filter((n) => (n.agent === "you") === mine); return ns.length ? `<p class="col-title">${title}</p>` + ns.map(noteRow).join("") : ""; };
@@ -822,14 +827,25 @@ $("fnTestCompilers").onclick = async () => {
   const active = () => S.gen === gen && S.fnNav === nav && S.slug === slug && S.fn === name && !$("drawer").hidden;
   const target = compilerComparisonTarget = {};
   log.hidden = false;
-  summary.hidden = false;
+  summary.hidden = true;
+  const progressBox = $("fnCompilerProgress"); progressBox.dataset.function = name;
+  renderCompilerProgress(null, null, progressBox);
   compilerComparisonBusy = true;
   const finish = beginWork(summary, `Testing compilers for ${name}`, [button], "Comparison complete.");
+  const waitingBar = summary.previousElementSibling;
   showJobError(log, "");
   try {
     const { job } = await api("/api/compilermap", { method: "POST", body: { slug, all_installed: true, flags_only: $("fnCompilerFlagsOnly").checked, function: name } });
-    const result = await followJob(job, null, lines => { if (active()) log.textContent = lines.join("\n"); });
+    const result = await followJob(job, null, (lines, state) => {
+      if (!active()) return;
+      log.textContent = lines.join("\n");
+      if (state?.progress) {
+        renderCompilerProgress(state.progress, null, progressBox);
+        if (waitingBar?.classList.contains('workbar')) waitingBar.hidden = true;
+      }
+    }, active);
     if (!active()) return;
+    renderCompilerProgress(null, result, progressBox);
     renderFunctionCompilerComparison(result.comparison, slug, name);
   } catch (e) { if (active()) { summary.textContent = e.message; showJobError(log, e.message); } }
   finally { if (compilerComparisonTarget === target) { compilerComparisonBusy = false; compilerComparisonTarget = null; } if (active()) { finish(); await refreshFn(false); } }

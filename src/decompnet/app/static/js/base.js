@@ -126,6 +126,7 @@ function beginWork(log, label, controls = [], completed = "Finished.") {
   bar.setAttribute("aria-label", label);
   bar.append(document.createElement("i"));
   log.before(bar);
+  log._workBar = bar;
   const disabled = controls.map((control) => control.disabled);
   controls.forEach((control) => { control.disabled = true; });
   return () => {
@@ -136,6 +137,27 @@ function beginWork(log, label, controls = [], completed = "Finished.") {
     }
     controls.forEach((control, index) => { control.disabled = disabled[index]; });
   };
+}
+
+function updateWorkProgress(log, progress) {
+  if (!progress || !log._workStatus || !log._workBar) return;
+  const bar = log._workBar, phase = progress.phase || "Working";
+  const total = Number(progress.total), done = Number(progress.finished ?? progress.done);
+  const counted = Number.isFinite(total) && total > 0 && Number.isFinite(done) && done >= 0;
+  const finished = counted ? Math.min(done, total) : 0;
+  const percent = counted ? Math.floor(100 * finished / total) : 0;
+  log._workStatus.textContent = phase + (counted ? ` · ${finished.toLocaleString()} / ${total.toLocaleString()} processed (${percent}%)` : "")
+    + (progress.function ? ` · ${progress.function}` : "")
+    + (progress.confirmed != null ? ` · ${progress.confirmed} matches confirmed` : "")
+    + (progress.submitted != null ? ` · ${progress.submitted} better attempts submitted` : "");
+  bar.setAttribute("aria-label", phase);
+  bar.className = counted ? "workbar counted" : "workbar";
+  if (counted) {
+    bar.setAttribute("aria-valuemin", "0"); bar.setAttribute("aria-valuemax", String(total)); bar.setAttribute("aria-valuenow", String(finished));
+    bar.style.setProperty("--work-progress", `${percent}%`);
+  } else {
+    bar.removeAttribute("aria-valuemin"); bar.removeAttribute("aria-valuemax"); bar.removeAttribute("aria-valuenow");
+  }
 }
 
 async function followJob(id, logEl, onUpdate, active = () => true) {
@@ -152,6 +174,7 @@ async function followJob(id, logEl, onUpdate, active = () => true) {
         logEl.scrollTop = follow ? logEl.scrollHeight : top;
       }
     }
+    if (logEl?._showJobProgress) updateWorkProgress(logEl, job.progress);
     if (onUpdate) onUpdate(job.log, job);
     if (job.state === "done") return job.result;
     if (job.state === "error" || job.state === "cancelled") {
@@ -265,7 +288,7 @@ const S = {
   projects: [], agents: null,
   gen: 0, primed: false, openedAt: 0,  // which opening of a project polls belong to, its first poll done, and when
 };
-const VIEWS = ["home", "catalog", "project", "agentsPage", "toolsPage", "settingsPage"];
+const VIEWS = ["home", "catalog", "project", "agentsPage", "toolsPage", "settingsPage", "backgroundPage"];
 /* A project's views. Activity is in Agents now, Team and Source are the header's Decompile together and Export:
    seven tabs were too many to tell apart. */
 const TABS = ["overview", "functions", "agents", "settings"];
@@ -341,6 +364,7 @@ function route() {
     else if (h === "#/agents") showAgentsPage();
     else if (h === "#/tools") showToolsPage();
     else if (h === "#/settings") showSettingsPage();
+    else if (h === "#/background") showBackgroundWork();
     else showHome();
   }
   markNav();
@@ -368,4 +392,10 @@ function compilerProfileUsage(row, usage) {
 function compilerRankedTable(rows, selectable = false, usage = null) {
   if (!rows.length) return "";
   return `<div class="compiler-table"><table><thead><tr><th>Match</th><th>Compiler</th><th>Flags</th>${usage ? '<th title="Functions in this project currently using this exact compiler and flag order, including this function">Used by</th>' : ""}<th>Result</th>${selectable ? "<th>Action</th>" : ""}</tr></thead><tbody>${rows.map((r, index) => ({r, index})).sort((a, b) => Number(!!(b.r.default && b.r.exact)) - Number(!!(a.r.default && a.r.exact))).map(({r, index}) => `<tr><td><b>${r.percent == null ? "—" : `${r.percent.toFixed(2)}%`}</b></td><td>${esc(r.toolchain)}${r.default ? ` <span class="chip-s">Default</span>` : ""}${r.selected ? ` <span class="chip-s compiler-selected">Currently selected</span>` : ""}</td><td class="mono">${esc(r.flags.join(" "))}</td>${usage ? `<td>${compilerProfileUsage(r, usage)}</td>` : ""}<td>${r.untested ? "Not verified with this source" : r.exact ? "Exact match" : r.percent == null ? "Could not compile or compare" : "Partial match"}${r.current && !r.selected ? " · settings at test time" : ""}</td>${selectable ? `<td><button type="button" class="ghost small-btn" data-compiler-choice="${index}" ${r.percent == null || r.apply_disabled ? "disabled" : ""}>${r.selected ? "Selected" : r.default ? "Use default" : "Apply"}</button></td>` : ""}</tr>`).join("")}</tbody></table></div>`;
+}
+
+// Shared secondary context stays visible when a settings disclosure is collapsed.
+function disclosureContext(id, text) {
+  const el = $(id);
+  if (el) el.textContent = `— ${text}`;
 }
