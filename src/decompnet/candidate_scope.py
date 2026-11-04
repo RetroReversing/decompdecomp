@@ -56,19 +56,41 @@ def state(net,proj,fn):
     cfg=json.loads(proj['config'])
     build={key:cfg.get(key) for key in ('kind','platform','big_endian','gp')}
     build['compiler']=compiler_for(cfg,fn['vram']) if cfg.get('compiler') else None
-    ctx=net._context(proj['id'],fn['unit'])
+    if hasattr(net.store, 'read_cache'):
+        ctx = net.store.read_cache.get(('candidate-header', proj['id'], fn['unit']),
+            (net.store.read_version('scope_context', proj['id']), getattr(net._context, '__func__', net._context)),
+            lambda: net._context(proj['id'],fn['unit']))
+    else:
+        ctx = net._context(proj['id'],fn['unit'])
     text='\n'.join(str(fn[key] or '') for key in ('name','asm','best_source','seed','relocs'))
     names=set(re.findall(r'\b[A-Za-z_]\w*\b',text))
     addresses={int(x,16) for x in re.findall(r'\b0x([0-9a-fA-F]+)\b',text)}
     addresses.update(int(x,16) for x in re.findall(r'\b(?:D_|func_)([0-9a-fA-F]{8})\b',text))
     if fn['vram'] is not None:
         addresses.add(fn['vram'])
-    symbols=[tuple(r) for r in net.store.all('SELECT name,address,size,kind FROM symbols WHERE project_id=? '
-             'AND (name IN (SELECT value FROM json_each(?)) OR address IN (SELECT value FROM json_each(?))) ORDER BY name',
-             proj['id'],json.dumps(sorted(names)),json.dumps(sorted(addresses)))]
+    def build_index():
+        rows = [tuple(r) for r in net.store.all('SELECT name,address,size,kind FROM symbols WHERE project_id=? ORDER BY name', proj['id'])]
+        by_name, by_address = {}, {}
+        for index, row in enumerate(rows):
+            by_name.setdefault(row[0], []).append(index)
+            by_address.setdefault(row[1], []).append(index)
+        return {'symbols': rows, 'by_name': by_name, 'by_address': by_address}
+    lookup = (net.store.read_cache.get(('candidate-symbols', proj['id']), net.store.read_version('scope_symbols', proj['id']), build_index)
+              if hasattr(net.store, 'read_cache') else build_index())
+    selected = {i for name in names for i in lookup['by_name'].get(name, ())}
+    selected.update(i for address in addresses for i in lookup['by_address'].get(address, ()))
+    symbols = [lookup['symbols'][i] for i in sorted(selected)]
     result=[build,proj['root'],proj['arch'],proj['big_endian'],ctx['header'] if ctx else None,symbols,fn['target'],fn['relocs'],fn['vram']]
-    result.append([(r['name'],hashlib.sha256((r['matched_source'] or '').encode()).hexdigest())
-                   for r in callees(net,proj,fn,(fn['best_source'] or '')+'\n'+(fn['seed'] or ''))])
+    source = (fn['best_source'] or '')+'\n'+(fn['seed'] or '')
+    def callee_hashes():
+        return [(r['name'],hashlib.sha256((r['matched_source'] or '').encode()).hexdigest())
+                for r in callees(net,proj,fn,source)]
+    if hasattr(net.store, 'read_cache'):
+        evidence = net.store.read_cache.get(('candidate-callees', proj['id'], fn['name'], hashlib.sha256(source.encode()).hexdigest()),
+            net.store.read_version('matched_evidence', proj['id']), callee_hashes)
+    else:
+        evidence = callee_hashes()
+    result.append(evidence)
     if getattr(net,'fork_slug',lambda _:None)(proj['slug']):
         try:
             _,fp,_=net.forks.get(proj['slug']);unit=fp.unit(fn['unit'])
