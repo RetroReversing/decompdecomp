@@ -1635,3 +1635,8 @@ Function inspectors now bound chart payloads and load older notes on demand. Dee
 queues batch their reads, and worker progress updates coalesce while improvements and
 completion remain immediate. Optional request and browser timings are documented in
 [interactive app performance](docs/APP_PERFORMANCE.md#queue-and-inspector-throughput).
+
+Agent sessions now return structured waiting state for empty queues, share scoped saved-C
+rechecks, include focused instruction feedback, retain explicit correctness alternatives,
+and hand released work to bounded background CPU repairs. See
+[agent workflow efficiency](docs/AGENT_WORKFLOW_EFFICIENCY.md) for limits and verification.

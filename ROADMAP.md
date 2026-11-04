@@ -2229,3 +2229,8 @@ external imported-project expiry, explicit checks and the ordinary byte judge ar
 - Done: batch deep-pass queue reads, bound inspector chart/note payloads, reuse function
   records, coalesce worker snapshots, move response encoding to workers with bounded
   full-map wire caching, and add opt-in request/SQL/browser timing diagnostics.
+
+Completed: transcript-driven agent workflow improvements: structured empty-queue waiting,
+shared scoped saved-C diagnostics, normalized assembly focus and inline mismatch windows,
+broader unverified correctness-report capture with explicit alternative references, and
+bounded asynchronous CPU handoffs with cancellation and existing repair-trial history.
