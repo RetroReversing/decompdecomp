@@ -1,5 +1,11 @@
 # Roadmap
 
+Implemented: room verification resolves compact automatic overlay names and can independently recompile an
+entry from a small multi-function C submission, retaining declarations and line positions. Exact linked bytes/data
+remain required; updated host builds invalidate failed-profile caches and pending explanations do not accumulate.
+Function compiler profiles use original image offsets when overlays share RAM addresses; saves, exports, room
+headers/results and the shared judging/search paths retain that identity.
+
 Implemented: explicit reviewed MIPS raw-tail recovery with staged disassembly, original-prefix and overlap guards,
 saved progress, and raw/export boundary reconciliation. Added a source-independent corruption benchmark
 and bounded leaf review hints. New-function adoption and other-processor/imported-build extent recovery remain planned.
