@@ -6,6 +6,10 @@ prioritize these lifetime hypotheses. One private KMC known-match replay recover
 bytes through three generated steps. Unknown imported per-file debug/ABI metadata keeps the
 corresponding grouping/union trials disabled; build-owned metadata adapters and wider-pointer
 union support remain planned. Call scopes and allocation advice use the shared source pipeline.
+Implemented: explicit ROM function compiler suggestions freshly verify and atomically save
+source/header/profile for one entry without neighbour confirmation. Disabled auto-apply waits
+for review; legacy single-function range suggestions with saved C recheck on Apply. Broader
+ranges and imported file/build settings retain their existing verification workflows.
 
 Implemented: NOP-only MIPS targets remain rebuildable as set-aside assembly in ROM imports and project objects;
 Check again applies the same classification to existing targets.
