@@ -168,15 +168,18 @@ class GuiMixin:
         recency = history_summary(self.store, proj['id'])['recency']
         # Exact target bytes, independent of whether either project has matching C.
         # Read only targets, not attempts/source; compare within the same processor and byte order.
-        peers = self.store.all(
-            f"SELECT f.id,f.project_id,f.target FROM functions f JOIN projects p ON p.id=f.project_id "
-            f"WHERE p.arch=? AND p.big_endian=? AND f.{IN_BUILD} AND length(f.target)>0",
-            proj['arch'], proj['big_endian'])
-        owners = {}
-        for peer in peers:
-            owners.setdefault(peer['target'], set()).add(peer['project_id'])
-        cross_project = {peer['id'] for peer in peers if peer['project_id'] == proj['id']
-                         and len(owners[peer['target']]) > 1}
+        def compare_targets():
+            peers = self.store.all(
+                f"SELECT f.id,f.project_id,f.target FROM functions f JOIN projects p ON p.id=f.project_id "
+                f"WHERE p.arch=? AND p.big_endian=? AND f.{IN_BUILD} AND length(f.target)>0",
+                proj['arch'], proj['big_endian'])
+            owners = {}
+            for peer in peers:
+                owners.setdefault(peer['target'], set()).add(peer['project_id'])
+            cross_project = {peer['id'] for peer in peers if len(owners[peer['target']]) > 1}
+            return cross_project
+        cross_project = self.store.read_cache.get(('map-peers', proj['arch'], proj['big_endian']),
+            (proj['arch'], proj['big_endian'], self.store.read_version('targets')), compare_targets)
         sdk = self.sdk_functions(proj)
         return [{"cross_project": r["id"] in cross_project, **name_state(r), **{k: recency.get(r["id"], {}).get(k) for k in ("last_checked", "last_improved")}, "sdk": sdk.get(r["id"]), "name": r["name"], "vram": r["vram"], "size": r["size"], "insns": r["n_insns"], "unit": r["unit"],
                  "status": r["status"] if r["status"] in ("matched", "asm") else "working" if (r["agent"] or key(r) in remote) else "open",

@@ -1569,3 +1569,24 @@ such as polishing or restored match attribution. The global agents overview stil
 Opening a function loads its core detail without waiting for cross-project/SDK name searches.
 Expand **Other projects and local SDKs** to load those suggestions through its separate progress
 indicator. This applies to both ROM and imported projects; agent detail requests can still include hints.
+
+
+### Cached project read paths and startup maintenance
+
+Deep-pass queue totals and blocked-candidate explanations reuse validated scope results until their
+project's sources, declarations, symbols, compiler inputs or pass records change. Imported projects
+also expire these results after ten seconds to detect external file changes. Repair implementation
+hashes are reused while file identity, size, modification and change timestamps stay unchanged.
+Actual search eligibility and byte verification still use the normal scope and judge checks.
+
+The ROM map caches cross-project byte relationships and invalidates them on target/layout changes;
+ordinary progress or source edits do not reread every open project's bytes. Compiler panels use
+indexed, cached metadata and schedule automatic surveys/range audits separately from display reads.
+Explicit compiler checks retain their existing verification path. Compiler-profile hypotheses share
+compact evidence extraction across flag requests and refresh when examples change; every proposed
+profile still requires normal rejudging before use.
+
+Optional console initialization and SDK naming begin after a seven-second startup grace period,
+with two seconds between tasks and the last-opened project first. Foreground navigation can postpone
+a task briefly (up to three additional seconds). Autosave, claim cleanup, room reconnects and agent
+resume retain their existing startup paths. Deferred maintenance stops when the app quits/restarts.

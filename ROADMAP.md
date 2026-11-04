@@ -2193,3 +2193,10 @@ have a worker-specific index. Global agent views and reset/lifetime accounting r
 
 Completed: the function drawer defers optional cross-project and SDK name similarity work to the
 existing peers disclosure request, for both ROM and imported projects.
+
+
+Completed: deep-pass polling reuses revision-scoped queue/error checks; ROM maps cache cross-project
+byte relationships; compiler display reads use covering metadata and separate automatic maintenance;
+profile hypothesis extraction is compact and cached using the existing project/example index.
+Optional startup console/SDK work is staggered and yields briefly to navigation. Scope invalidation,
+external imported-project expiry, explicit checks and the ordinary byte judge are preserved.
