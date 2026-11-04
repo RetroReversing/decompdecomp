@@ -567,3 +567,21 @@ def test_status_reuses_scope_checks_until_header_or_pass_changes(sweep, monkeypa
         db.execute("INSERT INTO context_versions(project_id,version,unit,header,created_at) VALUES(1,1,'','/* declaration edit */',0)")
     obj.status('game')
     assert len(calls) > first
+
+def test_queue_batches_state_and_loads_fresh_function_at_dispatch(sweep, monkeypatch):
+    obj, net, calls, _ = sweep
+    reads=[]
+    original=net.store.all
+    def read(sql,*args):
+        reads.append(sql)
+        return original(sql,*args)
+    monkeypatch.setattr(net.store,'all',read)
+    def shuffle(batch):
+        assert all(set(fn) == {'id','name','size'} for fn,scope in batch)
+        # A concurrent worker removes this candidate after the queue snapshot.
+        with net.store.tx() as db:
+            db.execute("UPDATE functions SET status='matched' WHERE name='f0'")
+    monkeypatch.setattr(deep_sweep.random,'shuffle',shuffle)
+    obj.run('game',1,10,Log())
+    assert calls == ['f1']
+    assert any('LEFT JOIN deep_permutation_passes' in sql and 'LIMIT 128' in sql for sql in reads)

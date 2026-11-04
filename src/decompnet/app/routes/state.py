@@ -8,6 +8,7 @@ import json
 import platform
 import secrets
 import shutil
+import time
 import uuid
 from pathlib import Path
 
@@ -73,19 +74,20 @@ def register(app: App) -> None:
             if s.state in ("starting", "working", "waiting"):
                 running[s.slug] = running.get(s.slug, 0) + 1
         out = []
-        for p in net.store.all("SELECT slug, name FROM projects ORDER BY id DESC"):
-            try:
-                out.append(net.summary(p["slug"]) | {"working": running.get(p["slug"], 0)})
-            except Exception as e:  # noqa: BLE001
-                jobs.logger.warning("project %s can't be read: %s", p["slug"], e, exc_info=not isinstance(e, NetworkError))
-                progress_error = net.progress.errors.get(p["slug"])
-                if progress_error:
-                    out.append({"slug": p["slug"], "title": p["name"] or p["slug"], "working": 0,
-                                "kind": "rom", "platform_short": "?", "functions": 0, "matched": 0,
-                                "progress_error": progress_error})
-                else:
-                    out.append({"slug": p["slug"], "title": p["name"] or p["slug"], "working": 0,
-                                "broken": job_error(e, jobs.log_path)})
+        with net.summary_batch() as projects:
+            for p in projects:
+                try:
+                    out.append(net.summary(p["slug"]) | {"working": running.get(p["slug"], 0)})
+                except Exception as e:  # noqa: BLE001
+                    jobs.logger.warning("project %s can't be read: %s", p["slug"], e, exc_info=not isinstance(e, NetworkError))
+                    progress_error = net.progress.errors.get(p["slug"])
+                    if progress_error:
+                        out.append({"slug": p["slug"], "title": p["name"] or p["slug"], "working": 0,
+                                    "kind": "rom", "platform_short": "?", "functions": 0, "matched": 0,
+                                    "progress_error": progress_error})
+                    else:
+                        out.append({"slug": p["slug"], "title": p["name"] or p["slug"], "working": 0,
+                                    "broken": job_error(e, jobs.log_path)})
         return out
 
     @mcp.custom_route("/api/projects", methods=["GET"])
@@ -94,7 +96,7 @@ def register(app: App) -> None:
             return bad
         if request.query_params.get('brief') == '1':
             return JSONResponse(await (app.ui_call or call)(lambda: [dict(r) for r in net.store.all("SELECT slug,name FROM projects ORDER BY id DESC")]))
-        return JSONResponse(await (app.ui_call or call)(project_list))
+        return JSONResponse(await (app.fast_call or app.ui_call or call)(project_list))
 
     @mcp.custom_route("/api/state", methods=["GET"])
     async def api_state(request: Request) -> Response:
@@ -339,13 +341,23 @@ def register(app: App) -> None:
     COLUMN_KEYS = ("vram", "cc", "ccx")
     GZIP_FROM_BYTES = 4096  # smaller answers aren't worth compressing
 
+    from ..view_snapshots import MapPayload, Snapshots
+    encoded_maps = Snapshots(limit=8*1024*1024)
+
     def packed(request: Request, data: dict) -> Response:
-        raw = json.dumps(data, separators=(",", ":")).encode()
-        if len(raw) > GZIP_FROM_BYTES and "gzip" in request.headers.get("accept-encoding", ""):
-            import gzip
-            return Response(gzip.compress(raw, 1), media_type="application/json",
-                            headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
-        return Response(raw, media_type="application/json")
+        gzip_ok = 'gzip' in request.headers.get('accept-encoding', '')
+        def encode():
+            raw = json.dumps(data, separators=(",", ":")).encode()
+            compressed = len(raw) > GZIP_FROM_BYTES and gzip_ok
+            if compressed:
+                import gzip
+                raw = gzip.compress(raw, 1)
+            return raw, compressed
+        # Unique tokens avoid retaining entire map inputs or reusing another object's cached bytes.
+        raw, compressed = (encoded_maps.get((data.wire_key,gzip_ok),encode,weight=lambda value:len(value[0]))
+                           if isinstance(data,MapPayload) else encode())
+        return Response(raw, media_type='application/json', headers={
+            'Vary':'Accept-Encoding', **({'Content-Encoding':'gzip'} if compressed else {})})
 
     @mcp.custom_route('/api/project-loading', methods=['GET'])
     async def api_project_loading(request: Request) -> Response:
@@ -364,20 +376,21 @@ def register(app: App) -> None:
         slug = request.query_params.get("slug", "")
 
         def build() -> dict:
-            sig = net.map_signature(slug)
-            if request.query_params.get("since") == sig:
-                return {"sig": sig, "same": True}
-            rows = net.function_map(slug)
-            keys = list(rows[0]) if rows else []  # every field function_map gives: a list of them here lost polished and not_c
-            return {"sig": sig, "keys": keys, "rows": [[r[k] for k in keys] for r in rows]}
+            from ..view_snapshots import map_payload
+            return map_payload(net, slug, request.query_params.get('since'), request.query_params.get('delta') == '1')
+
         try:
             def snapshot():
                 with net.progress.view():
                     return build()
-            data = await (app.ui_call or call)(snapshot)
+            from ...request_timing import response
+            queued = time.monotonic()
+            def respond():
+                return response(snapshot, queued, lambda data: packed(request, data), '/api/map')
+            result = await (app.ui_call or call)(respond)
         except (NetworkError, ValueError) as e:
             return fail(e)
-        return packed(request, data)
+        return result
 
     @mcp.custom_route("/api/mapcolumns", methods=["GET"])
     async def api_map_columns(request: Request) -> Response:
@@ -388,10 +401,14 @@ def register(app: App) -> None:
             def snapshot():
                 with net.progress.view():
                     return net.map_columns(request.query_params.get("slug", ""))
-            rows = await (app.ui_call or call)(snapshot)
+            from ...request_timing import response
+            queued = time.monotonic()
+            def respond():
+                return response(snapshot, queued, lambda rows: packed(request, {"keys": COLUMN_KEYS, "rows": rows}), '/api/mapcolumns')
+            result = await (app.ui_call or call)(respond)
         except (NetworkError, ValueError) as e:
             return fail(e)
-        return packed(request, {"keys": COLUMN_KEYS, "rows": rows})
+        return result
 
     @mcp.custom_route("/api/log", methods=["GET"])
     async def api_log(request: Request) -> Response:

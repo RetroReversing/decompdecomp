@@ -1,5 +1,17 @@
 # Roadmap
 
+Implemented: source-free MIPS fallthrough/delay-slot review, legacy incomplete-entry visibility,
+derived boundary-review filters and map state, raw/interior audit metrics, and a bounded
+completion audit in the overview. Detected progress is never whole-image completion proof.
+See docs/CODE_COVERAGE_REVIEW.md. Imported builds and non-MIPS processors still need
+coverage/boundary adapters; compressed or unmapped programs require validated image mappings.
+
+Implemented: transactional project progress rollups for ROM/imported projects; batched sidebar and
+room claim reads; bounded overview/map/cross-project snapshots; changed-row map transfers; separate
+lightweight UI capacity and a reserved foreground compiler slot. Simultaneous deterministic sandboxed
+ROM compiles share only the compilation; linking, judging, attribution and persistence remain per request.
+Private diagnostic/cancellation and custom filesystem compilation paths are not shared.
+
 Implemented: bounded matched callback-owner discovery across selected/saved MIPS ROM source,
 private-header declaration renaming during repository sync, and separately verified supplied
 assembly through installed ROM compiler drivers. Source proofs retain provenance but are
@@ -294,6 +306,7 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Agents' verdict "no C makes this" (3 agents of 2 models: set aside, red in the map) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Check again (and before helpers start, once after each update) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Kernel stubs set aside and named | — | set aside (BIOS calls) | ✓ | set aside, named by library and NID | — | ✓ import thunks | — | — |
+| Derived incomplete state / raw coverage / completion audit | ✓ | ✓ | ✓ (scalar decoder) | ✓ | — | — | — | — |
 | Read-only gap/pointer/interior audit / incomplete-target warnings | ✓ | ✓ | ✓ (scalar decoder) | ✓ | — | — | — | — |
 | Guarded jump-table / local callback-consumer audit (scalar MIPS ROM) | ✓ | ✓ | ✓ | ✓ | — | — | — | — |
 | Saved code-audit decisions and evidence (local) | ✓ | ✓ | ✓ | ✓ | — | — | — | — |
@@ -2200,3 +2213,7 @@ byte relationships; compiler display reads use covering metadata and separate au
 profile hypothesis extraction is compact and cached using the existing project/example index.
 Optional startup console/SDK work is staggered and yields briefly to navigation. Scope invalidation,
 external imported-project expiry, explicit checks and the ordinary byte judge are preserved.
+
+- Done: batch deep-pass queue reads, bound inspector chart/note payloads, reuse function
+  records, coalesce worker snapshots, move response encoding to workers with bounded
+  full-map wire caching, and add opt-in request/SQL/browser timing diagnostics.

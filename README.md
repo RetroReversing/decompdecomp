@@ -31,6 +31,12 @@ under a tenth of a second (1.4 s before), and agents restart by themselves after
 
 ## Match through the live app
 
+Local MIPS ROM projects expose incomplete function boundaries and raw-region
+coverage separately from matching progress. When the detected queue empties, the
+overview runs a bounded CPU coverage audit; it never infers whole-game completion
+from an empty queue or a byte-identical build. See [code coverage review](docs/CODE_COVERAGE_REVIEW.md).
+
+
 [The live API workflow](docs/LIVE_API_WORKFLOW.md) shows how to use the existing judge, preserve attempt
 history, distinguish linking blockers from instruction differences, and synchronize a verified standalone build.
 Compiler preflight checks precede long ROM searches; typed SDK and structure-return hypotheses share the ordinary
@@ -514,6 +520,26 @@ and the offline banner’s **Clear saved data** button clear it manually. Offlin
 cleared; disabling access on the host cannot erase a disconnected phone. Sign-in codes, API keys, ROMs and
 uploads are not cached. Browser storage is bounded and may also be cleared by the operating system. A normal
 desktop app window does not register the service worker or store these browser snapshots.
+
+## Responsiveness with many projects
+
+Project progress totals are maintained transactionally as functions change, so sidebar polls read
+small saved summaries instead of rescanning every function. The sidebar batches its project reads.
+Overview diagnostics and cross-project byte identity use bounded local snapshots; relevant edits
+invalidate them. No Cloudflare cache is involved.
+
+Map refreshes reuse unchanged snapshots and transfer only changed rows when the layout is stable.
+Renames, splits, removed functions and missing snapshots fall back to a complete map. Live claims and
+attempts remain incremental. Sidebar and live requests have capacity separate from heavier detail reads;
+background compiler jobs leave one compiler slot available to foreground work.
+
+Simultaneous identical sandboxed ROM compilation requests can share one compiler invocation. The key
+includes project/function/target identity, compiler settings, environment and staged header contents.
+Every request still links, judges and records independently. Later requests compile again; custom
+commands/mounts/includes, explicit cancellation, diagnostics capture and time-dependent macros retain
+private invocations. Imported project builds retain their normal build locks and verification.
+
+See [the performance measurements](docs/APP_PERFORMANCE.md) for the synthetic benchmark and checks.
 
 ## Run without a desktop window
 
@@ -1590,3 +1616,8 @@ Optional console initialization and SDK naming begin after a seven-second startu
 with two seconds between tasks and the last-opened project first. Foreground navigation can postpone
 a task briefly (up to three additional seconds). Autosave, claim cleanup, room reconnects and agent
 resume retain their existing startup paths. Deferred maintenance stops when the app quits/restarts.
+
+Function inspectors now bound chart payloads and load older notes on demand. Deep-pass
+queues batch their reads, and worker progress updates coalesce while improvements and
+completion remain immediate. Optional request and browser timings are documented in
+[interactive app performance](docs/APP_PERFORMANCE.md#queue-and-inspector-throughput).
