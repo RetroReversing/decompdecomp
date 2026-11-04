@@ -1015,13 +1015,15 @@ class Network:
                 db.execute("UPDATE claims SET expires_at=? WHERE function_id=?", (now + self.claim_ttl, fn["id"]))
             elif function:
                 fn = self._function(function, proj["slug"] if proj else None)
+                if fn["gone_mark"] is not None:
+                    raise NetworkError("This entry is archived outside the detected build. Review or undo its boundary decision first.")
                 if fn["status"] == "matched":
                     raise NetworkError(f"{fn['name']} is already matched; use get_function to read its source")
                 if fn["status"] == "asm":
                     raise NetworkError(f"{fn['name']} is set aside ({set_aside(fn)['set_aside']}): claim another")
                 slug = proj["slug"] if proj else db.execute("SELECT slug FROM projects WHERE id=?", (fn["project_id"],)).fetchone()["slug"]
                 if fn['id'] in (region_blocked if proj is not None else data_blocked(self,db.execute('SELECT * FROM projects WHERE id=?',(fn['project_id'],)).fetchone())):
-                    raise NetworkError('This entry is paused for data-region review. Resume the region in Settings before claiming it.')
+                    raise NetworkError('This entry needs boundary/data-region review. Review it in Settings and explicitly keep/resume it before claiming.')
                 self.check_attempt_limit(agent, fn)
                 selected = self.selection(slug, agent.name)
                 if selected.get('model_untried'):
