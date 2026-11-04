@@ -571,7 +571,7 @@ def _dispatch(net,agent,slug,name,args, *, count_usage=True):
         result=HANDLERS[name](net,agent,slug,**named)
         if name == 'try_compiler':
             from .session_followups import diagnostic_completed
-            diagnostic_completed(net,agent)
+            diagnostic_completed(net,agent,named.get('function',''),slug)
         result=after_tool(net,agent,slug,name,named,result)
         if name in {'compile_patch','compile_and_diff','try_local_repairs','compile_family','compile_variants','compiler_experiments'}:
             function=named.get('function','')

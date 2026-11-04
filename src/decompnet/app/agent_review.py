@@ -39,7 +39,8 @@ def observe(net, fn, agent, notes, progress, snapshot=None):
         return
     evidence = snapshot if snapshot is not None else facts(net, proj, current)
     concern = bool(CONCERN.search(notes))
-    compiled = bool(progress and progress['compiles'])
+    diagnostic=getattr(net,'_function_diagnostic_compiles',{}).get((agent.id,fn['id']))
+    compiled = bool(progress and progress['compiles'] or diagnostic and progress and diagnostic>=progress.get('claimed_at',0))
     with net.store.tx() as db:
         row = db.execute('SELECT value FROM settings WHERE key=?', (key,)).fetchone()
         prior = json.loads(row['value']) if row else {}

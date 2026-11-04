@@ -79,7 +79,7 @@ synthetic and use scratch state; no new real-game matches are claimed.
 Settings → Agent blocker review lists repeated concern reports without compilation. New reports
 are scoped to source, header, compiler/build inputs, symbols, callees, target bytes, instructions
 and repair implementation hashes. Changed fields are named in the review and the next claim brief.
-Three unchanged concern releases request review. This does not suppress explicit claims, change
+Three unchanged concern releases without recorded compilation request review. Completed explicit compiler diagnostics count as work even when they create no scored attempt; their per-function timestamps are compared with the claim start. This does not suppress explicit claims, change
 eligibility rules, label assembly, or change a match. Acknowledge records that the user reviewed
 the current evidence; it does not grant a retry or resume workers.
 

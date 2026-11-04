@@ -159,3 +159,16 @@ def test_release_evidence_does_not_follow_a_concurrent_source_edit(tmp_path):
     assert state['facts']==old
     item=agent_review.listing(net,'game')['items'][0]
     assert 'source' in item['changed'] and not item['current']
+
+
+def test_completed_diagnostic_builds_do_not_count_as_no_compile_blocker_releases(tmp_path):
+    import time
+    from decompnet.app.session_followups import diagnostic_completed
+    net,agent,fn=game(tmp_path)
+    progress={'compiles':0,'claimed_at':time.time()-1}
+    diagnostic_completed(net,agent,'f','game')
+    for _ in range(3):
+        agent_review.observe(net,fn,agent,'Unresolved compiler blocker',progress)
+    assert agent_review.listing(net,'game')['items']==[]
+    state=agent_review.load(net,agent_review.PREFIX+str(fn['id']))
+    assert all(row['compiled'] for row in state['releases'])
