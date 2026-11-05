@@ -71,14 +71,19 @@ class Library:
         from ..project import compiler_for
         from .shared_reuse import machine
         net = self.net
-        proj = net.store.one('SELECT * FROM projects WHERE id=?',proj['id']) or proj
-        fn = net.store.one("SELECT * FROM functions WHERE id=? AND project_id=? AND status='matched'", fid, proj['id'])
+        pid = proj['id']
+        proj = net.store.read_cache.get(('archive-project',pid),net.store.read_version('project_list',pid),
+            lambda:net.store.one('SELECT * FROM projects WHERE id=?',pid) or proj)
+        cfg = net.store.read_cache.get(('archive-config',pid),proj['config'],lambda:net.cfg(proj))
+        fork = net.store.read_cache.get(('archive-mode',pid),proj['config'],
+                                        lambda:bool(net.fork_slug(proj['slug'])))
+        columns = '*' if fork else 'id,project_id,name,size,vram,rom_offset,unit,matched_source,matched_at,meta'
+        fn = net.store.one(f"SELECT {columns} FROM functions WHERE id=? AND project_id=? AND status='matched'", fid, pid)
         if not fn:
             return None
         p = net.twins.prints(proj).get(fid)
         source = fn['matched_source']
-        fork = bool(net.fork_slug(proj['slug']))
-        compiler = compiler_for(net.cfg(proj), fn['vram'], fn) if not fork else {}
+        compiler = compiler_for(cfg, fn['vram'], fn) if not fork else {}
         if fork:
             from .twins import _file_compiler
             _, fp, _ = net.forks.get(proj['slug'])
@@ -94,7 +99,8 @@ class Library:
                 compiler=json.loads(proof['details']).get('compiler') or compiler
         # Store only the named symbols needed to relocate this C, not the game's full symbol table.
         words = set(re.findall(r'\b[A-Za-z_]\w*\b', source))
-        symbols = [] if fork else [asdict(s) for s in net.symbols(proj['id']).by_name.values() if s.name in words]
+        named = {} if fork else net.symbols(pid).by_name
+        symbols = [asdict(named[word]) for word in sorted(words) if word in named]
         processor, big = machine(net, proj)
         # Same source copied under a generated function name shares its stored body.
         from .twins import apply
@@ -109,20 +115,25 @@ class Library:
         p = asdict(p);p['name'] = mapping.get(own_name, own_name)
         for s in symbols:
             s['name'] = mapping.get(s['name'], s['name'])
-        game = self.game_key(proj)
+        game = net.store.read_cache.get(('archive-game',pid),(proj['config'],proj['arch'],proj['name']),
+                                         lambda:self.game_key(proj))
         return {'arch':processor,'big':int(big),'fingerprint':p['key'],'size':p['size'],
                 'source':source,'header':header,'compiler':encoded(compiler),
                 'game':game,'game_name':proj['name'],'slug':proj['slug'],'name':fn['name'],
                 'mode':'fork' if fork else 'rom','print':encoded(p),'symbols':encoded(symbols),'seen':fn['matched_at'] or 0}
 
     def write(self, rows):
+        texts = {}  # A shared header is hashed and bound to SQLite once per bounded batch.
         with self.connect() as db:
             for item in rows:
                 hashes = {}
                 for kind in ('source','header','print','symbols'):
                     value = item[kind]
-                    digest = hashlib.sha256(value.encode()).hexdigest()
-                    db.execute('INSERT OR IGNORE INTO texts VALUES(?,?)',(digest,value))
+                    digest = texts.get(value)
+                    if digest is None:
+                        digest = hashlib.sha256(value.encode()).hexdigest()
+                        texts[value] = digest
+                        db.execute('INSERT OR IGNORE INTO texts VALUES(?,?)',(digest,value))
                     hashes[kind] = digest
                 db.execute('INSERT OR IGNORE INTO functions(arch,big,fingerprint,size) VALUES(?,?,?,?)',
                            tuple(item[k] for k in ('arch','big','fingerprint','size')))

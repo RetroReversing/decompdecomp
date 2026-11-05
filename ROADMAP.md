@@ -1,5 +1,9 @@
 # Roadmap
 
+- Done: bounded named-donor materialization; indexed/revision-cached latest headers;
+  archive project/config reuse, direct symbol lookup and per-batch text deduplication;
+  bounded room match/attempt deltas with a race-safe cursor; layout-versioned audit caching.
+
 - Done: named autosave workers per ROM project, with saved Pause/Resume controls
   and thread CPU attribution in Background work. A shared slot bounds background
   sync concurrency; explicit saves and authoritative verification remain enabled.
