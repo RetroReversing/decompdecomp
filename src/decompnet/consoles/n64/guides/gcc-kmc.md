@@ -558,3 +558,14 @@ keeps ordinary search. Changed-output and score-improvement history can suggest
 continuations under the same compiler/flags, but only the exact judge proves a match.
 Imported ELF trials now retain their function-output fingerprint before restoration;
 COFF section-level evidence is useful for rotation, not an earned deeper function path.
+
+### Return contracts and narrow expression lifetimes
+
+Before register permutations, inspect an explicit target return-register copy and
+actual callers consuming it. A void draft can hide the intended returned scalar.
+`return_contract` tests this without changing shared prototypes.
+`narrow_expression_inline` repeats a pure expression with its byte/short conversion
+preserved at every use. `plain_float_slots` tests ordinary local array storage only
+with target call-delay-slot stack-store evidence; never strip MMIO or pointer volatility.
+These families compose under ordinary budgets. Every hypothesis still needs the normal
+exact judge; missing target evidence is no reason to guess a contract.

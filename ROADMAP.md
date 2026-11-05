@@ -2288,3 +2288,13 @@ bounded asynchronous CPU handoffs with cancellation and existing repair-trial hi
 - Done: indexed metadata-first cross-project suggestion ranking, narrow and single-flight ROM fingerprint
   invalidation, transactionally maintained compact profile evidence, coalesced/batched room members, shared
   worker scope inputs and an LRU read cache that protects active builds from eviction.
+
+### Return-contract and narrow-expression recovery
+
+- Done: bounded target-backed return candidates, caller-backed private m2c context,
+  pure narrow-expression inlining with conversions preserved, and gated plain local
+  float slots. Shared local/deep search composes them and redirects repeated identical
+  output while retaining exploration; the exact judges remain unchanged.
+- Planned: return/delay-store evidence readers beyond MIPS and multi-exit return
+  analysis; imported target-text/caller-graph adapters where unavailable. Shared pure
+  expression repair already reaches supported 32-bit ROM and imported projects.
