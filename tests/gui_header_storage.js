@@ -14,6 +14,7 @@ vm.createContext(ctx);vm.runInContext(fs.readFileSync('src/decompnet/app/static/
 (async()=>{
  await ctx.loadHeaderStorage();assert.match(el('headerStorageContext').textContent,/100 versions.*38 shared/);
  assert.equal(el('headerStorageLogical').textContent,'10 MiB');assert.equal(el('headerStorageStored').textContent,'2 MiB');
+ delete data.unused_versions;await ctx.loadHeaderStorage();assert.match(el('headerStorageEstimate').textContent,/Preview to check/);data.unused_versions=12;
  await el('headerStoragePreview').onclick();assert.equal(requests.at(-1)[1].body.action,'preview');
  assert.match(el('headerStorageEstimate').textContent,/12 unused/);
  let work=el('headerStorageStart').onclick();assert.equal(el('headerStorageStart').disabled,true);

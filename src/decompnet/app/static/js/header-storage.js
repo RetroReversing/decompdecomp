@@ -7,7 +7,8 @@ function renderHeaderStorage(data) {
   $('headerStorageContext').textContent=`— ${Number(data.versions || 0).toLocaleString()} versions · ${Number(data.contents || 0).toLocaleString()} shared headers`;
   $('headerStorageLogical').textContent=headerStorageSize(data.logical_bytes);
   $('headerStorageStored').textContent=headerStorageSize(data.stored_bytes);
-  if(data.unused_versions!=null)$('headerStorageEstimate').textContent=`${Number(data.unused_versions).toLocaleString()} unused versions can be removed. Current and referenced headers are kept.`;
+  if(data.unused_versions==null)$('headerStorageEstimate').textContent='Preview to check which old versions are safe to remove.';
+  else $('headerStorageEstimate').textContent=`${Number(data.unused_versions).toLocaleString()} unused versions can be removed. Current and referenced headers are kept.`;
 }
 async function loadHeaderStorage() {
   if(!headerStorageJob)renderHeaderStorage(await api('/api/header-storage'));
