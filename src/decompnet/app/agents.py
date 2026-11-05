@@ -709,14 +709,15 @@ class Manager:
             self._save(s)
             return s.label
 
-    def retry_paused(self, sid, limit=5):
+    def retry_paused(self, sid, limit=5, log=lambda *_: None):
         from . import retry_paused
         with self._lock:
             session=self.sessions.get(sid)
             if session is None:raise ValueError('This agent no longer exists. Refresh the agents list.')
             if session.options.get('task')=='readable':raise ValueError('Retry paused functions applies to matching agents.')
-            agent,_=self.net.local_agent(session.agent_name)
-            return retry_paused.retry(self.net,session.slug,agent,limit)
+            slug, name = session.slug, session.agent_name
+        agent,_=self.net.local_agent(name)
+        return retry_paused.retry(self.net,slug,agent,limit,log=log)
 
     def set_selection(self, sid: str, policy: dict, per_session: int | None = None) -> dict:
         with self._lock:
@@ -1749,7 +1750,7 @@ class Manager:
         if s.stop.is_set() or s.rotated:
             return True
         everything = " ".join([*said, *errors])
-        if (k.focus_resume and proc.returncode and (s.options.get('resume_conversation') or s.options.get('focus_conversation'))
+        if (k.focus_resume and code and (s.options.get('resume_conversation') or s.options.get('focus_conversation'))
                 and re.search(r'(?:no (?:session|conversation|thread) found|(?:session|conversation|thread).{0,100}(?:not found|does not exist|could not be found))', everything, re.I)):
             s.options.pop('resume_conversation', None)
             s.options.pop('focus_conversation', None)
