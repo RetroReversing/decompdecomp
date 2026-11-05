@@ -8,7 +8,8 @@ def message(error):
     code = getattr(error, 'errno', None)
     if code in (errno.EMFILE, errno.ENFILE):
         return 'Too many files are open. Stop some background work or increase the open-file limit, then retry.'
-    if code not in (errno.ENOSPC, getattr(errno, 'EDQUOT', -1)):
+    quota = getattr(errno, 'EDQUOT', None)
+    if code != errno.ENOSPC and (quota is None or code != quota):
         return None
     filename = getattr(error, 'filename', None)
     location = f' at {Path(os.fsdecode(filename)).parent}' if filename else ''

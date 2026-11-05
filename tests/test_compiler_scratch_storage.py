@@ -74,7 +74,7 @@ def test_c_and_assembly_use_the_selected_workspace_without_running_a_compiler(tm
     assert seen and all(not work.exists() for work in seen)
 
 
-@pytest.mark.parametrize('code,phrase',[(errno.ENOSPC,'disk space'),(errno.EMFILE,'open-file limit'),(getattr(errno,'EDQUOT',errno.ENOSPC),'quota')])
+@pytest.mark.parametrize('code,phrase',[(errno.ENOSPC,'disk space'),(errno.EMFILE,'open-file limit'),pytest.param(getattr(errno,'EDQUOT',-1),'quota',marks=pytest.mark.skipif(not hasattr(errno,'EDQUOT'),reason='no host quota errno'))])
 def test_resource_failure_does_not_record_or_charge_a_candidate_attempt(tmp_path,monkeypatch,code,phrase):
     net=Network(tmp_path/'app.db');agent=net.authenticate(net.register_agent('solver'))
     cfg={'platform':'n64','compiler':{'cmd':['synthetic-cc','-c','{src}','-o','{obj}'],'sandbox':'none'}}
