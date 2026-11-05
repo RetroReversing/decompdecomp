@@ -323,7 +323,11 @@ function renderSavedMatchRecovery(ov) {
 }
 
 function renderAutopilot(ov) {
-  const draftButton = $('regenerateMachineDrafts');
+  const draftButton = $('regenerateMachineDrafts'), draftScope = $('machineDraftIncludeAll');
+  if (draftScope && renderAutopilot.draftProject !== S.slug) {
+    draftScope.checked = false;
+    renderAutopilot.draftProject = S.slug;
+  }
   if (draftButton) draftButton.onclick = async () => {
     const log = $('machineDraftLog'), stop = $('machineDraftStop');
     let jobId = null, summary = null;

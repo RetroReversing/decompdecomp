@@ -23,6 +23,9 @@ vm.runInContext(code.slice(code.indexOf('function renderAutopilot('),code.indexO
  const full=get('regenerateMachineDrafts').onclick();await new Promise(setImmediate);
  assert.equal(posts[2][1].body.include_all,true);
  release({completed:0,total:0,compiled:0,matched:0,skipped:0,failed:0});await full;
+ ctx.renderAutopilot({kind:'rom',matched:0});assert.equal(get('machineDraftIncludeAll').checked,true);
+ ctx.S.slug='another-project';ctx.renderAutopilot({kind:'rom',matched:0});
+ assert.equal(get('machineDraftIncludeAll').checked,false);
  ctx.api=async()=>{throw Error('decompiler unavailable');};
  await get('regenerateMachineDrafts').onclick();assert.equal(finished,3);assert(errors.includes('decompiler unavailable'));
 })().catch(error=>{console.error(error);process.exitCode=1;});
