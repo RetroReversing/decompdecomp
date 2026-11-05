@@ -1803,3 +1803,4 @@ running tasks to finish their current safe step; completed work is retained. One
 heavy task runs at a time. Startup tasks are offered again after restarting the app.
 Unchanged ROM match archives keep a persistent input stamp, avoiding repeated
 archiving; explicit indexing and imported projects retain full checks.
+Room matches send the compiler and flags recorded with each verified function. When older submissions lack compiler settings, the host tries the installed profiles assigned to the project, including compiler ranges and individual functions, and still requires exact linked bytes.
