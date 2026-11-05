@@ -57,7 +57,7 @@ limits and the read-only command-line audit.
 ## Automatic repairs before paid agents
 
 Open **Regenerate machine drafts** under a project's overview, then choose **Regenerate drafts** to refresh
-starting C and test it with the project's compiler. Matches, best attempts and shared headers are preserved.
+starting C for functions without compiling C and test it with the project's compiler. Select **Include all unmatched functions** for a full refresh. Room members can run this locally, with potential matches confirmed by the host. Matches, best attempts and shared headers are preserved.
 Claimed functions and unresolved boundaries are skipped; Stop keeps completed work. **Starting C diagnostics**
 in a function shows separate generation, compiler and linking failures. Unchanged failed inputs are cached;
 explicit regeneration opens a new pass. No AI calls are made.
@@ -789,6 +789,11 @@ session keeps the full app prompt (including guides and project instructions), e
 replies, app tool arguments/results, and reported input/cache/output usage. API helpers
 also record each request after context trimming, including tool definitions. CLI provider
 system prompts, hidden reasoning, shell output and internal compaction are not available.
+**Remove agent** deletes that agent's recorded app transcripts and saved API conversation.
+Its saved matches, candidates, notes, attribution and lifetime usage/cost totals remain.
+Export transcripts before removing an agent if you want to keep them. Deletion makes
+SQLite pages reusable; reducing the database file itself requires separate compaction.
+
 The transcript is local, paged separately from the short live feed, survives restarts,
 and redacts known credentials. It contains source and can grow with long sessions;
 older sessions recorded before this feature cannot be reconstructed. Token counts and
@@ -1801,8 +1806,12 @@ upgrades** and **SDK naming** tasks in Background work. Project tasks show which
 project they belong to and their own CPU thread. Stop cancels queued tasks or asks
 running tasks to finish their current safe step; completed work is retained. One
 heavy task runs at a time. Startup tasks are offered again after restarting the app.
-Unchanged ROM match archives keep a persistent input stamp, avoiding repeated
-archiving; explicit indexing and imported projects retain full checks.
+Unchanged ROM match archives keep a persistent input stamp across app updates, avoiding repeated
+archiving; explicit indexing and imported projects retain full checks. Archive scans read saved evidence
+in bounded batches, look up only referenced symbols, and share header analysis and text hashing within
+each batch. Stop retains completed batches; project changes are reread between batches.
 Room matches send the compiler and flags recorded with each verified function. When older submissions lack compiler settings, the host tries the installed profiles assigned to the project, including compiler ranges and individual functions, and still requires exact linked bytes.
 
 Room verification recovers generated entry names that changed between overlay imports. Historical bodies queued against another overlay at the same RAM address are checked against the named entry; only an exact rebuild can count, and the original submission identity is retained.
+
+Saved-progress verification shows a project banner with the reason for rechecking, completed function counts, a measured progress bar and an estimated remaining time once enough functions have completed. Verification can be paused and resumed from the banner.

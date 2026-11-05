@@ -662,7 +662,10 @@ class Progress:
     def _activity(self, slug: str, **fields):
         with self.activity_lock:
             now = time.monotonic()
-            self.activity.setdefault(slug, {"started": now}).update(fields, updated=now)
+            current = self.activity.setdefault(slug, {"started": now})
+            if fields.get("phase", current.get("phase")) != current.get("phase") and "done" in fields:
+                current.update(rate_started=now, rate_done=fields["done"])
+            current.update(fields, updated=now)
 
     def status(self, slug: str) -> dict | None:
         with self.activity_lock:
@@ -670,7 +673,13 @@ class Progress:
             if current is None:
                 return None
             now = time.monotonic()
-            return {k: v for k, v in current.items() if k not in {"started", "updated"}} | {
+            completed = current.get("done", 0) - current.get("rate_done", 0)
+            duration = now - current.get("rate_started", now)
+            total = current.get("total")
+            remaining = (max(0, int((total-current["done"])*duration/completed))
+                         if total and completed >= 3 and duration > 0 and not current.get("paused") else None)
+            return {k: v for k, v in current.items() if k not in {"started", "updated", "rate_started", "rate_done"}} | {
+                "remaining_seconds": remaining,
                 "elapsed_seconds": int(now - current["started"]),
                 "idle_seconds": int(now - current["updated"])}
 
@@ -963,6 +972,7 @@ class Progress:
             # A helper can finish another function just before a pull. Publish that independent work before
             # loading the pull; the contributor wins if both changed the same file.
             all_code = False
+            judging_change = True  # Unknown import shapes conservatively invalidate in-flight results.
             pending = {}
             if projected is not None:
                 rendered = comparison if comparison is not None else saves._render(net, slug)[0]
@@ -1021,6 +1031,10 @@ class Progress:
                 judging_change = all_code or any(name.startswith(("src/", "best/", "include/"))
                                                  for name in changed)
                 needs_judging = judging_change and (code_files or database_code)
+                if needs_judging:
+                    reason = ("Shared headers, compiler settings, symbols or function layout changed. Saved functions must be rebuilt to confirm their original bytes."
+                              if all_code else "Saved source files changed. Their functions are being rebuilt to confirm their original bytes.")
+                    self._activity(slug, reason=reason)
                 if toolchain and needs_judging:
                     if not toolchains.known(toolchain):
                         # #118: no Setup can install a compiler decompdecomp doesn't know. Open the project and
@@ -1113,7 +1127,10 @@ class Progress:
                         raise _FolderChanged
             except _FolderChanged:
                 return False
-            self.revisions[slug] = self.revisions.get(slug, 0) + 1
+            # Notes/instructions do not change the bytes being judged. Invalidating on every
+            # metadata import discarded concurrent compiles even though their inputs survived.
+            if judging_change:
+                self.revisions[slug] = self.revisions.get(slug, 0) + 1
             self.published[slug] = set(pending) | set(removed)
             disk = _read(folder)
             manifest = _manifest(disk, cfg)

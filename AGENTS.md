@@ -203,6 +203,11 @@ linting). In short:
   and a `<div class="pad">` body. Include the full shell: `settings-disclosure` alone does not provide
   header spacing. Keep independent tools as sibling cards, collapsed by default; preserve open state
   during refreshes. Use `disclosure-context` for a short purpose or count beside the title.
+- Avoid rows of secondary action buttons. Keep the main action visible and group related secondary actions
+  in a vertical ⋮ overflow menu using the existing `agent-menu` / `agent-menu-items` pattern (also used by
+  compiler profiles). Give the trigger a descriptive accessible label, show one action per line, retain
+  disabled states, close on selection/outside click/Escape, and restore focus to the trigger. Keep actions
+  such as Stop visible while work is running; do not hide essential progress or errors inside menus.
 - Start with one sentence explaining the outcome and when the tool is useful. Put limits beside their
   labeled inputs, use a clear action verb on the primary button, and keep technical details in a secondary
   disclosure. Avoid generic “Finished” messages, repeated descriptions and unexplained internal terms.
@@ -230,13 +235,17 @@ linting). In short:
 Always submit decompdecomp changes on a feature or fix branch through a pull request; do not commit directly to main.
 
 The user has asked that completed PRs be merged to main after inspection and required checks, until they
-revoke this preference. After each merge, they explicitly authorize stopping and updating their running
-app in `/Volumes/Data/Github/decompdecomp-rr`, using `git pull origin main` followed by
+revoke this preference. The user updates their running app themselves: merging a PR does not authorize
+pulling into its checkout, stopping, updating or restarting it. Leave the running app in
+`/Volumes/Data/Github/decompdecomp-rr` and its home `/Volumes/Data/Decomps/decompdecomp` alone unless the
+user explicitly requests deployment. This replaces the previous automatic-update authorization.
+
+When the user explicitly requests deployment, use `git pull origin main` followed by
 `DECOMP_HOME=/Volumes/Data/Decomps/decompdecomp /Volumes/Data/Github/decompdecomp-rr/.venv/bin/decomp`.
 Use a clean checkout of main (a detached origin/main runtime checkout is acceptable when main is held by
 another worktree), preserve all other branches and local changes, stop only this home's app gracefully,
-launch it persistently and verify health/revision. This authorization applies to deployment after tested
-merges; experiments must still use isolated homes and must not mutate live projects.
+launch it persistently and verify health/revision. Experiments must still use isolated homes and must
+not mutate live projects.
 
 When a change requires clients to update, build a fresh shareable macOS app after testing
 with `bash packaging/macos/build.sh --app-only`. Deliver the .app folder directly in Downloads,

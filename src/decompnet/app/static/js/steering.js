@@ -323,7 +323,11 @@ function renderSavedMatchRecovery(ov) {
 }
 
 function renderAutopilot(ov) {
-  const draftButton = $('regenerateMachineDrafts');
+  const draftButton = $('regenerateMachineDrafts'), draftScope = $('machineDraftIncludeAll');
+  if (draftScope && renderAutopilot.draftProject !== S.slug) {
+    draftScope.checked = false;
+    renderAutopilot.draftProject = S.slug;
+  }
   if (draftButton) draftButton.onclick = async () => {
     const log = $('machineDraftLog'), stop = $('machineDraftStop');
     let jobId = null, summary = null;
@@ -338,10 +342,10 @@ function renderAutopilot(ov) {
       };
     }
     log.hidden = false;
-    const finish = beginWork(log, 'Regenerating machine drafts', [draftButton], 'Draft refresh finished');
+    const finish = beginWork(log, 'Regenerating machine drafts', [draftButton, $('machineDraftIncludeAll')], 'Draft refresh finished');
     showJobError(log, '');
     try {
-      const { job } = await api('/api/drafts', {method:'POST', body:{slug:S.slug}});
+      const { job } = await api('/api/drafts', {method:'POST', body:{slug:S.slug, include_all:$('machineDraftIncludeAll').checked}});
       jobId = job;
       if (stop) stop.disabled = false;
       const result = await followJob(job, log, lines => { log.hidden = lines.length === 0; });
@@ -852,6 +856,12 @@ $("autoAdjust").onchange = async () => {
   } catch (err) { $("autoAdjust").checked = !on; toast(esc(err.message), "err"); }
 };
 $("compilerParts").onclick = async (e) => {
+  const menuAction = e.target.closest('.compiler-profile-menu button');
+  if (menuAction) {
+    const menu = menuAction.closest('details');
+    menu.open = false;
+    menu.querySelector('summary').focus();
+  }
   const fn = e.target.closest("[data-compiler-function]");
   if (fn) { openFn(fn.dataset.compilerFunction); return; }
   const testDefault = e.target.closest("button[data-profile-test-default]");
@@ -1161,7 +1171,7 @@ function renderCompilerParts(a) {
   setHtml($("compilerParts"), mode === "range" ? `<ol class="compiler-range-list">${groups.flatMap(g => g.parts).map(p => row(p, true)).join("")}</ol>`
     : groups.map((g, index) => `<details class="compiler-profile" data-compiler-group="${esc(g.id)}"${compilerGroupsOpen.has(g.id) ? " open" : ""}>
       <summary><span><b>${esc(mode === "family" ? g.family.toUpperCase() : g.compiler)}</b>${g.default ? ` <span class="chip-s">${mode === "family" && g.profiles > 1 ? "Includes default" : "Default"}</span>` : ""}${mode === "settings" ? `<code class="compiler-arguments">${esc(g.flags || "No arguments")}</code>` : ""}<span class="compiler-profile-count">${plural(g.parts.length, "range")}${g.functions != null ? ` · ${plural(g.functions, "function")}` : ""}${mode === "family" ? ` · ${plural(g.profiles, "argument profile")}` : ""}</span></span></summary>
-      ${mode === "settings" && !g.default && S.ov.kind !== "fork" ? `<div class="compiler-profile-action"><button class="ghost small-btn" type="button" data-profile-default="${index}"${compilerProfileJobs.get(`${S.slug}:${g.id}`)?.running ? " disabled" : ""}>Compare all matches with default</button><button class="ghost small-btn" type="button" data-profile-test-default="${index}">Test this profile as default</button><button class="ghost small-btn" type="button" data-profile-test-default="${index}" data-profile-action="replace">Replace default with this profile</button><button class="ghost small-btn" type="button" data-profile-test-default="${index}" data-profile-action="nonmatches">Test all non-matches</button><p class="small muted">Only exact byte matches move to the project default. Drafts and non-matches keep their settings.</p><p class="small" role="status">${esc(compilerProfileJobs.get(`${S.slug}:${g.id}`)?.message || "")}</p></div>` : ""}
+      ${mode === "settings" && !g.default && S.ov.kind !== "fork" ? `<div class="compiler-profile-action"><div class="compiler-profile-tools"><span class="small muted">Profile actions</span><details class="agent-menu compiler-profile-menu"><summary aria-label="Actions for ${esc(g.compiler)} profile" title="Compiler profile actions">⋮</summary><div class="agent-menu-items"><button type="button" data-profile-default="${index}"${compilerProfileJobs.get(`${S.slug}:${g.id}`)?.running ? " disabled" : ""}>Compare all matches with default</button><button type="button" data-profile-test-default="${index}">Test this profile as default</button><button type="button" data-profile-test-default="${index}" data-profile-action="replace">Replace default with this profile</button><button type="button" data-profile-test-default="${index}" data-profile-action="nonmatches">Test all non-matches</button></div></details></div><p class="small muted">Only exact byte matches move to the project default. Drafts and non-matches keep their settings.</p><p class="small" role="status">${esc(compilerProfileJobs.get(`${S.slug}:${g.id}`)?.message || "")}</p></div>` : ""}
       <ol class="compiler-range-list">${g.parts.map(p => row(p, mode === "family")).join("")}</ol></details>`).join(""));
   $("compilerParts").querySelectorAll("details[data-range-reason]").forEach(d => d.ontoggle = () => {
     if (!d.isConnected) return;

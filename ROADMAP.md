@@ -1,8 +1,13 @@
 # Roadmap
 
 - Done: bounded named-donor materialization; indexed/revision-cached latest headers;
-  archive project/config reuse, direct symbol lookup and per-batch text deduplication;
   bounded room match/attempt deltas with a race-safe cursor; layout-versioned audit caching.
+
+- Done: removing an agent clears its app transcripts and API conversation while
+  retaining saved work and usage totals; late callbacks cannot recreate cleared logs.
+
+- Done: retain in-flight compile results during metadata-only progress imports;
+  source, header, compiler and layout changes still invalidate stale results.
 
 - Done: named autosave workers per ROM project, with saved Pause/Resume controls
   and thread CPU attribution in Background work. A shared slot bounds background
@@ -20,7 +25,7 @@
 
 - Done: compiler-tested fresh drafts, bounded private MIPS callback/argument/frame recovery,
   owner-aware ROM data context, persistent generation/compiler/link diagnostics and cancellable
-  draft regeneration without clearing matches or attempts. Imported m2c projects use their own build.
+  draft regeneration without clearing matches or attempts. The default pass targets missing compiling C; an optional full refresh includes all unmatched functions. Room members compile locally with host leases and match confirmation. Imported m2c projects use their own build.
 - Planned: callback/frame evidence readers for PowerPC, ARM and x86; explicit variadic, floating-point
   and complex/variable-frame ABI recovery. Ambiguous frames and unbounded data remain unresolved.
 
@@ -2521,6 +2526,9 @@ bounded asynchronous CPU handoffs with cancellation and existing repair-trial hi
   normalized function fingerprints and per-game occurrences after projects are closed/removed.
   Identical source/context blobs are shared. ROM and imported destinations retain their normal
   byte/objdiff judge; reopening inputs never turns a fingerprint into automatic acceptance.
+- Done: archive scans batch saved evidence, use direct symbol lookups and reuse shared header
+  analysis/text hashes. Persistent ROM input stamps survive unrelated app updates; completed
+  batches remain available after Stop.
 - Imported candidates whose dependencies exist only in external project headers still need those
   declarations in the destination build, as with the existing cross-project transfer adapter.
 
