@@ -614,6 +614,8 @@ similar C through objdiff. Other processors need an instruction reader for this 
 
 ## Recently done
 
+- Optional startup work is split into named per-task threads with project context, progress and cooperative Stop controls in Background work. Heavy tasks remain serialized; unchanged ROM library archives are skipped using persistent input stamps.
+
 - Background contention: autosave keeps one-second dirty checks with 15-second deep file checks; reuse and startup scans share one maintenance lane with cooperative UI yields and lower priority; SDK corpus indexes are shared across projects; persistent local connection failures back off to five minutes plus worker jitter.
 
 - Check again and helper startup reconsider obsolete agent tooling verdicts when
