@@ -4015,3 +4015,22 @@ not deleted; signed scalar declarations must be available and unescaped, and an
 unused compatible scratch must exist. Unrelated macro bodies remain untouched;
 tracked aliases and continued directives are rejected. No assembly, compiler
 profile, score normalization or acceptance rule is changed.
+
+### Copied overlay call names can leave a relocation-only miss
+
+- Profile: KMC GCC 2.7.2, `-G0 -mips3 -mgp32 -mfp32 -O2`.
+- Evidence: several recent captured MIPS GCC repairs changed a single generated
+  callee name and its owned declaration to the target's symbolic direct-call name,
+  moving a comparable-settings score of 10 to an exact linked match. Other reuse
+  examples changed profiles or several callees and do not isolate this cause.
+- Implementation: `target_callee_name` proposes one replacement only when exactly
+  one symbolic `jal` target is absent from the candidate and exactly one declared
+  generated-name callee is extra, with equal static call counts. It retains the
+  source-owned prototype's types as a hypothesis; it does not infer the target ABI.
+- Reject indirect calls, ambiguous target sets, helpers/definitions, escaped or
+  shadowed names, macro captures and preexisting target declarations. Existing
+  same-address overlay aliases remain a separate family.
+- Validation is synthetic generation/guard coverage, not a new replayed game match.
+  Every proposal still requires ordinary compilation and exact linked/object
+  verification. This adapter currently recognizes MIPS direct symbolic calls;
+  other instruction syntaxes need their own evidence-backed adapters.
