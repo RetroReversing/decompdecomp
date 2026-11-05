@@ -38,6 +38,9 @@ def test_latest_header_cache_fallback_invalidation_and_rollback(tmp_path,monkeyp
             assert net._context(1,'unit')['header']=='rollback'
             raise RuntimeError()
     assert net._context(1,'unit')['header']=='private'
+    with net.store.tx() as db:
+        db.execute("DELETE FROM context_versions WHERE project_id=1 AND unit='unit'")
+    assert net._context(1,'unit')['header']=='global'
     plan=net.store.all("EXPLAIN QUERY PLAN SELECT * FROM context_versions WHERE project_id=1 AND unit='unit' ORDER BY version DESC LIMIT 1")
     assert not any('TEMP B-TREE' in r['detail'] for r in plan)
 
