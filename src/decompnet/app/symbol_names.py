@@ -3,9 +3,9 @@ import threading
 
 from ..network import NetworkError
 from ..rom.symbols import IDENT
+from .function_names import check_rename
 
 _LOCK = threading.Lock()
-from .function_names import check_rename
 
 
 def prepare(net, slug, rows):

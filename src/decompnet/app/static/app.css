@@ -1843,3 +1843,14 @@ body:has(.pwa-status:not([hidden])) { padding-bottom:80px; }
 .blocker-empty p { color:var(--muted); font-size:12px; margin:8px 0 0; line-height:1.7; }
 #agentBlockerStatus { margin:0; }
 @media(max-width:600px) { .blocker-review-card { padding:14px; } }
+
+.boundary-findings { max-height:320px; overflow:auto; padding:12px; display:grid; gap:8px; }
+.boundary-finding { display:grid; gap:4px; text-align:left; padding:10px 12px; border:1px solid var(--line); background:var(--paper); border-radius:var(--r); }
+.boundary-finding:hover { border-color:var(--muted); }
+.boundary-finding span { line-height:1.5; }
+.boundary-history-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px; border-bottom:1px solid var(--line); }
+.boundary-preview { margin:16px 0; padding:16px; border:1px solid var(--line); border-radius:var(--r); }
+.boundary-assembly { max-height:340px; overflow:auto; background:var(--paper); padding:12px; font-size:12px; }
+.boundary-assembly span { display:block; }
+.boundary-inside { color:var(--ink); background:color-mix(in srgb,var(--hl) 12%,transparent); }
+#fnBoundaryRepair { margin-bottom:16px; }
