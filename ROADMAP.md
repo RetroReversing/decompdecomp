@@ -525,6 +525,8 @@ similar C through objdiff. Other processors need an instruction reader for this 
 
 ## Recently done
 
+- Paused retries check filtered candidates incrementally, stop at the requested allowance, release shared locks between candidates, and report checked/ready counts in a background job.
+
 - Polishing agents skip matching-only preparation and waits on start, restart and resume; agent creation remains visible in the Agents panel when the launcher closes.
 
 - **Your own compiler on every ROM console.** N64, PS1, PS2, PSP and GBA games can be built with your own copy of
@@ -2288,6 +2290,11 @@ bounded asynchronous CPU handoffs with cancellation and existing repair-trial hi
 - Done: indexed metadata-first cross-project suggestion ranking, narrow and single-flight ROM fingerprint
   invalidation, transactionally maintained compact profile evidence, coalesced/batched room members, shared
   worker scope inputs and an LRU read cache that protects active builds from eviction.
+
+- Done: the KMC-compatible legacy MIPS GCC pack provides a fixed, no-argument debugger
+  BREAK 9 compatibility intrinsic. Submitted assembly remains rejected; ordinary C
+  without the intrinsic compiles unchanged. Other MIPS compiler packs still need
+  compatible, tested registrations; compiler dialects and existing intrinsic headers differ.
 
 ### Return-contract and narrow-expression recovery
 

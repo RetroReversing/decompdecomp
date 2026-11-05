@@ -3427,6 +3427,58 @@ saving is claimed. The suite reports distinct-function coverage separately from 
 legacy per-case counters. A public, homemade three-function frozen suite exercises
 real pinned compilation and exact controls without requiring private game data.
 
+## Returned-index liveness before packed command stores (live verified)
+
+Compiler: GCC KMC 2.7.2, MIPS, `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`.
+A 173-instruction rendering helper illustrates why register differences need an ABI
+check before a large permutation search. Its only caller consumes the result in
+`$v0`; the saved draft nevertheless declared the helper `void`. The target also
+preserves an allocated index in `$v0` while constructing two packed words.
+
+Measured progression under that fixed profile:
+
+| Source hypothesis | Normal judge score |
+| --- | --- |
+| Saved draft rechecked with current context | 350 |
+| Plain three-float array instead of separate volatile float locals | 190 |
+| Return the allocated index, consistent with the caller | 65 |
+| Inline the repeated byte-narrowed packing expression instead of its scalar temporary | 0 |
+
+The array permits the otherwise unused store to occupy the existing call delay slot.
+The return fixes a missing copy and keeps the return register live through packing.
+The final expression change preserves byte narrowing at both uses; it changes the
+compiler's allocation and reproduces all remaining registers. This demonstrates a
+source-shape effect, not a proof of one particular internal allocator cause.
+
+Failed controls worth retaining: identity/masking inline helpers, simple copy stages,
+several narrow types and 24 declaration permutations did not fix the residual.
+One-shot loop wrappers regressed these candidates. Removing debug output did not
+improve the 65-point residual; ordinary `-g` was worse. Do not replace ABI evidence
+with blind register permutations, strip byte conversions, or prescribe machine registers.
+
+Evidence: the copied ROM-backed linker/data judge reports exact, followed by the
+running app's API reporting **matched, score 0, 173 instructions, linked bytes exact**.
+The live database's matched source was checked against the submitted source. A second
+API scratch check also reports score zero and linked bytes exact. This is one new
+function match; a complete exported-image rebuild was not run.
+
+### Legacy GNU MIPS debugger breakpoints are an explicit hardware operation
+
+With KMC-compatible GCC 2.7.2/binutils 2.6 and
+`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`, an assertion/error path may contain a
+BREAK 9 instruction after an error-reporting call. A `noreturn` declaration did
+not reproduce that operation; `__builtin_trap` and `__builtin_abort` were compiled
+as unresolved external calls in a controlled probe. Do not declare those native
+builtins supported by this compiler or remove the target instruction.
+
+The pack now provides `__builtin_mips_debug_break()` as an explicitly documented
+compatibility intrinsic. Its fixed template emits one BREAK 9 and a memory
+barrier; it accepts neither text nor instruction parameters. The debugger may
+resume execution, so the operation is not a C noreturn assertion. Submitted asm
+remains rejected. Compiler tests check the fixed instruction, resumed memory
+access, argument rejection and unchanged ordinary-C machine code. This is
+hardware-intrinsic support, not evidence of a new real-game match.
+
 ## Target-backed return contracts and narrow expression lifetimes
 
 A fixed KMC GCC 2.7.2 copied replay recovered three precursors of one existing match
