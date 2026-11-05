@@ -197,3 +197,20 @@ def test_repeated_cli_transport_failure_pauses_paid_retries_without_abandon_pena
     manager._run(s)
     assert [r['outcome'] for r in net.store.all('SELECT outcome FROM helper_sessions')]==['connection_retry','paused']
     assert net._function(fn['name'],'game')['abandons']==0
+
+
+def test_failed_diagnostic_learns_only_explicit_requested_rejected_option(tmp_path,monkeypatch):
+    from types import SimpleNamespace
+    net,agent,fn=game(tmp_path);calls=[]
+    monkeypatch.setattr(net,'_context',lambda *a:{'header':''})
+    monkeypatch.setattr('decompnet.project.compiler_config',lambda *a:None)
+    def compile(*a):
+        calls.append(1)
+        return SimpleNamespace(ok=False,log="cc1: Invalid option `-unsupported'\nignored suggestion: -another")
+    monkeypatch.setattr('decompnet.compiler.compile_source',compile)
+    proj=net._project('game')
+    for _ in range(2):
+        ok,diff,log=net._judge_with(proj,fn,'gcc-old',['-unsupported'],fn['best_source'])
+        assert not ok and diff is None
+    assert len(calls)==1 and 'No compiler run' in log
+    assert not compiler_flags.known(net,'gcc-old',['-another'])
