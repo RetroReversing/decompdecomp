@@ -78,7 +78,7 @@ class Library:
         # per function. A changed symbol revision or replacement table rebuilds the index.
         order = self.net.store.read_cache.get(('library-symbol-order',proj['id']),
             (self.net.store.read_version('scope_symbols',proj['id']),id(symbols)),
-            lambda:{name:index for index,name in enumerate(symbols)}) if not fork else {}
+            lambda:(symbols,{name:index for index,name in enumerate(symbols)}))[1] if not fork else {}
         return {'fork':fork, 'cfg':self.net.cfg(proj),
                 'prints':self.net.twins.prints(proj), 'machine':machine(self.net, proj),
                 'game':self.game_key(proj), 'headers':{}, 'reserved':{}, 'fork_project':None, 'file_compilers':{},
