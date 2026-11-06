@@ -12,7 +12,7 @@ intent cannot be inferred from the spacing or the actual caller setting CU1.
 
 
 def header():
-    # Legacy GNU as has no push/pop; these registered backends use reorder mode.
+    # Legacy GNU as has no push/pop; validated KMC #APP starts in reorder mode.
     # Otherwise the assembler can remove this performance spacing instruction.
     return ('#ifndef DECOMP_MIPS_WRITE_STATUS_RETURN_SPACING\n#define DECOMP_MIPS_WRITE_STATUS_RETURN_SPACING\n'
             '#define __builtin_mips_write_status_return_spacing(value) '
