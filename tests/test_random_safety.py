@@ -46,3 +46,10 @@ def test_new_empty_constant_do_scaffolding_is_rejected_without_banning_real_bloc
     assert not random_safety.unsafe_update(original, original+'/* do {} while(0); */')
     existing = 'int f(int n){do {} while(0);return n;}'
     assert random_safety.unsafe_update(existing, existing.replace('return', 'do {} while(0);return'))
+
+
+def test_empty_do_detection_masks_raw_string_quotes_without_hiding_real_code():
+    original = 'void f(void){}'
+    literal = 'void f(void){puts(R"tag(" do {} while(0); ")tag");}'
+    assert not random_safety.unsafe_update(original, literal)
+    assert random_safety.unsafe_update(original, literal[:-1]+'do {} while(0);}')

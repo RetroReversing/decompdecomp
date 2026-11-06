@@ -8,7 +8,7 @@ import json
 import re
 import time
 
-from ..forks.csource import _blank
+from ..forks.csource import _COMMENT_OR_STRING, _blank
 
 PREFIX = 'permuter-checkpoint:'
 
@@ -24,7 +24,12 @@ def empty_do_loops(source):
     # A new literal-zero empty do loop only adds source scaffolding. Keep genuine
     # nonempty wrappers and dynamic-condition waits; do not ban their generator.
     pattern = r'\bdo\s*(?:\{\s*(?:;\s*)*\}|;)\s*while\s*\(\s*(?:0+|0[xX]0+)[uUlL]*\s*\)\s*;'
-    return len(re.findall(pattern, _blank(source)))
+    # Match literals/comments together so raw-string text cannot expose fake C
+    # after an embedded quote, nor hide actual code outside the literal.
+    literals = re.compile(r'(?:u8|u|U|L)?R"(?P<delimiter>[^\s()\\]{0,16})\(.*?\)(?P=delimiter)"|'
+                          + _COMMENT_OR_STRING.pattern, re.S)
+    clean = literals.sub(lambda match: re.sub(r'[^\n]', ' ', match[0]), source)
+    return len(re.findall(pattern, clean))
 
 
 def unsafe_update(parent, candidate):
