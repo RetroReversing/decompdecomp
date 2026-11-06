@@ -1,4 +1,4 @@
-"""Keep a pre-random-search checkpoint and reject one known side-effecting mutation shape.
+"""Keep a pre-random-search checkpoint and reject known untrustworthy mutation shapes.
 
 This is not a C equivalence checker. Near misses remain exploratory and only the normal
 exact judge can accept a match. A checkpoint's functionality is explicitly unverified.
@@ -20,8 +20,16 @@ def nested_updates(source):
                for statement in _blank(source).split(';'))
 
 
+def empty_do_loops(source):
+    # A new literal-zero empty do loop only adds source scaffolding. Keep genuine
+    # nonempty wrappers and dynamic-condition waits; do not ban their generator.
+    pattern = r'\bdo\s*(?:\{\s*(?:;\s*)*\}|;)\s*while\s*\(\s*(?:0+|0[xX]0+)[uUlL]*\s*\)\s*;'
+    return len(re.findall(pattern, _blank(source)))
+
+
 def unsafe_update(parent, candidate):
-    return nested_updates(candidate)>nested_updates(parent)
+    return (nested_updates(candidate)>nested_updates(parent)
+            or empty_do_loops(candidate)>empty_do_loops(parent))
 
 
 def checkpoint(net, fn):
