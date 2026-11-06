@@ -1162,8 +1162,8 @@ hazards depend on the changed bits and following instruction; a memory clobber
 is not a hardware hazard barrier. The operation-only experiment did not establish a general Status-write intrinsic;
 the separately documented return-spacing operation below has a narrower contract.
 The manual separately warns about an immediate jump after setting ITS. A narrowly
-specified return-spacing operation is an untested lead, distinct from a general
-Status completion barrier; do not infer its contract from the target alone.
+specified return-spacing operation below is distinct from a general Status
+completion barrier; its contract comes from the manual, not the target alone.
 
 ### Status write with return-branch spacing
 
@@ -1180,3 +1180,12 @@ not reopen assembly automatically. Other CP0 privilege and mode hazards remain.
 The accessor can retain an existing `void(int)` caller contract: the intrinsic
 converts to unsigned 32-bit modulo 2^32, preserving the supplied hardware bits.
 The assembler-state bracket is validated only with the pinned KMC backend.
+
+### Caller-backed loaded returns
+
+For a void SDK draft that leaves a loaded word in the return register, inspect
+actual direct callers before allocation searches. A consumed loaded value can
+be an omitted scalar or pointer return, even without a final register-copy
+instruction. The app can supply a caller-backed m2c hypothesis when no shared
+prototype exists; it does not infer the pointer type or edit existing headers.
+An arbitrary scratch register difference alone still cannot justify an intrinsic.

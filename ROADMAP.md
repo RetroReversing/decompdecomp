@@ -2925,3 +2925,10 @@ need independent evidence before receiving this specific GNU C repair.
   stall warning. This does not provide full Status hazard completion, arbitrary
   inlined barriers or automatic reopening of assembly. Other backend assembler
   state policies remain unvalidated; the automatic seed is KMC-only.
+
+
+- Done: caller-backed MIPS loaded-word return evidence reaches ROM machine-draft
+  context and advisory hints. A load alone never enables return rewrite candidates.
+- Planned: expose equivalent direct-caller consumption evidence for imported
+  projects where no caller graph is currently available. Keep inference disabled
+  there until such evidence exists; do not infer a return type from a scratch load.

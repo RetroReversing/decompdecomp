@@ -5248,3 +5248,24 @@ accessor splits an assembly run, so its generated wrapper/object must be rebuilt
 rather than reused from a stale cache. Normal copied prepared-source adoption
 also preserved all 2,075 other selected source hashes and effective profiles.
 These are copied validation results, not a claim of live adoption.
+
+### A loaded return word needs caller evidence before changing a void draft
+
+A four-instruction SDK list pop loads the old head into the return register,
+loads its successor and writes the new head. Seven direct callers consume the
+old head, but the saved machine draft declares a void result. The existing
+return-contract witness recognized explicit register copies only, so this load
+was invisible to its caller-backed draft context and advisory.
+
+The MIPS witness now exposes an unchanged straight-line `lw` result for bounded
+caller lookup. A consuming direct caller is required before suggesting a return
+contract or adding a temporary m2c result hypothesis. A load alone never enables
+the caller-free return-rewrite family. Control flow, overwritten results, unknown
+clobbers and 64-bit loads remain conservative exclusions. No shared prototype,
+selected source or pointer type is changed automatically.
+
+A real pinned m2c replay on the private list-pop input now emits a result-returning
+draft, with the shared header unchanged. This is an ABI hypothesis, not a new
+exact match: prior KMC candidates still differed in scratch register allocation,
+and bounded IDO 5.3/7.1 controls also failed to match. Do not implement a fixed
+list intrinsic that merely selects the target's arbitrary scratch register.
