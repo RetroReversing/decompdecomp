@@ -289,6 +289,8 @@ def scalar_tails(source, name, header=''):
         # Flat scalar arms only: no incoming labels, transfers, calls, nested
         # scopes or declarations that could change lookup at the successor.
         arms = left+'\n'+right
+        if set(re.findall(IDENT, arms)) & macros.keys():
+            continue  # object macros can hide transfers or declarations too
         if re.search(r'[{}:]|\b(?:goto|return|break|continue|case|default|if|for|while|do)\b|'
                      + IDENT+r'\s*\(', arms):
             continue

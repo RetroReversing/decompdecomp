@@ -55,3 +55,7 @@ def test_shared_draft_family_is_reachable():
 def test_qualified_locals_are_not_sunk():
     source='int demo(int flag){s32 a;s32 b;b=3;if(flag){a=b*8;}else{a=b*8;}return a;}'
     assert not branch_layout_repairs.scalar_tails(source,'demo','typedef volatile int s32;')
+
+
+def test_object_macro_cannot_hide_an_arm_transfer():
+    assert not proposals('if(flag){EXIT;a=b*8;}else{x=2;a=b*8;}', '#define EXIT return 3;\n')
