@@ -5193,5 +5193,8 @@ a universal one-NOP-before-return rule. The actual caller sets CU1 and reaches
 its FCSR access after intervening instructions; that call sequence alone does
 not establish a reusable standalone write barrier. Do not add a NOP just because
 it occurs in a target, or describe a memory clobber as a processor hazard barrier.
+Whether an original assembler hazard policy or another compiler profile explains
+the extra NOP remains unproven; this bounded negative is not an exhaustive claim
+that no C representation can match. No unsupported flag matrix was run.
 A future Status-write intrinsic needs an independently specified completion
 contract, including privilege/mode changes and the permitted following users.
