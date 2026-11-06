@@ -1160,3 +1160,6 @@ A Status writer is a separate case: a tested fixed `mtc0 %0,$12` operation emitt
 return. Do not repair that difference with target-shaped padding. VR4300 CP0
 hazards depend on the changed bits and following instruction; a memory clobber
 is not a hardware hazard barrier. No Status-write intrinsic is currently provided.
+The manual separately warns about an immediate jump after setting ITS. A narrowly
+specified return-spacing operation is an untested lead, distinct from a general
+Status completion barrier; do not infer its contract from the target alone.

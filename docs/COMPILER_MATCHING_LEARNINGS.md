@@ -5198,3 +5198,11 @@ the extra NOP remains unproven; this bounded negative is not an exhaustive claim
 that no C representation can match. No unsupported flag matrix was run.
 A future Status-write intrinsic needs an independently specified completion
 contract, including privilege/mode changes and the permitted following users.
+
+There is a narrower untested lead: the same manual's printed page 622,
+caution 2, warns that setting ITS immediately before a jump or branch causes
+a multi-instruction stall. An independently defined write-before-return spacing
+operation could address that specific case without claiming general Status
+completion. The current caller's CU1 change does not prove the original
+assembler's intent. Audit this branch-spacing contract separately before adding
+any instruction; the operation-only negative above does not settle it.
