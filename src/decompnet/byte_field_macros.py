@@ -4,6 +4,7 @@ Only exact two-argument dereference templates in unconditional, unique definitio
 are supported. Unknown preprocessing and multiline invocations stay untouched.
 """
 import re
+from collections import Counter
 
 from .forks.csource import _blank
 
@@ -30,17 +31,19 @@ def expand(source, header=''):
            if re.match(r'\s*#\s*define\b', line)):
         return source
     names = re.findall(r'^[^\S\n]*#[^\S\n]*define[^\S\n]+('+_IDENT+r')\b', clean, re.M)
+    counts = Counter(names)
+    macro_names = set(names)
     definitions = {}
     for hit in _DEFINE.finditer(clean):
         name, parameters, body = hit.groups()
         args = [p.strip() for p in parameters.split(',')]
-        if (names.count(name) != 1 or len(args) != 2 or len(set(args)) != 2
+        if (counts[name] != 1 or len(args) != 2 or len(set(args)) != 2
                 or not all(re.fullmatch(_IDENT, arg) for arg in args)):
             continue
         params = dict(zip(args, ('BASE', 'OFFSET')))
         normalized = re.sub(_IDENT, lambda m, params=params: params.get(m[0], m[0]), body)
         field = _BODY.fullmatch(normalized)
-        if not field or set(re.findall(_IDENT, field['type']+' '+field['byte'])) & (set(names) | {'BASE', 'OFFSET'}):
+        if not field or set(re.findall(_IDENT, field['type']+' '+field['byte'])) & (macro_names | {'BASE', 'OFFSET'}):
             continue
         definitions[name] = (field['type'].strip(), field['byte'], hit.start() < len(header)+1)
     if not definitions:

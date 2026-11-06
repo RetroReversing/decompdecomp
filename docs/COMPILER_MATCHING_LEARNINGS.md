@@ -5003,7 +5003,7 @@ The bounded search charged420 initial emissions and420 deterministic recovery
 emissions plus160 new emissions against its1000 physical limit after correcting
 that invalid screen. All original available source hashes/lineages were verified
 in recovery;580 raw sources survive. Of464 period judgments,23 are conservatively
-excluded for internal temporary-type randomization;441 eligible judgments found
-no improvement/exact. These limits and negative results stay explicit. Private
+excluded for internal temporary-type randomization;441 judgments passing these screens found
+no improvement/exact. The screens do not prove semantic equivalence. These limits and negative results stay explicit. Private
 current-seed-nov6 reports retain the full accounting; no generated game code is
 included here.
