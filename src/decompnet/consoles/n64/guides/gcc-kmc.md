@@ -1154,3 +1154,9 @@ timer interrupt. The compiler owns GPR selection, return and delay slot. Its
 bounded automatic seed still needs ordinary linked byte verification. Preserve
 handwritten provenance; privilege and CP0 hazards apply, and the memory clobber
 is not a processor fence or a general register-expression ordering barrier.
+
+A Status writer is a separate case: a tested fixed `mtc0 %0,$12` operation emitted
+12 bytes while a handwritten leaf contained 16, due to an extra NOP before its
+return. Do not repair that difference with target-shaped padding. VR4300 CP0
+hazards depend on the changed bits and following instruction; a memory clobber
+is not a hardware hazard barrier. No Status-write intrinsic is currently provided.
