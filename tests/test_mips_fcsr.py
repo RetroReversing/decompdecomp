@@ -65,7 +65,7 @@ def test_arity_and_nonscalar_inputs_are_rejected_by_the_period_compiler(tmp_path
     cfg=config(tmp_path)
     for source in ('unsigned f(void){return __builtin_mips_exchange_fcsr();}',
                    'unsigned f(void){return __builtin_mips_exchange_fcsr(1,31);}',
-                   'struct X {int a;}; unsigned f(struct X x){return __builtin_mips_exchange_fcsr(x);}'): 
+                   'struct X {int a;}; unsigned f(struct X x){return __builtin_mips_exchange_fcsr(x);}'):
         assert not compile_source(cfg,'',source).ok
 
 
