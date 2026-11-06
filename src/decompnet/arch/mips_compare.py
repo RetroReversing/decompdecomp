@@ -1,7 +1,8 @@
 """A fixed CP0 Compare write for registered GNU MIPS compilers.
 
 Writing Compare sets the 32-bit counter comparison and clears the timer interrupt.
-CP0 access requires kernel mode. This is one architectural write, not a general
+CP0 access may trap outside kernel mode when coprocessor access is disabled.
+This is one architectural write, not a general
 execution hazard barrier, interrupt atomic section, or arbitrary CP0 selector.
 The compiler chooses the input GPR, return and delay slot. A memory clobber
 orders memory accesses, not unrelated register-only work or CPU execution.
