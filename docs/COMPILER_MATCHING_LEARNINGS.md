@@ -5058,7 +5058,11 @@ read from destroying the incoming write value. No submitted assembly, manual
 NOP, fixed GPR or target-byte substitution was needed. A coherent unsigned
 prototype in the existing caller also retained ordinary/diagnostic exactness.
 This is intrinsic-backed architectural source, not evidence the original
-implementation was ordinary C. Full-cartridge validation remains a separate gate.
+implementation was ordinary C. Independent private full-cartridge validation then
+passed all 12,582,912 bytes with 2,072 selected C functions. The actual copied
+project normal prepared-source path also advanced assembly to matched while
+preserving the other 2,071 source hashes and profiles across promotion. These
+are private validation results; live installation/adoption is a separate step.
 
 `seeds.generate_from_asm` recognizes only the complete contiguous encoded ABI
 leaf (read FCSR to the result register, write the argument to FCSR, return with
