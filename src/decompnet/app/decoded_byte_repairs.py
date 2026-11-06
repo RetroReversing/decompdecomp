@@ -12,17 +12,20 @@ from .pattern_repairs import close
 FAMILY = 'decoded_byte_normalization'
 
 
-def address_escape(body, name):
+def address_escape(body, name, known):
     for hit in re.finditer(rf'(?<!&)&(?!&)\s*\(*\s*{re.escape(name)}\b', body):
         prefix = body[:hit.start()].rstrip()
         # A preceding ordinary identifier/literal is binary AND. Unknown
         # punctuation (including casts) stays a conservative address barrier.
-        if not re.search(r'[A-Za-z0-9_]$', prefix) or re.search(r'\b(?:return|sizeof)\s*$', prefix):
+        token = re.search(r'([A-Za-z_]\w*|[0-9][A-Za-z0-9_.]*)$', prefix)
+        if not token or (token[1] not in known and not token[1][0].isdigit()):
             return True
     return False
 
 
-def variants(source, name, header='', arch=None):
+def variants(source, name, header='', arch=None, *, language=None, int_bits=None):
+    if language != 'c' or int_bits != 32:
+        return []  # C++ calls may mutate scalar reference arguments without &
     part, _, macros = pointer_pair_repairs.context(source, name, header)
     if not part or set(re.findall(IDENT, part.body)) & macros.keys():
         return []
@@ -43,7 +46,7 @@ def variants(source, name, header='', arch=None):
         names = set(hit.group(1, 2, 'value'))
         if not names <= declarations.keys() or any(types[n] is None for n in names):
             continue
-        if any(address_escape(part.body, n) for n in names):
+        if any(address_escape(part.body, n, types) for n in names):
             continue
         ambiguous = False
         for n in names:

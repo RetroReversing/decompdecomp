@@ -4955,7 +4955,7 @@ byte declarations and separate byte locals were negative controls; those
 alternatives do not invalidate the local conversion model.
 
 The `decoded_byte_normalization` generator independently reproduces1733 from
-the frozen1848 witness. It requires a visible unsigned-byte load into a plain
+the frozen1848 witness. It requires a known32-bit C profile and a visible unsigned-byte load into a plain
 unescaped integer local, a constant right shift1..7 and existing chained scalar
 assignments in the same block. Unknown/qualified aliases, macros, escaped or
 ambiguous bindings, intervening writes/control and nested captures are excluded.
