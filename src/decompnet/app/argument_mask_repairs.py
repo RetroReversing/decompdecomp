@@ -10,7 +10,7 @@ from .integer_repair_support import IDENT, edit, view
 FAMILY = 'loop_argument_mask'
 
 
-def variants(source, name):
+def variants(source, name, header=''):
     part = view(source, name)
     if not part or re.search(r'\b(?:volatile|const|restrict|asm|__asm__|setjmp|longjmp)\b|^\s*#', part.clean, re.M):
         return []
@@ -38,13 +38,30 @@ def variants(source, name):
     out = []
     for formal in parameters:
         typ, arg = formal.groups()
+        from .permuter_macro_effects import DEFINE
+        from .pointer_pair_repairs import qualified_types
+        context = re.sub(r'\\\r?\n', ' ', header)
+        if typ in {'s32', 'u32'}:
+            expected = r'(?:signed\s+)?int' if typ == 's32' else r'unsigned\s+int'
+            aliases = re.findall(r'\btypedef\s+([^;{}]+)\s+'+typ+r'\s*;', context+source[:part.opening])
+            if len(aliases) != 1 or not re.fullmatch(expected, aliases[0].strip()):
+                continue
+        if qualified_types(re.sub(r'\bconst\b', 'volatile', context)) & set(typ.split()):
+            continue
+        used = set(re.findall(IDENT, part.body)) | set(typ.split()) | {arg}
+        # A header macro can write a parameter without spelling that write here.
+        # Only literal object macros (including the usual null pointer) are inert.
+        literal_macro = r'\s*\(*\s*(?:\(\s*void\s*\*\s*\)\s*)?(?:0[xX][0-9a-fA-F]+|[0-9]+)[uUlL]*\s*\)*\s*'
+        if any(m[1] in used and (m[2] is not None or not re.fullmatch(literal_macro, m[3]))
+               for m in DEFINE.finditer(context)):
+            continue
         # A call can only change an automatic parameter through its address.
         if re.search(r'&\s*(?:\(\s*)*'+re.escape(arg)+r'\b', part.body):
             continue
         if re.search(r'\b'+re.escape(arg)+r'\s*(?:\)\s*)*(?:=(?!=)|[+*/%&|^-]=|<<=|>>=|\+\+|--)|(?:\+\+|--)\s*(?:\(\s*)*\b'+re.escape(arg)+r'\b', part.body):
             continue
         # Reject shadows, including qualified, pointer and initialized declarations.
-        if re.search(r'\b'+IDENT+r'\s+\**\s*'+re.escape(arg)+r'\s*(?=[;=,\[])', part.body):
+        if re.search(r'\b'+IDENT+r'\s+(?:\*\s*|\(\s*)*'+re.escape(arg)+r'\s*(?:\)\s*)*(?=[;=,\[])', part.body):
             continue
         mask = re.compile(r'\(\s*'+re.escape(arg)+r'\s*&\s*(0[xX][0-9a-fA-F]+|[0-9]+)\s*\)')
         hits = list(mask.finditer(part.body, label.end(), jump.start()))
