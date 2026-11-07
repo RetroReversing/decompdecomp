@@ -151,8 +151,13 @@ def audit(root,name,stages,header,*,proposals=256,probes=8,seconds=120):
     def generate(source,report):
         return iterative_repairs.targeted_pool(source,report,{'name':name,'asm':asm},arch,
             scope['compiler'].get('flags',[]),header,entry_scope=entry)
+    def retains(baseline,control,family):
+        node=dict(path=[family],depth=1,ceiling=baseline.get('score') or 0,
+                  parent_score=baseline.get('score'),baseline_rows=baseline.get('rows'),
+                  region_baseline=region_repairs.snapshot(baseline.get('rows'),arch))
+        return iterative_repairs.retention_evidence(node,control,arch)['eligible']
     deadline=time.monotonic()+seconds
-    result=repair_sequence_audit.audit(stages,evaluate,generate,proposals=proposals,probes=probes,
+    result=repair_sequence_audit.audit(stages,evaluate,generate,retains=retains,proposals=proposals,probes=probes,
                                      stopped=lambda:time.monotonic()>=deadline)
     return {**result,'scope':scope,'compiler_invocations':len(cache)}
 

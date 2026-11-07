@@ -26,3 +26,11 @@ def test_equivalent_output_can_recover_differently_named_source():
     def measure(source):return {'score':10,'output_fingerprint':'control' if source in {'other','wanted'} else 'before'}
     report=audit([{'source':'seed'},{'source':'wanted'}],measure,lambda *a:[('loop','other')],probes=1)
     assert report['steps'][0]['status']=='equivalent_output_generated'
+    report=audit([{'source':'seed'},{'source':'wanted'}],measure,lambda *a:[('loop','other')],
+                 select=lambda *a:[],probes=1)
+    assert report['steps'][0]['status']=='equivalent_output_not_selected' and report['first_gap']==0
+
+
+def test_failed_control_is_not_mistaken_for_missing_generation():
+    report=audit([{'source':'seed'},{'source':'wanted'}],lambda s:{'score':None},lambda *a:[])
+    assert report['steps'][0]['status']=='control_unavailable'

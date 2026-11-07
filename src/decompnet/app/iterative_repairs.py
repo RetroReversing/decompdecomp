@@ -61,6 +61,22 @@ def allocation_detour(node, report, arch=None):
                 and allocation_evidence.signature(node.get('baseline_rows'),arch)!=allocation_evidence.signature(report.get('rows'),arch))
 
 
+def retention_evidence(node, report, arch=None):
+    """Ordinary search admission, shared with offline sequence audits; never a match judge."""
+    score = report.get('score')
+    repaired = search_frontier.mismatch_positions(node.get('baseline_rows')) - search_frontier.mismatch_positions(report.get('rows'))
+    pattern = bool(repaired) and isinstance(score,(int,float)) and score<=node['ceiling']*2
+    regional = regional_detour(node,report,arch)
+    allocation = allocation_detour(node,report,arch)
+    loop = loop_repair_lane.eligible(node,report,arch)
+    structural = (isinstance(score,(int,float)) and score<=node['ceiling']*2
+                  and search_frontier.structure_recovery(node.get('baseline_rows'),report.get('rows'),arch))
+    eligible = (isinstance(score, (int, float)) and 0 < score and (score <= node['ceiling'] * DETOUR_RATIO or regional or allocation or structural or pattern or loop)
+                and (loop or pattern or regional or score < node['ceiling'] or not search_frontier.unhelpful_detour(arch, node.get('baseline_rows'), report.get('rows') or [])))
+    return dict(eligible=bool(report.get('matched') or eligible),score=score,pattern=pattern,regional=regional,
+                allocation=allocation,loop=loop,structural=structural,repaired=repaired)
+
+
 def expandable(parent, arch=None):
     return parent['depth']<DEPTH or repair_sequence_lane.eligible(parent,DEPTH,arch)
 
@@ -152,16 +168,10 @@ def advance(state, evaluate, variants, stopped, *, arch=None, stop_on_match=True
                     parent_score=node.get('parent_score'),baseline_rows=node.get('baseline_rows'),
                     region_baseline=node.get('region_baseline')))
 
-        score = report.get('score')
-        repaired = search_frontier.mismatch_positions(node.get('baseline_rows')) - search_frontier.mismatch_positions(report.get('rows'))
-        pattern = bool(repaired) and isinstance(score,(int,float)) and score<=node['ceiling']*2
-        regional = regional_detour(node,report,arch)
-        allocation = allocation_detour(node,report,arch)
-        loop = loop_repair_lane.eligible(node,report,arch)
-        structural = (isinstance(score,(int,float)) and score<=node['ceiling']*2
-                      and search_frontier.structure_recovery(node.get('baseline_rows'),report.get('rows'),arch))
-        if (isinstance(score, (int, float)) and 0 < score and (score <= node['ceiling'] * DETOUR_RATIO or regional or allocation or structural or pattern or loop)
-                and (loop or pattern or regional or score < node['ceiling'] or not search_frontier.unhelpful_detour(arch, node.get('baseline_rows'), report.get('rows') or []))):
+        admission=retention_evidence(node,report,arch)
+        score,pattern,regional,allocation,loop,structural,repaired=(admission[k] for k in
+            ('score','pattern','regional','allocation','loop','structural','repaired'))
+        if admission['eligible']:
             # Keep two source shapes per identical output at each depth: a later source edit can distinguish them.
             # This only prunes search branches, never supplies a match verdict.
             output = output_key(report)
@@ -214,6 +224,12 @@ def advance(state, evaluate, variants, stopped, *, arch=None, stop_on_match=True
                     outputs[key] = outputs.get(key, 0) + 1
             else:
                 counts['equivalent_output'] = counts.get('equivalent_output', 0) + 1
+        measured=sum(counts.get(k,0) for k in ('matched','scored','compile_failed'))
+        if (state.get('deferred') and measured%8==0 and state.get('inert_page_advances',0)<4
+                and repair_effects.needs_page(state) and not stopped()):
+            parent=state['deferred'].pop(0)
+            children(state,parent,variants,priority=1,arch=arch)
+            state['inert_page_advances']=state.get('inert_page_advances',0)+1
         if not state['pending']:
             expand_wave(state, variants, arch)
     state['reason'] = ('budget_or_stop' if state['pending'] else 'pending_proposal_pages' if state.get('deferred') else 'depth_limit' if state.get('counts', {}).get('depth_limit')

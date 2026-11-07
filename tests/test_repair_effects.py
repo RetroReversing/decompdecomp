@@ -34,5 +34,7 @@ def test_equivalent_parent_cannot_repeatedly_reset_third_sibling_allowance():
     state=dict(pending=[a,b],family_no_effect={effects.key(a):2},output_no_effect={effects.output_scope(a):5})
     effects.rotate(state)
     assert state['pending']==[b,a]
+    assert not effects.needs_page(state)
+    assert effects.needs_page({**state,'pending':[a]})
     state['counts']={'scored':7};effects.rotate(state)
     assert state['pending'][0]==a
