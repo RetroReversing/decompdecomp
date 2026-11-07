@@ -635,3 +635,19 @@ def test_incremental_archive_only_rebuilds_changed_function(library, monkeypatch
         db.execute("UPDATE projects SET config=json_set(config,'$.instructions','new compiler context') WHERE id=1")
     lib.backfill(only_changed=True)
     assert len(calls)==2
+
+
+def test_archive_receipt_not_acknowledged_when_library_write_fails(library,monkeypatch):
+    net,lib=library
+    with net.store.tx() as db:
+        db.execute("UPDATE projects SET config=json_set(config,'$.kind','rom')")
+    original=lib.write
+    def fail(*args):raise OSError('archive disk unavailable')
+    monkeypatch.setattr(lib,'write',fail)
+    with pytest.raises(Exception,match='archive disk unavailable'):lib.backfill(only_changed=True)
+    with lib.connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM archive_receipts').fetchone()[0]==0
+    monkeypatch.setattr(lib,'write',original)
+    lib.backfill(only_changed=True)
+    with lib.connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM archive_receipts').fetchone()[0]==2
