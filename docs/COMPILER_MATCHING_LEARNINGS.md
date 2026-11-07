@@ -5734,8 +5734,8 @@ pseudo had 7 weighted references over live length 41, priority 3,414; the plane
 scratch had 10 over 91, priority 3,296. Giving the existing quotient assignment its
 own `do { ... } while (0)` scope, inside the existing single-pass calculation,
 raised the scratch to 12 references over the same 91 instructions, priority 3,956.
-It then sorted ahead of the triangle index and behind an quantity with 8 references over 58 instructions
-(priority 4,137). The scratch/index assignments became `s2`/`s3`, as in the target.
+It then sorted ahead of the triangle index and behind a quantity with
+8 references over 58 instructions (priority 4,137). The scratch/index assignments became `s2`/`s3`, as in the target.
 A separate numerator temporary's weight also changed 3→4; its preferred argument
 register remained correct. No runtime loop, new arithmetic, stores, volatile,
 fixed register binding or assembly replacement was added.
