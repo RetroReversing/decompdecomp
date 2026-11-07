@@ -43,7 +43,8 @@ class LineGroups:
     def __init__(self, original, header, name, parse_unit):
         self.parse_unit, self.name, self.groups = parse_unit, name, ()
         try:
-            if re.search(r'\b__(?:LINE|COUNTER)__\b', original+'\n'+header):
+            context = original+'\n'+header
+            if re.search(r'\b__(?:LINE|COUNTER)__\b|##|(?m:^\s*#\s*include\b)', context):
                 raise ValueError('preprocessor-dependent source values')
             self.prefix = _layout_c(header)+'\n'
             self.offset = self.prefix.count('\n')

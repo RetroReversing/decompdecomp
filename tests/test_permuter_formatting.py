@@ -63,8 +63,9 @@ def test_continuations_and_unreadable_context_disable_formatting_only():
     assert groups(header='not readable C!').apply(PRINTED) == PRINTED
 
 
-def test_line_sensitive_macros_disable_formatting_even_when_defined_in_header():
-    assert groups(header='#define HERE __LINE__').apply(PRINTED) == PRINTED
+@pytest.mark.parametrize('header', ['#define HERE __LINE__', '#define JOIN(a,b) a##b', '#include "unknown.h"'])
+def test_line_sensitive_or_external_macros_disable_formatting(header):
+    assert groups(header=header).apply(PRINTED) == PRINTED
 
 
 def test_changed_verification_ast_returns_original_candidate():
