@@ -171,7 +171,7 @@ def build(source,path,project,selector,*,transcripts=False):
 def _fence(store):
     tables = ownership.tables(store.conn)
     with store.tx() as db:
-        for table in sorted(tables.keys() & (ownership.SCOPED | ownership.TRANSCRIPTS)):
+        for table in sorted(tables.keys() & (ownership.SCOPED | ownership.TRANSCRIPTS | {'projects'})):
             for event in ('INSERT','UPDATE','DELETE'):
                 db.execute(f'CREATE TRIGGER IF NOT EXISTS project_store_guard_{table}_{event} BEFORE {event} ON {ownership.quote(table)} '
                            "WHEN storage_migration_admin()=0 BEGIN SELECT RAISE(ABORT,'This project moved to its own database. Update and reopen the app.'); END")
@@ -216,17 +216,23 @@ def upgrade(net,log=print,*,fault=lambda phase:None):
                 backup = Path(store.path).with_name(Path(store.path).name+'.before-project-databases.sqlite3')
                 temporary = Path(str(backup)+'.building')
                 temporary.unlink(missing_ok=True)
-                destination = sqlite3.connect(temporary)
-                try:store.conn.backup(destination)
-                finally:destination.close()  # Windows cannot rename an open SQLite file.
-                durable(temporary);os.replace(temporary,backup);os.chmod(backup,0o600);durable(backup)
-                projects = [dict(row) for row in store.all('SELECT * FROM projects ORDER BY id')]
-                for project in projects:bounds(project['id'])
-                journal = {'version':1,'phase':'copying','backup':str(backup.name),'projects':{},'copied':[],'checksums':{},'backup_checksum':_file_hash(backup)}
-                # Fence and journal commit atomically; a failed preflight leaves
-                # the original layout available with no publication marker.
+                # SQLite admission also freezes raw/older writers that do not
+                # honor WriterGate. A separate WAL reader backs up the committed
+                # pre-fence state while this connection holds BEGIN IMMEDIATE.
+                # Backing up this writer connection inside its transaction hangs.
                 with store.tx():
                     _fence(store)
+                    fault('snapshot-locked')
+                    snapshot = sqlite3.connect(Path(store.path).resolve().as_uri()+'?mode=ro',uri=True)
+                    destination = sqlite3.connect(temporary)
+                    try:snapshot.backup(destination)
+                    finally:
+                        destination.close()  # Windows cannot rename an open SQLite file.
+                        snapshot.close()
+                    durable(temporary);os.replace(temporary,backup);os.chmod(backup,0o600);durable(backup)
+                    projects = [dict(row) for row in store.all('SELECT * FROM projects ORDER BY id')]
+                    for project in projects:bounds(project['id'])
+                    journal = {'version':1,'phase':'copying','backup':str(backup.name),'projects':{},'copied':[],'checksums':{},'backup_checksum':_file_hash(backup)}
                     save(store,journal)
                 fault('fenced')
             backup = Path(store.path).parent/journal['backup']

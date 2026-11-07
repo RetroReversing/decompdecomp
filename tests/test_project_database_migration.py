@@ -482,3 +482,23 @@ def test_upgrade_applies_legacy_session_columns_before_usage_backfill(tmp_path):
         assert row['task']=='readable' and row['usage_coverage']=='unknown'
         assert net.project_store('second').one('SELECT task FROM helper_sessions')['task']==''
     finally:close(net)
+
+
+def test_snapshot_and_fence_also_exclude_raw_sqlite_writers(tmp_path):
+    path=tmp_path/'catalog.db';legacy(path)
+    net=Network(path)
+    checked=[]
+    def fault(phase):
+        if phase!='snapshot-locked':return
+        external=sqlite3.connect(path,timeout=0)
+        try:
+            with pytest.raises(sqlite3.OperationalError,match='locked'):
+                external.execute("UPDATE functions SET name='racing writer' WHERE id=10")
+            checked.append(True)
+        finally:external.close()
+    upgrade(net,log=lambda *_:None,fault=fault)
+    assert checked==[True]
+    close(net)
+    restored=Network(path)
+    try:assert restored.project_store(1).one('SELECT name FROM functions')['name']=='function'
+    finally:close(restored)
