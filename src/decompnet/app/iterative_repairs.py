@@ -285,8 +285,8 @@ def repair_rules():
 
 
 def output_key(report):
-    if report.get('output_fingerprint'):
-        return report['output_fingerprint']
+    if 'output_fingerprint' in report:
+        return report['output_fingerprint']  # explicitly unknown formats must not borrow masked relocations
     if report.get('candidate_target') is None:
         return None  # displayed rows alone are insufficient evidence of identical compiler output
     return hashlib.sha256(repr((report['candidate_target'], report.get('candidate_relocs'))).encode()).hexdigest()

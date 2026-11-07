@@ -207,6 +207,7 @@ def test_output_duplicates_bound_expansion_but_preserve_two_source_shapes():
     assert max(state['outputs'].values())==2
     assert search.output_key({'rows':[]}) is None
     assert search.output_key({'candidate_target':'00','candidate_relocs':'[]','output_fingerprint':'named-reloc-a'})=='named-reloc-a'
+    assert search.output_key({'candidate_target':'00','candidate_relocs':'[]','output_fingerprint':None}) is None
     assert search.output_key({'candidate_target':'00','candidate_relocs':'[]'}) != search.output_key(
         {'candidate_target':'00','candidate_relocs':'[1]'})
 

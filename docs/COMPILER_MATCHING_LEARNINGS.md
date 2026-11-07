@@ -5826,11 +5826,16 @@ each rewritten read also needs a dominating definition, no address escape and sa
 The accepted composition also used a real loop backedge, staged the next row number before
 committing the counter at the latch, and retained a genuinely consumed branch-local constant.
 This does not prove every component independently necessary. A scalar-only regression replay
-started from that composition with just the final storage reuse undone. The generic generator
-recovered exact linked bytes at candidate 6, unchanged compiler/header/symbols, zero AI calls.
+regenerated the accepted source at candidate 6, unchanged compiler/header/symbols, zero AI calls.
+However, an independent baseline check found that undoing scalar reuse was also exact; this
+does not establish a scalar-reuse speedup or an independent necessity for that transformation.
 The recovered source SHA256 was
 `91d362c45a0e233abd5a934bf875a002a3218f8f0b501ea69893c4c2517ba6e8`.
-This is known-case replay evidence, not discovery from a fresh draft or a new match count.
+Separately, undoing row staging produced an unresolved score-270 control. The loop-shape
+generator's first alternative scored 5851 and its second (`row_number_staging`) reached exact
+linked bytes. The ordinary beam replay took two candidate compiles plus its baseline check,
+1.73 seconds on this machine, within a 12-trial budget. This is known-case replay evidence,
+not discovery from a fresh draft or a new match count.
 
 Negative evidence: the first five generated alternatives scored 2770, 4627, 45, 710 and 600;
 the third looked promising but was not exact. Earlier callback/resource unions and scheduler
