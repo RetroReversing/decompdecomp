@@ -498,6 +498,11 @@ def test_snapshot_and_fence_also_exclude_raw_sqlite_writers(tmp_path):
         finally:external.close()
     upgrade(net,log=lambda *_:None,fault=fault)
     assert checked==[True]
+    backup=sqlite3.connect(str(path)+'.before-project-databases.sqlite3')
+    try:
+        assert not backup.execute("SELECT 1 FROM sqlite_master WHERE name LIKE 'project_store_guard_%'").fetchone()
+        assert not backup.execute("SELECT 1 FROM settings WHERE key='project-databases-v1'").fetchone()
+    finally:backup.close()
     close(net)
     restored=Network(path)
     try:assert restored.project_store(1).one('SELECT name FROM functions')['name']=='function'
