@@ -8,7 +8,7 @@ import re
 from .integer_repair_support import IDENT, NUMBER, edit, locals_for, view
 from .pattern_repairs import close
 
-FAMILIES = ('inline_scalar_shape', 'expression_placement', 'stack_address_temporary',
+FAMILIES = ('inline_scalar_shape', 'expression_placement', 'stack_address_temporary', 'loop_argument_mask',
             'structured_backedge', 'loop_invariant_placement', 'scalar_schedule_order', 'combined_scheduling')
 
 
@@ -110,6 +110,8 @@ def singles(source, name):
             result.append(('stack_address_temporary',edit(source,[(part.opening+1+hit.start(),part.opening+1+hit.end(),replacement)])))
     from .structured_loop_repairs import variants as structured_loops
     result.extend(structured_loops(source,name))
+    from .argument_mask_repairs import variants as argument_masks
+    result.extend(argument_masks(source,name))
     # Swap only adjacent assignments of unescaped equal-type locals and pure scalar operands.
     scalar = rf'{IDENT}(?:\s*[+*]\s*(?:{IDENT}|{NUMBER}))?'
     pair = rf'(?<=[;{{}}])\s*({IDENT})\s*=\s*({scalar});\s*({IDENT})\s*=\s*({scalar});'
