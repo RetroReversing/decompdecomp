@@ -5718,7 +5718,7 @@ match, spill mechanism or game compilation.
 
 ## Quotient scope and global allocation priority (7 November 2026)
 
-Pinned KMC GCC 2.7.2, `-G 0 -mips 3 -mgp 32 -mfp 32 -O 2 -g 3`: a
+Pinned KMC GCC 2.7.2, `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`: a
 390-instruction terrain-contact routine is now an ordinary live-app linked exact
 match (1,560 bytes). Its saved void draft scored 215. A distinct scoped late depth
 and an inferred integer return recovered the complete final tail, but left
@@ -5734,8 +5734,8 @@ pseudo had 7 weighted references over live length 41, priority 3,414; the plane
 scratch had 10 over 91, priority 3,296. Giving the existing quotient assignment its
 own `do { ... } while (0)` scope, inside the existing single-pass calculation,
 raised the scratch to 12 references over the same 91 instructions, priority 3,956.
-It then sorted ahead of the triangle index and behind an 8-over 58 quantity
-(priority 4,137). The scratch/index assignments became `s 2`/`s 3`, as in the target.
+It then sorted ahead of the triangle index and behind an quantity with 8 references over 58 instructions
+(priority 4,137). The scratch/index assignments became `s2`/`s3`, as in the target.
 A separate numerator temporary's weight also changed 3→4; its preferred argument
 register remained correct. No runtime loop, new arithmetic, stores, volatile,
 fixed register binding or assembly replacement was added.
@@ -5753,8 +5753,8 @@ found no improvement. These failures are bound to their particular sources.
 
 The accepted pair was rechecked through `compile_and_diff`, with original flags;
 a separate `-da` diagnostic remained exact and did not change the selected
-profile. Private evidence: `func 80029EAC/live-goal-nov 7`, exact source SHA-256
-`7e 11424d 0cef 12f 9f 56478d 07d 060ac 4c 6e 6beeb 360cd 058e 390ffabc 768fb 3b`,
+profile. Private evidence: `func80029EAC/live-goal-nov7`, exact source SHA-256
+`7e11424d0cef12f9f56478d07d060ac4c6e6beeb360cd058e390ffabc768fb3b`,
 ordinary attempt 345533 and repair example 36991. No game source or target data
 is included here. Full-cartridge verification is tracked separately in the game
 repository; an exact individual function alone does not prove a complete rebuild.

@@ -1399,7 +1399,7 @@ A `do { ... } while (0)` scope can retain loop-depth weights in this compiler's
 allocation analysis even when no runtime loop survives. In one 390-instruction
 contact routine, isolating the existing quotient assignment inside its existing
 single-pass calculation raised a scratch pseudo's weighted references 10→12 at
-unchanged live length 91. Its priority then passed a 7-over 41 triangle index and
+unchanged live length 91. Its priority then passed a triangle index with 7 references over 41 instructions and
 recovered the final 12 register differences: the ordinary linked judge was exact.
 Wrapping the whole calculation instead worsened to 280; an initial scratch reuse
 left a 10-point mismatch. Scopes are hypotheses, not guaranteed allocation rules.
