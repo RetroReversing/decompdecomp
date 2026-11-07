@@ -49,11 +49,11 @@ def test_synthetic_candidates_preserve_execution(tmp_path):
 
 
 def test_pointer_load_scope_isolated_from_following_chain_and_control():
-    source = 'int f(int *q){int p;int result;p=1;if(p){p=*(int*)q;result=*q;}else{result=0;}return result;}'
+    source = 'int f(int *q){int p;int result;p=1;if(p){p=*(int*)q;result=q[0];}else{result=0;}return result;}'
     proposals = loop_weight_repairs.variants(source,'f')
     assert len(proposals)==3
     assert len(loop_weight_repairs.variants(source.replace('int p;','int p=0;'),'f'))==3
-    assert any('do {do {p=*(int*)q;} while (0);} while (0);result=*q;' in text for _,text in proposals)
+    assert any('do {do {p=*(int*)q;} while (0);} while (0);result=q[0];' in text for _,text in proposals)
     assert all(not loop_weight_repairs.variants(text,'f') for _,text in proposals)
     for replacement in ('p=load(p);','p=({break; 1;});','p=*(int*)p + 1;'):
         assert not loop_weight_repairs.variants(source.replace('p=*(int*)q;',replacement),'f')
