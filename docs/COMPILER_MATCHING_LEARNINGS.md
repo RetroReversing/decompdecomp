@@ -5903,7 +5903,7 @@ produce a source-only recipe candidate. Analysis remains bounded and never adopt
 
 For the same KMC GCC 2.7.2 profile (`-G0 -mips3 -mgp32 -mfp32 -O2 -g3`), an
 offline audit inspected historical intermediate controls at scores 565, 855, 330 and exact.
-Their literal next sources were absent from inspected complete proposal pools of 297, 303
+Their literal next sources were absent from inspected complete proposal pools of 303, 309
 and 269 candidates. Eight compiler-output probes per step did not recover the corresponding
 control output. Unmeasured candidates remain unknown: literal absence does not exclude
 equivalent generated sources. The audit separates generation, first-page selection and ordinary
