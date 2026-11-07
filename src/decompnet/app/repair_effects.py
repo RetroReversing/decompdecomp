@@ -60,7 +60,7 @@ def rotate(state):
         local=history.get(key(node),0)
         # Preserve the third direct sibling: two identical outputs can precede the useful
         # cast/assignment placement. Equivalent *other* parents still share deferral immediately.
-        if local==2:return False
+        if local==2 and shared.get(output_scope(node),0)<4:return False
         return local>=3 or shared.get(output_scope(node),0)>=2
     ordinary = [n for n in pending if not ineffective(n)]
     deferred = [n for n in pending if ineffective(n)]
@@ -83,6 +83,9 @@ def rotate(state):
     from .repair_diversity import order
     if not ordinary or history.get(key(ordinary[0]),0) not in {1,2}:
         ordinary = order(state,ordinary,slot)
+    # Reserved loop probes share the ordinary budget and stay ahead of a large
+    # source-only wave. No more than six can be created by the lane.
+    ordinary=[n for n in ordinary if n.get('loop_probe')]+[n for n in ordinary if not n.get('loop_probe')]
     if not deferred:
         state['pending']=ordinary
         return
