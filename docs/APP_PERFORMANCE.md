@@ -623,3 +623,12 @@ Three paired warm trials measured medians of 15.1 ms before and 5.1 ms after for
 header resolution alone. This does not measure full save latency or establish that
 multi-minute project-lock and verification-admission waits are resolved. No cache
 capacity, timeout, judge or validation rule was relaxed.
+
+Wrapper-family discovery now projects only donor identity, target bytes, relocations
+and matched C. Eligibility uses physical function rows; matched C still passes
+through its checksum-validating view. An unrelated packed assembly, seed or best
+attempt is never decoded for this shortlist. A 200-wrapper synthetic fixture
+reduced payload-read callbacks from 1,000 to 200 with identical retained donor
+identities, targets, relocations and C. This measures callback counts, not a claim
+that every observed slow wrapper query is resolved; candidates retain the normal
+destination judge.
