@@ -303,3 +303,14 @@ def test_live_feed_returns_recorded_score_change_without_source_payloads(tmp_pat
     attempt = net.live('game')['attempts'][0]
     assert attempt['score_before'] == 100 and attempt['score'] == 95 and attempt['score_improved'] == 1
     assert 'source' not in attempt
+
+
+def test_child_python_uses_this_checkout_after_changing_directory(tmp_path):
+    """Export builds must test this tree even when the interpreter is editable to another worktree."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    result = subprocess.run([sys.executable, '-c', 'import decompnet; print(decompnet.__file__)'],
+                            cwd=tmp_path, capture_output=True, text=True, check=True)
+    assert Path(result.stdout.strip()).resolve() == Path(__file__).resolve().parents[1] / 'src/decompnet/__init__.py'
