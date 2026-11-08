@@ -103,7 +103,8 @@ def brief(net, proj, fn):
         if learned:
             lines.append('Previously exact repair sequences start with: '+', '.join(learned[:2])+'. Use local variants when applicable; this is advisory.')
         alternatives = [v for v in pool.values() if v is not current and v['score']>0 and (v['score']<=max(1,current['score'])*1.25 or (current['score']>0 and frame_plateau.gap(v['rows'],proj['arch'])))]
-        frames=[v for v in alternatives if frame_plateau.gap(v['rows'],proj['arch'])]
+        frames=sorted((v for v in alternatives if frame_plateau.gap(v['rows'],proj['arch'])),
+                      key=lambda v:(frame_plateau.gap(v['rows'],proj['arch']),v['score']))
         if frames and frames[0].get('frame_source'):
             alternative=frames[0]
             alternative_source=alternative['frame_source']
