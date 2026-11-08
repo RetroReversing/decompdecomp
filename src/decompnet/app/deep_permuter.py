@@ -357,10 +357,13 @@ class Search(Permuter):
             return choices,set()
         self.log(allocation_evidence.text(rows,proj['arch']))
         evidence = {}
+        from . import prepared_call_repairs
+        pending_call = bool(diagnosis['return_copy_rotation'] and any(
+            candidate not in self.local_seen for _,candidate in prepared_call_repairs.variants(source,fn['name'],header,proj['arch'])))
         if not fork and proj['slug'] not in self.net.links and self.net.is_rom(proj):
             evidence = allocation_search.saved(self.net,proj,fn,source)
             if ((diagnosis['register_cycles'] or diagnosis['return_copy_rotation']) and evidence is None and self.allocation_captures < 2 and self.tested+2 < self.limit
-                    and (not diagnosis['return_copy_rotation'] or self.allocation_trials > 0)
+                    and (not diagnosis['return_copy_rotation'] or (self.allocation_trials > 0 and not pending_call))
                     and time.monotonic()+40 < self.deadline):
                 self.allocation_captures += 1
                 def charged():

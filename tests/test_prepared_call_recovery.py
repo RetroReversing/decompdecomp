@@ -148,6 +148,7 @@ def test_rotation_tries_cheap_lane_before_optional_capture(monkeypatch):
     assert len(lane)==1 and choices[-1]=='broad'
     assert not calls and search.tested==0
     search.allocation_trials=1
+    search.local_seen.update(lane)  # the selected cheap proposal was actually judged
     search.allocation_choices(net.project_row('game'),net.function(),SOURCE,ROWS,['broad'],{},'',None)
     assert calls==[1] and search.tested==2 and search.allocation_diagnostic_compiles==2
     search.allocation_trials=allocation_search.CHAIN_LIMIT
