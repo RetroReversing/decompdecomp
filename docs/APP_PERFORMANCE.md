@@ -518,3 +518,18 @@ selected operational database's physical tables. They avoid expanding source-bea
 read views; existing regressions prohibit source reads and verify covering indexes.
 The overview also reuses a mode-specific library report, including a reported absence,
 instead of computing a duplicate report before discarding it.
+
+### Deep-search scoring overhead
+
+Candidate disassembly uses per-thread decoders and an eight-function instruction
+cache (32 KiB machine-code limit per entry), keyed by bytes, ordered relocations,
+architecture and CPU. Diagnostic source mapping reuses these candidate offsets.
+Relocation lookup indexes offsets while preserving original-list precedence.
+Ordinary losing random rewrites calculate the same score without constructing
+diagnostic rows; winners, baselines and local adaptive feedback retain full rows.
+
+Proposal pipes send each source once with its family label. Parent-source blanking
+and shared integer-repair views reuse only the latest input; callers receive their
+own mutable view. Local speculative depth starts at two, grows to four when all
+tickets were consumed, and shrinks toward one when feedback invalidates pending
+work. Cancelled/running work retains the original budget accounting.
