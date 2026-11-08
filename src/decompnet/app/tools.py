@@ -641,6 +641,8 @@ def _tool_foreground(net, agent, slug, name, args):
         # Keep note writes and their publication marker together so a finishing
         # saved worker cannot acknowledge them before they are published.
         with attempt, net.progress._project_lock(slug) if notes else nullcontext():
+            if notes and name == 'release_function' and net._function(args['function'],slug)['id'] != fn['id']:
+                raise NetworkError('The function changed while this release waited. Read its current claim before releasing.')
             yield
             if notes:net.progress.foreground_changed(slug)
 

@@ -50,3 +50,17 @@ def test_release_waits_for_candidate_before_holding_project_lock(tmp_path,monkey
         assert 'findings saved' in str(release_future.result(timeout=6))
     assert acquired, 'Release held the project lock while waiting for this same compile.'
     assert not getattr(net.progress.local,'foreground',False)
+
+
+def test_release_rejects_a_replaced_function_before_entering_its_handler(tmp_path,monkeypatch):
+    from decompnet.network import NetworkError
+    net,agent,fn=game(tmp_path)
+    resolve=net._function;calls=[]
+    def changed(*args):
+        calls.append(1)
+        return resolve(*args) if len(calls)==1 else {**dict(fn),'id':fn['id']+1}
+    monkeypatch.setattr(net,'_function',changed)
+    with pytest.raises(NetworkError,match='function changed'):
+        with tools._tool_foreground(net,agent,'game','release_function',{'function':'f'}):
+            raise AssertionError('Must not acquire a different candidate lock under the project lock')
+    assert not getattr(net.progress.local,'foreground',False)
