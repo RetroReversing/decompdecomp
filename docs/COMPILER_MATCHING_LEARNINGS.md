@@ -22,7 +22,8 @@ repair dispatch also exposes the recipe to the deep permuter and agents.
 ROM and imported-project m2c routes keep original drafts first and can try at most
 three additional guarded narrow-subtraction or parameter-lifetime alternatives over
 the whole input stream. No m2c binary patch, extra decompiler invocation or shared
-header change is involved. The normal judge alone accepts a match.
+header change is involved. The draft-repair revision advances so completed misses
+can retry the new alternatives. The normal judge alone accepts a match.
 
 A private frozen **earlier 240-score checkpoint** (already containing branch-local
 interpolation code) now reaches exact on candidate **7**, on the first integrated
