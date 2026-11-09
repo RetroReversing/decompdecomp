@@ -271,3 +271,14 @@ def test_batched_history_scopes_equal_fresh_scopes_for_each_candidate():
     search._prime_trials(AGENT,proj,fn,sources,None)
     assert search._primed_scopes == expected
     assert candidate_work.current() is None
+
+
+def test_judging_scope_never_inherits_advisory_preparation_memo():
+    with candidate_work.preparation() as batch:
+        candidate_work.remember('compiler', lambda:'prepared')
+        with candidate_work.scope():
+            assert not candidate_work.current().preparing
+            assert candidate_work.remember('compiler', lambda:'fresh') == 'fresh'
+        assert candidate_work.current() is batch
+        assert candidate_work.remember('compiler', lambda:'wrong') == 'prepared'
+    assert candidate_work.current() is None

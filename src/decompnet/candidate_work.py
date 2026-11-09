@@ -24,7 +24,8 @@ def current():
 
 @contextmanager
 def scope():
-    if current() is not None:
+    value = current()
+    if value is not None and not value.preparing:
         yield;return
     token = _current.set(Work())
     try:yield
