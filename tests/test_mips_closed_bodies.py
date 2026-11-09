@@ -26,6 +26,7 @@ def test_compiler_can_pop_immediately_before_return(platform):
     [FRAME,0xafbf0014,0x10000001,POP,RETURN,0],  # pop is another transfer's delay slot
     [FRAME,0xafbf0014,0x8fbf0014,POP,RETURN,POP],  # double pop
     [FRAME,0xafbf0014,0x8fbf0014,0x27bd0010,RETURN,0],  # wrong amount
+    [FRAME,0xafbf0014,0x8fbf0014,POP,RETURN,0x10000000],  # transfer in JR delay slot
 ])
 def test_pre_return_pop_rejects_bypasses_delay_slot_execution_and_double_pops(words):
     data=image(words)
@@ -55,3 +56,8 @@ def test_branch_to_the_pre_return_pop_executes_the_full_epilogue():
     words=[FRAME,0xafbf0014,0x10800002,0,0x8fbf0014,POP,RETURN,0]
     data=image(words)
     assert called_extent(data,0,len(data),BASE)==len(data)
+
+
+def test_a_leaf_cannot_have_a_transfer_inside_its_return_delay_slot():
+    data=image([0x24020001,RETURN,0x10000000])
+    assert leaf_extent(data,0,len(data),BASE) is None

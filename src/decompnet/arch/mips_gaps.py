@@ -27,8 +27,11 @@ def extent(image, start, end, vram, order, cpu="", *, table_ranges=(), mapping_c
         transfer=op in (1,2,3,4,5,6,7,20,21,22,23) or (op==17 and (w>>21)&31==8) or (op==0 and w&63 in (8,9))
         if not transfer:
             pending.append(at+4);continue
-        if at+8>end or not rabbitizer.Instruction(int.from_bytes(image[at+4:at+8],order),0,rabbitizer_category(cpu)).isValid():
+        if at+8>end:
             unknown=True;continue
+        delay=rabbitizer.Instruction(int.from_bytes(image[at+4:at+8],order),0,rabbitizer_category(cpu))
+        if not delay.isValid() or delay.hasDelaySlot():
+            unknown=True;continue  # a transfer inside a delay slot is unpredictable
         seen.add(at+4);highest=max(highest,at+8)
         if w==JR_RA:
             returns+=1;continue
