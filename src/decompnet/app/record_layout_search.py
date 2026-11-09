@@ -42,7 +42,10 @@ def variants(source, name, header='', arch=None, locations=None):
         for parent,path in pending:
             for kind,choices in stages(parent,name,header,arch,locations):
                 if kind in path:continue
-                for _,text in choices[:2]:
+                # First/last sites avoid spending both slots on two depths of
+                # the same update while omitting the real loop-latch update.
+                selected=choices[:1]+choices[-1:] if len(choices)>1 else choices
+                for _,text in selected:
                     if text in seen or len(text)+len(header)>MAX_SOURCE:continue
                     seen.add(text);following.append((text,path+(kind,)))
                     if path:result.append((FAMILY,text))
