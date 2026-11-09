@@ -1,5 +1,7 @@
 # Roadmap
 
+- Done: repair implementation fingerprints reuse one search-session snapshot and refresh
+  next run; actual compiler/header/target guards remain fresh.
 - Done: deep-search history and speculative-compile preparation reuse advisory
   fingerprints for one bounded batch, then recapture inputs at judgment. Large
   lexical stability checks reuse exact bytes and staged include names only.

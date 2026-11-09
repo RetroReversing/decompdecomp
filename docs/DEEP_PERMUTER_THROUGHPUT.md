@@ -63,3 +63,9 @@ app work, so an idle deep-search slot alone does not prove the machine is idle.
 Cumulative wait time sums threads; use the current waiter counts to locate a live
 stall. A partly checked project queue is intentional bounded lookahead, not an
 attempt to prepare every function before any search can run.
+
+Repair implementation fingerprints are captured once per search session and refreshed
+for the next session. Python does not reload those implementations mid-search. This
+is advisory search-version evidence only; compiler, header, target, environment and
+revision checks remain fresh for actual candidates. Outside sessions, implementation
+fingerprints remain fresh on each call.
