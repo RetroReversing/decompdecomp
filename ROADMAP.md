@@ -78,7 +78,10 @@
   Quiet balanced frames need adjacency or independently corroborated callees and
   an RA spill/restore; unknown mappings, data-only patterns, overlapping bodies and
   independent interior entries remain unpromoted. Existing targets stay unchanged.
-  Other consoles need a verified loader-range adapter before this rule can apply.
+  Shared MIPS validators also accept short return stubs and frame pops immediately
+  before JR, reject edges bypassing a pop, and use the full bounded 64 KiB body
+  budget rather than the smaller review-audit instruction budget. Other consoles
+  need a verified loader-range adapter before the bank-scanning rule can apply.
 
 - Done: N64 imports split discovered code at explicit ROM-to-RAM bank ranges when
   two independent helper calls agree on at least three adjacent transfers. Shared

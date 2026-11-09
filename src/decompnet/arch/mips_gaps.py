@@ -8,14 +8,14 @@ MAX_STEPS = 4096
 MAX_CANDIDATES = 128
 
 
-def extent(image, start, end, vram, order, cpu="", *, table_ranges=(), mapping_choices=()):
+def extent(image, start, end, vram, order, cpu="", *, table_ranges=(), mapping_choices=(), max_steps=MAX_STEPS):
     """Follow direct flow and reviewed bounded table edges; other indirects remain unresolved."""
     import rabbitizer
 
     from .mips_indirect import jump_table
 
     pending=[start];seen=set();returns=0;unknown=False;highest=start;indirect=[];tables=[]
-    while pending and len(seen)<MAX_STEPS:
+    while pending and len(seen)<max_steps:
         at=pending.pop()
         if at in seen:continue
         if at<start or at+4>end:
