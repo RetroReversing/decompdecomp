@@ -101,3 +101,7 @@ def test_full_pipeline_uses_verified_banks_even_when_the_histogram_finds_no_code
     taken=[(taken[0][0],end+16,taken[0][2])]
     monkeypatch.setattr(code,'place',lambda *args:None)
     assert code.find_segments(bytes(image),taken,log=lambda _:None)==[(0x3000,0x3018,BASE)]
+
+
+def test_projects_without_verified_banks_keep_sorted_segment_output():
+    assert complete(bytes(64),[(32,64,BASE+32),(0,32,BASE)],[])==[(0,32,BASE),(32,64,BASE+32)]

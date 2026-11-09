@@ -24,7 +24,7 @@ def complete(image, segments, banks, taken=(), log=print):
             if cursor<a:gaps.append((cursor,min(a,hi),vram+cursor-lo))
             cursor=max(cursor,b)
         if cursor<hi:gaps.append((cursor,hi,vram+cursor-lo))
-    if not gaps:return segments
+    if not gaps:return sorted(segments)
     starts=[a for a,_,_ in gaps]
     check=getattr(log,'check_cancel',lambda:None)
     calls=set();entries=set();incoming=defaultdict(set)
