@@ -81,7 +81,8 @@ the requesting local app/browser session and are never saved into notes or sourc
 
 ## Scope and evidence
 
-The map covers the analysis image, which can be a flattened executable or contain expanded
+The scanner uses the shared recorded analysis-image hash verifier, including legacy split
+metadata where necessary. The map covers the analysis image, which can be a flattened executable or contain expanded
 code. Its offsets are not necessarily physical cartridge/disc offsets. Header-derived
 container boundaries and loader source groups are distinguished from arbitrary display
 pages. Classification totals remain separate from exact code-matching progress.

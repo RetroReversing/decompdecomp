@@ -96,6 +96,11 @@ def read(vram, code, *, big_endian=True, argument_count=4, gp=0, cpu='', check=l
                 elif place and place['kind']=='stack':writes=[]
                 elif place is None:writes=[];stack={}
             if not store and op not in (0x31,0x35):dest=rt
+        if op in (0x1f,0x2a,0x2c,0x2d,0x2e,0x38,0x3a,0x3b,0x3c,0x3e,0x3f):
+            # Wide/partial and conditional stores are barriers even when their
+            # exact byte lane or vector behavior is outside this scalar reader.
+            events.append(dict(kind='store',instruction=at,place=None,width=16,block=block))
+            stack={};writes=[]
         if uses is None:
             regs=initial();stack={};writes=[];pending=None;block+=1
         else:

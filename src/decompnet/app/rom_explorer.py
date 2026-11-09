@@ -108,11 +108,8 @@ def _run(net, slug, log):
     symbols = [dict(r) for r in store.all('SELECT name,address,size,kind FROM symbols WHERE project_id=?',proj['id'])]
     if not path.stat().st_size:raise NetworkError('The analysis image is empty. Restore it or reimport before exploring.')
     with path.open('rb') as stream, mmap.mmap(stream.fileno(),0,access=mmap.ACCESS_READ) as image:
-        # ELF flattening and unpacked code produce a different analysis image.
-        # rom.sha1 identifies the imported program, not those derived bytes.
-        same_image=cfg['rom'].get('program',cfg['rom']['file'])==cfg['rom']['file']
-        if same_image and cfg['rom'].get('sha1') and hashlib.sha1(image).hexdigest()!=cfg['rom']['sha1']:
-            raise NetworkError('The analysis image differs from the import. Restore it or reimport before exploring.')
+        from .analysis_image import verify
+        verify(image,proj,cfg,check=log.check_cancel)
         from ..rom import asset_flow
         console=net.console(proj)
         flow=asset_flow.trace(image,cfg['segments'],functions,arch.get(proj['arch']).asset_flow,

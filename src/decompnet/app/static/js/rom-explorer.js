@@ -19,7 +19,8 @@ function romControls(view) {
 async function loadRomExplorer() {
   const slug=S.slug, epoch=++romEpoch, view=romView(slug), log=romWorkLog();
   view.busy=true;romControls(view);
-  $('romResult').replaceChildren();$('romSummary').textContent='';$('romMap').hidden=true;$('romMapRange').textContent='';$('romStale').hidden=true;$('romNotes').textContent='';$('romRuntime').hidden=true;$('romRuntimeItems').replaceChildren();$('romLoaderGroups').hidden=true;$('romLoaderItems').replaceChildren();$('romLoaderRoleBody').replaceChildren();
+  $('romResult').replaceChildren();$('romSummary').textContent='';$('romMap').hidden=true;$('romMapRange').textContent='';$('romStale').hidden=true;$('romNotes').textContent='';$('romRuntime').hidden=true;$('romRuntimeItems').replaceChildren();$('romLoaderGroups').hidden=true;$('romLoaderItems').replaceChildren();
+  const roles=$('romLoaderRoleBody');if(roles.dataset.slug!==slug){roles.replaceChildren();roles.dataset.slug=slug;}
   showJobError(log,'');
   const finish=beginWork(log,'Finding ROM scans',[],'ROM Explorer ready.');
   let job, start=false;
@@ -27,8 +28,9 @@ async function loadRomExplorer() {
     // Discovery must precede large saved-map reads, including a fresh window.
     const status=await api('/api/rom-explorer?view=status&slug='+encodeURIComponent(slug));
     if(!romCurrent(slug,epoch))return;
-    if(!status.supported){$('romReload').hidden=true;$('romMap').hidden=true;$('romSummary').textContent='This project uses an object build. ROM Explorer needs an original-image mapping adapter; support is planned.';view.report=null;return;}
-    $('romReload').hidden=false;
+    if(!status.supported){$('romLoaderRoles').hidden=true;$('romReload').hidden=true;$('romMap').hidden=true;$('romSummary').textContent='This project uses an object build. ROM Explorer needs an original-image mapping adapter; support is planned.';view.report=null;return;}
+    $('romReload').hidden=false;$('romLoaderRoles').hidden=false;
+    if($('romLoaderRoles').open && !roles.children.length)loadRomLoaderRoles();
     job=status.job;
     if(job?.state==='running')view.job=job.id;
     else {view.job=null;view.stopping=false;}

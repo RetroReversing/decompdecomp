@@ -1,6 +1,7 @@
 """Homemade pixels, PCM and machine instructions exercise asset evidence end to end."""
 import base64
 import gzip
+import hashlib
 import io
 import json
 import struct
@@ -252,7 +253,7 @@ def test_decoded_preview_offsets_use_expanded_bounds_not_compressed_image_bounds
     raw=bytes(1000)+b'\xff\0\0\xff';packed=zlib.compress(raw)
     (root/'game.rom').write_bytes(packed+bytes(128))
     with net.progress.view():
-        proj=net.project_row('game');cfg=dict(net.cfg(proj));cfg['rom']=dict(file='game.rom');cfg['segments']=[]
+        proj=net.project_row('game');cfg=dict(net.cfg(proj));cfg['rom']=dict(file='game.rom',analysis_sha1=hashlib.sha1((root/'game.rom').read_bytes()).hexdigest());cfg['segments']=[]
         with net.store.tx() as db:db.execute('UPDATE projects SET config=? WHERE id=?',( json.dumps(cfg),pid))
         rom_explorer.run(net,'game',Log());report=rom_explorer.listing(net,'game');row=report['regions'][0]
         result=rom_explorer.asset_preview(net,'game',dict(region=row['id'],image_hash=report['image_hash'],options=dict(source='decoded',block_offset=0,offset=1000,format='rgba8888',width=1,height=1)))
@@ -321,8 +322,6 @@ def test_unknown_aliasing_store_stops_later_buffer_links():
 
 
 def test_source_regions_include_consumer_function_filters_as_traced_leads(project):  # noqa: F811
-    import hashlib
-
     from decompnet.app import rom_explorer
     net,pid,root=project
     image,segs,functions=fixture_chain();(root/'game.rom').write_bytes(image)
@@ -350,3 +349,10 @@ def test_custom_role_can_be_removed_after_its_function_was_renamed(project):  # 
         rom_explorer.loader_contracts(net,'game',dict(function='reader',role='copy',source=0,destination=1,length=2,domain='rom'))
         with net.store.tx() as db:db.execute("UPDATE functions SET name='new_name' WHERE project_id=?",(pid,))
         assert not rom_explorer.loader_contracts(net,'game',dict(function='reader',remove=True))['items']
+
+
+def test_wide_store_is_a_barrier_for_ee_and_vr4300_buffer_chains():
+    image,segs,functions=fixture_chain()
+    code=bytearray(image);last=functions[0]['size']-12;code[last:last+4]=words(0x3f<<26 | 17<<21)
+    flow=asset_flow.trace(bytes(code),segs,functions,mips_assets.read)
+    assert all(not any(step.get('callee')=='render' for step in chain['steps']) for chain in flow['chains'])
