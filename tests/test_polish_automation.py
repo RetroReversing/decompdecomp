@@ -330,3 +330,9 @@ def test_conditional_or_partial_guards_do_not_make_an_include_safe_to_remove():
     assert not edits.guarded_header('#ifndef GUARD\n#define GUARD\n#endif\nSIDE_EFFECT()')
     assert not edits.guarded_header('#ifndef GUARD\n#define GUARD\n#undef GUARD\n#endif')
     assert edits.guarded_header('#ifndef GUARD\n#define GUARD\n#if OTHER\nextern int x;\n#endif\n#endif')
+
+
+def test_pattern_signatures_keep_the_exact_bytes_of_multiline_literals():
+    first = 'int f(int x) { return log("a' + chr(92) + '\nb", x); }'
+    other = 'int g(int x) { return log("a' + chr(92) + ' b", x); }'
+    assert edits.signature(first,'f')[0] != edits.signature(other,'g')[0]

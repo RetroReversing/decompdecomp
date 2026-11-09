@@ -108,7 +108,7 @@ def signature(source, function, header=''):
     # Strings and chars must stay in the signature: getters of two different strings have different meanings.
     from ..forks.csource import _COMMENT_OR_STRING
     clean = _COMMENT_OR_STRING.sub(lambda m: ' ' if m[0].startswith(('//','/*')) else m[0], source)
-    tokens = re.findall(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[A-Za-z_]\w*|\d+(?:\.\d*)?|[^\s]', clean)
+    tokens = re.findall(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[A-Za-z_]\w*|\d+(?:\.\d*)?|[^\s]', clean, re.S)
     normalized = []
     for index, token in enumerate(tokens):
         member = index and (tokens[index-1] == '.' or tokens[max(0,index-2):index] in [['-','>'],[':',':']])
