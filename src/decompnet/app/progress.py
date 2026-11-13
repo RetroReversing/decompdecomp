@@ -18,12 +18,12 @@ from __future__ import annotations
 
 import errno
 import hashlib
+import itertools
 import json
 import logging
 import os
 import re
 import stat
-import itertools
 import threading
 import time
 import zlib
