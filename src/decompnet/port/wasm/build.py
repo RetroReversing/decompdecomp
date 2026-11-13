@@ -163,6 +163,14 @@ def gather(repo: Path, out: Path) -> dict[str, Path]:
     return chosen
 
 
+def linked(objects: Path, sources) -> list[Path]:
+    """The objects of the files the build compiled, by name in any case: on a case-insensitive disk the object an old
+    save's SelectStateReset.c made keeps that name when selectStateReset.o is written over it, and leaving it out
+    linked the game without that function (a racing game's menu then never finished opening)."""
+    compiled = {name.casefold() for name in sources}
+    return sorted(p for p in objects.glob("*.o") if (p.stem + ".c").casefold() in compiled)
+
+
 def addresses(manifest: dict) -> tuple[list[str], set[str]]:
     """fixed.txt's rows (name, address, kind) and the functions' names, from the save's manifest."""
     rows, functions = {}, set()
@@ -342,7 +350,7 @@ def build(repo: Path, *, console: str = "n64", log=print) -> Path:
         return None if done.returncode == 0 else (done.stderr.strip().splitlines() or ["failed"])[0]
     if failed := _parallel(lls, place, log, "functions"):
         raise NetworkError(f"{len(failed)} functions couldn't be placed at their addresses: " + "; ".join(failed[:3]))
-    objects = sorted(p for p in (out / "o").glob("*.o") if p.stem + ".c" in sources)
+    objects = linked(out / "o", sources)
     _write(out / "objects.txt", "\n".join(str(p) for p in objects) + "\n")
 
     log(f"linking {len(objects)} functions")

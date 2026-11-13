@@ -6,7 +6,7 @@ import pytest
 
 from decompnet.consoles import get
 from decompnet.network import NetworkError
-from decompnet.port.wasm.build import addresses, function_table, gather, renames
+from decompnet.port.wasm.build import addresses, function_table, gather, linked, renames
 
 
 def save(tmp_path):
@@ -62,6 +62,13 @@ def test_a_file_an_old_save_wrote_in_another_case_is_not_deleted_as_stale(tmp_pa
     gather(repo, out)
     names = {p.name.casefold() for p in (out / "src").glob("*.c")}
     assert "race_update.c" in names
+
+
+def test_an_object_an_old_save_named_in_another_case_is_still_linked(tmp_path):
+    for name in ("SelectStateReset.o", "race_update.o", "gone.o"):
+        (tmp_path / name).write_bytes(b"")
+    assert [p.name for p in linked(tmp_path, {"selectStateReset.c": 0, "race_update.c": 0})] == [
+        "SelectStateReset.o", "race_update.o"]
 
 
 def test_a_folder_that_isnt_a_save_says_so(tmp_path):
