@@ -304,6 +304,15 @@ class EditMixin:
             taken = trial.resolve(new)
             if taken is not None and taken != addr:
                 raise NetworkError(f"`{new}` already names 0x{taken:08X}")
+            # Each function's C is saved as <name>.c: two names that differ only in case are one file on macOS and
+            # Windows, and a save kept only one of them (a racing game's selectStateReset and SelectStateReset).
+            clash = self.project_store(proj["id"]).one(
+                "SELECT name, vram FROM functions WHERE project_id=? AND lower(name)=lower(?) AND name<>? AND vram<>?",
+                proj["id"], new, new, addr)
+            if clash is not None:
+                raise NetworkError(f"`{new}` differs only in case from `{clash['name']}` (0x{clash['vram']:08X}): their "
+                                   "saved files would be one on macOS and Windows. Choose a name that differs in more "
+                                   "than case")
             at = self.project_store(proj["id"]).all("SELECT id, name, size FROM functions WHERE project_id=? AND vram=?", proj["id"], addr)
             # An address name (func_8008949C) still resolves once its address has a real name. Two helpers renaming
             # one function at once both got through: the second added a second name at the address and renamed the

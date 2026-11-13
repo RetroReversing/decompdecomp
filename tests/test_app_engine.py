@@ -92,6 +92,19 @@ def test_an_address_name_already_given_a_name_is_not_renamed_again(net):
     assert net._function("second_name", "demo-quest-64")["vram"] == 0x800081A0
 
 
+def test_a_function_name_that_differs_only_in_case_from_another_is_refused(net):
+    """A racing game had selectStateReset and SelectStateReset: one file on macOS and Windows, so every save lost one
+    of them."""
+    agent, _ = net.local_agent("tester6")
+    proj = net._project("demo-quest-64")
+    a, b = [r["name"] for r in net.project_store(proj["id"]).all(
+        "SELECT name FROM functions WHERE project_id=? AND name LIKE 'func_%' ORDER BY vram DESC LIMIT 2", proj["id"])]
+    assert net.rename_symbol(agent, "demo-quest-64", a, "stateReset").startswith("✅")
+    with pytest.raises(NetworkError, match="differs only in case from `stateReset`"):
+        net.rename_symbol(agent, "demo-quest-64", b, "StateReset")
+    assert net.rename_symbol(agent, "demo-quest-64", "stateReset", "StateReset").startswith("✅")  # its own name: fine
+
+
 def test_an_address_inside_a_data_block_can_be_named(net):
     """A reimport sized a 70 KB bss block over 76 addresses agents had named; naming one of them again was refused
     as if the block's name were already its own."""
