@@ -52,6 +52,18 @@ def test_the_build_takes_matched_c_less_what_the_host_provides_plus_the_ports_ow
     assert not (out / "src" / "func_8001E640.c").exists()
 
 
+def test_a_file_an_old_save_wrote_in_another_case_is_not_deleted_as_stale(tmp_path):
+    """An old save wrote SelectStateReset.c into the build; a rename left selectStateReset.c. On a case-insensitive
+    disk they are one file, and the build deleted it as stale: that function's C was gone and the build stopped."""
+    repo, _ = save(tmp_path)
+    out = tmp_path / "build"
+    (out / "src").mkdir(parents=True)
+    (out / "src" / "Race_Update.c").write_text("old")  # what an old save left, in another case
+    gather(repo, out)
+    names = {p.name.casefold() for p in (out / "src").glob("*.c")}
+    assert "race_update.c" in names
+
+
 def test_a_folder_that_isnt_a_save_says_so(tmp_path):
     with pytest.raises(NetworkError, match="save repository"):
         gather(tmp_path, tmp_path / "build")

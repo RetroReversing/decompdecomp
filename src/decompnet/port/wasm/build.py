@@ -151,8 +151,11 @@ def gather(repo: Path, out: Path) -> dict[str, Path]:
         if not re.search(r'^#include "common(_\w+)?\.h"', text, re.M):
             text = f'#include "{header}"\n' + text
         _write(out / "src" / name, big_endian_bitfields(text))
+    # By name in any case: on a case-insensitive disk (macOS, Windows) a file an old save wrote as SelectStateReset.c
+    # is the one just written as selectStateReset.c, and deleting it as stale deleted that function's C
+    kept = {name.casefold() for name in chosen}
     for stale in (out / "src").glob("*.c"):
-        if stale.name not in chosen:
+        if stale.name.casefold() not in kept:
             stale.unlink()
     for folder in (progress / "include", port / "include"):
         for header in folder.glob("*.h"):
@@ -311,8 +314,9 @@ def build(repo: Path, *, console: str = "n64", log=print) -> Path:
     if failed := _parallel(sorted(sources), ir, log, "files"):
         raise NetworkError(f"{len(failed)} of the game's files don't compile for the WebAssembly build: "
                            + "; ".join(failed[:3]))
+    compiled = {name.casefold() for name in sources}
     for stale in (out / "ll").glob("*.ll"):
-        if stale.name[:-3] + ".c" not in sources:
+        if (stale.name[:-3] + ".c").casefold() not in compiled:
             stale.unlink()
 
     log("one signature per function")
