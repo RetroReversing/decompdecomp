@@ -1612,3 +1612,13 @@ identifies a current donor and source hash; for a large body, retrieve all of it
 `get_function(function="donor_name", section="matched")`. Avoid flattening or cleaning
 up a proven donor before testing it. These source-shape features were verified as a
 bundle, not independently established compiler rules.
+
+## Repeated indexed record copies
+
+When a record-copy loop differs around a reload, byte store or unsigned conversion,
+try the shared indexed-record recipe before broad permutation. It preserves the
+existing layout and tests typed captures, conversion placement, independent byte
+store order and target-supported subarray anchors together. A nearby volatile word
+does not make ordinary sibling fields volatile. Preserve actual volatile access
+order and the saved physical source lines. A 99.8% result remains unmatched until
+the ordinary linked-byte/data judge reports exact.

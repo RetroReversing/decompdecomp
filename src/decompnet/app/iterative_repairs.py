@@ -422,6 +422,16 @@ def targeted_pool(source, report, fn, arch, flags, header='', tables=(), callees
 
 def targeted_variants(source, report, fn, arch, flags, header='', tables=(), callees='', *, tagged=False,
                       selection=None, limit=20, pool_cache=None, focused=True, entry_scope=None, omit_families=()):
+    # Repeated indexed copies have a finite component recipe even when a large
+    # function exceeds the generic allocation lane's whole-body instruction cap.
+    from decomprepair import indexed_record_repairs
+    if selection is not None and 'indexed_record_sequence' not in omit_families:
+        recipes=indexed_record_repairs.sequences(source,fn['name'],header,arch,fn['asm'] or '')
+        if recipes:
+            page=repair_selection.page(recipes,source,selection.setdefault('indexed_record_pages',{}),limit)
+            if page:
+                return (repair_selection.Page(page,more=True) if tagged else
+                        repair_selection.Page([c for _,c in page],more=True))
     # Frame-only evidence earns a finite cheap page, with its own fair source cursor.
     # Exhausting it resumes existing pages; every compiler trial still spends the phase budget.
     if selection is not None and 'halfword_store_normalization' not in omit_families:

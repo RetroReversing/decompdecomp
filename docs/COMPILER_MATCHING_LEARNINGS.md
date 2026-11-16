@@ -1,5 +1,37 @@
 # Compiler matching learning log
 
+### Indexed record copies: bounded composition before allocation tuning
+
+Compiler: native KMC GCC 2.7.2, `-G0 -mips3 -mgp32 -mfp32 -O2 -g3`.
+A private 907-instruction N64 record-copy routine improved from score 9772 (89.2%)
+to 150 (99.8%) through the ordinary copied ROM linker/data judge. This remains
+unmatched; neither instruction similarity nor this replay establishes exact bytes.
+
+The useful source hypotheses were declared-stride subarray anchors backed by raw
+MIPS addresses; typed byte captures in a dispatch; commuted pure member-array
+indices; retained unsigned-word reads before an ordinary neighbouring byte store,
+with the floating conversion after that store; per-branch zero/byte order; and an
+unchanged unsigned-halfword index carried in a word. Candidate-owned word, counter
+and array qualifications were tested explicitly. These are compiler hypotheses,
+not permission to change shared types or arbitrarily reorder volatile accesses.
+
+A bounded library recipe reparses every component, then tries at most 64 complete
+alternatives. Starting only from the frozen original source, header, target and
+compiler, the integrated selector reached score 150 on candidate 18 within a
+64-candidate/240-second allowance. The unchanged selector remained at 9772 under
+the same allowance. No manual intermediate or known improved source was supplied
+to either search. The comparison is one retrospective development case, not a
+held-out match-rate or agent-token saving measurement. Public tests contain only
+homemade records and raw-word examples; game source/data stay private.
+
+Negative experiments: ordinary signedness changes, declaration/register-local
+changes and broad statement-line joins did not improve the final 150-score manual
+checkpoint. A direct numerator/denominator rewrite worsened earlier candidates.
+Retaining declared widths, actual reads and conversion order matters more than
+adding unconstrained random rewrites. The unresolved setup-register lifetime is
+still an open matching problem; a complete-image rebuild was not run.
+
+
 
 ### KMC GCC 2.7.2: narrow subtraction followed by a parameter-carrier cycle
 

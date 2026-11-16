@@ -477,16 +477,23 @@ class Search(Permuter):
             from . import frame_plateau
             frame_choices = [(family,child) for family,child in frame_plateau.proposals(source,fn['name'],header,rows,proj['arch']) if child not in self.local_seen]
             frame_pass = bool(frame_choices)
+            from decomprepair import indexed_record_repairs
+            record_choices = [(family,child) for family,child in indexed_record_repairs.sequences(
+                source,fn['name'],header,proj['arch'],fn['asm'] or '') if child not in self.local_seen]
+            record_pass = bool(record_choices) and not frame_pass
             from decomprepair import bit_predicate_repairs
             shape=allocation_evidence.diagnose(rows,proj['arch'])
             bit_choices = [(family,child) for family,child in bit_predicate_repairs.variants(
                 source,fn['name'],header,proj['arch'],**options['entry_scope'])
                 if child not in self.local_seen] if (shape['register_only'] or shape['scheduling'] or shape['allocation_schedule']) else []
-            bit_pass = bool(bit_choices) and not frame_pass
-            cleanup_pass = bool(cleanup) and not frame_pass and not bit_pass
+            bit_pass = bool(bit_choices) and not frame_pass and not record_pass
+            cleanup_pass = bool(cleanup) and not frame_pass and not bit_pass and not record_pass
             if frame_pass:
                 choices = [child for _,child in frame_choices]
                 labels.update({child:family for family,child in frame_choices})
+            elif record_pass:
+                choices = [child for _,child in record_choices]
+                labels.update({child:family for family,child in record_choices})
             elif bit_pass:
                 choices = [child for _,child in bit_choices]
                 labels.update({child:family for family,child in bit_choices})
