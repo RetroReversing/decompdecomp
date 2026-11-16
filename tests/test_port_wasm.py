@@ -524,3 +524,14 @@ def test_the_build_leaves_debug_only_code_out():
     """zig cc defines _DEBUG at -O0, so libultra's debug heap code (`hp->count`) was compiled into the port."""
     from decompnet.port.wasm.build import IR_FLAGS
     assert "-U_DEBUG" in IR_FLAGS
+
+
+def test_a_function_the_c_calls_by_a_data_name_is_called_at_its_address():
+    """An N64 game's C calls `D_80028970(...)`: its declaration became `declare void inttoptr (...)(...)`, which
+    LLVM can't read, and 37 functions couldn't be placed."""
+    from decompnet.port.wasm.beir import pin
+    text = pin("declare void @D_80028970(ptr noundef, i32 noundef) #1\n"
+               "define void @f() {\n  call void @D_80028970(ptr null, i32 1)\n  ret void\n}",
+               {"D_80028970": (0x80028970, "")}, set())
+    assert "declare" not in text
+    assert f"call void inttoptr (i32 {0x80028970} to ptr)(ptr null, i32 1)" in text

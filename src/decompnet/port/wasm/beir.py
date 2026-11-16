@@ -320,6 +320,11 @@ def pin(text, fixed, functions):
             if "external" not in words[:4]:
                 line = f"@{name}.port_unused = internal " + re.sub(r"^(?:[a-z_]+ )*?(?=global|constant)", "", rest, count=1)
         head = re.match(r"^(define|declare) ", line)
+        dm = re.match(r"^declare [^@]*@([\w.$]+)\(", line)
+        if dm and dm.group(1) in fixed and fixed[dm.group(1)][1] != "func" and dm.group(1) not in functions:
+            # data-style name the C calls (an N64 game's `D_80028970(...)`): its calls go through the address,
+            # and its declaration went `declare void inttoptr (...)(...)`, which 37 files stopped at
+            continue
 
         def swap(mm, line=line, head=head):
             name = mm.group(1)
