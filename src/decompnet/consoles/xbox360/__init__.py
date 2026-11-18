@@ -1,8 +1,9 @@
 """Xbox 360 XEX2 programs, recognised so a game's identity and header facts can be reported.
 
-Stage 1 only sniffs an XEX2 file and describes it (``scratch.py`` reads the few header
-fields it needs). Project creation, a pinned Xbox 360 compiler, a demo game and Ghidra
-integration are deliberately left for later stages and are not implemented here.
+Stage 1 sniffs an XEX2 file and describes it (``scratch.py`` reads the few header fields
+it needs). Stage 2a adds the user-supplied xsdk kit (``kits/xsdk.py``: the free GCC 15
+cross toolchain and SDK, a user copy rather than a pinned pack) and a small original demo
+(``projects/demo-xbox360``). Project creation and Ghidra integration are still later work.
 """
 
 from __future__ import annotations
@@ -21,16 +22,19 @@ class Xbox360(Console):
     big_endian = True
     mode = PROJECT
     layout = "Ghidra + objdiff"
-    # PLACEHOLDER: replaced by the pinned Xbox SDK (xsdk) compiler in stage 2. It is
-    # kept non-empty because the shared conformance test expects a default compiler.
+    # PLACEHOLDER: xsdk is a user copy (a kit, not a downloadable pin), so this stays as
+    # the default id for now. Conformance needs a non-empty compiler list; the real GCC
+    # appears beside it from the user's kit via kit_compilers() once it is set up.
     compilers = (Compiler("xbox360-xsdk-placeholder", "Xbox 360 XDK (placeholder)",
-                          "PLACEHOLDER - replaced by the xsdk pin in stage 2"),)
+                          "PLACEHOLDER - the xsdk kit supplies the real compiler"),)
     packs = ()
+    kits = ("xsdk",)  # the user's own xsdk toolchain and SDK (kits/xsdk.py)
     guides = ("ppc", "cpp")
-    compiler_guide = ""  # no new guide in stage 1
+    compiler_guide = ""  # no new guide: xsdk's own README documents the toolchain
     m2c = ""  # m2c has no PowerPC64 target (as with the PS3)
     ram = (0x80000000, 0x90000000)  # Xenon's 1 GB virtual address space
-    demo = ""  # no homemade demo game until a later stage
+    demo = "demo-xbox360"  # a small original C demo, built into a XEX2 by its build.py
+    demo_tools = ("ghidra", "objdiff-cli")  # what importing and judging that demo needs
 
     def sniff(self, head: bytes, file) -> bool:
         """A structurally plausible XEX2 (magic + sane header offsets)."""
@@ -52,7 +56,7 @@ class Xbox360(Console):
         return scratch.game_info(game)
 
     def tool_args(self) -> list[str]:
-        # No pinned compiler to point a project build at until the stage 2 xsdk pin.
+        # The xsdk kit supplies a compiler once set up; no pinned pack, so no fixed build args.
         return []
 
 
