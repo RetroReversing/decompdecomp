@@ -39,6 +39,7 @@ from ...forks.project import ForkError
 MAGIC = b"XEX2"
 MAX_DESCRIPTORS = 4096
 TOOL_SECONDS = 3600
+XEXTOOL_SECONDS = 900  # a third-party converter on a 40 MB image needs seconds; a quarter of an hour is generous
 ERROR_TAIL = 1500
 
 # optional-header directory keys (big-endian u32 key -> u32 value)
@@ -415,6 +416,11 @@ def read_base_image(data: bytes) -> dict:
     image_size = struct.unpack_from("<I", data, opt + 56)[0]
     if not image_size or image_size > 0x40000000:
         raise ForkError(f"this PE's image size ({image_size}) is implausible for a game image")
+    if sections > 96 or opt + header_size + sections * 40 > len(data):
+        # A file we didn't write: don't trust a section count or table that runs past the bytes we have.
+        raise ForkError("this PE's section table is implausible: it isn't a complete base image")
+    if entry >= image_size:
+        raise ForkError("this PE's entry point is outside its image: it isn't a complete base image")
     image = bytearray(image_size)
     for index in range(sections):
         at = opt + header_size + index * 40
@@ -781,14 +787,16 @@ def _game_file(game: Path, log) -> tuple[Path, Path | None]:
     return extracted, game
 
 
-def xextool_base_image(game: Path, log=print) -> Path | None:
+def xextool_base_image(game: Path, log=print) -> bytes | None:
     """The decrypted base image of a XEX2 this console can't read, made with the user's XexTool kit.
 
-    XexTool is a Windows program, so it runs through Wine with plain file names in a scratch folder (a path with a
-    space, or a leading slash, is a Windows switch). None when the kit isn't set up, or when what it writes isn't a
-    PowerPC PE: some copies report a normal-compressed body and hand it back still compressed.
+    XexTool is a Windows program, so it runs through Wine with plain file names in a private scratch folder (a path
+    with a space, or a leading slash, is a Windows switch). It is a third-party binary: it gets a scrubbed
+    environment rather than the app's (no tokens, no ssh agent), its own process group so a timeout kills the whole
+    tree, and its output is only used when the tool exited cleanly and wrote a PowerPC PE of a plausible size.
+    Returns the base image's bytes, or None with a logged reason.
     """
-    from ... import kits, wine
+    from ... import kits
 
     exe = next((own.exe for own in kits.compilers(["xextool"]) if own.exe.is_file()), None)
     if exe is None:
@@ -798,24 +806,50 @@ def xextool_base_image(game: Path, log=print) -> Path | None:
         log("XexTool is a Windows program and wine isn't on this machine: install wine, then try again")
         return None
     work = Path(tempfile.mkdtemp(prefix="xextool-"))
-    shutil.copyfile(game, work / "in.xex")
-    log(f"converting {game.name} with XexTool (under wine)…")
     try:
-        result = subprocess.run([wine_bin, str(exe), "-b", "base.bin", "in.xex"], cwd=work,
-                                env={**os.environ, **(wine.build_env(always=True) or {})},
-                                capture_output=True, text=True, timeout=TOOL_SECONDS)
-    except (OSError, subprocess.SubprocessError) as error:
-        log(f"XexTool couldn't run: {error}")
-        return None
-    out = work / "base.bin"
-    if not out.is_file():
+        shutil.copyfile(game, work / "in.xex")
+        env = _xextool_env(work)
+        log(f"converting {game.name} with XexTool (under wine)…")
+        try:
+            result = subprocess.run([wine_bin, str(exe), "-b", "base.bin", "in.xex"], cwd=work, env=env,
+                                    capture_output=True, text=True, timeout=XEXTOOL_SECONDS,
+                                    start_new_session=True)
+        except subprocess.TimeoutExpired:
+            log(f"XexTool didn't finish in {XEXTOOL_SECONDS // 60} minutes; giving up on this disc")
+            return None
+        except (OSError, subprocess.SubprocessError) as error:
+            log(f"XexTool couldn't run: {error}")
+            return None
         said = ((result.stdout or "") + (result.stderr or "")).strip()[-300:]
-        log(f"XexTool wrote no base image{':' + chr(10) + said if said else ''}")
-        return None
-    if not is_base_image(out.read_bytes()[:0x1000]):
-        log("XexTool wrote an image that isn't a PowerPC PE: this disc is compressed in a way it can't unpack")
-        return None
-    return out
+        if result.returncode != 0:
+            log(f"XexTool failed (exit {result.returncode}){':' + chr(10) + said if said else ''}")
+            return None
+        out = work / "base.bin"
+        if not out.is_file():
+            log(f"XexTool wrote no base image{':' + chr(10) + said if said else ''}")
+            return None
+        data = out.read_bytes()
+        if not is_base_image(data[:0x1000]):
+            log("XexTool wrote an image that isn't a PowerPC PE: this disc is compressed in a way it can't unpack")
+            return None
+        return data
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def _xextool_env(work: Path) -> dict[str, str]:
+    """A scrubbed environment for the third-party converter: what Wine needs, and none of the user's secrets.
+
+    The converter runs on a file the user owns, but it has no business reading their ssh agent, cloud tokens or the
+    app's own environment, and wine needs only a handful of things to work.
+    """
+    from ... import wine
+
+    keep = ("PATH", "HOME", "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "LANG", "LC_ALL", "TZ")
+    env = {name: os.environ[name] for name in keep if name in os.environ}
+    env["TMPDIR"] = str(work)
+    env.update(wine.build_env(always=True) or {})
+    return env
 
 
 def create(root: Path, game: Path, *, compiler: str | None = None, log=print) -> dict:
@@ -856,7 +890,7 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
             if converted is None:
                 raise
             log(f"{game.name}'s own image can't be read here; using the base image your XexTool wrote")
-            data = converted.read_bytes()
+            data = converted
             from_base_image = True
     else:
         from_base_image = True
