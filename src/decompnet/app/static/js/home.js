@@ -128,6 +128,10 @@ document.addEventListener("drop", (e) => {
   e.preventDefault();
   pickFiles(e.dataTransfer.files);
 });
+/* A disc image is read where it is when it can be: copying it through the browser sends every byte, and only the
+   game's boot executable is wanted. */
+const DISC_PLATFORMS = new Set(["xbox360", "xbox", "playstation", "ps2", "psp", "ps3"]);
+const NO_COPY_ABOVE = 1024 ** 3;
 /* A game with its PC debug symbols or PS4 function map. */
 const DEBUG_FILE = /\.(pdb|map)$|(?:^|\.)functions\.jsonl$/i;
 function pickFiles(list) {
@@ -462,6 +466,16 @@ async function pickFile(file, extras = []) {
   if (consoleOf(p)?.games_in_folders) {  // a dropped .exe comes alone: its path brings the game's own DLLs along
     $("romStatus").insertAdjacentHTML("beforeend", ` A dropped file comes alone: for the game's own DLLs too, <button class="link-btn" type="button" id="romByPath">use its path</button> (its folder, or the .exe) instead.`);
     $("romByPath").onclick = (e) => { e.stopPropagation(); resetDrop(); askPath(); };
+  }
+  // A disc image would be copied through the browser byte for byte, and only its boot executable is wanted: read it
+  // where it is instead. Also offered for any large file, whichever console it turns out to be.
+  if (file instanceof Blob && (DISC_PLATFORMS.has(p) || info.size >= NO_COPY_ABOVE)) {
+    $("romStatus").insertAdjacentHTML("beforeend",
+      ` Copying ${MB(info.size)} through the browser is slow: <button class="link-btn" type="button" id="romNoCopy">read it where it is</button> instead.`);
+    $("romNoCopy").onclick = (e) => {
+      e.stopPropagation(); resetDrop();
+      askPath("That image stays where it is: decompdecomp reads the game out of it in place, without copying it.");
+    };
   }
   setupCompilers(info);
   $("dropIdle").hidden = true;

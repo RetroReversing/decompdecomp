@@ -91,6 +91,27 @@ def test_read_file_format_parses_a_basic_block_table():
         "encryption": 0, "compression": 0, "blocks": []}
 
 
+def test_a_normal_compression_descriptor_is_read_and_refused_clearly():
+    """A real disc's descriptor can be encrypted AND normal-compressed (LEGO Dimensions' shape: info_size 36). It is
+    not "implausible"; it is a scheme decompdecomp doesn't expand, and the message must say so."""
+    data = bytearray(_xex2(BODY, IMAGE_SIZE, blocks=BLOCKS, compression=1))
+    struct.pack_into(">IHH", data, FF_OFFSET, 36, 1, 2)
+    data = bytes(data)
+    fmt = scratch.read_file_format(data, scratch.read_xex2(data))
+    assert fmt["compression"] == 2 and fmt["encryption"] == 1 and fmt["blocks"] == []
+
+    with pytest.raises(ForkError, match="compression type 2") as said:
+        scratch.require_usable_image(fmt)
+    assert "encrypted as well" in str(said.value)
+
+    with pytest.raises(ForkError, match="compression type 2"):
+        scratch.require_usable_image({"compression": 2, "encryption": 0})
+    with pytest.raises(ForkError, match="encrypted"):
+        scratch.require_usable_image({"compression": 1, "encryption": 1})
+    scratch.require_usable_image({"compression": 0, "encryption": 0})
+    scratch.require_usable_image({"compression": 1, "encryption": 0})
+
+
 def test_expand_basic_image_reconstructs_the_memory_image():
     data = _xex2(BODY, IMAGE_SIZE, blocks=BLOCKS, compression=1)
     xex = scratch.read_xex2(data)

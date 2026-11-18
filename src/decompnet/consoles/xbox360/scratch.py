@@ -341,13 +341,36 @@ def read_file_format(data: bytes, xex: dict) -> dict:
     if at + 8 > len(data):
         raise ForkError("this XEX2's file-format descriptor is truncated: cannot tell how its image is stored")
     info_size, encryption, compression = struct.unpack_from(">IHH", data, at)
-    if info_size < 8 or (info_size - 8) % 8 or at + info_size > len(data):
-        raise ForkError("this XEX2's file-format descriptor is implausible: cannot tell how its image is stored")
+    if info_size < 8 or at + info_size > len(data):
+        raise ForkError("this XEX2's file-format descriptor is truncated: cannot tell how its image is stored")
     fmt["encryption"] = encryption
     fmt["compression"] = compression
     if compression == 1:
+        # Only the basic scheme is a table of (data, zero) pairs; normal and delta keep a different layout, which is
+        # why their descriptor is not 8 + 8n bytes and must not be read as one.
+        if (info_size - 8) % 8:
+            raise ForkError("this XEX2's basic-compression block table is malformed: cannot tell how its image is "
+                            "stored")
         fmt["blocks"] = [struct.unpack_from(">II", data, off) for off in range(at + 8, at + info_size, 8)]
     return fmt
+
+
+def require_usable_image(fmt: dict) -> None:
+    """Refuse an image this console cannot analyse, naming which reason applies (and both when both do).
+
+    Compression is answered first: a normal/delta-compressed body needs decompressing whether or not it is also
+    encrypted, so "it is encrypted" alone would send the user after half the problem.
+    """
+    compression = fmt.get("compression", 0)
+    encrypted = bool(fmt.get("encryption"))
+    if compression not in (0, 1):
+        also = " It is encrypted as well." if encrypted else ""
+        raise ForkError(f"this XEX2's image body uses compression type {compression} (normal/delta), which "
+                        f"decompdecomp cannot expand here.{also} Prepare an uncompressed copy with your own tools "
+                        "(e.g. xexTool or prepare-xex-basic.py), or supply a functions.jsonl map")
+    if encrypted:
+        raise ForkError("this XEX2's image body is encrypted, and decompdecomp cannot decrypt it here. Prepare an "
+                        "unencrypted copy with your own tools (e.g. xexTool), or supply a functions.jsonl map")
 
 
 def expand_basic_image(data: bytes, xex: dict, fmt: dict) -> bytes:
@@ -361,14 +384,8 @@ def expand_basic_image(data: bytes, xex: dict, fmt: dict) -> bytes:
     payload, size = xex.get("payload_offset"), xex.get("image_size")
     if payload is None or size is None or size <= 0:
         raise ForkError("this XEX2 has no payload offset / image size: cannot expand its image")
-    if fmt.get("encryption"):
-        raise ForkError("this XEX2's image body is encrypted, and decompdecomp cannot decrypt it here. Prepare an "
-                        "unencrypted copy with your own tools (e.g. xexTool), or supply a functions.jsonl map")
+    require_usable_image(fmt)
     compression = fmt.get("compression", 0)
-    if compression not in (0, 1):
-        raise ForkError(f"this XEX2's image body uses compression type {compression} (normal/delta), which "
-                        "decompdecomp cannot expand here. Prepare an unencrypted basic-compression copy with your "
-                        "own tools (e.g. xexTool or prepare-xex-basic.py), or supply a functions.jsonl map")
 
     if compression == 0:
         image = data[payload:payload + size]
@@ -723,6 +740,7 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
     if xex["image_base"] is None:
         raise ForkError("this XEX2 has no image base, so function addresses cannot be mapped to file offsets")
     fmt = read_file_format(data, xex)
+    require_usable_image(fmt)  # an image this console can't analyse is refused here, not halfway through
     # Ghidra analysed the expanded image of a basic-compressed XEX2, so a VA's file offset starts at 0 in that image;
     # the raw payload offset is the base only for an uncompressed body.
     base_offset = _base_offset(xex, fmt)
