@@ -76,6 +76,14 @@ def disassemble(fn: FunctionObj, cpu: str | None = None) -> list[Insn]:
     return result
 
 
+def _relative_jump(target: str, address: int) -> str:
+    """A branch inside its function by how far it goes from itself (".L1c", ".L-18"), not by the address it was
+    linked at. Two objects can place the same function at different offsets (a delinked target puts each function
+    in its own section, a compiled one may keep them together), and then every branch would look different although
+    the code is identical -- a real 100% function showed "99.8%: 15 of 17, score 2" for exactly this."""
+    return f".L{int(target, 16) - address:x}"
+
+
 def _disassemble(fn: FunctionObj, cpu: str | None = None) -> list[Insn]:
     """A function's instructions, with relocated fields masked and named after their symbols, so the target and a
     candidate compare by what they do, not by where they were linked. `cpu`: the processor's variant (fn.cpu by
@@ -115,7 +123,7 @@ def _disassemble(fn: FunctionObj, cpu: str | None = None) -> list[Insn]:
             target = f"<{rel.symbol}{f'{off:+#x}' if off else ''}>"
             ops = _symbolize(ins, ops, rel.offset - address, target, fn.arch)
         elif ins is not None and ins.id and ins.group(capstone.CS_GRP_JUMP) and _NUM.match(ops.strip()):
-            ops = f".L{int(ops, 16):x}"  # intra-function branch: keep it position-relative
+            ops = _relative_jump(ops.strip(), address)
         out.append(Insn(address, mnemonic, ops, f"{mnemonic} {ops}".strip(), code[address:address + size]))
     return out
 
