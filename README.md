@@ -26,8 +26,11 @@ a tenth of a second (1.4 s before), and agents restart by themselves after a cra
 
 This is a personal fork of [RetroReversing/decompdecomp](https://github.com/RetroReversing/decompdecomp),
 itself a fork of [n-delic/decompdecomp](https://github.com/n-delic/decompdecomp). It tracks
-RetroReversing `main`. The following changes are local to this fork; they are small, isolated
-fixes and can be dropped with a single `git revert` each once the fixes land upstream.
+RetroReversing `main`. Issues are disabled here: please report bugs and request features on the
+[RetroReversing repo](https://github.com/RetroReversing/decompdecomp/issues) or ask on the
+[Discord](https://discord.gg/hhEm3xZagB), not on this fork. The three changes below are local
+fixes only; they are small and isolated and can each be dropped with a single `git revert`
+once they land upstream.
 
 - **IDO 5.3 C++ install** (`src/decompnet/toolchains.toml`): the pinned URL pointed at
   `ido5.3_c++.tar.xz`, which does not exist (HTTP 404). The real archive in the
