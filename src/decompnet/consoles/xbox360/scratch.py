@@ -47,6 +47,45 @@ K_FILE_FORMAT = 0x3FF    # XEX_HEADER_FILE_FORMAT_INFO: offset of the encryption
 K_IMPORT_TABLE = 0x103FF  # a different key from K_FILE_FORMAT; the leading 1 is significant
 
 
+def pe_timestamp(path: Path | str) -> float | None:
+    """The COFF ``TimeDateStamp`` of a PE file, or of the PE image inside a XEX2 container.
+
+    Two questions the compiler survey needs this for. A XDK's ``cl.exe`` carries the moment that compiler was
+    built, so an XDK released *after* a game's link date cannot have built it. The game's own XEX2 wraps a PE
+    whose ``TimeDateStamp`` is when the title was linked, which bounds which XDK builds are candidates.
+
+    Returns None when the file isn't a PE (or XEX2 around one), is truncated, or records a zero stamp.
+    """
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(0x100)
+            start = 0
+            if head[:2] != b"MZ":
+                if head[:4] != MAGIC:
+                    return None
+                start = struct.unpack_from(">I", head, 8)[0]  # XEX_HEADER.pe_data_offset
+            handle.seek(start + 0x3C)
+            lfanew = struct.unpack("<I", handle.read(4))[0]
+            handle.seek(start + lfanew)
+            coff = handle.read(12)
+            if coff[:4] != b"PE\0\0":
+                return None
+            stamp = struct.unpack_from("<I", coff, 8)[0]
+    except (OSError, struct.error):
+        return None
+    return float(stamp) if stamp else None
+
+
+def game_build_time(root: Path, manifest: dict) -> float | None:
+    """When the project's own game was linked (``pe_timestamp`` of its XEX2), if it is still on disk."""
+    game = manifest.get("game") or {}
+    relative = (game.get("path") if isinstance(game, dict) else None) or ""
+    if not relative:
+        return None
+    path = Path(relative)
+    return pe_timestamp(path if path.is_absolute() else root / path)
+
+
 def is_xex2(head: bytes) -> bool:
     """Whether ``head`` (a file's first bytes) looks like a structurally plausible XEX2."""
     if len(head) < 24 or head[:4] != MAGIC:

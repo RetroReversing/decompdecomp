@@ -4,6 +4,8 @@ The build/judge, the compiler registry and the persistence are replaced with fak
 the default switch and the restore-on-failure guarantee can be checked without a real XDK.
 """
 
+from datetime import UTC, datetime
+
 import pytest
 
 from decompnet.app import xdk360_survey as survey
@@ -13,11 +15,18 @@ FUNCS = [{"id": i + 1, "name": f"fn{i}", "vram": 0x80001000 + 16 * i,
           "best_source": f"int fn{i}(void) {{ return {i}; }}", "seed": None} for i in range(3)]
 
 
-def wire(monkeypatch, *, matches, original=ORIGINAL, fail_at=None, recorded=None, versions=None):
+def stamp(year: int, month: int, day: int) -> float:
+    """A PE TimeDateStamp, which is UTC seconds since 1970."""
+    return datetime(year, month, day, tzinfo=UTC).timestamp()
+
+
+def wire(monkeypatch, *, matches, original=ORIGINAL, fail_at=None, recorded=None, versions=None,
+         built=None, linked=None):
     """Patch the survey's seams with a fake registry, build switch, judge and recorder.
 
     ``matches(current, fn)`` decides whether ``fn`` matches while ``current`` is the project compiler;
-    ``fail_at`` makes the judge raise on that function name to simulate a failed build.
+    ``fail_at`` makes the judge raise on that function name to simulate a failed build. ``built`` maps a
+    version to its compiler's PE stamp and ``linked`` is the game's, driving the date tie-break.
     """
     versions = versions or [ORIGINAL, "xdk360-111", "xdk360-222"]
     state = {"current": None, "set": []}
@@ -27,6 +36,8 @@ def wire(monkeypatch, *, matches, original=ORIGINAL, fail_at=None, recorded=None
     monkeypatch.setattr(survey, "sample_functions", lambda net, slug, limit: FUNCS[:limit])
     monkeypatch.setattr(survey, "original_compiler", lambda net, slug: original)
     monkeypatch.setattr(survey, "_version", lambda net, slug: "game")
+    monkeypatch.setattr(survey, "build_time", lambda own: (built or {}).get(own.version))
+    monkeypatch.setattr(survey, "game_build_time", lambda net, slug: linked)
 
     def set_compiler(net, slug, version, compiler):
         state["set"].append(compiler)
@@ -96,6 +107,58 @@ def test_tie_keeps_the_projects_own_copy(monkeypatch):
     out = survey.survey_xdk360(None, "dash-dash", limit=3, log=lambda line: None)
     assert out["best"] == ORIGINAL and out["applied"] is False
     assert state["set"][-1] == ORIGINAL
+
+
+def test_copies_shipping_one_compiler_are_grouped(tmp_path):
+    """Two XDK setup media that ship the identical cl.exe are one compiler: 30 copies can be 13 builds."""
+    same = tmp_path / "cl.exe"
+    same.write_bytes(b"one compiler")
+    other = tmp_path / "other" / "cl.exe"
+    other.parent.mkdir()
+    other.write_bytes(b"another compiler")
+    copies = [type("C", (), {"version": v, "exe": p})() for v, p in
+              [("a", same), ("b", same), ("c", other)]]
+    groups = survey.compiler_groups(copies)
+    assert [len(g) for g in groups] == [2, 1]
+    assert [own.version for own in groups[0]] == ["a", "b"]
+
+
+def test_date_picks_the_xdk_that_existed_when_the_game_was_linked(monkeypatch):
+    """When every copy builds the sample identically, the newest XDK already released when the game was
+    linked is the title's own date pointing at its compiler -- and it is applied, since no copy beat it."""
+    linked = stamp(2012, 11, 15)
+    built = {ORIGINAL: stamp(2006, 10, 9), "xdk360-111": stamp(2012, 10, 1),
+             "xdk360-222": stamp(2013, 2, 1)}  # 222 shipped after the game: it cannot have built it
+    lines = []
+    state = wire(monkeypatch, matches=lambda current, fn: True, built=built, linked=linked)
+    out = survey.survey_xdk360(None, "dash-dash", limit=3, log=lines.append)
+
+    assert [r["version"] for r in out["ranked"]] == ["xdk360-111", ORIGINAL, "xdk360-222"]
+    assert out["ranked"][0]["fits"] is True and out["ranked"][2]["fits"] is False
+    assert out["ranked"][0]["built"] == "2012-10-01" and out["linked"] == "2012-11-15"
+    assert out["best"] == "xdk360-111" and out["applied"] is True
+    assert state["set"][-1] == "xdk360-111"
+    assert any("the title's own date decides" in line for line in lines)
+
+
+def test_a_match_win_still_beats_the_date(monkeypatch):
+    """Evidence outranks the date: a copy that reproduces more functions wins even if it is the wrong era."""
+    built = {ORIGINAL: stamp(2012, 1, 1), "xdk360-111": stamp(2012, 10, 1), "xdk360-222": stamp(2006, 1, 1)}
+    wire(monkeypatch, matches=lambda current, fn: current == "xdk360-222", built=built, linked=stamp(2012, 11, 15))
+    out = survey.survey_xdk360(None, "dash-dash", limit=3, log=lambda line: None)
+    assert out["ranked"][0]["version"] == "xdk360-222" and out["ranked"][0]["matched"] == 3
+    assert out["best"] == "xdk360-222" and out["applied"] is True
+
+
+def test_no_matches_is_not_evidence(monkeypatch):
+    """Every copy failing the whole sample says nothing about which is right: keep the project's own copy."""
+    state = wire(monkeypatch, matches=lambda current, fn: False,
+                 built={ORIGINAL: stamp(2006, 1, 1), "xdk360-111": stamp(2012, 10, 1)}, linked=stamp(2012, 11, 15))
+    lines = []
+    out = survey.survey_xdk360(None, "dash-dash", limit=3, log=lines.append)
+    assert out["applied"] is False and out["tested"] == 3
+    assert state["set"][-1] == ORIGINAL
+    assert any("not evidence" in line for line in lines)
 
 
 def test_too_few_copies_or_no_sources_is_a_noop(monkeypatch):
