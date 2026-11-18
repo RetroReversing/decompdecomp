@@ -590,6 +590,42 @@ def xdk360_compiler(manifest: dict) -> str | None:
     return manifest.get("xdk360_compiler")
 
 
+def source_key(source: str) -> str:
+    """A source file's key in the compiler map: relative to the project, forward slashes, no leading './'."""
+    return str(source).replace("\\", "/").lstrip("./")
+
+
+def xdk360_file_compiler(manifest: dict, source: str) -> str | None:
+    """The XDK copy one source file builds with: its own from the compiler map, else the project's default.
+
+    Xbox 360 builds with one XDK for the whole game until the compiler map names another for a file, which is what
+    lets a file the map's evidence points at build with its own copy (Settings' per-file compiler)."""
+    override = (manifest.get("xdk360_compiler_map") or {}).get(source_key(source))
+    return override or xdk360_compiler(manifest) or selected_xdk360_compiler()
+
+
+def set_xdk360_file_compiler(root: Path, version: str | None, source: str, compiler: str | None) -> None:
+    """Give one source file its own XDK copy (or the project's again when ``compiler`` is the default, which drops
+    the entry) and regenerate build.ninja, whose rules name each compiler."""
+    path = root / ".decomp.wtf.json"
+    manifest = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    # The default is the project's effective one: a project that never recorded a choice builds with the first
+    # registered copy, and naming that copy again must drop the file's entry rather than store a duplicate of it.
+    default = xdk360_compiler(manifest) or selected_xdk360_compiler()
+    overrides = dict(manifest.get("xdk360_compiler_map") or {})
+    key = source_key(source)
+    if not compiler or compiler == default:
+        overrides.pop(key, None)
+    else:
+        overrides[key] = compiler
+    if overrides:
+        manifest["xdk360_compiler_map"] = dict(sorted(overrides.items()))
+    else:
+        manifest.pop("xdk360_compiler_map", None)
+    write_atomic(path, json.dumps(manifest, indent=2))
+    _configure(root, version)
+
+
 def _configure(root: Path, version: str | None, compiler: str | None = None) -> None:
     """Regenerate build.ninja after a compiler change. X360 bakes the compiler into `rule cc`, unlike PC's per-file
     map that configure.py re-reads: until this runs the next build would still use the old compiler. By default the

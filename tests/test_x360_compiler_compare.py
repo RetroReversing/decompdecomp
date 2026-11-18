@@ -113,6 +113,30 @@ def test_a_wine_compiler_gets_msvc_flags_not_gcc(tmp_path, monkeypatch, two_xdks
     assert "-- /O2" in ninja and "-mcpu=cell" not in ninja
 
 
+def test_per_file_compilers_get_their_own_rule(tmp_path, monkeypatch, two_xdks):
+    """A file the manifest's compiler map names builds with its own rule; every other unit keeps the default's."""
+    a, b = two_xdks
+    mod = load_configure()
+    root, _ = project(tmp_path)
+    (root / "config" / "v").mkdir(parents=True)
+    (root / "config" / "v" / "functions.json").write_text(
+        json.dumps({"units": {"one": [], "two": []}}), encoding="utf-8")
+    (root / ".decomp.wtf.json").write_text(json.dumps({
+        "xdk360_compiler": a.version, "xdk360_compiler_map": {"src/auto/two.c": b.version}}), encoding="utf-8")
+    monkeypatch.delenv("XSDK_FLAGS", raising=False)
+    monkeypatch.setattr(mod, "ROOT", root)
+    monkeypatch.setattr(mod, "MANIFEST", root / ".decomp.wtf.json")
+    monkeypatch.setattr(sys, "argv", ["configure.py", "v"])
+
+    mod.main()
+
+    ninja = (root / "build.ninja").read_text(encoding="utf-8")
+    assert "rule cc\n" in ninja and "rule cc1\n" in ninja  # one rule per distinct compiler
+    assert "build build/v/src/auto/one.o: cc src/auto/one.c" in ninja
+    assert "build build/v/src/auto/two.o: cc1 src/auto/two.c" in ninja
+    assert str(a.exe) in ninja and str(b.exe) in ninja
+
+
 def test_xsdk_cc_exe_defaults_to_wine(tmp_path, monkeypatch, two_xdks):
     """(b) A cl.exe given through XSDK_CC is run under wine unless DECOMP_X360_RUNNER is explicitly provided."""
     mod = load_configure()
@@ -126,29 +150,33 @@ def test_xsdk_cc_exe_defaults_to_wine(tmp_path, monkeypatch, two_xdks):
 
 
 def test_file_compiler_roundtrip_and_regeneration(tmp_path, monkeypatch, two_xdks):
-    """(c) file_compiler/set_file_compiler round-trip the selection in the manifest and regenerate build.ninja."""
+    """(c) file_compiler/set_file_compiler round-trip one file's own copy in the manifest's compiler map and
+    regenerate build.ninja; naming the project's default again drops the entry."""
     a, b = two_xdks
     root, fp = project(tmp_path)
-    assert XBOX360.file_compiler(fp, "src/a.c") == a.version  # no selection yet: first registered copy
+    recorded = json.loads((root / ".decomp.wtf.json").read_text(encoding="utf-8"))
+    recorded["xdk360_compiler"] = a.version  # a project that recorded its default (as every import does)
+    (root / ".decomp.wtf.json").write_text(json.dumps(recorded), encoding="utf-8")
+    assert XBOX360.file_compiler(fp, "src/a.c") == a.version
 
     calls = []
 
     def fake_configure(r: Path, version: str | None, compiler: str | None = None) -> None:
         calls.append((r, version))
-        selected = compiler or json.loads(
-            (r / ".decomp.wtf.json").read_text(encoding="utf-8")).get("xdk360_compiler", "default")
+        manifest = json.loads((r / ".decomp.wtf.json").read_text(encoding="utf-8"))
+        selected = (manifest.get("xdk360_compiler_map") or {}).get("src/a.c") or manifest.get("xdk360_compiler", "default")
         (r / "build.ninja").write_text(f"rule cc\n  command = ... --compiler {selected} --runner wine ...\n",
                                        encoding="utf-8")
 
     monkeypatch.setattr(xscratch, "_configure", fake_configure)
     assert XBOX360.set_file_compiler(fp, "src/a.c", b.version) == ".decomp.wtf.json"
-    assert fp.manifest["xdk360_compiler"] == b.version
+    assert fp.manifest["xdk360_compiler_map"] == {"src/a.c": b.version}  # the override, not the default
     assert XBOX360.file_compiler(fp, "src/a.c") == b.version
     assert b.version in (root / "build.ninja").read_text(encoding="utf-8")
     assert calls == [(root, "v")]
 
     XBOX360.set_file_compiler(fp, "src/a.c", a.version)  # try_compiler's finally restores the original
-    assert fp.manifest["xdk360_compiler"] == a.version
+    assert not fp.manifest.get("xdk360_compiler_map")  # the default needs no entry
     assert XBOX360.file_compiler(fp, "src/a.c") == a.version
     assert a.version in (root / "build.ninja").read_text(encoding="utf-8")
 
@@ -166,7 +194,7 @@ def test_try_compiler_tries_both_copies(tmp_path, monkeypatch, two_xdks):
     seen = []
 
     def attempt(agent, slug, function, source, **kwargs):
-        seen.append(fp.manifest.get("xdk360_compiler"))
+        seen.append(XBOX360.file_compiler(fp, "a.c"))
         return {"matched": False, "text": "score 9", "broken": []}
 
     class Tree:
@@ -195,4 +223,5 @@ def test_try_compiler_tries_both_copies(tmp_path, monkeypatch, two_xdks):
         fake, SimpleNamespace(id="ag", name="Agent"), "slug", "f", "all", source="int f(void){return 0;}")
     assert a.version in result and b.version in result  # both copies were tried
     assert b.version in seen  # the project really switched to the second copy for its attempt
-    assert fp.manifest.get("xdk360_compiler") == a.version  # and the original selection was restored
+    assert XBOX360.file_compiler(fp, "a.c") == a.version  # and the original file compiler was restored
+    assert not fp.manifest.get("xdk360_compiler_map")  # nothing left over: the default needs no entry
