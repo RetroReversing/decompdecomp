@@ -33,8 +33,13 @@ def configure(net, slug, options, count):
 
 
 def bind(net, session, agent):
+    registry = net.__dict__.setdefault('_boundary_investigators', {})
     if session.options.get('task') == TASK:
-        net.__dict__.setdefault('_boundary_investigators', {})[agent.id] = session
+        registry[agent.id] = session
+    else:
+        # A named agent identity is reused across sessions: a past boundary review must not keep
+        # restricting a normal matching/polishing session (guard() would refuse every tool call).
+        registry.pop(agent.id, None)
 
 
 def scope(net, agent):
