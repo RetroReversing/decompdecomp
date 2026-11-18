@@ -36,6 +36,18 @@ def test_a_near_miss_address_is_still_a_difference():
     assert _classify(resolved, symbolic)[0] > 0
 
 
+def test_objdiff_rows_that_spell_the_same_address_agree():
+    """objdiff's own rows are normalised the same way, since its percent is what the app scores."""
+    from decompnet.forks.objdiff import _rows_agree
+
+    resolved = {"instruction": {"formatted": "lis r10, 0x9200"}}
+    symbolic = {"instruction": {"formatted": "lis r10, DAT_92005640@h"}}
+    assert _rows_agree(resolved, symbolic) is True
+
+    assert _rows_agree({"instruction": {"formatted": "lis r10, 0x9201"}}, symbolic) is False
+    assert _rows_agree({"instruction": {"formatted": "addi r10, r10, 0x1"}}, symbolic) is False
+
+
 def test_a_branch_that_goes_elsewhere_still_differs():
     """Normalising the base must not hide a real difference in where a branch goes."""
     assert _relative_jump("0x664", 0x648) != _relative_jump("0x668", 0x648)

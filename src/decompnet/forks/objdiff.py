@@ -375,6 +375,31 @@ def _renamed(left: dict | None, right: dict | None, lrows: list[dict], rrows: li
     return out
 
 
+def _text(row: dict) -> str:
+    return ((row.get("instruction") or {}).get("formatted") or "").strip()
+
+
+def _rows_agree(left: dict, right: dict) -> bool:
+    """Whether two rows are the same instruction written two ways.
+
+    objdiff compares the game's instruction, which holds its resolved address, with the candidate's, which holds a
+    relocation and is shown as the symbol naming that address ('lis r10, 0x9200' against 'lis r10, DAT_92005640@h').
+    The app's own comparison knows both say the same number (and that a branch goes the same distance), so the row
+    is marked equal and the function stops reading 99.8% for identical code.
+    """
+    from ..scoring import Insn, _classify
+
+    left_text, right_text = _text(left), _text(right)
+    if not left_text or not right_text:
+        return False
+    left_mnemonic, _, left_ops = left_text.partition(" ")
+    right_mnemonic, _, right_ops = right_text.partition(" ")
+    if left_mnemonic != right_mnemonic:
+        return False
+    return _classify(Insn(0, left_mnemonic, left_ops, left_text),
+                     Insn(0, right_mnemonic, right_ops, right_text))[0] == 0
+
+
 def diff(target: Path | None, base: Path | None, symbol: str | None, cwd: Path, options: dict | None = None,
          project: Path | None = None, unit: str | None = None) -> FunctionDiff:
     """Diff one function between the target (expected) and base (yours) objects; symbol None measures the whole
@@ -408,8 +433,14 @@ def diff(target: Path | None, base: Path | None, symbol: str | None, cwd: Path, 
         lr = lrows[k] if k < len(lrows) else {}
         rr = rrows[k] if k < len(rrows) else {}
         kind = lr.get("diff_kind") or rr.get("diff_kind")
-        rows.append((KIND_MARK.get(kind, "|"), _fmt(lr), _fmt(rr)))
+        mark = KIND_MARK.get(kind, "|")
+        if mark != " " and _rows_agree(lr, rr):
+            mark = " "
+        rows.append((mark, _fmt(lr), _fmt(rr)))
     pct = right.get("match_percent", left.get("match_percent")) if right else None
+    if right is not None and lrows and len(lrows) == len(rrows) and all(m == " " for m, _, _ in rows):
+        # Every instruction is the same; objdiff's remaining percent is how each object spells an address in it.
+        pct = 100.0
     if symbol is None:
         right = None
     if right is not None and pct is None:
