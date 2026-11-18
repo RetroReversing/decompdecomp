@@ -152,7 +152,8 @@ def survey_xdk360(net, slug: str, *, limit: int = 12, apply: bool = True,
         # then applies the winner below so every future build uses it.
         _set_compiler(net, slug, version, original)
 
-    ranked.sort(key=lambda r: (-r["percent"], r["matched"], r["version"] == original, r["version"]))
+    # A tie keeps the project's own copy: False sorts before True, so ``!= original`` puts it first.
+    ranked.sort(key=lambda r: (-r["percent"], -r["matched"], r["version"] != original, r["version"]))
     best = ranked[0]
     try:
         record(net, slug, funcs, ranked, best["version"], original)

@@ -84,19 +84,22 @@ def register(app: App) -> None:
         """Survey the registered XDK copies on an X360 project and default to the one matching most (a job)."""
         if (bad := guard(request, write=True)):
             return bad
-        data = await body(request)
-        slug = str(data.get('slug', ''))
-        if not slug:
-            raise NetworkError('Choose an Xbox 360 project to survey its compilers.')
-        limit = int(data.get('limit', 12))
-        if not 1 <= limit <= 200:
-            raise NetworkError('Choose a sample size between 1 and 200 functions.')
-        apply = bool(data.get('apply', True))
-        xdk360_survey, = await app.imports('decompnet.app', ('xdk360_survey',))
-        return JSONResponse({'job': await app.control(lambda: jobs.start(
-            'xdk360-compiler-survey',
-            lambda log: xdk360_survey.survey_xdk360(net, slug, limit=limit, apply=apply, log=log),
-            project=slug))})
+        try:
+            data = await body(request)
+            slug = str(data.get('slug', ''))
+            if not slug:
+                raise NetworkError('Choose an Xbox 360 project to survey its compilers.')
+            limit = int(data.get('limit', 12))
+            if not 1 <= limit <= 200:
+                raise NetworkError('Choose a sample size between 1 and 200 functions.')
+            apply = bool(data.get('apply', True))
+            xdk360_survey, = await app.imports('decompnet.app', ('xdk360_survey',))
+            return JSONResponse({'job': await app.control(lambda: jobs.start(
+                'xdk360-compiler-survey',
+                lambda log: xdk360_survey.survey_xdk360(net, slug, limit=limit, apply=apply, log=log),
+                project=slug))})
+        except (NetworkError, ValueError) as error:
+            return fail(error)
 
     @mcp.custom_route("/api/toolchain", methods=["POST"])
     async def api_toolchain(request: Request) -> Response:
