@@ -167,6 +167,10 @@ def game_info(game: Path) -> dict:
     try:
         xex = read_xex2(data)
     except ValueError:
+        if is_base_image(data):
+            mapped = read_base_image(data)  # a decrypted basefile: its PE header holds the same facts
+            info.update(image_base=mapped["image_base"], entry_point=mapped["entry_point"],
+                        image_size=mapped["image_size"])
         return info
     if xex["image_base"] is not None:
         info["image_base"] = xex["image_base"]
@@ -371,6 +375,58 @@ def require_usable_image(fmt: dict) -> None:
     if encrypted:
         raise ForkError("this XEX2's image body is encrypted, and decompdecomp cannot decrypt it here. Prepare an "
                         "unencrypted copy with your own tools (e.g. xexTool), or supply a functions.jsonl map")
+
+
+PE_MACHINE_PPC = 0x1F2  # IMAGE_FILE_MACHINE_POWERPC: how an Xbox 360 PE names its processor
+
+
+def is_base_image(data: bytes) -> bool:
+    """A decrypted Xbox 360 base image: a PowerPC PE, as ``xextool -b`` writes one out of a retail XEX2."""
+    if len(data) < 0x40 or data[:2] != b"MZ":
+        return False
+    try:
+        lfanew = struct.unpack_from("<I", data, 0x3C)[0]
+        if lfanew + 6 > len(data) or data[lfanew:lfanew + 4] != b"PE\0\0":
+            return False
+        return struct.unpack_from("<H", data, lfanew + 4)[0] == PE_MACHINE_PPC
+    except struct.error:
+        return False
+
+
+def read_base_image(data: bytes) -> dict:
+    """Map a PowerPC PE basefile the way the loader would, and report what the project needs to know.
+
+    ``xextool -b`` (and a decrypted dump) gives the image in FILE layout: sections sit at their raw offsets and the
+    file is smaller than the image it maps to. The rest of this console works in one flat image where a VA's offset
+    is ``va - image_base``, so copy each section to its virtual address and hand back that buffer.
+    """
+    try:
+        lfanew = struct.unpack_from("<I", data, 0x3C)[0]
+        machine, sections = struct.unpack_from("<HH", data, lfanew + 4)
+    except struct.error:
+        raise ForkError("this file isn't a PE image: no header to read") from None
+    if machine != PE_MACHINE_PPC:
+        raise ForkError(f"this PE is for processor {machine:#x}, not a PowerPC: it isn't an Xbox 360 base image")
+    opt = lfanew + 24
+    header_size = struct.unpack_from("<H", data, lfanew + 20)[0]
+    image_base = struct.unpack_from("<I", data, opt + 28)[0]
+    entry = struct.unpack_from("<I", data, opt + 16)[0]
+    image_size = struct.unpack_from("<I", data, opt + 56)[0]
+    if not image_size or image_size > 0x40000000:
+        raise ForkError(f"this PE's image size ({image_size}) is implausible for a game image")
+    image = bytearray(image_size)
+    for index in range(sections):
+        at = opt + header_size + index * 40
+        try:
+            virtual_size, virtual_address, raw_size, raw_offset = struct.unpack_from("<IIII", data, at + 8)
+        except struct.error:
+            raise ForkError("this PE's section table is truncated: it isn't a complete base image") from None
+        length = min(virtual_size or raw_size, raw_size)
+        if virtual_address + length > image_size:
+            raise ForkError("this PE's sections run past its own image size: it isn't a complete base image")
+        image[virtual_address:virtual_address + length] = data[raw_offset:raw_offset + length]
+    return {"image": bytes(image), "image_base": image_base, "image_size": image_size,
+            "entry_point": image_base + entry}
 
 
 def expand_basic_image(data: bytes, xex: dict, fmt: dict) -> bytes:
@@ -699,11 +755,12 @@ def _game_file(game: Path, log) -> tuple[Path, Path | None]:
     """
     try:
         with game.open("rb") as handle:
-            head = handle.read(8)
+            head = handle.read(0x1000)
     except OSError as exc:
         raise ForkError(f"{game} can't be read: {exc}") from None
-    if head[:4] == MAGIC:
-        return game, None  # a XEX2 (however broken) is create's to explain, not the disc reader's
+    if head[:4] == MAGIC or is_base_image(head):
+        # A XEX2 (however broken), or a decrypted base image: create's to read, not the disc reader's.
+        return game, None
     from . import iso
 
     try:
@@ -732,15 +789,35 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
     """
     game, disc = _game_file(game, log)
     info = game_info(game)
+    provided = game  # what the user pointed at, for provenance when it is a decrypted base image
     try:
         data = game.read_bytes()
-        xex = read_xex2(data)
-    except (ValueError, OSError) as exc:
-        raise ForkError(f"{game} is not a readable XEX2 program: {exc}") from None
-    if xex["image_base"] is None:
-        raise ForkError("this XEX2 has no image base, so function addresses cannot be mapped to file offsets")
-    fmt = read_file_format(data, xex)
-    require_usable_image(fmt)  # an image this console can't analyse is refused here, not halfway through
+    except OSError as exc:
+        raise ForkError(f"{game} can't be read: {exc}") from None
+    from_base_image = False
+    if data[:4] == MAGIC:
+        try:
+            xex = read_xex2(data)
+        except ValueError as exc:
+            raise ForkError(f"{game} is not a readable XEX2 program: {exc}") from None
+        if xex["image_base"] is None:
+            raise ForkError("this XEX2 has no image base, so function addresses cannot be mapped to file offsets")
+        fmt = read_file_format(data, xex)
+        require_usable_image(fmt)  # an image this console can't analyse is refused here, not halfway through
+    else:
+        # A decrypted base image (what `xextool -b` writes for an encrypted or normal-compressed disc): its loader
+        # view is a flat image, which is what everything below expects (a VA's offset is va - image_base), so map
+        # it once and work from that.
+        mapped = read_base_image(data)
+        xex = {"image_base": mapped["image_base"], "image_size": mapped["image_size"], "payload_offset": 0,
+               "entry_point": mapped["entry_point"], "headers": {}}
+        fmt = {"encryption": 0, "compression": 0, "blocks": []}
+        from_base_image = True
+        flat = Path(tempfile.mkdtemp(prefix="xbox360-base-")) / "image.bin"
+        flat.write_bytes(mapped["image"])
+        game = flat
+        log(f"{provided.name} is a decrypted base image: {mapped['image_size']} bytes at "
+            f"0x{mapped['image_base']:X}, entry 0x{mapped['entry_point']:X}")
     # Ghidra analysed the expanded image of a basic-compressed XEX2, so a VA's file offset starts at 0 in that image;
     # the raw payload offset is the base only for an uncompressed body.
     base_offset = _base_offset(xex, fmt)
@@ -838,6 +915,7 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
         "created": "from scratch", "platform": "xbox360", "version": version, "compiler": chosen,
         "game": {"what": "your own copy of the game's XEX2", "path": f"orig/{version}.xex", "sha1": info["sha1"],
                  **({"disc": str(disc)} if disc else {}),
+                 **({"base_image": str(provided)} if from_base_image else {}),
                  **({"version": info["version"]} if info.get("version") else {})},
         "setup": [["python", "tools/configure.py", version], ["ninja", "prepare"]],
     }, indent=2), encoding="utf-8")

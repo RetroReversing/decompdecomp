@@ -56,9 +56,10 @@ class Xbox360(Console):
         therefore asked, and only for its own filesystem's boot executable, so an original Xbox disc (default.xbe)
         still belongs to the Xbox.
         """
-        from .scratch import is_xex2
+        from .scratch import is_base_image, is_xex2
 
-        if is_xex2(head):
+        if is_xex2(head) or is_base_image(head):
+            # a XEX2, or a decrypted base image of one (`xextool -b`), which the import maps itself
             return True
         if not isinstance(file, Path):
             return False
@@ -72,9 +73,11 @@ class Xbox360(Console):
         return True
 
     def upload_name(self, data: bytes) -> str:
-        from .scratch import MAGIC
+        from .scratch import MAGIC, is_base_image
 
-        return "game.xex" if bytes(data[:4]) == MAGIC else "game.iso"
+        if bytes(data[:4]) == MAGIC:
+            return "game.xex"
+        return "default.exe" if is_base_image(bytes(data[:0x1000])) else "game.iso"
 
     def create_project(self, root: Path, game: Path, *, compiler: str | None = None, log=print) -> dict:
         from . import scratch
