@@ -62,8 +62,33 @@ _UNWRITABLE = re.compile(
     r"CONCAT\d+|SUB\d+|ZEXT\d+|SEXT\d+|POPCOUNT)\b|\.\_\d+_\d+_|WARNING: Bad instruction")
 
 _HEAD = re.compile(r"^(?P<ret>[^\n;{}]*?)\s*(?P<name>FUN_[0-9A-Fa-f]{8,16})\s*\((?P<params>[^()]*)\)\s*\{", re.M)
+# The project's own prototype for a function, as its unit file declares it: the draft must agree with this,
+# because the file keeps that declaration and C rejects a definition whose type differs (C2371).
+_DECL = re.compile(r"^[ \t]*(?P<ret>[A-Za-z_][\w \t*]*?)\s+(?P<name>FUN_[0-9A-Fa-f]{8,16})\s*\((?P<params>[^;{)]*)\)\s*;", re.M)
 _GLOBAL = re.compile(r"\b_*(?:DAT|BSS)_([0-9A-Fa-f]{8,16})\b")
 _CALLEE = re.compile(r"\bfunc_(0x[0-9A-Fa-f]+)\b")
+_VALUE_RETURN = re.compile(r"\breturn\s+([^;]+);")
+
+
+def _params(text: str) -> list[tuple[str, str]]:
+    """(type, name) per parameter; `void *` has no name and `void` alone means none."""
+    found = []
+    for part in text.split(","):
+        part = part.strip()
+        if not part or part == "void":
+            continue
+        match = re.match(r"^(.*?)\s*([A-Za-z_]\w*)$", part)
+        if match and match.group(1).strip():
+            found.append((match.group(1).strip(), match.group(2)))
+        else:
+            found.append((part, ""))  # one token is a type with no name (the project's own prototypes)
+    return found
+
+
+def _same_type(left: str, right: str) -> bool:
+    """Whether two written types mean the same thing for C (pointer spacing varies in Ghidra's output)."""
+    return " ".join(left.replace("*", " * ").split()) == " ".join(right.replace("*", " * ").split())
+
 
 
 def c_name(symbol: str) -> str | None:
@@ -112,6 +137,31 @@ def compilable(draft: str, symbol: str, symbols: dict[str, str] | None = None,
     body = text[head.end() - 1:].rstrip()  # head ends on the opening brace: keep it with the body
     if not body.endswith("}"):
         return None
+
+    # The unit file already declares this function (for its callers), so the draft has to fit that
+    # declaration rather than add a second, conflicting one: Ghidra's `undefined8` next to the project's
+    # `void` is C2371 and the draft never builds at all. Adopt the declared types, and where a parameter's
+    # type differs keep the draft's name through a local copy so the body is untouched.
+    declared = next((d for d in _DECL.finditer(known) if d.group("name") == name), None)
+    if declared is not None:
+        wanted, written = _params(head.group("params")), _params(declared.group("params"))
+        if len(wanted) != len(written):
+            return None  # a different arity is not this function's draft
+        adopted, copies = [], []
+        for index, ((draft_type, draft_name), (decl_type, _)) in enumerate(zip(wanted, written), 1):
+            if _same_type(draft_type, decl_type):
+                adopted.append(f"{decl_type} {draft_name}")
+            else:
+                adopted.append(f"{decl_type} arg{index}")
+                copies.append(f"    {draft_type} {draft_name} = ({draft_type})arg{index};")
+        signature = f"{declared.group('ret').strip()} {name}({', '.join(adopted) or 'void'})"
+        if copies:
+            body = body.replace("{", "{\n" + "\n".join(copies), 1)
+        if _same_type(declared.group("ret"), "void") and not _same_type(head.group("ret"), "void"):
+            # A void function cannot return a value; what it returned is usually Ghidra's `return 0`.
+            body = _VALUE_RETURN.sub(
+                lambda m: "return;" if m.group(1).strip() in ("0", "(undefined4)0", "(undefined8)0")
+                else f"{m.group(1).strip()};\n    return;", body)
 
     # Symbols the project already names keep that name: a callee is FUN_<address> rather than Ghidra's
     # func_0x<offset>, which names nothing outside the delinked object it came from.

@@ -53,6 +53,37 @@ def test_a_known_callee_keeps_its_name_and_a_global_is_declared():
     assert "extern undefined4 _DAT_ffffffff92986c2c;" in prelude
 
 
+def test_a_draft_conforms_to_the_project_declaration():
+    """The unit file declares the function for its callers, so a draft that contradicts it is C2371 and never
+    builds (every one of 492 autopilot drafts failed this way). Adopt the declared type, keep the body's names."""
+    known = "void FUN_9217A0E0(void *, unsigned);\n"
+    draft = ("undefined8 FUN_9217A0E0(longlong param_1, undefined4 param_2)\n{\n"
+             "  *(undefined4 *)(param_1 + 8) = param_2;\n  return 0;\n}\n")
+
+    prelude, definition = drafts.compilable(draft, "FUN_9217A0E0", {}, known)
+
+    assert definition.startswith("void FUN_9217A0E0(void * arg1, unsigned arg2)")
+    assert "longlong param_1 = (longlong)arg1;" in definition
+    assert "undefined4 param_2 = (undefined4)arg2;" in definition
+    assert "return 0;" not in definition and "return;" in definition
+
+
+def test_a_draft_of_a_different_arity_is_refused():
+    """Two parameters where the project declares one is a different function's draft, not a fixable one."""
+    draft = "undefined8 FUN_9217A0E0(longlong param_1, undefined4 param_2)\n{\n  return 0;\n}\n"
+
+    assert drafts.compilable(draft, "FUN_9217A0E0", {}, "void FUN_9217A0E0(unsigned);\n") is None
+
+
+def test_a_void_draft_keeping_a_returning_body_is_made_valid():
+    """A declared void function whose draft returns a call must still run that call: it becomes a statement."""
+    draft = "undefined8 FUN_9217A0E0(void)\n{\n  return func_0x0010ee98();\n}\n"
+
+    _, definition = drafts.compilable(draft, "FUN_9217A0E0", {}, "void FUN_9217A0E0(void);\n")
+
+    assert "func_0x0010ee98();" in definition and "return func_0x0010ee98();" not in definition
+
+
 def test_the_console_offers_ghidra_drafts_not_m2c():
     """Autopilot needs drafts, and m2c has no 64-bit PowerPC target: the console brings Ghidra's instead."""
     assert XBOX360.own_drafts is True
