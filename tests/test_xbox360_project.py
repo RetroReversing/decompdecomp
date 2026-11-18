@@ -170,3 +170,64 @@ def test_create_without_a_map_has_an_actionable_error(tmp_path: Path, monkeypatc
     with pytest.raises(ForkError, match="functions.jsonl"):
         XBOX360.create_project(tmp_path / "project", game)
     assert not (tmp_path / "project").exists()
+
+
+def test_map_functions_drops_sub_instruction_stubs(tmp_path: Path):
+    # Ghidra placeholder stubs of 1-3 bytes are not real PPC64 functions (one instruction is 4 bytes).
+    game = _game(tmp_path, [
+        _row(BASE, BASE + 1, "one"),
+        _row(BASE + 0x10, BASE + 0x12, "two"),
+        _row(BASE + 0x20, BASE + 0x23, "three"),
+        _row(BASE + 0x30, BASE + 0x34, "four"),
+        _row(BASE + 0x40, BASE + 0x48, "eight"),
+    ])
+    info, xex = _context(game)
+    logs: list[str] = []
+    got = scratch.map_functions(game, info, xex, log=logs.append)
+    assert [row["name"] for row in got] == ["four", "eight"]
+    assert [row["size"] for row in got] == [4, 8]
+    assert any("dropped 3 stub(s) with size < 4 bytes" in msg for msg in logs)
+
+
+def test_function_from_ghidra_drops_sub_instruction_stubs():
+    xex = {"image_base": BASE, "image_size": IMAGE_SIZE, "payload_offset": PAYLOAD}
+
+    def ghidra_row(addr: int, end: int, name: str) -> dict:
+        return {"entry": f"{addr:x}", "end": f"{end:x}", "name": name}
+
+    rows = [
+        ghidra_row(BASE, BASE + 1, "one"),
+        ghidra_row(BASE + 0x10, BASE + 0x12, "two"),
+        ghidra_row(BASE + 0x20, BASE + 0x23, "three"),
+        ghidra_row(BASE + 0x30, BASE + 0x34, "four"),
+        ghidra_row(BASE + 0x40, BASE + 0x48, "eight"),
+    ]
+    got = [scratch._function_from_ghidra(row, xex) for row in rows]
+    assert got[:3] == [None, None, None]
+    assert [row["size"] for row in got[3:]] == [4, 8]
+
+
+def test_create_skips_undersized_rows_defensively(tmp_path: Path, monkeypatch):
+    # Both producers already filter stubs; also verify create()'s defensive skip for hand-edited input.
+    def fake_run(cmd, root, what, log):
+        if cmd[-1] == "prepare-targets":
+            cfg = json.loads((root / "config" / "MyGame" / "functions.json").read_text(encoding="utf-8"))
+            target_dir = root / "build" / "MyGame" / "target"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            for unit in cfg["units"]:
+                (target_dir / f"{unit}.o").write_bytes(b"")
+        return (True, "")
+
+    monkeypatch.setattr(scratch, "_run", fake_run)
+    rows = [
+        {"name": "stub", "addr": BASE, "offset": PAYLOAD, "size": 1, "ranges": []},
+        {"name": "real", "addr": BASE + 0x10, "offset": PAYLOAD + 0x10, "size": 4, "ranges": []},
+    ]
+    monkeypatch.setattr(scratch, "map_functions", lambda *args, **kwargs: rows)
+    logs: list[str] = []
+    root = tmp_path / "project"
+    scratch.create(root, _game(tmp_path, None), log=logs.append)
+    cfg = json.loads((root / "config" / "MyGame" / "functions.json").read_text(encoding="utf-8"))
+    names = {fn["name"] for fns in cfg["units"].values() for fn in fns}
+    assert names == {"real"}
+    assert any("dropped 1 stub(s) with size < 4 bytes" in msg for msg in logs)

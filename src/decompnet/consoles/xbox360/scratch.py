@@ -208,6 +208,7 @@ def map_functions(game: Path, info: dict, xex: dict, *, base_offset: int | None 
             continue
         out: list[dict] = []
         skipped = 0
+        dropped = 0
         for line in candidate.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
             if not line:
@@ -223,6 +224,12 @@ def map_functions(game: Path, info: dict, xex: dict, *, base_offset: int | None 
             if start < base or end <= start:
                 raise ForkError(f"{candidate}: functions must use runtime VAs at or above 0x{base:X}, "
                                 "with an exclusive end after the start")
+            # objdiff measures PPC64 code length in whole 4-byte instructions; Ghidra emits 1-byte
+            # placeholder stubs that are not real functions. Drop sub-instruction extents instead of
+            # feeding them to objdiff (which fails with "Code length must be a multiple of 4").
+            if end - start < 4:
+                dropped += 1
+                continue
             if end > image_end:
                 raise ForkError(f"{candidate}: function extent 0x{start:X}-0x{end:X} is outside the image "
                                 f"(0x{base:X}-0x{image_end:X})")
@@ -242,6 +249,8 @@ def map_functions(game: Path, info: dict, xex: dict, *, base_offset: int | None 
                         "size": end - start, "ranges": ranges})
         if skipped:
             log(f"{candidate}: skipped {skipped} malformed line(s)")
+        if dropped:
+            log(f"{candidate}: dropped {dropped} stub(s) with size < 4 bytes")
         if out:
             return out
     return None
@@ -384,8 +393,9 @@ def _function_from_ghidra(row: dict, xex: dict, base_offset: int | None = None) 
     """One Ghidra function row -> the dict shape ``map_functions`` returns, or None to drop it.
 
     Ghidra reports VAs in ``entry``/``end`` (hex strings or ints); a VA's file offset is ``file_offset``:
-    ``(va - image_base) + base_offset`` (defaulting to ``payload_offset`` without an expanded image). Thunks and
-    extents that leave the mapped image are dropped: Ghidra also sees stubs and helpers outside this XEX2's image.
+    ``(va - image_base) + base_offset`` (defaulting to ``payload_offset`` without an expanded image). Thunks,
+    sub-instruction stubs and extents that leave the mapped image are dropped: Ghidra also sees stubs and helpers
+    outside this XEX2's image.
     """
     if row.get("thunk"):
         return None
@@ -396,7 +406,9 @@ def _function_from_ghidra(row: dict, xex: dict, base_offset: int | None = None) 
         end = int(row["end"], 16) if isinstance(row["end"], str) else int(row["end"])
     except (KeyError, ValueError, TypeError):
         return None
-    if end <= entry or entry < base or end > base + size:
+    # PPC64 instructions are 4 bytes and objdiff requires the code length to be a multiple of 4;
+    # Ghidra emits 1-byte placeholder stubs that are not real functions, so drop sub-instruction extents.
+    if end - entry < 4 or entry < base or end > base + size:
         return None
     return {"name": row.get("name") or "", "addr": entry, "offset": file_offset(entry, base, payload),
             "size": end - entry, "ranges": [[entry, end]]}
@@ -533,12 +545,20 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
 
     functions: list[Function] = []
     used: set[str] = set()
+    dropped = 0
     for row in found:
+        # Defensive: both producers drop sub-instruction stubs already, but a hand-edited map could still
+        # slip one in. objdiff cannot measure PPC64 code shorter than 4 bytes; never round the size up.
+        if row["size"] < 4:
+            dropped += 1
+            continue
         name = row["name"]
         if not (name and _IDENT.fullmatch(name)) or name in used:
             name = f"func_{row['addr']:08X}"
         used.add(name)
         functions.append(Function(row["addr"], row["offset"], row["size"], name))
+    if dropped:
+        log(f"dropped {dropped} stub(s) with size < 4 bytes")
     groups = units(functions)
     log(f"{len(functions)} functions in {len(groups)} source files")
 
