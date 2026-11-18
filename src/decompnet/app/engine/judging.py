@@ -93,7 +93,16 @@ class JudgeMixin:
         with compile_timing.phase('link'):
             target = self._rom_target(fn)
             # the console links it (GBA: ARM/Thumb, PS3: PPC64; the rest: rom.match), against the caller's overlay (#230)
-            res = self.console(proj).link_function(obj, fn["name"], target, self.symbols(proj["id"]), self.reader(proj, fn))
+            console = getattr(self, "console", None)
+            if console is None:
+                # An engine with no console connector at all (a bare Core, which tests judge with) links with the
+                # generic matcher, exactly as Console.link_function's default does.
+                from ...rom import match
+
+                res = match.link(obj, fn["name"], target, self.symbols(proj["id"]), self.reader(proj, fn))
+            else:
+                res = console(proj).link_function(obj, fn["name"], target, self.symbols(proj["id"]),
+                                                  self.reader(proj, fn))
         if diagnose is None:
             return res.candidate, res.exact if res.candidate is not None else None, res.problems
         if _search_evaluation.get():
