@@ -34,6 +34,39 @@ _REG = re.compile(
 _NUM = re.compile(r"^-?(0x[0-9a-f]+|\d+)$", re.I)
 _STACK = re.compile(r"\b(rsp|rbp|esp|ebp|\$?sp|\$?fp|r1)\b")
 _TOKEN = re.compile(r"[\w.$<>+@-]+|\S")
+# A symbol whose name *is* its address (the project names data and functions that way: DAT_92005640), with the half
+# a PowerPC instruction carries: @h/@ha for the high 16 bits, @l for the low.
+_ADDRESS_SYMBOL = re.compile(r"^<?_*(?:DAT|BSS|D)_([0-9A-Fa-f]{8,16})(?:@(ha|hi|h|l|lo))?>?$")
+
+
+def _address_of(token: str) -> int | None:
+    """The number an address-named symbol stands for at the half the instruction uses."""
+    found = _ADDRESS_SYMBOL.match(token)
+    if not found:
+        return None
+    address = int(found.group(1), 16)
+    half = found.group(2) or ""
+    if half == "ha":
+        return ((address + 0x8000) >> 16) & 0xFFFF
+    if half in ("h", "hi"):
+        return (address >> 16) & 0xFFFF
+    if half in ("l", "lo"):
+        return address & 0xFFFF
+    return address
+
+
+def _same_value(left: str, right: str) -> bool:
+    """Whether two operands are the same number, one written as a symbol that names its address.
+
+    A delinked target carries the game's resolved address in the instruction; a compiled candidate carries a
+    relocation, which the app writes as the symbol. `lis r10, 0x9200` and `lis r10, DAT_92005640@h` are the same
+    instruction, and a real function scored 99.8% only because they were compared as text.
+    """
+    if _NUM.match(left):
+        return _address_of(right) == int(left, 0)
+    if _NUM.match(right):
+        return _address_of(left) == int(right, 0)
+    return False
 
 
 @dataclass
@@ -197,6 +230,8 @@ def _classify(a: Insn, b: Insn) -> tuple[int, str]:
             return PENALTY_REGALLOC, "r"
         if all(_NUM.match(x) and _NUM.match(y) for x, y in diffs) and _STACK.search(a.operands):
             return PENALTY_STACKDIFF, "s"
+        if all(_same_value(x, y) for x, y in diffs):
+            return 0, " "  # a resolved address and the symbol that names it are the same operand
     return PENALTY_OPERAND, "i"
 
 

@@ -13,6 +13,29 @@ def test_the_same_branch_agrees_across_two_offsets():
     assert _relative_jump("0x640", 0x658) == _relative_jump("0x1b0", 0x1c8) == ".L-18"
 
 
+def test_a_resolved_address_and_the_symbol_that_names_it_are_equal():
+    """The game's `lis r10, 0x9200` and a candidate's `lis r10, DAT_92005640@h` are one instruction: the symbol
+    names its own address, so both say 0x9200. This was a real function's whole remaining difference (99.8%)."""
+    from decompnet.scoring import Insn, _classify
+
+    resolved = Insn(0, "lis", "r10, 0x9200", "lis r10, 0x9200")
+    symbolic = Insn(0, "lis", "r10, <DAT_92005640@h>", "lis r10, <DAT_92005640@h>")
+    assert _classify(resolved, symbolic) == (0, " ")
+
+    low = Insn(4, "addi", "r9, r10, 0x5640", "addi r9, r10, 0x5640")
+    low_symbolic = Insn(4, "addi", "r9, r10, <DAT_92005640@l>", "addi r9, r10, <DAT_92005640@l>")
+    assert _classify(low, low_symbolic) == (0, " ")
+
+
+def test_a_near_miss_address_is_still_a_difference():
+    """Only the symbol's own value counts; one bit off is still a different operand."""
+    from decompnet.scoring import Insn, _classify
+
+    resolved = Insn(0, "lis", "r10, 0x9201", "lis r10, 0x9201")
+    symbolic = Insn(0, "lis", "r10, <DAT_92005640@h>", "lis r10, <DAT_92005640@h>")
+    assert _classify(resolved, symbolic)[0] > 0
+
+
 def test_a_branch_that_goes_elsewhere_still_differs():
     """Normalising the base must not hide a real difference in where a branch goes."""
     assert _relative_jump("0x664", 0x648) != _relative_jump("0x668", 0x648)
