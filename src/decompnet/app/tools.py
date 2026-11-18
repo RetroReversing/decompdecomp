@@ -346,9 +346,10 @@ def compact_info_head(net, proj):
     cfg=net.cfg(proj)
     profile=cfg.get('compiler') or {}
     platform=consoles.get(cfg.get('platform'))
-    compiler=profile.get('toolchain') or 'set by the project build'
+    compiler=profile.get('toolchain') if isinstance(profile,dict) else str(profile)
+    compiler=compiler or 'set by the project build'
     known=', '.join(c.id for c in platform.compilers)
-    return (f"{proj['name']} ({proj['slug']})\ncompiler: {compiler} {' '.join(profile.get('flags',[]))}\n"
+    return (f"{proj['name']} ({proj['slug']})\ncompiler: {compiler} {' '.join(profile.get('flags',[]) if isinstance(profile,dict) else [])}\n"
             + (f"this platform's compilers (for try_compiler): {known}\n" if known else ''))
 
 

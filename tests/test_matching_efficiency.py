@@ -93,6 +93,20 @@ def test_context_accepts_a_string_compiler_like_project_consoles(tmp_path):
     assert ctx['compiler'] == 'project'
 
 
+def test_compact_project_info_accepts_a_string_compiler(tmp_path):
+    # project_info(detail=false) is the MCP handshake call; PROJECT-mode consoles store a string compiler.
+    from decompnet.app import tools
+    class Net:
+        def cfg(self, proj): return {'platform': 'n64', 'compiler': 'xbox360-xsdk-placeholder'}
+    saved = tools.consoles
+    tools.consoles = type('C', (), {'get': staticmethod(lambda p: type('X', (), {'compilers': ()})())})()
+    try:
+        out = tools.compact_info_head(Net(), {'name': 'dash', 'slug': 'dash-dash'})
+        assert 'xbox360-xsdk-placeholder' in out
+    finally:
+        tools.consoles = saved
+
+
 def test_workload_measurements_are_project_scoped_and_retained(tmp_path):
     net,_=_game(tmp_path,[('f',100,'open')]);a,_=net.local_agent('a')
     ctx=session_efficiency.context(net,'game',{})
