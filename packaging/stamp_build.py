@@ -12,7 +12,7 @@ def stamp(root, package):
     dirty = bool(subprocess.check_output(['git', '-C', str(root), 'status', '--porcelain', '--untracked-files=no'], text=True).strip())
     if dirty:
         raise ValueError('Commit source changes before packaging so its build ID identifies the shipped code.')
-    (package / 'build-info.json').write_text(json.dumps({'fork': 'RetroReversing', 'commit': sha})+'\n')
+    (package / 'build-info.json').write_text(json.dumps({'fork': 'mrppp', 'commit': sha})+'\n')
 
 
 if __name__ == '__main__':

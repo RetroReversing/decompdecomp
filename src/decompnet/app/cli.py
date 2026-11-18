@@ -653,7 +653,7 @@ def main(argv: list[str] | None = None) -> int:
     ii.add_argument("--channel", choices=["release", "branch"], default="release")
     ii.add_argument("--branch", default="")
     ii.add_argument("--commit", default="")
-    ii.add_argument("--repo", default="RetroReversing/decompdecomp")
+    ii.add_argument("--repo", default="mrppp/decompdecomp")
     args = ap.parse_args(argv)
     __import__("decompnet").utf8_output()
     from .. import limits

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .. import __version__
 
-FORK = 'RetroReversing fork'
+FORK = 'mrppp fork of RetroReversing'
 
 
 @lru_cache(maxsize=1)
