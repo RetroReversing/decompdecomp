@@ -425,7 +425,13 @@ def read_base_image(data: bytes) -> dict:
         length = min(virtual_size or raw_size, raw_size)
         if virtual_address + length > image_size:
             raise ForkError("this PE's sections run past its own image size: it isn't a complete base image")
-        image[virtual_address:virtual_address + length] = data[raw_offset:raw_offset + length]
+        # A basefile dumped from a disc can end before its last section does. Pad rather than take a short slice:
+        # assigning a shorter sequence to a bytearray slice RESIZES it, which silently shrank the image below the
+        # size the rest of the pipeline expects (a 41,662,976-byte image came out 248,032 bytes short).
+        chunk = data[raw_offset:raw_offset + length]
+        if len(chunk) < length:
+            chunk = bytes(chunk) + bytes(length - len(chunk))
+        image[virtual_address:virtual_address + length] = chunk
     return {"image": bytes(image), "image_base": image_base, "image_size": image_size,
             "entry_point": image_base + entry}
 

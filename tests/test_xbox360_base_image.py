@@ -67,6 +67,22 @@ def test_a_file_this_cannot_be_is_refused_with_a_reason():
         scratch.read_base_image(build_pe(virtual_address=0x2FFF, image_size=0x3000))
 
 
+def test_a_basefile_that_ends_before_a_section_is_padded_not_shrunk():
+    """A dump can stop before its last section does. Taking a short slice of the buffer would RESIZE it (Python
+    shrinks a bytearray when a shorter sequence is assigned), so the image must be padded to its stated size."""
+    data = bytearray(build_pe(image_size=0x4000))
+    lfanew, header_size = 0x40, 0xE0
+    section = lfanew + 24 + header_size
+    struct.pack_into("<I", data, section + 8, len(PAYLOAD) + 0x1000)   # VirtualSize
+    struct.pack_into("<I", data, section + 16, len(PAYLOAD) + 0x1000)  # SizeOfRawData (more than the file holds)
+
+    mapped = scratch.read_base_image(bytes(data))
+
+    assert mapped["image_size"] == 0x4000
+    assert len(mapped["image"]) == 0x4000  # not shrunk to the bytes present
+    assert mapped["image"][0x2000:0x2000 + len(PAYLOAD)] == PAYLOAD
+
+
 def test_the_xextool_kit_exposes_the_tool_and_conversion_needs_it(tmp_path, monkeypatch):
     """XexTool is the user's own copy: a kit names its folder, and without one the import falls back to the reason."""
     from decompnet import kits
