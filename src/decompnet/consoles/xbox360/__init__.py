@@ -4,8 +4,8 @@ Stage 1 sniffs an XEX2 file and describes it (``scratch.py`` reads the few heade
 it needs). Stage 2a adds the user-supplied xsdk kit (``kits/xsdk.py``: the free GCC 15
 cross toolchain and SDK, a user copy rather than a pinned pack) and a small original demo
 (``projects/demo-xbox360``). Stage 3 creates a PROJECT-mode decomp project from a
-``functions.jsonl`` map beside the game (no Ghidra needed). Ghidra-based discovery for
-games without a map remains a later option.
+``functions.jsonl`` map beside the game (no Ghidra needed). Stage 4a discovers functions
+with Ghidra, through a disposable ELF64/PPC64 wrapper, when there is no map.
 """
 
 from __future__ import annotations
