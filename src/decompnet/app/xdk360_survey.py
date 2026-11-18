@@ -54,17 +54,25 @@ def original_compiler(net, slug: str) -> str:
 
 
 def sample_functions(net, slug: str, limit: int) -> list[dict]:
-    """A small deterministic sample: the lowest-address functions with a saved C candidate or seed.
+    """A small deterministic sample that can actually discriminate between compilers.
 
-    ``vram`` is null on some project-mode imports, so those sort last and ``id`` (import order) breaks
-    ties. Only functions with something to compile are considered; the source itself may still fail to
-    build under Wine, which ``judge`` treats as a non-match.
+    Matched functions first: their C is proven to reproduce the game, so a compiler that no longer
+    matches them is a real signal. Then the closest near-misses (lowest ``best_score``), then anything
+    with saved C or a seed. Sorting only by address used to pick functions with no viable source, where
+    every compiler scored 0 and the ranking said nothing.
+
+    ``vram`` is null on some project-mode imports, so those sort last and ``id`` breaks ties.
     """
     proj = net._project(slug)
     rows = net.project_store(proj["id"]).all(
-        "SELECT id, name, vram, best_source, seed FROM functions WHERE project_id=? "
-        "AND ((best_source IS NOT NULL AND best_source != '') OR (seed IS NOT NULL AND seed != '')) "
-        "ORDER BY (vram IS NULL), vram, id LIMIT ?",
+        "SELECT id, name, vram, status, best_score, best_source, seed, matched_source FROM functions "
+        "WHERE project_id=? AND ("
+        "(matched_source IS NOT NULL AND matched_source != '') "
+        "OR (best_source IS NOT NULL AND best_source != '') "
+        "OR (seed IS NOT NULL AND seed != '')) "
+        "ORDER BY (status != 'matched'), "       # matched first: proven C discriminates compilers
+        "CASE WHEN best_score IS NULL THEN 1 ELSE 0 END, best_score, "  # then the closest near-misses
+        "(vram IS NULL), vram, id LIMIT ?",
         proj["id"],
         limit,
     )
@@ -86,7 +94,7 @@ def judge(net, slug: str, fn: dict, log: Callable[[str], None]) -> bool:
     agent's attempt uses. A function with no usable source, or one that can't be built or found in the
     object, is simply a non-match; it must not abandon the whole survey.
     """
-    source = (fn.get("best_source") or fn.get("seed") or "").strip()
+    source = (fn.get("matched_source") or fn.get("best_source") or fn.get("seed") or "").strip()
     if not source:
         return False
     current = net._function(fn["name"], slug)
