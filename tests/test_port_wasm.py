@@ -633,3 +633,29 @@ def test_every_automatic_data_name_says_its_address():
 
     for name in ("RO_00628350", "D_00626DD0", "STR_80012340", "FLT_80012340", "DBL_80012340", "jtbl_80012340"):
         assert _AUTO_TOKEN.fullmatch(name) and re.fullmatch(rf"(?:{AUTO_DATA})_[0-9A-F]+", name), name
+
+
+def test_an_endless_empty_loop_parks_its_thread():
+    """A packed shooter's idle thread ended in `for (;;) {}` at priority 0: the host switches threads only at a
+    call, so its scheduler, ready at 14, never ran and nothing was drawn."""
+    from decompnet.port.wasm.build import ido_c
+
+    for loop in ("for (;;) {}", "for(;;);", "while (1) { }", "while(1);"):
+        out = ido_c(f"void idle(void) {{ start(); {loop} }}")
+        assert "for (;;) port_idle_forever();" in out and out.startswith("void port_idle_forever(void);"), loop
+    assert ido_c("void f(void) { for (;;) { work(); } }") == "void f(void) { for (;;) { work(); } }"
+
+
+def test_a_bitfield_shares_its_unit_with_the_members_after_it():
+    """libultra's Gsetcolor (`int cmd:8;` then three bytes and a word) is 8 bytes on the console: its bitfield closed
+    in a word of its own made it 12, Gfx 16, and a packed shooter's text rectangles read padding as their texture
+    coordinates. The struct keeps the console's size and the field its byte."""
+    from decompnet.port.wasm.build import big_endian_bitfields
+
+    text = ("typedef struct {\n  int cmd:8;\n  unsigned char pad;\n  unsigned char prim_min_level;\n"
+            "  unsigned char prim_level;\n  unsigned long color;\n} Gsetcolor;")
+    out = big_endian_bitfields(text)
+    assert "  signed char cmd;" in out and ": 0;" not in out
+    # a unit that closes the struct, or isn't whole bytes, is laid out in reverse as before
+    assert "int : 0;" in big_endian_bitfields("struct s {\n  int a:8;\n};")
+    assert "int : 0;" in big_endian_bitfields("struct s {\n  int a:3;\n  char b;\n};")
