@@ -44,6 +44,7 @@ def wire(monkeypatch, *, matches, original=ORIGINAL, fail_at=None, recorded=None
         state["current"] = compiler
 
     monkeypatch.setattr(survey, "_set_compiler", set_compiler)
+    monkeypatch.setattr(survey, "_choose_compiler", set_compiler)  # the same switch, recorded
 
     def judge(net, slug, fn, log):
         if fail_at is not None and fn["name"] == fail_at:

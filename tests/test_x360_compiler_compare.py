@@ -133,9 +133,10 @@ def test_file_compiler_roundtrip_and_regeneration(tmp_path, monkeypatch, two_xdk
 
     calls = []
 
-    def fake_configure(r: Path, version: str | None) -> None:
+    def fake_configure(r: Path, version: str | None, compiler: str | None = None) -> None:
         calls.append((r, version))
-        selected = json.loads((r / ".decomp.wtf.json").read_text(encoding="utf-8")).get("xdk360_compiler", "default")
+        selected = compiler or json.loads(
+            (r / ".decomp.wtf.json").read_text(encoding="utf-8")).get("xdk360_compiler", "default")
         (r / "build.ninja").write_text(f"rule cc\n  command = ... --compiler {selected} --runner wine ...\n",
                                        encoding="utf-8")
 
@@ -160,7 +161,7 @@ def test_try_compiler_tries_both_copies(tmp_path, monkeypatch, two_xdks):
     (root / "a.c").write_text("int f(void){return 0;}", encoding="utf-8")
     fp.unit = lambda u: SimpleNamespace(source="a.c", name="a")
     fp.source_is_linked = lambda unit: False
-    monkeypatch.setattr(xscratch, "_configure", lambda r, v: None)
+    monkeypatch.setattr(xscratch, "_configure", lambda r, v, compiler=None: None)
 
     seen = []
 

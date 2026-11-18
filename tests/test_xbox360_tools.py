@@ -1,5 +1,6 @@
 """Xbox 360 build tools: refreshing an imported project's stale tools and the Wine build env, no real Wine."""
 
+import json
 import struct
 from pathlib import Path
 
@@ -157,6 +158,26 @@ def test_pe_timestamp_is_none_for_what_it_cannot_read(tmp_path: Path):
     lying = tmp_path / "lying.xex"
     lying.write_bytes(b"XEX2" + bytes(4) + struct.pack(">I", 0x100))  # names a PE that isn't there
     assert scratch.pe_timestamp(lying) is None
+
+
+def test_a_trial_switch_does_not_record_a_choice(tmp_path: Path, monkeypatch):
+    """The survey switches build.ninja to a copy it is only testing; the manifest keeps the project's own copy
+    until one is chosen, so a cancelled survey can never record a copy it never settled on."""
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / ".decomp.wtf.json").write_text(json.dumps({"xdk360_compiler": "xdk360-a"}), encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(scratch, "_configure", lambda root, version, compiler=None: calls.append(compiler))
+
+    scratch.set_xdk360_compiler(root, "v", "xdk360-b", record=False)
+
+    assert json.loads((root / ".decomp.wtf.json").read_text(encoding="utf-8"))["xdk360_compiler"] == "xdk360-a"
+    assert calls == ["xdk360-b"]  # build.ninja got the trial copy explicitly
+
+    scratch.set_xdk360_compiler(root, "v", "xdk360-b")
+
+    assert json.loads((root / ".decomp.wtf.json").read_text(encoding="utf-8"))["xdk360_compiler"] == "xdk360-b"
+    assert calls == ["xdk360-b", None]  # a recorded choice is read from the manifest
 
 
 def test_game_build_time_follows_the_manifest(tmp_path: Path):

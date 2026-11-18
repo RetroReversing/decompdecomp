@@ -149,7 +149,17 @@ def sample_functions(net, slug: str, limit: int) -> list[dict]:
 
 
 def _set_compiler(net, slug: str, version: str | None, compiler: str) -> None:
-    """Record ``compiler`` as the project's one global XDK choice and regenerate build.ninja."""
+    """Point build.ninja at ``compiler`` without recording it: the survey tries copies, it doesn't choose one.
+
+    ``record=True`` is only for the winner at the end, so a job the user cancels half way through leaves the
+    project's own compiler recorded exactly as it was."""
+    from ..consoles.xbox360 import scratch
+
+    scratch.set_xdk360_compiler(_fork(net, slug).root, version, compiler, record=False)
+
+
+def _choose_compiler(net, slug: str, version: str | None, compiler: str) -> None:
+    """Record ``compiler`` as the project's XDK choice and regenerate build.ninja for it."""
     from ..consoles.xbox360 import scratch
 
     scratch.set_xdk360_compiler(_fork(net, slug).root, version, compiler)
@@ -272,14 +282,14 @@ def survey_xdk360(net, slug: str, *, limit: int = 12, apply: bool = True,
     elif best["version"] == original:
         log(f"the project's own {original} is already the best XDK copy on this sample")
     elif beaten:
-        _set_compiler(net, slug, version, best["version"])
+        _choose_compiler(net, slug, version, best["version"])  # the only write that records a choice
         applied = True
         log(f"the best XDK copy is {best['version']} ({best['matched']}/{best['total']} match); "
             f"all future builds use it")
     elif not proven:
         # Nothing proven yet, so the date is the only evidence there is: a fresh project starts on the XDK
         # closest to its own game's date instead of whichever copy the registry happened to list first.
-        _set_compiler(net, slug, version, best["version"])
+        _choose_compiler(net, slug, version, best["version"])  # a fresh project records its starting copy
         applied = True
         log(f"no copy builds this sample differently, so the title's own date decides: {best['version']} "
             f"(compiler built {best['built']}" + (f", the game was linked {_day(linked)}" if linked else "")
