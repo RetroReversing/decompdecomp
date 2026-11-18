@@ -3660,7 +3660,8 @@ class ForkEngine:
             if (rel := console.prepare_drafts(fp)):
                 self._commit(proj, fp, rel, "Add the types machine drafts use\n\nWritten by decompdecomp's autopilot.")
         elif not drafts.supported(cfg.get("platform") or ""):
-            raise NetworkError("autopilot needs m2c, the draft decompiler: install it in Setup")
+            raise NetworkError("autopilot needs machine drafts, and m2c cannot read this console's code "
+                               "(it has no 64-bit PowerPC target): helpers still work on it without drafts")
         no_m2c = not console.own_drafts and toolchains.installed("m2c") is None
         if cfg.get("origin") != "scratch":
             if no_m2c:
