@@ -1,0 +1,443 @@
+"""Minimal XEX2 reader for the Xbox 360 console connector (stage 1).
+
+Only the handful of header fields ``sniff()`` and ``game_info()`` need are read:
+the magic, the payload/security offsets, the optional-header directory and the
+image base. Nothing here validates a signature or loads the executable.
+
+Format sources (documentation only, no code copied): the XEX2 header layout as
+described in Xenia's ``src/xenia/kernel/util/xex2_info.h`` and as summarised by
+Moonlight360's ``scripts/inspect-xex-contracts.py`` (GPL-3.0-or-later original
+work). This module is an independent implementation from the documented offsets.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import struct
+import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+
+from ...forks.project import ForkError
+
+MAGIC = b"XEX2"
+MAX_DESCRIPTORS = 4096
+
+# optional-header directory keys (big-endian u32 key -> u32 value)
+K_ENTRY = 0x10100
+K_IMAGE_BASE = 0x10201
+K_IMPORT_TABLE = 0x103FF
+
+
+def is_xex2(head: bytes) -> bool:
+    """Whether ``head`` (a file's first bytes) looks like a structurally plausible XEX2."""
+    if len(head) < 24 or head[:4] != MAGIC:
+        return False
+    # payload@8, security@16, count@20 (offset 12 is a different header field)
+    payload = int.from_bytes(head[8:12], "big")
+    security = int.from_bytes(head[16:20], "big")
+    count = int.from_bytes(head[20:24], "big")
+    table_end = 24 + count * 8
+    # the header directory must fit before the security header, which (size +
+    # image size) must in turn fit before the payload. Deliberately no check
+    # against len(head): a picked file larger than the sniff window is fine.
+    return count <= MAX_DESCRIPTORS and table_end <= security and security + 8 <= payload
+
+
+def read_xex2(data: bytes) -> dict:
+    """Read the few header fields needed by sniff/game_info from an XEX2 image.
+
+    Raises ``ValueError`` for a short or implausible image; the caller decides
+    whether that means "not this console" or "report what we can".
+    """
+    if not is_xex2(data):
+        raise ValueError("not an XEX2 image")
+    payload = int.from_bytes(data[8:12], "big")
+    security = int.from_bytes(data[16:20], "big")
+    count = int.from_bytes(data[20:24], "big")
+    table_end = 24 + count * 8
+    if len(data) < payload or table_end > len(data) or security + 8 > len(data):
+        raise ValueError("truncated XEX2 header")
+    security_size, image_size = struct.unpack(">II", data[security:security + 8])
+    if security_size < 8 or security + security_size > payload:
+        raise ValueError("implausible XEX2 security span")
+
+    selected = {}
+    for index in range(count):
+        at = 24 + index * 8
+        key, value = struct.unpack(">II", data[at:at + 8])
+        if key not in selected:
+            selected[key] = value
+    return {
+        "payload_offset": payload,
+        "security_offset": security,
+        "security_size": security_size,
+        "image_size": image_size,
+        "image_base": selected.get(K_IMAGE_BASE),
+        "entry_point": selected.get(K_ENTRY),
+        "import_table_offset": selected.get(K_IMPORT_TABLE),
+    }
+
+
+def game_info(game: Path) -> dict:
+    """What an XEX2 file is: platform, an id/title from its name, its sha1, header facts."""
+    data = game.read_bytes()
+    info = {
+        "platform": "xbox360",
+        "id": game.stem,
+        "title": game.stem,
+        "sha1": hashlib.sha1(data).hexdigest(),
+    }
+    try:
+        xex = read_xex2(data)
+    except ValueError:
+        return info
+    if xex["image_base"] is not None:
+        info["image_base"] = xex["image_base"]
+    if xex["entry_point"] is not None:
+        info["entry_point"] = xex["entry_point"]
+    return info
+
+
+# --------------------------------------------------------------------------------------------- function map / project
+# Stage 3: a FUNCTION-MAP path that needs no Ghidra. XEX2 has no section table like an ELF's, so the "code" is
+# approximated as one contiguous span from xex["image_base"] over xex["image_size"], mapped to file offset
+# xex["payload_offset"]. Addresses in functions.jsonl are runtime VAs (what a Ghidra probe reports); the file
+# offset of a VA is (va - image_base) + payload_offset.
+# Stage 4a: a GHIDRA-DISCOVERY path for games with no map, through a disposable ELF64/PPC64 wrapper below.
+
+TEMPLATE = Path(__file__).with_name("project_template")
+UNIT_BYTES = 0x1000  # a source file is a run of roughly this many bytes of neighbouring functions
+GAP_BYTES = 0x400  # a hole this big between functions starts another source file
+_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+TYPES_H = """/* Basic types for this decompilation (PowerPC64, big-endian, the user's xsdk GCC).
+ * Agents add structs and prototypes here or in new headers next to it. The game's functions are
+ * func_<address>: write them with those names, as C, and the build gives them the original's symbols. */
+#ifndef COMMON_H
+#define COMMON_H
+
+typedef signed char s8;
+typedef unsigned char u8;
+typedef signed short s16;
+typedef unsigned short u16;
+typedef signed int s32;
+typedef unsigned int u32;
+typedef signed long long s64;
+typedef unsigned long long u64;
+typedef float f32;
+typedef double f64;
+typedef int BOOL;
+#define TRUE 1
+#define FALSE 0
+#ifndef NULL
+#define NULL 0
+#endif
+
+#endif
+"""
+
+
+@dataclass
+class Function:
+    addr: int  # runtime VA
+    offset: int  # file offset in the XEX2
+    size: int
+    name: str
+
+
+def map_functions(game: Path, info: dict, xex: dict, *, log=print) -> list[dict] | None:
+    """Read the functions of the game from a ``functions.jsonl`` beside it, or return None if there is none.
+
+    Each line is a JSON object with hex ``a`` (function VA), ``end`` (exclusive VA, hex string or int),
+    optional ``n`` (name) and optional ``ranges`` (lists of ``[start, end]`` VAs). VAs are converted to file
+    offsets with ``(va - image_base) + payload_offset``. ``addr`` and ``ranges`` stay in VA space; ``offset``
+    is the file offset. This is the best available approximation for XEX2 (no ELF sections); see the note
+    above. Bad lines are skipped, but ambiguous maps or extents outside the image are errors the user can act on.
+    """
+    base = xex.get("image_base")
+    payload = xex.get("payload_offset")
+    size = xex.get("image_size")
+    if base is None or payload is None or size is None:
+        raise ForkError("this XEX2 has no image base / payload offset: cannot map function addresses to file offsets")
+    image_end = base + size
+
+    # same candidate list as the PS4 connector, so a probe's output works unchanged
+    candidates = [game.with_suffix(".functions.jsonl"), game.parent / "functions.jsonl",
+                  game.parent / "functions" / "functions.jsonl"]
+    extras = sorted(p for p in game.parent.iterdir() if p.is_file()
+                    and (p.name.lower().endswith(".functions.jsonl") or p.name.lower() == "functions.jsonl"))
+    if not any(p.is_file() for p in candidates):
+        if len(extras) > 1:
+            raise ForkError("more than one function map is beside this program: keep one, or name it functions.jsonl")
+        candidates.extend(extras)
+
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        out: list[dict] = []
+        skipped = 0
+        for line in candidate.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+                start = int(row["a"], 16) if isinstance(row["a"], str) else int(row["a"])
+                end_value = row["end"]
+                end = int(end_value, 16) if isinstance(end_value, str) else int(end_value)
+            except (ValueError, KeyError, TypeError):
+                skipped += 1
+                continue  # tolerant: one bad line is not a reason to reject the whole map
+            if start < base or end <= start:
+                raise ForkError(f"{candidate}: functions must use runtime VAs at or above 0x{base:X}, "
+                                "with an exclusive end after the start")
+            if end > image_end:
+                raise ForkError(f"{candidate}: function extent 0x{start:X}-0x{end:X} is outside the image "
+                                f"(0x{base:X}-0x{image_end:X})")
+            offset = start - base + payload
+            if offset + (end - start) > payload + size:
+                raise ForkError(f"{candidate}: function extent maps outside the XEX2 image")
+            try:
+                ranges = []
+                for pair in row.get("ranges", []):
+                    lo, hi = (int(v, 16) if isinstance(v, str) else int(v) for v in pair)
+                    if lo < base or hi <= lo or hi > image_end:
+                        raise ValueError("range outside image")
+                    ranges.append([lo, hi])
+            except (ValueError, TypeError, OverflowError):
+                raise ForkError(f"{candidate}: invalid function body ranges; use [start, end] VAs inside the image") from None
+            out.append({"name": row.get("n") or "", "addr": start, "offset": offset,
+                        "size": end - start, "ranges": ranges})
+        if skipped:
+            log(f"{candidate}: skipped {skipped} malformed line(s)")
+        if out:
+            return out
+    return None
+
+
+# Stage 4a: Ghidra discovery for a game with no functions.jsonl. A real XEX2 is not an ELF, but Ghidra loads
+# ELF64/PPC64 natively (language PowerPC:BE:64:A2ALT-32addr), so we wrap the image in a throwaway ET_EXEC whose one
+# PT_LOAD maps the image bytes at image_base. This is a DISPOSABLE INPUT FOR GHIDRA ONLY: it is not a runnable program
+# and is never kept. The live Ghidra analysis cannot be exercised here (Ghidra is not installed in this environment);
+# the wrapper's bytes and the VA->file-offset conversion are covered by synthetic tests in tests/test_xbox360_ghidra.py.
+
+ET_EXEC, PT_LOAD, PF_X, PF_R = 2, 1, 0x1, 0x4  # standard ELF values, independent of the delink tool's ET_REL
+EM_PPC64 = 21
+ELF_HEADER_BYTES, PHDR_BYTES = 64, 56
+
+
+def ghidra_image(game: Path, xex: dict, tmp: Path) -> Path:
+    """Build a minimal big-endian ELF64/PPC64 ET_EXEC wrapping the XEX2 image, at ``tmp``; return its path.
+
+    The 64-byte ELF header and single 56-byte PT_LOAD program header are followed immediately by the image bytes
+    (``payload_offset : payload_offset + image_size``) at file offset 64 + 56. The segment maps them at
+    ``image_base`` and ``e_entry`` is the XEX2 entry point (or the image base when the header has none). Ghidra
+    reads this as a normal ELF and finds functions in the whole executable image. No section headers: the image is
+    one contiguous span, like stage 3's ``text``. This is a disposable wrapper for Ghidra, not a runnable game.
+    """
+    base, payload, size = xex.get("image_base"), xex.get("payload_offset"), xex.get("image_size")
+    if base is None or payload is None or size is None or size <= 0:
+        raise ForkError("this XEX2 has no image base / payload offset / image size: cannot build a Ghidra wrapper")
+    image = game.read_bytes()[payload:payload + size]
+    if len(image) != size:
+        raise ForkError(f"this XEX2 image is truncated: expected {size} bytes at offset 0x{payload:X}, "
+                        f"found {len(image)}")
+    ident = b"\x7fELF" + bytes([2, 2, 1, 0]) + bytes(8)  # ELFCLASS64, ELFDATA2MSB, EV_CURRENT, SYSV ABI
+    phoff = ELF_HEADER_BYTES
+    image_off = phoff + PHDR_BYTES
+    header = struct.pack(">16sHHIQQQIHHHHHH", ident, ET_EXEC, EM_PPC64, 1,
+                         xex.get("entry_point") or base, phoff, 0, 0,
+                         ELF_HEADER_BYTES, PHDR_BYTES, 1, 0, 0, 0)
+    # p_align=1: no alignment requirement, so p_offset (120) need not match image_base modulo a page size.
+    phdr = struct.pack(">IIQQQQQQ", PT_LOAD, PF_X | PF_R, image_off, base, base, size, size, 1)
+    target = Path(tmp) / "xex2-ppc64.elf"
+    target.write_bytes(header + phdr + image)
+    return target
+
+
+def _function_from_ghidra(row: dict, xex: dict) -> dict | None:
+    """One Ghidra function row -> the dict shape ``map_functions`` returns, or None to drop it.
+
+    Ghidra reports VAs in ``entry``/``end`` (hex strings or ints); a VA's file offset is
+    ``(va - image_base) + payload_offset``. Thunks and extents that leave the mapped image are dropped: Ghidra
+    also sees stubs and helpers that are not part of this XEX2's image.
+    """
+    if row.get("thunk"):
+        return None
+    base, payload, size = xex["image_base"], xex["payload_offset"], xex["image_size"]
+    try:
+        entry = int(row["entry"], 16) if isinstance(row["entry"], str) else int(row["entry"])
+        end = int(row["end"], 16) if isinstance(row["end"], str) else int(row["end"])
+    except (KeyError, ValueError, TypeError):
+        return None
+    if end <= entry or entry < base or end > base + size:
+        return None
+    return {"name": row.get("name") or "", "addr": entry, "offset": entry - base + payload,
+            "size": end - entry, "ranges": [[entry, end]]}
+
+
+def ghidra_functions(game: Path, xex: dict, *, log=print) -> list[dict] | None:
+    """Find the game's functions with Ghidra, for a game with no functions.jsonl map.
+
+    Builds a disposable ELF64/PPC64 wrapper of the XEX2 image, asks the shared ``ghidra.functions`` for every
+    function it finds, and returns them in the same shape as ``map_functions`` (VA ``addr``, file ``offset``).
+    Returns None when nothing usable is found. The live Ghidra call cannot be verified here (Ghidra is not
+    installed in this environment): only the wrapper and conversion are unit-tested.
+    """
+    from ...forks import ghidra
+
+    if not ghidra.available():
+        raise ForkError("Ghidra isn't installed: install it in Setup to find this game's functions, or put a "
+                        "functions.jsonl map beside the game (one {\"a\", \"end\", \"n\"} object per line)")
+    with tempfile.TemporaryDirectory(prefix="decomp-xbox360-") as tmp:
+        wrapper = ghidra_image(game, xex, Path(tmp))
+        log(f"analysing {game.name} with Ghidra through a disposable ELF64/PPC64 wrapper (no function map)")
+        rows = ghidra.functions(wrapper)
+    found = [row for row in (_function_from_ghidra(r, xex) for r in rows) if row is not None]
+    return found or None
+
+
+def units(functions: list[Function]) -> dict[str, list[Function]]:
+    """Source files: runs of neighbouring functions of about UNIT_BYTES each."""
+    out: dict[str, list[Function]] = {}
+    cur: list[Function] = []
+    for fn in functions:
+        if cur and (fn.addr + fn.size - cur[0].addr > UNIT_BYTES
+                    or fn.addr - (cur[-1].addr + cur[-1].size) > GAP_BYTES):
+            out[f"text_{cur[0].addr:08X}"] = cur
+            cur = []
+        cur.append(fn)
+    if cur:
+        out[f"text_{cur[0].addr:08X}"] = cur
+    return out
+
+
+def write_atomic(path: Path, text: str) -> None:
+    """Write beside the file and rename: the app and agents can act on the same project at once."""
+    tmp = path.with_name(f"{path.name}.tmp{os.getpid()}")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def objdiff_config(version: str, groups: dict[str, list[Function]]) -> dict:
+    """The initial objdiff.json, so the project is detectable and judgeable before the first kit build.
+
+    Target objects are cut from the XEX2 by a delinker that is not part of this stage; the paths are the
+    conventional ones so ``tools/configure.py`` can fill them in when the user's xsdk kit is available.
+    """
+    build = Path("build") / version
+    return {
+        "$schema": "https://raw.githubusercontent.com/encounter/objdiff/main/config.schema.json",
+        "custom_make": "ninja", "custom_args": [], "build_target": False, "build_base": True,
+        "watch_patterns": ["*.c", "*.h"],
+        "options": {"functionRelocDiffs": "all", "combineTextSections": True},
+        "units": [{"name": u,
+                   "target_path": str(build / "target" / f"{u}.o"),
+                   "base_path": str(build / "src" / "auto" / f"{u}.o"),
+                   "metadata": {"source_path": f"src/auto/{u}.c", "complete": False}}
+                  for u in groups],
+    }
+
+
+def create(root: Path, game: Path, *, compiler: str | None = None, log=print) -> dict:
+    """Build a PROJECT-mode decomp project in ``root`` from a function map beside ``game``, or from Ghidra.
+
+    A ``functions.jsonl`` map supplies every function when present; otherwise Ghidra discovers them through a
+    disposable ELF64/PPC64 wrapper of the image (stage 4a). XEX2 has no ELF sections, so the config's ``text`` is
+    the whole image at its payload offset, and no relocations are recovered here (relocs are written empty).
+    ``root`` must not exist yet. A user xsdk kit is needed only to build the project, not to create it.
+    """
+    info = game_info(game)
+    try:
+        xex = read_xex2(game.read_bytes())
+    except (ValueError, OSError) as exc:
+        raise ForkError(f"{game} is not a readable XEX2 program: {exc}") from None
+    if xex["image_base"] is None:
+        raise ForkError("this XEX2 has no image base, so function addresses cannot be mapped to file offsets")
+
+    version = re.sub(r"[^A-Za-z0-9_.-]+", "_", info["id"]) or "game"
+    chosen = compiler or "xbox360-xsdk-placeholder"
+    log(f"reading {game.name}: image at 0x{xex['image_base']:X} ({xex['image_size']} bytes)")
+    found = map_functions(game, info, xex, log=log)
+    source = "function map"
+    if found:
+        log(f"using the function map beside the game: {len(found)} functions")
+    else:
+        from ...forks import ghidra
+
+        if not ghidra.available():
+            raise ForkError("no functions.jsonl map beside the game and no Ghidra to find them: put a map in the "
+                            "game's folder (one JSON object per line: {\"a\": \"<VA hex>\", \"end\": \"<VA hex>\", "
+                            "\"n\": \"name\"}; VAs are runtime addresses), or install Ghidra in Setup")
+        source = "Ghidra analysis"
+        found = ghidra_functions(game, xex, log=log)
+        if not found:
+            raise ForkError("neither a functions.jsonl map nor Ghidra found functions in this XEX2 image")
+
+    functions: list[Function] = []
+    used: set[str] = set()
+    for row in found:
+        name = row["name"]
+        if not (name and _IDENT.fullmatch(name)) or name in used:
+            name = f"func_{row['addr']:08X}"
+        used.add(name)
+        functions.append(Function(row["addr"], row["offset"], row["size"], name))
+    groups = units(functions)
+    log(f"{len(functions)} functions in {len(groups)} source files")
+
+    shutil.copytree(TEMPLATE, root)
+    (root / "orig").mkdir()
+    original = root / "orig" / f"{version}.xex"
+    try:
+        os.link(game, original)  # hardlink where possible, never a second copy of a large game
+    except OSError:
+        shutil.copyfile(game, original)
+    (root / "include").mkdir(exist_ok=True)
+    (root / "include" / "common.h").write_text(TYPES_H, encoding="utf-8")
+
+    conf = root / "config" / version
+    conf.mkdir(parents=True)
+    write_atomic(conf / "functions.json", json.dumps({
+        "target_format_version": 4, "elf": f"orig/{version}.xex", "sha1": info["sha1"],
+        "image_base": xex["image_base"], "entry": xex.get("entry_point") or 0,
+        # XEX2 approximation: the "text" is the whole image, not an ELF section.
+        "text": {"va": xex["image_base"], "offset": xex["payload_offset"], "size": xex["image_size"]},
+        "units": {u: [{"name": f.name, "addr": f.addr, "offset": f.offset, "size": f.size, "relocs": []}
+                      for f in fns] for u, fns in groups.items()},
+    }, indent=1))
+    for u, fns in groups.items():
+        src = root / "src" / "auto" / f"{u}.c"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text(f"/* {len(fns)} function{'s' if len(fns) != 1 else ''} from 0x{fns[0].addr:08X} to "
+                       f"0x{fns[-1].addr + fns[-1].size:08X}, from the game's {source}. */\n"
+                       "#include \"common.h\"\n", encoding="utf-8")
+    write_atomic(root / "objdiff.json", json.dumps(objdiff_config(version, groups), indent=2))
+
+    (root / ".decomp.wtf.json").write_text(json.dumps({
+        "created": "from scratch", "platform": "xbox360", "version": version, "compiler": chosen,
+        "game": {"what": "your own copy of the game's XEX2", "path": f"orig/{version}.xex", "sha1": info["sha1"]},
+        "setup": [[sys.executable, "tools/configure.py", version]],
+    }, indent=2), encoding="utf-8")
+    (root / ".gitignore").write_text("orig/\nbuild/\nbuild.ninja\n.ninja_*\nobjdiff.json\n__pycache__/\n.decomp-wtf/\n",
+                                     encoding="utf-8")
+    (root / "README.md").write_text(
+        f"# {info['title']} decompilation\n\n"
+        "Started from scratch with decompdecomp: functions were found by Ghidra or read from a `functions.jsonl` "
+        f"map beside your own XEX2 copy ({source}), and objdiff compares each source file with the original.\n\n"
+        f"1. Your copy of the program is here as `orig/{version}.xex` (never commit it).\n"
+        f"2. Install your xsdk kit, then `XSDK_CC=powerpc-xsdk-elf-gcc python tools/configure.py {version}` and "
+        "`ninja`. See `project_template/README` for the flags.\n"
+        "3. Decompiled code goes in `src/`; `objdiff.json` shows each function's progress.\n\n"
+        "XEX2 has no ELF sections: `text` here is the whole image at its payload offset, addresses are runtime "
+        "VAs, and no relocations are recovered by this stage. When there was no function map, Ghidra found the "
+        "functions through a disposable ELF64/PPC64 wrapper of the image.\n",
+        encoding="utf-8")
+    log(f"{len(groups)} source files for agents to write into")
+    return {"platform": "xbox360", "id": version, "title": info["title"], "compiler": chosen,
+            "sources": len(groups), "sha1": info["sha1"]}

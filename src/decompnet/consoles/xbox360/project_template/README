@@ -1,0 +1,25 @@
+Xbox 360 project template (decompdecomp, stage 3)
+=================================================
+
+This is a deliberately small scaffold. It needs the user's own xsdk kit: decompdecomp
+does not bundle or download the Xbox XDK. Nothing here is run when a project is
+created; configure.py and compile.py are here for the user's first build.
+
+Configure:
+    XSDK_CC=powerpc-xsdk-elf-gcc python tools/configure.py VERSION
+    ninja
+
+Environment (all optional except that the compiler must exist):
+    XSDK_CC    compiler to call (default: powerpc-xsdk-elf-gcc)
+    XSDK_FLAGS flags passed to the compiler (defaults to the list below)
+
+Default flags, chosen for PowerPC64 / Cell / the xsdk runtime:
+    -mcpu=cell -fno-pic -mcall-xsdk -ffreestanding
+    -fno-builtin -fno-exceptions -fno-rtti
+
+These are starting flags, not verified for every game; check them against the
+game's own build before trusting a match. tools/compile.py produces the ELF
+objects that objdiff compares (the "base" side). The "target" objects are cut
+from the XEX2 by a delinker that is not part of this stage, so configure.py
+writes their conventional paths but does not build them. Ghidra-based function
+discovery, for games without a functions.jsonl map, is a later option.
