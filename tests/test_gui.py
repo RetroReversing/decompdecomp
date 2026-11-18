@@ -149,7 +149,10 @@ def test_a_ds_rom_is_told_by_its_header_as_the_server_tells_it(gui):
     assert nds["broken"] is None and "checksum" in nds["said"]
     xbox = gui["checks"]["xbox"]
     assert xbox["good"] == ["xbox", "Xbox program (XBE)"] and xbox["misaligned"] is None
-    assert xbox["iso"] == xbox["dump"] == "xbox" and xbox["plain"] is None and "Xbox 360" in xbox["x360"]
+    assert xbox["iso"] == xbox["dump"] == "xbox" and xbox["plain"] is None
+    assert xbox["x360"] == ["xbox360", "Xbox 360 program (XEX2)"]
+    assert "doesn't look like an XEX2" in xbox["x360bad"]
+    assert gui["checks"]["x360Drop"] == ["xbox360", ["game.functions.jsonl"]]
 
 
 def test_a_ps3_program_is_taken_and_its_encrypted_eboot_says_what_to_do(gui):

@@ -312,6 +312,13 @@ function identifyHead(head, file) {
       pack: pe64 ? consoleOf("pc")?.pack_x64 || "msvc2015" : pcPack(head, pe), target: pe64 ? "x64" : "x86" };
   }
   if (isXbe(head, dv)) return { ...base, platform: "xbox", order: "Xbox program (XBE)" };
+  // an XEX2's header directory, security header and payload must fit in that order (big-endian offsets, as the
+  // server's is_xex2 checks); an entry lives in a header directory, not the first bytes, so say "from the disc"
+  if (head.length >= 24 && text(0, 4) === "XEX2") {
+    const payload = dv.getUint32(8), security = dv.getUint32(16), count = dv.getUint32(20);
+    if (count <= 4096 && 24 + count * 8 <= security && security + 8 <= payload)
+      return { ...base, platform: "xbox360", order: "Xbox 360 program (XEX2)" };
+  }
   if (head.length >= 64 && text(0, 4) === "\x7fELF" && head[4] === 2 && head[5] === 1
       && [0xfe10, 0xfe04].includes(dv.getUint16(16, true)) && dv.getUint16(18, true) === 62)
     return { ...base, platform: "ps4", order: "decrypted Orbis ELF", entry: Number(dv.getBigUint64(24, true)) };
@@ -368,7 +375,7 @@ function notSupported(head, file) {
   }
   if (ext === "nds") return "That doesn't look like a DS ROM: its header's checksum is wrong. Try a clean dump of your cartridge.";
   if (ext === "gba") return "That doesn't look like a Game Boy Advance ROM: its header's branch, fixed 0x96 byte or checksum is wrong. Try a clean dump of your cartridge.";
-  if (text(0, 4) === "XEX2" || ext === "xex") return "That's an Xbox 360 program. Xbox 360 games aren't supported yet.";
+  if (ext === "xex") return "That doesn't look like an XEX2 program: try a clean copy.";
   if (["nsp", "xci", "nso", "nro", "nca"].includes(ext) || text(0, 4) === "NSO0" || text(0, 4) === "PFS0") return "That's a Nintendo Switch file. Switch games aren't supported yet.";
   if (["sfc", "smc"].includes(ext)) return "That's a Super Nintendo ROM. SNES games were written in assembly, not compiled from C, so there's no C source to match.";
   if (["nes", "gb", "gbc", "md", "gen", "sms", "gg", "pce"].includes(ext)) return "Games for that console were written in assembly, not compiled from C, so there's no C source to match.";
@@ -401,7 +408,7 @@ async function pickFile(file, extras = []) {
   }
   // Send only the sidecars this console reads beside its uploaded program.
   picked = { buf, info, name: file.name, extras: extras.filter((f) => info.platform === "win32" ? /\.(pdb|map)$/i.test(f.name)
-    : info.platform === "ps4" && /(?:^|\.)functions\.jsonl$/i.test(f.name)) };
+    : (info.platform === "ps4" || info.platform === "xbox360") && /(?:^|\.)functions\.jsonl$/i.test(f.name)) };
   $("romFile").textContent = file.name;
   $("romTitle").textContent = info.title;
   const p = info.platform;

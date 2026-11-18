@@ -529,7 +529,7 @@ const settle = async () => { for (let i = 0; i < SETTLE_TICKS; i++) await tick()
     } finally { document.getElementById = original; S.st = was; picked = oldPicked; }
   })()`, ctx);
   answers["/api/state"] = state;
-  // an Xbox program (XBEH, base address on a 4 KiB boundary), an XISO and a full dump's disc, and the 360's XEX2 refused
+  // an Xbox program (XBEH, base address on a 4 KiB boundary), an XISO and a full dump's disc, and the 360's XEX2 taken
   checks.xbox = await vm.runInContext(`(async () => {
       const xbe = new Uint8Array(0x200), dv = new DataView(xbe.buffer);
       [..."XBEH"].forEach((c, i) => { xbe[i] = c.charCodeAt(0); });
@@ -542,11 +542,30 @@ const settle = async () => { for (let i = 0; i < SETTLE_TICKS; i++) await tick()
         if (a === at) [..."MICROSOFT*XBOX*MEDIA"].forEach((c, i) => { out[i] = c.charCodeAt(0); });
         return out.buffer;
       } }) });
-      const x360 = new Uint8Array(0x200);
+      const x360 = new Uint8Array(0x200), dv360 = new DataView(x360.buffer);
       [..."XEX2"].forEach((c, i) => { x360[i] = c.charCodeAt(0); });
+      const broken360 = new Uint8Array(x360);  // magic only, no header offsets: not a usable XEX2
+      dv360.setUint32(8, 0x1000); dv360.setUint32(16, 0x100); dv360.setUint32(20, 1);  // payload, security, one descriptor
+      const seen = identifyHead(x360, { name: "a.xex", size: 0x200 });
       return { good: good && [good.platform, good.order], misaligned: identifyHead(xbe, file),
                iso: (await identifyXboxDisc(disc(0x10000)))?.platform, dump: (await identifyXboxDisc(disc(0x18310000)))?.platform,
-               plain: await identifyXboxDisc(disc(0x20000)), x360: notSupported(x360, { name: "a.xex" }) };
+               plain: await identifyXboxDisc(disc(0x20000)), x360: seen && [seen.platform, seen.order],
+               x360bad: notSupported(broken360, { name: "a.xex" }) };
     })()`, ctx);
+  checks.x360Drop = await vm.runInContext(`(async () => {
+    const was = S.st, original = document.getElementById, oldPicked = picked;
+    const nodes = {};
+    document.getElementById = (id) => nodes[id] || (nodes[id] = { hidden: false, checked: false, innerHTML: "", textContent: "", value: "", insertAdjacentHTML() {} });
+    try {
+      const h = new Uint8Array(0x200), dv = new DataView(h.buffer);
+      [..."XEX2"].forEach((c, i) => { h[i] = c.charCodeAt(0); });
+      dv.setUint32(8, 0x1000); dv.setUint32(16, 0x100); dv.setUint32(20, 1);
+      const con = { ...SERVER_CONSOLES.find((c) => c.id === "xbox360"), import_error: "" };
+      S.st = { consoles: [con], toolchains: [] };
+      await pickFile({ name: "a.xex", size: h.length, slice: () => ({ arrayBuffer: async () => h.buffer }) },
+                     [{ name: "game.functions.jsonl", size: 20 }, { name: "notes.txt", size: 3 }]);
+      return [picked.info.platform, picked.extras.map((f) => f.name)];
+    } finally { document.getElementById = original; S.st = was; picked = oldPicked; }
+  })()`, ctx);
   process.stdout.write(JSON.stringify({ toasts, notes, unread, errors, checks }));
 })().catch((e) => { console.error(e); process.exit(1); });
