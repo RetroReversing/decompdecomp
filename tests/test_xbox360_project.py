@@ -126,7 +126,12 @@ def test_create_builds_a_judgeable_project(tmp_path: Path):
     assert manifest["platform"] == "xbox360" and manifest["version"] == info["id"]
 
 
-def test_create_without_a_map_has_an_actionable_error(tmp_path: Path):
+def test_create_without_a_map_has_an_actionable_error(tmp_path: Path, monkeypatch):
+    from decompnet.forks import ghidra
+
+    # This test claims to check the no-Ghidra, no-map error. Ghidra is installed here, so pin it as unavailable
+    # rather than depending on whichever error the (now working) Ghidra path happens to raise.
+    monkeypatch.setattr(ghidra, "available", lambda: False)
     game = _game(tmp_path, None)
     with pytest.raises(ForkError, match="functions.jsonl"):
         XBOX360.create_project(tmp_path / "project", game)

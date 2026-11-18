@@ -13,6 +13,11 @@ The image body at ``payload_offset`` is not necessarily the memory image: XEX2 m
 ``XEX_HEADER_FILE_FORMAT_INFO``) and may encrypt it. Only unencrypted images with no compression or XEX2 "basic"
 compression (a table of data/zero block pairs) are expanded here, for Ghidra's disposable ELF wrapper. Encrypted
 bodies and the normal/delta compression modes are NOT handled: decompdecomp does not decrypt game data.
+
+For a basic-compressed XEX2 the raw ``payload_offset`` bytes are compressed, not the memory image Ghidra analyses.
+``create`` therefore expands the image once and writes the EXPANDED bytes to ``orig/<version>.image.bin``; the
+project judges against that file (offset 0), while the raw ``.xex`` is kept beside it for identity/provenance. For an
+uncompressed XEX2 the raw file is the image and its ``payload_offset`` stays the base for file offsets.
 """
 
 from __future__ import annotations
@@ -115,9 +120,9 @@ def game_info(game: Path) -> dict:
 
 # --------------------------------------------------------------------------------------------- function map / project
 # Stage 3: a FUNCTION-MAP path that needs no Ghidra. XEX2 has no section table like an ELF's, so the "code" is
-# approximated as one contiguous span from xex["image_base"] over xex["image_size"], mapped to file offset
-# xex["payload_offset"]. Addresses in functions.jsonl are runtime VAs (what a Ghidra probe reports); the file
-# offset of a VA is (va - image_base) + payload_offset.
+# approximated as one contiguous span from xex["image_base"] over xex["image_size"]. Addresses in functions.jsonl
+# are runtime VAs (what a Ghidra probe reports); a VA's file offset is (va - image_base) + base_offset, where
+# base_offset is 0 into an expanded image or xex["payload_offset"] into the raw file (see judge_image).
 # Stage 4a: a GHIDRA-DISCOVERY path for games with no map, through a disposable ELF64/PPC64 wrapper below.
 
 TEMPLATE = Path(__file__).with_name("project_template")
@@ -160,17 +165,27 @@ class Function:
     name: str
 
 
-def map_functions(game: Path, info: dict, xex: dict, *, log=print) -> list[dict] | None:
+def file_offset(va: int, image_base: int, base_offset: int) -> int:
+    """The one VA -> file-offset conversion shared by the map and Ghidra paths.
+
+    ``base_offset`` is 0 into an expanded (basic-compressed) image, or ``payload_offset`` into the raw file.
+    """
+    return va - image_base + base_offset
+
+
+def map_functions(game: Path, info: dict, xex: dict, *, base_offset: int | None = None,
+                  log=print) -> list[dict] | None:
     """Read the functions of the game from a ``functions.jsonl`` beside it, or return None if there is none.
 
     Each line is a JSON object with hex ``a`` (function VA), ``end`` (exclusive VA, hex string or int),
     optional ``n`` (name) and optional ``ranges`` (lists of ``[start, end]`` VAs). VAs are converted to file
-    offsets with ``(va - image_base) + payload_offset``. ``addr`` and ``ranges`` stay in VA space; ``offset``
+    offsets with ``file_offset``: ``(va - image_base) + base_offset`` (``base_offset`` defaults to
+    ``payload_offset`` for callers with no expanded image). ``addr`` and ``ranges`` stay in VA space; ``offset``
     is the file offset. This is the best available approximation for XEX2 (no ELF sections); see the note
     above. Bad lines are skipped, but ambiguous maps or extents outside the image are errors the user can act on.
     """
     base = xex.get("image_base")
-    payload = xex.get("payload_offset")
+    payload = xex.get("payload_offset") if base_offset is None else base_offset
     size = xex.get("image_size")
     if base is None or payload is None or size is None:
         raise ForkError("this XEX2 has no image base / payload offset: cannot map function addresses to file offsets")
@@ -209,7 +224,7 @@ def map_functions(game: Path, info: dict, xex: dict, *, log=print) -> list[dict]
             if end > image_end:
                 raise ForkError(f"{candidate}: function extent 0x{start:X}-0x{end:X} is outside the image "
                                 f"(0x{base:X}-0x{image_end:X})")
-            offset = start - base + payload
+            offset = file_offset(start, base, payload)
             if offset + (end - start) > payload + size:
                 raise ForkError(f"{candidate}: function extent maps outside the XEX2 image")
             try:
@@ -340,16 +355,40 @@ def ghidra_image(game: Path, xex: dict, tmp: Path) -> Path:
     return target
 
 
-def _function_from_ghidra(row: dict, xex: dict) -> dict | None:
+def _base_offset(xex: dict, fmt: dict) -> int:
+    """0 into a basic-compressed image's expanded bytes, else the raw file's payload offset."""
+    return 0 if fmt.get("compression") == 1 else xex["payload_offset"]
+
+
+def judge_image(root: Path, game: Path, xex: dict, fmt: dict, version: str) -> tuple[str, str, int]:
+    """Pick the image the project judges against: (config-relative path, sha1, base offset for VAs).
+
+    For a basic-compressed XEX2 the raw payload is compressed while Ghidra analysed the EXPANDED image, so target
+    objects must be cut from the expanded bytes; write them once to ``orig/<version>.image.bin`` and use offset 0.
+    The raw ``.xex`` is still kept in ``orig/`` for identity (copied by ``create``). For an uncompressed body the raw
+    file at ``payload_offset`` already is the image, so that stays the base. ``text.size`` is ``image_size`` either
+    way (``expand_basic_image`` guarantees the expanded length equals it).
+    """
+    offset = _base_offset(xex, fmt)
+    if fmt.get("compression") == 1:
+        image = expand_basic_image(game.read_bytes(), xex, fmt)
+        rel = f"orig/{version}.image.bin"
+        (root / rel).write_bytes(image)
+        return rel, hashlib.sha1(image).hexdigest(), offset
+    return f"orig/{version}.xex", hashlib.sha1(game.read_bytes()).hexdigest(), offset
+
+
+def _function_from_ghidra(row: dict, xex: dict, base_offset: int | None = None) -> dict | None:
     """One Ghidra function row -> the dict shape ``map_functions`` returns, or None to drop it.
 
-    Ghidra reports VAs in ``entry``/``end`` (hex strings or ints); a VA's file offset is
-    ``(va - image_base) + payload_offset``. Thunks and extents that leave the mapped image are dropped: Ghidra
-    also sees stubs and helpers that are not part of this XEX2's image.
+    Ghidra reports VAs in ``entry``/``end`` (hex strings or ints); a VA's file offset is ``file_offset``:
+    ``(va - image_base) + base_offset`` (defaulting to ``payload_offset`` without an expanded image). Thunks and
+    extents that leave the mapped image are dropped: Ghidra also sees stubs and helpers outside this XEX2's image.
     """
     if row.get("thunk"):
         return None
-    base, payload, size = xex["image_base"], xex["payload_offset"], xex["image_size"]
+    base, size = xex["image_base"], xex["image_size"]
+    payload = xex.get("payload_offset") if base_offset is None else base_offset
     try:
         entry = int(row["entry"], 16) if isinstance(row["entry"], str) else int(row["entry"])
         end = int(row["end"], 16) if isinstance(row["end"], str) else int(row["end"])
@@ -357,17 +396,18 @@ def _function_from_ghidra(row: dict, xex: dict) -> dict | None:
         return None
     if end <= entry or entry < base or end > base + size:
         return None
-    return {"name": row.get("name") or "", "addr": entry, "offset": entry - base + payload,
+    return {"name": row.get("name") or "", "addr": entry, "offset": file_offset(entry, base, payload),
             "size": end - entry, "ranges": [[entry, end]]}
 
 
-def ghidra_functions(game: Path, xex: dict, *, log=print) -> list[dict] | None:
+def ghidra_functions(game: Path, xex: dict, *, base_offset: int | None = None, log=print) -> list[dict] | None:
     """Find the game's functions with Ghidra, for a game with no functions.jsonl map.
 
     Builds a disposable ELF64/PPC64 wrapper of the XEX2 image, asks the shared ``ghidra.functions`` for every
     function it finds, and returns them in the same shape as ``map_functions`` (VA ``addr``, file ``offset``).
-    Returns None when nothing usable is found. The live Ghidra call cannot be verified here (Ghidra is not
-    installed in this environment): only the wrapper and conversion are unit-tested.
+    Conventions are not required here: PowerPC64 has a fixed ABI, so Ghidra never decorates its names and "unknown"
+    is expected. Returns None when nothing usable is found. The live Ghidra call cannot be verified here (Ghidra is
+    not installed in this environment): only the wrapper and conversion are unit-tested.
     """
     from ...forks import ghidra
 
@@ -377,8 +417,8 @@ def ghidra_functions(game: Path, xex: dict, *, log=print) -> list[dict] | None:
     with tempfile.TemporaryDirectory(prefix="decomp-xbox360-") as tmp:
         wrapper = ghidra_image(game, xex, Path(tmp))
         log(f"analysing {game.name} with Ghidra through a disposable ELF64/PPC64 wrapper (no function map)")
-        rows = ghidra.functions(wrapper)
-    found = [row for row in (_function_from_ghidra(r, xex) for r in rows) if row is not None]
+        rows = ghidra.functions(wrapper, require_conventions=False)
+    found = [row for row in (_function_from_ghidra(r, xex, base_offset) for r in rows) if row is not None]
     return found or None
 
 
@@ -429,23 +469,30 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
 
     A ``functions.jsonl`` map supplies every function when present; otherwise Ghidra discovers them through a
     disposable ELF64/PPC64 wrapper of the image (stage 4a). XEX2 has no ELF sections, so the config's ``text`` is
-    the whole image at its payload offset, and no relocations are recovered here (relocs are written empty).
-    Basic-compressed bodies are expanded for that wrapper; encrypted and normal/delta-compressed bodies are not
-    handled, so use a function map (or prepare an unencrypted basic-compression copy) for those. ``root`` must not
-    exist yet. A user xsdk kit is needed only to build the project, not to create it.
+    the whole image, and no relocations are recovered here (relocs are written empty). For a basic-compressed XEX2
+    the project judges against the EXPANDED image written to ``orig/<version>.image.bin`` (offset 0); the raw
+    ``.xex`` is kept beside it for identity and an uncompressed body is judged there at its payload offset.
+    Encrypted and normal/delta-compressed bodies are not handled, so use a function map (or prepare an unencrypted
+    basic-compression copy) for those. ``root`` must not exist yet. A user xsdk kit is needed only to build the
+    project, not to create it.
     """
     info = game_info(game)
     try:
-        xex = read_xex2(game.read_bytes())
+        data = game.read_bytes()
+        xex = read_xex2(data)
     except (ValueError, OSError) as exc:
         raise ForkError(f"{game} is not a readable XEX2 program: {exc}") from None
     if xex["image_base"] is None:
         raise ForkError("this XEX2 has no image base, so function addresses cannot be mapped to file offsets")
+    fmt = read_file_format(data, xex)
+    # Ghidra analysed the expanded image of a basic-compressed XEX2, so a VA's file offset starts at 0 in that image;
+    # the raw payload offset is the base only for an uncompressed body.
+    base_offset = _base_offset(xex, fmt)
 
     version = re.sub(r"[^A-Za-z0-9_.-]+", "_", info["id"]) or "game"
     chosen = compiler or "xbox360-xsdk-placeholder"
     log(f"reading {game.name}: image at 0x{xex['image_base']:X} ({xex['image_size']} bytes)")
-    found = map_functions(game, info, xex, log=log)
+    found = map_functions(game, info, xex, base_offset=base_offset, log=log)
     source = "function map"
     if found:
         log(f"using the function map beside the game: {len(found)} functions")
@@ -457,7 +504,7 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
                             "game's folder (one JSON object per line: {\"a\": \"<VA hex>\", \"end\": \"<VA hex>\", "
                             "\"n\": \"name\"}; VAs are runtime addresses), or install Ghidra in Setup")
         source = "Ghidra analysis"
-        found = ghidra_functions(game, xex, log=log)
+        found = ghidra_functions(game, xex, base_offset=base_offset, log=log)
         if not found:
             raise ForkError("neither a functions.jsonl map nor Ghidra found functions in this XEX2 image")
 
@@ -479,16 +526,18 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
         os.link(game, original)  # hardlink where possible, never a second copy of a large game
     except OSError:
         shutil.copyfile(game, original)
+    judge_rel, judge_sha1, judge_offset = judge_image(root, game, xex, fmt, version)
     (root / "include").mkdir(exist_ok=True)
     (root / "include" / "common.h").write_text(TYPES_H, encoding="utf-8")
 
     conf = root / "config" / version
     conf.mkdir(parents=True)
     write_atomic(conf / "functions.json", json.dumps({
-        "target_format_version": 4, "elf": f"orig/{version}.xex", "sha1": info["sha1"],
+        "target_format_version": 4, "elf": judge_rel, "sha1": judge_sha1,
         "image_base": xex["image_base"], "entry": xex.get("entry_point") or 0,
-        # XEX2 approximation: the "text" is the whole image, not an ELF section.
-        "text": {"va": xex["image_base"], "offset": xex["payload_offset"], "size": xex["image_size"]},
+        # XEX2 approximation: the "text" is the whole image, not an ELF section. For a basic-compressed XEX2 this is
+        # the expanded image in orig/ (offset 0); otherwise it is the raw payload.
+        "text": {"va": xex["image_base"], "offset": judge_offset, "size": xex["image_size"]},
         "units": {u: [{"name": f.name, "addr": f.addr, "offset": f.offset, "size": f.size, "relocs": []}
                       for f in fns] for u, fns in groups.items()},
     }, indent=1))
@@ -515,8 +564,10 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
         f"2. Install your xsdk kit, then `XSDK_CC=powerpc-xsdk-elf-gcc python tools/configure.py {version}` and "
         "`ninja`. See `project_template/README` for the flags.\n"
         "3. Decompiled code goes in `src/`; `objdiff.json` shows each function's progress.\n\n"
-        "XEX2 has no ELF sections: `text` here is the whole image at its payload offset, addresses are runtime "
-        "VAs, and no relocations are recovered by this stage. When there was no function map, Ghidra found the "
+        "XEX2 has no ELF sections: `text` here is the whole image, addresses are runtime VAs, and no relocations "
+        "are recovered by this stage. For a basic-compressed XEX2 the project judges against the expanded image "
+        f"in `orig/{version}.image.bin` (the raw `{version}.xex` is kept for identity); for an uncompressed one it "
+        "judges against the raw file at its payload offset. When there was no function map, Ghidra found the "
         "functions through a disposable ELF64/PPC64 wrapper of the image.\n",
         encoding="utf-8")
     log(f"{len(groups)} source files for agents to write into")

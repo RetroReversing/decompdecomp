@@ -5,7 +5,9 @@ it needs). Stage 2a adds the user-supplied xsdk kit (``kits/xsdk.py``: the free 
 cross toolchain and SDK, a user copy rather than a pinned pack) and a small original demo
 (``projects/demo-xbox360``). Stage 3 creates a PROJECT-mode decomp project from a
 ``functions.jsonl`` map beside the game (no Ghidra needed). Stage 4a discovers functions
-with Ghidra, through a disposable ELF64/PPC64 wrapper, when there is no map.
+with Ghidra, through a disposable ELF64/PPC64 wrapper, when there is no map. For a
+basic-compressed XEX2 the project judges against an expanded image written to
+``orig/<version>.image.bin``, not the raw compressed file.
 """
 
 from __future__ import annotations

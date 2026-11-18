@@ -132,14 +132,20 @@ def decompile_object(obj: Path, cache_dir: Path, timeout: float = 900) -> dict[s
 _NO_DECOMPILER = ("decompile does not exist", "decompile.exe does not exist", "Decompiler executable may not be compatible")
 
 
-def functions(program: Path, timeout: float = 3600) -> list[dict]:
+def functions(program: Path, timeout: float = 3600, *, require_conventions: bool = True) -> list[dict]:
     """Every function Ghidra's analysis finds in a whole program (a Windows .exe: Ghidra reads its imports, exports and
     the C runtime's functions too): {"entry", "end", "name", "source", "purge", "convention", "params", "thunk"}.
 
     Ghidra tells functions' calling conventions with its decompiler, a native program. Without it the analysis goes
     on, and every function's convention is "unknown": a Mac's Ghidra had none, and every __fastcall and __thiscall
     function of its games was imported as __cdecl. A decompiler that is missing or won't start stops the import
-    (ForkError) instead. One that can't be run at all says nothing: no function with a convention says it then."""
+    (ForkError) instead. One that can't be run at all says nothing: no function with a convention says it then.
+
+    `require_conventions` (default True) keeps that "no function got a calling convention" stop for the processors
+    that need it. Pass False for a fixed-ABI processor (the Xbox 360's PowerPC): Ghidra doesn't decorate its names
+    with a convention there, so "unknown" is expected and harmless. The explicit "decompiler didn't run" signal is
+    still fatal even then: it means the decompiler binary failed (on PPC64 it can also mean Ghidra has no decompiler
+    for that language -- callers there should fall back to a function map rather than rely on this guard)."""
     if not available():  # (an import and a reimport install it first: scratch.ensure_ghidra)
         raise ForkError("Ghidra isn't installed, or not all of it (its decompiler is missing, or the JDK it needs): "
                         "import the game again, and decompdecomp installs it (on a Mac that builds its decompiler, "
@@ -148,7 +154,8 @@ def functions(program: Path, timeout: float = 3600) -> list[dict]:
     rows = _run_script(program, "DecompWtfFunctions.java", timeout, said=said)
     why = next((ln.strip() for ln in said if any(s in ln for s in _NO_DECOMPILER)), None)
     found = [r for r in rows if not r.get("thunk")]
-    if why is None and found and all(r.get("convention") in ("unknown", "null", None) for r in found):
+    if require_conventions and why is None and found and all(
+            r.get("convention") in ("unknown", "null", None) for r in found):
         why = "no function it found got a calling convention"
     if why is not None:
         raise ForkError(f"Ghidra's decompiler didn't run ({why}), and without it Ghidra can't tell the functions' "

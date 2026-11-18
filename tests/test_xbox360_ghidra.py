@@ -140,10 +140,11 @@ def test_ghidra_functions_converts_stubbed_rows(tmp_path: Path, monkeypatch):
 
     seen = {}
 
-    def _fake_functions(program: Path):
+    def _fake_functions(program: Path, *, require_conventions: bool = True):
         data = program.read_bytes()  # the wrapper is still alive inside the temp dir
         seen["elf"] = data[:6]
         seen["name"] = program.name
+        seen["require_conventions"] = require_conventions
         return [
             {"entry": BASE, "end": BASE + 0x20, "name": "start", "thunk": False},
             {"entry": BASE + 0x40, "end": BASE + 0x50, "name": "stub", "thunk": True},
@@ -157,6 +158,7 @@ def test_ghidra_functions_converts_stubbed_rows(tmp_path: Path, monkeypatch):
 
     got = scratch.ghidra_functions(game, xex)
     assert seen["elf"] == b"\x7fELF\x02\x02" and seen["name"] == "xex2-ppc64.elf"
+    assert seen["require_conventions"] is False  # PPC64 has a fixed ABI; unknown conventions are fine
     assert got == [
         {"name": "start", "addr": BASE, "offset": PAYLOAD, "size": 0x20, "ranges": [[BASE, BASE + 0x20]]},
     ]
