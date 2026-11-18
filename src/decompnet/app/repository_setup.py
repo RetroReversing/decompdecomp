@@ -193,7 +193,13 @@ def run(net, slug, action, origin, log, *, github_name="", visibility="private")
             if action == 'init':
                 if not net.is_rom(proj):raise NetworkError('Imported projects use their existing source checkout.')
                 root = root or path.parent
-                if not (root/'.git').exists():git(root, 'init', '--initial-branch=main')
+                if not (root/'.git').exists():
+                    try:
+                        git(root, 'init', '--initial-branch=main')
+                    except NetworkError:
+                        # git before 2.28 has no --initial-branch; init, then name the branch it starts on.
+                        git(root, 'init')
+                        git(root, 'symbolic-ref', 'HEAD', 'refs/heads/main')
                 log('Created full rebuildable Git repository. Game images and extracted data are ignored; no files were staged or committed.')
             elif action == 'github':
                 if not root:raise NetworkError('Create a Git repository before connecting GitHub.')

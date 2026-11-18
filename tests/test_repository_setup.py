@@ -150,7 +150,7 @@ def test_select_build_root_saves_progress_and_enables_existing_repository(projec
     net, old, _ = project
     root = tmp_path / 'build-checkout'
     root.mkdir()
-    git(root, 'init', '--initial-branch=main')
+    init_repo(root)
     git(root, 'config', 'user.name', 'Test')
     git(root, 'config', 'user.email', 'test@example.invalid')
     (root / 'build.json').write_text('{}')
@@ -273,7 +273,7 @@ def test_checkpoint_accepts_save_writer_final_newline(project, tmp_path, monkeyp
     (folder/relative).write_text('good source'+('' if newline_in_backup else '\n'))
     (target/relative).write_text('good source'+('\n' if newline_in_backup else ''))
     monkeypatch.setattr(net.progress, 'sync', lambda *args, **kwargs:None)
-    git(target, 'init', '--initial-branch=main')
+    init_repo(target)
     git(target, 'config', 'user.name', 'Test')
     git(target, 'config', 'user.email', 'test@example.invalid')
     state = repository_setup.run(net, 'game', 'checkpoint', '', lambda line:None)
@@ -303,7 +303,7 @@ def test_checkpoint_refreshes_untouched_app_backup_after_new_progress(project,tm
     net,folder,_=project
     target=tmp_path/'backup'
     saves.save(net,'game',target)
-    git(target,'init','--initial-branch=main')
+    init_repo(target)
     git(target,'config','user.name','Test');git(target,'config','user.email','test@example.invalid')
     with net.store.tx() as db:
         db.execute("UPDATE functions SET best_source='new agent draft',best_score=10 WHERE name='f'")
@@ -318,7 +318,7 @@ def test_checkpoint_lists_external_edits_and_preserves_them(project,tmp_path):
     net,folder,_=project
     target=tmp_path/'backup'
     saves.save(net,'game',target)
-    git(target,'init','--initial-branch=main')
+    init_repo(target)
     (target/'include/common.h').write_text('external contribution')
     with pytest.raises(NetworkError,match=r'Files that differ:.*include/common.h'):
         repository_setup.run(net,'game','checkpoint','',lambda line:None)
@@ -331,7 +331,7 @@ def test_backup_refresh_detects_edits_during_capture(project,tmp_path,monkeypatc
     net,folder,_=project
     target=tmp_path/'backup'
     saves.save(net,'game',target)
-    git(target,'init','--initial-branch=main')
+    init_repo(target)
     with net.store.tx() as db:
         db.execute("UPDATE functions SET best_source='new draft',best_score=10 WHERE name='f'")
     publish=saves._publish
@@ -360,7 +360,7 @@ def test_unreceipted_old_attempt_refreshes_but_unknown_edits_survive(project, tm
     # Reproduce a Git/manual copy, which has no app Save now receipt.
     shutil.copytree(folder, target)
     net._update_cfg('game', lambda cfg: cfg.update(save_folder=str(target)))
-    git(target, 'init', '--initial-branch=main')
+    init_repo(target)
     git(target, 'config', 'user.name', 'Test')
     git(target, 'config', 'user.email', 'test@example.invalid')
     with net.store.tx() as db:
@@ -380,7 +380,7 @@ def test_unreceipted_old_attempt_refreshes_but_unknown_edits_survive(project, tm
 
 def test_upgrade_keeps_history_and_origin_and_ignores_all_game_data(project, tmp_path):
     net, root, _ = project
-    git(root, 'init', '--initial-branch=main')
+    init_repo(root)
     git(root, 'config', 'user.name', 'Test')
     git(root, 'config', 'user.email', 'test@example.invalid')
     git(root, 'add', '.')
@@ -573,7 +573,7 @@ def test_upgrade_keeps_the_repositorys_own_notice_and_agents_rules(project):
     console.export_project = with_agents_rules
     (root/'NOTICE.md').write_text('# Provenance\n')
     (root/'AGENTS.md').write_text('# our own rules\n')
-    git(root, 'init', '--initial-branch=main')
+    init_repo(root)
     git(root, 'config', 'user.name', 'Test')
     git(root, 'config', 'user.email', 'test@example.invalid')
     git(root, 'add', '.')
@@ -582,3 +582,13 @@ def test_upgrade_keeps_the_repositorys_own_notice_and_agents_rules(project):
     assert (root/'NOTICE.md').read_text() == '# Provenance\n' and (root/'AGENTS.md').read_text() == '# our own rules\n'
     assert {'NOTICE.md', 'AGENTS.md', 'build.py'} <= set(git(root, 'ls-files').splitlines())
     assert git(root, 'status', '--porcelain', '--', 'NOTICE.md', 'AGENTS.md') == ''
+
+
+def init_repo(root):
+    """A repository on main whatever git is installed: --initial-branch needs 2.28, and this project supports older."""
+    import subprocess
+    try:
+        git(root, 'init', '--initial-branch=main')
+    except subprocess.CalledProcessError:
+        git(root, 'init')
+        git(root, 'symbolic-ref', 'HEAD', 'refs/heads/main')

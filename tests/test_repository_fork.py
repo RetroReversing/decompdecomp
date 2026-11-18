@@ -12,7 +12,7 @@ from tests.test_repository_progress import git
 @pytest.fixture
 def checkout(tmp_path, monkeypatch):
     root=tmp_path/'repo';root.mkdir()
-    git(root,'init','--initial-branch=main')
+    init_repo(root)
     git(root,'config','user.name','Test');git(root,'config','user.email','test@example.invalid')
     (root/'file').write_text('saved');git(root,'add','file');git(root,'commit','-m','Saved work')
     git(root,'remote','add','origin','https://github.com/original/project.git')
@@ -129,3 +129,13 @@ def test_origin_changed_during_creation_is_not_overwritten(checkout,monkeypatch)
     with pytest.raises(NetworkError,match='origin changed'):
         repository_fork.run(None,'game','', 'mine',repository_fork.origin(root)[2],print)
     assert git(root,'remote','get-url','origin')=='https://github.com/other/repo.git'
+
+
+def init_repo(root):
+    """A repository on main whatever git is installed: --initial-branch needs 2.28, and this project supports older."""
+    import subprocess
+    try:
+        git(root, 'init', '--initial-branch=main')
+    except subprocess.CalledProcessError:
+        git(root, 'init')
+        git(root, 'symbolic-ref', 'HEAD', 'refs/heads/main')

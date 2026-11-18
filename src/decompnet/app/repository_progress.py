@@ -238,7 +238,12 @@ def commit_snapshot(root, files, paths, log, *, expected_head=_ANY_HEAD, expecte
         check = getattr(log, 'check_cancel', None)
         if check:check()
         # Hold Git's actual index lock only for publication, never during compilation or networking.
-        index_path = Path(git(root, 'rev-parse', '--path-format=absolute', '--git-path', 'index'))
+        answer = git(root, 'rev-parse', '--path-format=absolute', '--git-path', 'index').strip()
+        if answer.startswith('-') or '\n' in answer:
+            # git before 2.31 has no --path-format and echoes it back as output; --git-path then answers from the
+            # repository root, which is what makes the path absolute here.
+            answer = str((Path(root) / git(root, 'rev-parse', '--git-path', 'index').strip()).resolve())
+        index_path = Path(answer)
         lock = Path(str(index_path)+'.lock')
         try:
             fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

@@ -4505,9 +4505,22 @@ class ForkEngine:
         elsewhere = [r for r in files.build(slug).runs if r.differs()]
         survey, state = cfg.get("file_survey") or {}, files.surveys.get(slug) or {}
         checks = cfg.get("file_checks") or []
-        functions = self.net.project_store(slug).all("SELECT name,vram,status FROM functions WHERE project_id=? AND vram IS NOT NULL", proj["id"])
+        functions = self.net.project_store(slug).all("SELECT name,vram,status FROM functions WHERE project_id=?", proj["id"])
+
+        def address_of(fn):
+            """A function's address: its vram, or the one its symbol names (FUN_92179040).
+
+            A PROJECT-mode import need not fill vram -- an Xbox 360 project stores addresses only in the analysis
+            its units were cut from, and every one of its functions has vram NULL -- so filtering on vram listed no
+            function under any part at all."""
+            if fn["vram"] is not None:
+                return fn["vram"]
+            found = re.search(r"([0-9A-Fa-f]{8,16})$", fn["name"] or "")
+            return int(found.group(1), 16) if found else None
+
         def part_functions(part):
-            return [dict(fn) for fn in functions if part["start"] <= fn["vram"] < part["end"]]
+            return [dict(fn) for fn in functions
+                    if (address := address_of(fn)) is not None and part["start"] <= address < part["end"]]
         has_map = files.applies(slug)  # (`mips` is what older pages called this fact)
         return {"compiler": consoles.compiler_name(own), "flags": "", "compiler_map": has_map,
                 "mips": has_map, "unit": "source file",
