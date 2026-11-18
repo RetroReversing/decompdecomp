@@ -3,9 +3,10 @@
 
     XSDK_CC=powerpc-xsdk-elf-gcc python tools/configure.py VERSION
 
-The compiler and flags come from the user's xsdk kit (environment variables), never from a pinned pack. The build
-cuts every function out of the user's own XEX2 copy into ELF64 PPC64 objects (tools/delink.py), one per source
-file, which objdiff compares with the compiled candidate. Made by decompdecomp.
+The compiler comes from XSDK_CC, else from the xsdk kit registered in Setup (so a user who set the kit up needs no
+environment variables), else powerpc-xsdk-elf-gcc on PATH; flags come from XSDK_FLAGS. Nothing comes from a pinned
+pack. The build cuts every function out of the user's own XEX2 copy into ELF64 PPC64 objects (tools/delink.py), one
+per source file, which objdiff compares with the compiled candidate. Made by decompdecomp.
 """
 
 import argparse
@@ -24,11 +25,28 @@ args = parser.parse_args()
 
 CONFIG = Path("config") / args.version / "functions.json"
 BUILD = Path("build") / args.version
-CC = os.environ.get("XSDK_CC", "powerpc-xsdk-elf-gcc")
 FLAGS = os.environ.get(
     "XSDK_FLAGS",
     "-mcpu=cell -fno-pic -mcall-xsdk -ffreestanding -fno-builtin -fno-exceptions -fno-rtti",
 ).split()
+
+
+def find_compiler() -> str:
+    """XSDK_CC, else the xsdk kit's registered compiler, else the driver on PATH. No pinned pack is involved."""
+    given = os.environ.get("XSDK_CC")
+    if given:
+        return given
+    try:  # the project runs under the app's Python, where decompnet (and the registered kit) is available
+        from decompnet import kits
+        for own in kits.compilers(["xsdk"]):
+            if own.exe.is_file():
+                return str(own.exe)
+    except Exception:  # no decompnet here, or no kit set up: fall back to PATH and warn below if that fails too
+        pass
+    return "powerpc-xsdk-elf-gcc"
+
+
+CC = find_compiler()
 
 
 def q(argv: list[str]) -> str:
@@ -37,7 +55,7 @@ def q(argv: list[str]) -> str:
 
 def main() -> None:
     if shutil.which(CC) is None:
-        sys.stderr.write(f"warning: {CC!r} not on PATH; install your xsdk kit and set XSDK_CC before building\n")
+        sys.stderr.write(f"warning: {CC!r} not found; install your xsdk kit in Setup or set XSDK_CC before building\n")
     units = json.loads(CONFIG.read_text(encoding="utf-8"))["units"]
     compile_cmd = q([
         sys.executable, "tools/compile.py", "--compiler", CC, "--include", "include",

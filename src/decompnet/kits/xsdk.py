@@ -11,10 +11,12 @@ title is compiled with -mcpu=cell -fno-pic -mcall-xsdk -ffreestanding, linked -s
 against libxsdk.a, then packed with python3 tools/elf2xex.py <elf> <out.xex>. Those are recorded build commands
 (documented by xsdk's README and the local Xbox 360 porting notes), not a claim about booting real hardware.
 
-`files` requires only the compiler: the prefix and the SDK root are often separate folders. `locate()` accepts the
-folder holding the compiler; the SDK is either in the same tree or named by XSDK_ROOT. When the SDK root itself is
-given, XSDK_GCC may name the compiler prefix. The version comes from running `<gcc> -dumpversion` locally. Nothing
-here needs a network or any SDK material of our own.
+`files` requires only the compiler: the toolchain prefix and the SDK checkout are often separate folders. `locate()`
+accepts a folder if it yields both halves: the compiler is `<folder>/bin/...`, XSDK_GCC, or (for an SDK root) the
+common `~/xsdk-gcc` prefix; the SDK root is `<folder>` itself, XSDK_ROOT, or a common nearby location
+(`<folder>.parent/Projects/xsdk`, `<folder>.parent/xsdk`, `~/Projects/xsdk`, `<folder>/xsdk`). That covers the usual
+split where the two trees sit side by side. The version comes from running `<gcc> -dumpversion` locally. Nothing here
+needs a network or any SDK material of our own.
 """
 
 from __future__ import annotations
@@ -42,22 +44,50 @@ class Xsdk(Kit):
     files = (GCC,)
     places = ()
 
+    def _has_sdk(self, root: Path) -> bool:
+        """Whether `root` holds both SDK files: the XEX2 packer and the link script."""
+        return all(find(root, rel) is not None for rel in SDK_FILES)
+
+    def sdk_root(self, folder: Path) -> Path | None:
+        """Find the SDK root as a pure filesystem search: the folder, XSDK_ROOT, then common nearby locations.
+
+        No network and no SDK material of our own: these are just the places a user's checkout commonly lives, so
+        pointing Setup at either half of a split layout (compiler prefix or SDK checkout) is enough.
+        """
+        candidates = [folder]
+        given = os.environ.get("XSDK_ROOT", "")
+        if given:
+            candidates.append(Path(given).expanduser())
+        candidates.extend((
+            folder.parent / "Projects" / "xsdk",
+            folder.parent / "xsdk",
+            Path.home() / "Projects" / "xsdk",
+            folder / "xsdk",
+        ))
+        for root in candidates:
+            if self._has_sdk(root):
+                return root
+        return None
+
+    def _sdk(self, folder: Path) -> Path | None:
+        """The SDK root found by `sdk_root` (the internal name kept by verify/locate)."""
+        return self.sdk_root(folder)
+
     def _compiler(self, folder: Path) -> Path | None:
-        """The cross driver in `folder`, or the one named by XSDK_GCC when `folder` is the SDK root."""
+        """The cross driver in `folder`, XSDK_GCC, or the common ~/xsdk-gcc prefix when `folder` is an SDK root."""
         gcc = find(folder, GCC)
         if gcc is not None:
             return gcc
         given = os.environ.get("XSDK_GCC", "")
-        at = Path(given).expanduser() if given else None
-        return at if at is not None and at.is_file() else None
-
-    def _sdk(self, folder: Path) -> Path | None:
-        """The SDK root: the same tree when it holds the packer and link script, else XSDK_ROOT."""
-        if all(find(folder, rel) is not None for rel in SDK_FILES):
-            return folder
-        given = os.environ.get("XSDK_ROOT", "")
-        root = Path(given).expanduser() if given else None
-        return root if root is not None and all(find(root, rel) is not None for rel in SDK_FILES) else None
+        if given:
+            at = Path(given).expanduser()
+            if at.is_file():
+                return at
+        if self._has_sdk(folder):  # an SDK checkout: its toolchain prefix is often the ~/xsdk-gcc sibling
+            at = Path.home() / "xsdk-gcc" / GCC
+            if at.is_file():
+                return at
+        return None
 
     def locate(self, folder: Path) -> Path | None:
         try:
@@ -65,8 +95,8 @@ class Xsdk(Kit):
         except OSError:
             return None
         if gcc is None or sdk is None:
-            # A compiler prefix on its own isn't enough: either the SDK files are in the same tree or XSDK_ROOT
-            # points at them (a copy with no way to pack an ELF into XEX2 isn't a usable copy).
+            # A prefix or a checkout on its own isn't enough: the other half must be found (same tree, env var, or
+            # a common nearby location). A copy with no way to pack an ELF into XEX2 isn't a usable copy.
             return None
         return folder.resolve()
 

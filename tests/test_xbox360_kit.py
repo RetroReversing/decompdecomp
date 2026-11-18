@@ -63,6 +63,7 @@ def test_the_kit_reads_its_version_and_gives_one_native_compiler(tmp_path: Path)
 
 def test_a_separate_compiler_prefix_uses_XSDK_ROOT(tmp_path: Path, monkeypatch):
     kit, prefix, sdk = kits.get("xsdk"), make_prefix(tmp_path / "host"), make_xsdk(tmp_path / "repo")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "empty-home"))
     monkeypatch.delenv("XSDK_ROOT", raising=False)
     assert kit.locate(prefix) is None  # no SDK files in the same tree and no env var
     monkeypatch.setenv("XSDK_ROOT", str(sdk))
