@@ -36,6 +36,16 @@ def test_a_near_miss_address_is_still_a_difference():
     assert _classify(resolved, symbolic)[0] > 0
 
 
+def test_a_literal_where_the_game_references_its_data_still_differs():
+    """The equality is one-way: the game's address against YOUR relocation. A bare literal on your side is a real
+    difference (the game reaches its data, you don't), so it must not be smoothed over."""
+    from decompnet.scoring import Insn, _classify
+
+    target_symbolic = Insn(0, "lis", "r10, <DAT_92005640@h>", "lis r10, <DAT_92005640@h>")
+    candidate_literal = Insn(0, "lis", "r10, 0x9200", "lis r10, 0x9200")
+    assert _classify(target_symbolic, candidate_literal)[0] > 0
+
+
 def test_objdiff_rows_that_spell_the_same_address_agree():
     """objdiff's own rows are normalised the same way, since its percent is what the app scores."""
     from decompnet.forks.objdiff import _rows_agree

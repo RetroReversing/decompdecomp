@@ -55,18 +55,15 @@ def _address_of(token: str) -> int | None:
     return address
 
 
-def _same_value(left: str, right: str) -> bool:
-    """Whether two operands are the same number, one written as a symbol that names its address.
+def _same_value(target: str, candidate: str) -> bool:
+    """Whether a target operand and a candidate one are the same number, where the candidate names it.
 
-    A delinked target carries the game's resolved address in the instruction; a compiled candidate carries a
-    relocation, which the app writes as the symbol. `lis r10, 0x9200` and `lis r10, DAT_92005640@h` are the same
-    instruction, and a real function scored 99.8% only because they were compared as text.
+    A delinked target carries the game's resolved address in the instruction ('lis r10, 0x9200'); a compiled
+    candidate carries a relocation, which the app writes as the symbol that names that address
+    ('lis r10, DAT_92005640@h'). The direction matters: only a *symbol on the candidate side* is accepted, so a
+    candidate that used a bare literal where the game references its data still reads as different.
     """
-    if _NUM.match(left):
-        return _address_of(right) == int(left, 0)
-    if _NUM.match(right):
-        return _address_of(left) == int(right, 0)
-    return False
+    return bool(_NUM.match(target)) and _address_of(candidate) == int(target, 0)
 
 
 @dataclass
