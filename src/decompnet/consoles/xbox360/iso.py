@@ -16,7 +16,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SECTOR = 2048
-MAGIC = b"XDVDFS"
+# The volume descriptor's magic. A disc made by Xbox 360 tooling starts with "XDVDFS"; the shipping discs this app
+# actually meets start with "MICROSOFT*XBOX*MEDIA", and the two put the root directory at different offsets.
+MAGIC = b"MICROSOFT*XBOX*MEDIA"
+MAGIC_TOOL = b"XDVDFS"
 DESCRIPTOR = 32 * SECTOR  # the volume descriptor sits at sector 32 of the game partition
 # Where the game partition starts on each disc generation: a game-only/base image, XGD2, XGD3.
 PARTITIONS = (0, 0xFD90000, 0x2080000)
@@ -26,6 +29,20 @@ MAX_DEPTH = 32
 
 class IsoError(Exception):
     """A disc image this reader can't place: no XDVDFS volume, a broken directory, or a missing file."""
+
+
+def _descriptor(handle, offset: int) -> tuple[int, int] | None:
+    """(root directory sector, its size) when a volume descriptor sits at ``offset``, else None.
+
+    The magic decides where they are: "MICROSOFT*XBOX*MEDIA" keeps them at 0x14/0x18, tool-made images with the
+    "XDVDFS" magic put them at 0x08/0x0C.
+    """
+    head = _read_at(handle, offset, 0x20)
+    if head[:20] == MAGIC:
+        return struct.unpack_from("<II", head, 0x14)
+    if head[:len(MAGIC_TOOL)] == MAGIC_TOOL:
+        return struct.unpack_from("<II", head, 0x08)
+    return None
 
 
 @dataclass(frozen=True)
@@ -47,14 +64,14 @@ def game_partition(handle) -> int:
     """Where the game partition starts: the first offset whose volume descriptor is a sane XDVDFS one.
 
     A disc that also carries a video partition keeps the game's filesystem at a fixed offset per generation, and a
-    rip of only the game data has it at zero, so the magic plus a sane root sector identifies the layout without the
-    caller having to know which kind of disc it holds.
+    rip of only the game data has it at zero, so the descriptor identifies the layout without the caller having to
+    know which kind of disc it holds.
     """
     for base in PARTITIONS:
-        head = _read_at(handle, base + DESCRIPTOR, 0x20)
-        if head[:6] != MAGIC:
+        found = _descriptor(handle, base + DESCRIPTOR)
+        if found is None:
             continue
-        root_sector, root_size = struct.unpack_from("<II", head, 0x08)
+        root_sector, root_size = found
         if 0 < root_size <= 32 * 1024 * 1024 and root_sector * SECTOR < _size(handle):
             return base
     raise IsoError("no XDVDFS volume found: this isn't an Xbox 360 disc image (or it's a format this reader "
@@ -66,27 +83,28 @@ def _size(handle) -> int:
 
 
 def _entries(handle, base: int, sector: int, size: int) -> list[Entry]:
-    """Every entry of one directory table, walked as the binary tree it is (left/right child offsets)."""
+    """Every entry of one directory table, walked as the binary tree it is (left/right child offsets).
+
+    Children are walked with a work list rather than recursion: a directory with many files is a long chain of
+    right-siblings, which is not nesting, and counting it as depth rejected real discs with more than ~32 entries.
+    """
     table = _read_at(handle, base + sector * SECTOR, size)
     found: list[Entry] = []
     seen: set[int] = set()
-
-    def walk(offset: int, prefix: str, depth: int) -> None:
-        while 0 <= offset < len(table) and offset not in seen:
-            seen.add(offset)
-            if depth > MAX_DEPTH:
-                raise IsoError("the disc's directories are nested deeper than any real one")
-            left, right, start, length, attributes, name_length = struct.unpack_from("<HHIIBB", table, offset)
-            name = table[offset + 14:offset + 14 + name_length].decode("latin-1")
-            if name:
-                found.append(Entry(f"{prefix}{name}".rstrip("\0"), start, length, bool(attributes & ATTR_DIRECTORY)))
-            if left:
-                walk(offset + left * 4, prefix, depth + 1)
-            if right:
-                walk(offset + right * 4, prefix, depth + 1)
-            return
-
-    walk(0, "", 0)
+    pending = [0]
+    while pending:
+        offset = pending.pop()
+        if offset in seen or not 0 <= offset < len(table):
+            continue
+        seen.add(offset)
+        left, right, start, length, attributes, name_length = struct.unpack_from("<HHIIBB", table, offset)
+        name = table[offset + 14:offset + 14 + name_length].decode("latin-1")
+        if name:
+            found.append(Entry(name.rstrip("\0"), start, length, bool(attributes & ATTR_DIRECTORY)))
+        # Children are offsets in 4-byte units from the start of this directory table, not from the entry.
+        for child in (left, right):
+            if child:
+                pending.append(child * 4)
     return found
 
 
@@ -98,9 +116,10 @@ class Disc:
         self._handle = open(self.path, "rb")
         try:
             self.base = game_partition(self._handle)
-            head = _read_at(self._handle, self.base + DESCRIPTOR, 0x20)
-            root_sector, self.root_size = struct.unpack_from("<II", head, 0x08)
-            self.root_sector = root_sector
+            found = _descriptor(self._handle, self.base + DESCRIPTOR)
+            if found is None:  # (game_partition just proved there is one; be explicit for the type checker)
+                raise IsoError("no XDVDFS volume found")
+            self.root_sector, self.root_size = found
         except IsoError:
             self._handle.close()
             raise
@@ -123,16 +142,20 @@ class Disc:
         return list(self._walk(path))
 
     def _walk(self, wanted: str):
-        """Every entry on the disc whose path is ``wanted`` or lies under it."""
-        prefix = wanted.rstrip("/")
-        pending = [(self.root_sector, self.root_size, "")]
+        """Every entry on the disc whose path is ``wanted`` or lies under it (names compare case-insensitively:
+        discs are not consistent about the case of ``Default.xex``)."""
+        prefix = wanted.strip("/").lower()
+        pending = [(self.root_sector, self.root_size, "", 0)]
         while pending:
-            sector, size, parent = pending.pop()
+            sector, size, parent, depth = pending.pop()
+            if depth > MAX_DEPTH:
+                raise IsoError("the disc's directories are nested deeper than any real one")
             for entry in _entries(self._handle, self.base, sector, size):
                 path = f"{parent}{'/' if parent else ''}{entry.path}"
                 if entry.directory:
-                    pending.append((entry.sector, entry.size, path))
-                if not prefix or path == prefix or path.startswith(prefix + "/"):
+                    pending.append((entry.sector, entry.size, path, depth + 1))
+                lowered = path.lower()
+                if not prefix or lowered == prefix or lowered.startswith(prefix + "/"):
                     yield Entry(path, entry.sector, entry.size, entry.directory)
 
     def find(self, path: str) -> Entry:

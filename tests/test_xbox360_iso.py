@@ -11,7 +11,7 @@ XEX = b"XEX2" + bytes(24) + b"pretend game"
 
 
 def _table(entries: list[tuple[str, bool, int, int]]) -> bytes:
-    """A directory table: each entry right-links to the next, which is how XDVDFS stores a directory."""
+    """A directory table: each entry right-links to the next, in 4-byte units from the start of the table."""
     out = bytearray()
     starts = []
     for name, is_directory, sector, size in entries:
@@ -20,12 +20,16 @@ def _table(entries: list[tuple[str, bool, int, int]]) -> bytes:
         out += name.encode("latin-1")
         out += b"\0" * (-len(out) % 4)
     for index in range(len(entries) - 1):
-        struct.pack_into("<H", out, starts[index] + 2, (starts[index + 1] - starts[index]) // 4)
+        struct.pack_into("<H", out, starts[index] + 2, starts[index + 1] // 4)  # absolute, in 4-byte units
     return bytes(out)
 
 
-def make_disc(path: Path, *, partition: int = 0, boot: str = "default.xex") -> Path:
-    """A disc image with the boot executable, a Content/data.bin and a directory, at ``partition``'s offset."""
+def make_disc(path: Path, *, partition: int = 0, boot: str = "default.xex", layout: str = "disc") -> Path:
+    """A disc image with the boot executable, a Content/data.bin and a directory, at ``partition``'s offset.
+
+    ``layout`` is "disc" for a shipping disc ("MICROSOFT*XBOX*MEDIA", root at 0x14) or "tool" for an image made by
+    tooling ("XDVDFS", root at 0x08): both exist in the wild and the reader must read either.
+    """
     sectors = 64
     image = bytearray(partition + sectors * iso.SECTOR)
     base = partition
@@ -36,8 +40,12 @@ def make_disc(path: Path, *, partition: int = 0, boot: str = "default.xex") -> P
     image[base + 35 * iso.SECTOR:base + 35 * iso.SECTOR + len(XEX)] = XEX
     image[base + 36 * iso.SECTOR:base + 36 * iso.SECTOR + 4] = b"data"
     descriptor = base + iso.DESCRIPTOR
-    image[descriptor:descriptor + 6] = iso.MAGIC
-    struct.pack_into("<II", image, descriptor + 0x08, 33, len(root))
+    if layout == "tool":
+        image[descriptor:descriptor + 6] = iso.MAGIC_TOOL
+        struct.pack_into("<II", image, descriptor + 0x08, 33, len(root))
+    else:
+        image[descriptor:descriptor + 20] = iso.MAGIC
+        struct.pack_into("<II", image, descriptor + 0x14, 33, len(root))
     path.write_bytes(bytes(image))
     return path
 
@@ -63,6 +71,19 @@ def test_a_disc_with_a_video_partition_is_found_at_its_offset(tmp_path: Path):
     with iso.Disc(path) as disc:
         assert disc.base == 0xFD90000
         assert disc.read("default.xex") == XEX
+
+
+def test_a_tool_made_image_with_the_other_magic_reads_too(tmp_path: Path):
+    """Images repacked by tooling carry "XDVDFS" and put the root at 0x08; both layouts exist in the wild."""
+    with iso.Disc(make_disc(tmp_path / "repack.iso", layout="tool")) as disc:
+        assert disc.read("default.xex") == XEX
+
+
+def test_a_disc_spelling_it_Default_xex_is_still_found(tmp_path: Path):
+    """Real discs differ on case ('Default.xex'), and the sniff looks for the lower-case name."""
+    with iso.Disc(make_disc(tmp_path / "caps.iso", boot="Default.xex")) as disc:
+        assert disc.find("default.xex").path == "Default.xex"
+        assert disc.boot_executable() == XEX
 
 
 def test_what_it_cannot_read_says_so(tmp_path: Path):
