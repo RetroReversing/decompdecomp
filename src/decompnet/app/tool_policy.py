@@ -1,11 +1,17 @@
 """Persistent optional-tool visibility and local lifetime call counters."""
 import json
+import threading
 import time
 
 from ..network import NetworkError
 
 REQUIRED = {'project_info', 'claim_function', 'get_function', 'compile_and_diff', 'release_function'}
 KEY = 'agent-disabled-tools'
+
+# Calls are counted in memory and written at most this often: a write transaction on every tool call would queue
+# behind the agents' own writes (busy agents made the GUI wait). A crash loses at most this much counting.
+FLUSH_SECONDS = 30.0
+_counting = threading.Lock()
 
 
 MATCHING = REQUIRED | {'get_search_brief','get_claims','get_candidate','compile_patch','compile_variants','get_assembly','last_diff',
@@ -151,15 +157,30 @@ def record(net, agent, slug, name, *, count=True):
     if not count:
         return  # App-only connection probes are not agent tool usage.
     task = getattr(net, '_agent_tool_tasks', {}).get(agent.id, 'external')
-    with net.store.tx() as db:
-        db.execute('INSERT INTO agent_tool_task_usage VALUES(?,?,1) ON CONFLICT(name,task) DO UPDATE SET calls=calls+1', (name, task))
-        db.execute('INSERT INTO agent_tool_usage VALUES(?,1,?) ON CONFLICT(name) DO UPDATE SET '
-                   'calls=calls+1,last_used=excluded.last_used', (name, time.time()))
+    now = time.time()
+    with _counting:
+        pending = net.__dict__.setdefault('_tool_calls', {})
+        calls, _ = pending.get((name, task), (0, now))
+        pending[(name, task)] = (calls + 1, now)
+        due = now - net.__dict__.get('_tool_calls_flushed', 0.0) >= FLUSH_SECONDS
+    if due:
+        flush(net)
 
 
 def flush(net):
-    """Nothing to write: record() counts each call in agent_tool_usage as it happens. (Kept for callers of the
-    buffered counting upstream added, so quitting can still ask for it.)"""
+    """Write counted calls to both usage tables, batched (see FLUSH_SECONDS)."""
+    with _counting:
+        pending, net._tool_calls = net.__dict__.get('_tool_calls', {}), {}
+        net._tool_calls_flushed = time.time()
+    if not pending:
+        return
+    with net.store.tx() as db:
+        db.executemany('INSERT INTO agent_tool_usage VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET '
+                       'calls=calls+excluded.calls,last_used=MAX(COALESCE(last_used,0),excluded.last_used)',
+                       [(name, calls, last) for (name, task), (calls, last) in pending.items()])
+        db.executemany('INSERT INTO agent_tool_task_usage VALUES(?,?,?) ON CONFLICT(name,task) DO UPDATE SET '
+                       'calls=calls+excluded.calls',
+                       [(name, task, calls) for (name, task), (calls, last) in pending.items()])
 
 
 def usage(net):
