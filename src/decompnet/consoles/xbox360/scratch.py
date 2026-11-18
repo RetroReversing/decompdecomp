@@ -8,6 +8,11 @@ Format sources (documentation only, no code copied): the XEX2 header layout as
 described in Xenia's ``src/xenia/kernel/util/xex2_info.h`` and as summarised by
 Moonlight360's ``scripts/inspect-xex-contracts.py`` (GPL-3.0-or-later original
 work). This module is an independent implementation from the documented offsets.
+
+The image body at ``payload_offset`` is not necessarily the memory image: XEX2 may compress it (key 0x3FF,
+``XEX_HEADER_FILE_FORMAT_INFO``) and may encrypt it. Only unencrypted images with no compression or XEX2 "basic"
+compression (a table of data/zero block pairs) are expanded here, for Ghidra's disposable ELF wrapper. Encrypted
+bodies and the normal/delta compression modes are NOT handled: decompdecomp does not decrypt game data.
 """
 
 from __future__ import annotations
@@ -31,7 +36,8 @@ MAX_DESCRIPTORS = 4096
 # optional-header directory keys (big-endian u32 key -> u32 value)
 K_ENTRY = 0x10100
 K_IMAGE_BASE = 0x10201
-K_IMPORT_TABLE = 0x103FF
+K_FILE_FORMAT = 0x3FF    # XEX_HEADER_FILE_FORMAT_INFO: offset of the encryption/compression descriptor
+K_IMPORT_TABLE = 0x103FF  # a different key from K_FILE_FORMAT; the leading 1 is significant
 
 
 def is_xex2(head: bytes) -> bool:
@@ -52,6 +58,8 @@ def is_xex2(head: bytes) -> bool:
 def read_xex2(data: bytes) -> dict:
     """Read the few header fields needed by sniff/game_info from an XEX2 image.
 
+    The raw key-to-value header directory is returned under ``headers`` so later stages can look up things this
+    reader does not interpret (notably the file-format descriptor at key 0x3FF).
     Raises ``ValueError`` for a short or implausible image; the caller decides
     whether that means "not this console" or "report what we can".
     """
@@ -81,6 +89,7 @@ def read_xex2(data: bytes) -> dict:
         "image_base": selected.get(K_IMAGE_BASE),
         "entry_point": selected.get(K_ENTRY),
         "import_table_offset": selected.get(K_IMPORT_TABLE),
+        "headers": selected,
     }
 
 
@@ -232,22 +241,92 @@ EM_PPC64 = 21
 ELF_HEADER_BYTES, PHDR_BYTES = 64, 56
 
 
+def read_file_format(data: bytes, xex: dict) -> dict:
+    """Read the XEX2 file-format descriptor (header key 0x3FF) out of the raw image bytes.
+
+    The descriptor at the key's value offset is ``>IHH`` (info_size, encryption_type, compression_type). For basic
+    compression (1) it is followed by ``(info_size - 8) / 8`` pairs of big-endian ``>II`` (data_size, zero_size)
+    block lengths. A missing descriptor means an unencrypted, uncompressed image; hand-built xex dicts in tests
+    may have no ``headers`` field at all.
+    """
+    fmt: dict = {"encryption": 0, "compression": 0, "blocks": []}
+    at = (xex.get("headers") or {}).get(K_FILE_FORMAT)
+    if at is None:
+        return fmt
+    if at + 8 > len(data):
+        raise ForkError("this XEX2's file-format descriptor is truncated: cannot tell how its image is stored")
+    info_size, encryption, compression = struct.unpack_from(">IHH", data, at)
+    if info_size < 8 or (info_size - 8) % 8 or at + info_size > len(data):
+        raise ForkError("this XEX2's file-format descriptor is implausible: cannot tell how its image is stored")
+    fmt["encryption"] = encryption
+    fmt["compression"] = compression
+    if compression == 1:
+        fmt["blocks"] = [struct.unpack_from(">II", data, off) for off in range(at + 8, at + info_size, 8)]
+    return fmt
+
+
+def expand_basic_image(data: bytes, xex: dict, fmt: dict) -> bytes:
+    """Return the decompressed memory image behind ``data``, ready to map in the Ghidra wrapper.
+
+    With no compression the bytes at ``payload_offset`` already are the image. With basic compression each block
+    contributes ``data_size`` bytes read from a cursor starting at ``payload_offset``, then ``zero_size`` zero
+    bytes; the concatenation must be exactly ``image_size`` bytes long. Encrypted bodies and the normal/delta
+    compression modes are refused: decompdecomp does not decrypt game data.
+    """
+    payload, size = xex.get("payload_offset"), xex.get("image_size")
+    if payload is None or size is None or size <= 0:
+        raise ForkError("this XEX2 has no payload offset / image size: cannot expand its image")
+    if fmt.get("encryption"):
+        raise ForkError("this XEX2's image body is encrypted, and decompdecomp cannot decrypt it here. Prepare an "
+                        "unencrypted copy with your own tools (e.g. xexTool), or supply a functions.jsonl map")
+    compression = fmt.get("compression", 0)
+    if compression not in (0, 1):
+        raise ForkError(f"this XEX2's image body uses compression type {compression} (normal/delta), which "
+                        "decompdecomp cannot expand here. Prepare an unencrypted basic-compression copy with your "
+                        "own tools (e.g. xexTool or prepare-xex-basic.py), or supply a functions.jsonl map")
+
+    if compression == 0:
+        image = data[payload:payload + size]
+        if len(image) != size:
+            raise ForkError(f"this XEX2 image is truncated: expected {size} bytes at offset 0x{payload:X}, "
+                            f"found {len(image)}")
+        return image
+
+    cursor = payload
+    out = bytearray()
+    for data_size, zero_size in fmt.get("blocks", []):
+        if data_size + zero_size > size - len(out):
+            raise ForkError(f"this XEX2 basic-compression block table expands past the declared image size "
+                            f"of {size} bytes")
+        chunk = data[cursor:cursor + data_size]
+        if len(chunk) != data_size:
+            raise ForkError(f"this XEX2 image is truncated: expected {data_size} more bytes at offset "
+                            f"0x{cursor:X}, found {len(chunk)}")
+        out += chunk
+        out += bytes(zero_size)
+        cursor += data_size
+    if len(out) != size:
+        raise ForkError(f"this XEX2 basic-compression block table expands to {len(out)} bytes, but the image "
+                        f"header says {size}")
+    return bytes(out)
+
+
 def ghidra_image(game: Path, xex: dict, tmp: Path) -> Path:
     """Build a minimal big-endian ELF64/PPC64 ET_EXEC wrapping the XEX2 image, at ``tmp``; return its path.
 
-    The 64-byte ELF header and single 56-byte PT_LOAD program header are followed immediately by the image bytes
-    (``payload_offset : payload_offset + image_size``) at file offset 64 + 56. The segment maps them at
+    The 64-byte ELF header and single 56-byte PT_LOAD program header are followed immediately by the expanded
+    memory image at file offset 64 + 56. The segment maps it (basic-compressed bodies are decompressed first) at
     ``image_base`` and ``e_entry`` is the XEX2 entry point (or the image base when the header has none). Ghidra
-    reads this as a normal ELF and finds functions in the whole executable image. No section headers: the image is
-    one contiguous span, like stage 3's ``text``. This is a disposable wrapper for Ghidra, not a runnable game.
+    reads this as a normal ELF and finds functions in the whole executable image. No section headers: the image
+    is one contiguous span, like stage 3's ``text``. This is a disposable wrapper for Ghidra, not a runnable game;
+    encrypted and normal/delta-compressed bodies are refused (see ``expand_basic_image``).
     """
-    base, payload, size = xex.get("image_base"), xex.get("payload_offset"), xex.get("image_size")
-    if base is None or payload is None or size is None or size <= 0:
-        raise ForkError("this XEX2 has no image base / payload offset / image size: cannot build a Ghidra wrapper")
-    image = game.read_bytes()[payload:payload + size]
-    if len(image) != size:
-        raise ForkError(f"this XEX2 image is truncated: expected {size} bytes at offset 0x{payload:X}, "
-                        f"found {len(image)}")
+    base = xex.get("image_base")
+    if base is None:
+        raise ForkError("this XEX2 has no image base: cannot build a Ghidra wrapper")
+    data = game.read_bytes()
+    image = expand_basic_image(data, xex, read_file_format(data, xex))
+    mapped = len(image)  # the PT_LOAD covers the expanded image, which is exactly image_size bytes
     ident = b"\x7fELF" + bytes([2, 2, 1, 0]) + bytes(8)  # ELFCLASS64, ELFDATA2MSB, EV_CURRENT, SYSV ABI
     phoff = ELF_HEADER_BYTES
     image_off = phoff + PHDR_BYTES
@@ -255,7 +334,7 @@ def ghidra_image(game: Path, xex: dict, tmp: Path) -> Path:
                          xex.get("entry_point") or base, phoff, 0, 0,
                          ELF_HEADER_BYTES, PHDR_BYTES, 1, 0, 0, 0)
     # p_align=1: no alignment requirement, so p_offset (120) need not match image_base modulo a page size.
-    phdr = struct.pack(">IIQQQQQQ", PT_LOAD, PF_X | PF_R, image_off, base, base, size, size, 1)
+    phdr = struct.pack(">IIQQQQQQ", PT_LOAD, PF_X | PF_R, image_off, base, base, mapped, mapped, 1)
     target = Path(tmp) / "xex2-ppc64.elf"
     target.write_bytes(header + phdr + image)
     return target
@@ -351,7 +430,9 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
     A ``functions.jsonl`` map supplies every function when present; otherwise Ghidra discovers them through a
     disposable ELF64/PPC64 wrapper of the image (stage 4a). XEX2 has no ELF sections, so the config's ``text`` is
     the whole image at its payload offset, and no relocations are recovered here (relocs are written empty).
-    ``root`` must not exist yet. A user xsdk kit is needed only to build the project, not to create it.
+    Basic-compressed bodies are expanded for that wrapper; encrypted and normal/delta-compressed bodies are not
+    handled, so use a function map (or prepare an unencrypted basic-compression copy) for those. ``root`` must not
+    exist yet. A user xsdk kit is needed only to build the project, not to create it.
     """
     info = game_info(game)
     try:
