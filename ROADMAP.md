@@ -1,5 +1,12 @@
 # Roadmap
 
+- Done: bounded indexed-record copy recipes reach shared local repairs, iterative
+  search, deep search and copied-judge replay, including large MIPS functions.
+  Candidate-owned declarations, raw target bases, scalar widths and volatile
+  access order gate proposals; the ordinary ROM/PROJECT judges still decide.
+  One frozen original 907-instruction case recovered its prior 99.8% near match
+  automatically; exact completion and broader held-out effectiveness remain open.
+
 - Planned: a cap on concurrent user-started deep searches across the app, kept below the shared
   workers. Upstream's deep permuter (#244, n-delic 1.0.10-alpha.2) caps them so searches can't take every
   shared worker on a small machine; ours limits CPU through the shared compile pool and refuses a second
