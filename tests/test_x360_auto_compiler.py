@@ -150,6 +150,24 @@ def test_a_match_win_still_beats_the_date(monkeypatch):
     assert out["best"] == "xdk360-222" and out["applied"] is True
 
 
+def test_a_project_with_proven_matches_keeps_its_compiler(monkeypatch):
+    """A tie is the date guessing, so it must not move a project that already reproduces functions away from
+    the compiler that reproduced them; the date-closest copy is named in the log instead."""
+    linked = stamp(2012, 11, 15)
+    built = {ORIGINAL: stamp(2006, 10, 9), "xdk360-111": stamp(2012, 10, 1), "xdk360-222": stamp(2013, 2, 1)}
+    lines = []
+    state = wire(monkeypatch, matches=lambda current, fn: True, built=built, linked=linked)
+    proven = [dict(fn, matched_source=fn["best_source"]) for fn in FUNCS]
+    monkeypatch.setattr(survey, "sample_functions", lambda net, slug, limit: proven[:limit])
+
+    out = survey.survey_xdk360(None, "dash-dash", limit=3, log=lines.append)
+
+    assert out["ranked"][0]["version"] == "xdk360-111"  # still the date's pick in the ranking
+    assert out["best"] == "xdk360-111" and out["applied"] is False
+    assert state["set"][-1] == ORIGINAL  # nothing was left switched
+    assert any(f"keeping {ORIGINAL}" in line for line in lines)
+
+
 def test_no_matches_is_not_evidence(monkeypatch):
     """Every copy failing the whole sample says nothing about which is right: keep the project's own copy."""
     state = wire(monkeypatch, matches=lambda current, fn: False,

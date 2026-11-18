@@ -200,11 +200,12 @@ def survey_xdk360(net, slug: str, *, limit: int = 12, apply: bool = True,
 
     ``apply=False`` ranks and records the result without changing the project's compiler. With the
     default ``apply=True`` the best copy is written as the project default (and build.ninja rebuilt) when it
-    beat the project's own copy on at least one function, or, on a sample that every copy builds identically,
-    when it is the XDK closest to the game's own link date. Copies that ship one identical ``cl.exe`` are
-    tried once and scored together (``compiler_groups``). ``limit`` bounds the number of sampled functions
-    (each distinct compiler is tried on all of them). Returns a dict with ``ranked`` (best first), ``best``,
-    ``original``, ``applied``, ``tested`` and ``linked`` (the game's link day, when known).
+    beat the project's own copy on at least one function, or — on a sample that every copy builds identically and
+    a project that has nothing proven to lose — when it is the XDK closest to the game's own link date. A project
+    that already reproduces functions keeps the compiler that reproduced them. Copies that ship one identical
+    compiler are tried once and scored together (``compiler_groups``). ``limit`` bounds the number of sampled
+    functions (each distinct compiler is tried on all of them). Returns a dict with ``ranked`` (best first),
+    ``best``, ``original``, ``applied``, ``tested`` and ``linked`` (the game's link day, when known).
     """
     compilers = registered_compilers()
     funcs = sample_functions(net, slug, limit)
@@ -261,20 +262,32 @@ def survey_xdk360(net, slug: str, *, limit: int = 12, apply: bool = True,
         log(f"X360 compiler survey could not save its ranking: {error}")
 
     applied = False
+    proven = sum(1 for fn in funcs if (fn.get("matched_source") or "").strip())
+    beaten = own is None or best["matched"] > own["matched"]
     if not best["matched"]:
         log("no sampled function matched under any XDK copy, so this ranking is not evidence; "
             "decompile or match a function first, then survey again")
-    elif apply and best["version"] != original:
-        _set_compiler(net, slug, version, best["version"])
-        applied = True
-        if own is None or best["matched"] > own["matched"]:
-            log(f"the best XDK copy is {best['version']} ({best['matched']}/{best['total']} match); "
-                f"all future builds use it")
-        else:
-            log(f"no copy beat {original} on this sample, so the title's own date decides: "
-                f"{best['version']} (compiler built {best['built']}"
-                + (f", the game was linked {_day(linked)}" if linked else "") + "); all future builds use it")
+    elif not apply:
+        pass
     elif best["version"] == original:
         log(f"the project's own {original} is already the best XDK copy on this sample")
+    elif beaten:
+        _set_compiler(net, slug, version, best["version"])
+        applied = True
+        log(f"the best XDK copy is {best['version']} ({best['matched']}/{best['total']} match); "
+            f"all future builds use it")
+    elif not proven:
+        # Nothing proven yet, so the date is the only evidence there is: a fresh project starts on the XDK
+        # closest to its own game's date instead of whichever copy the registry happened to list first.
+        _set_compiler(net, slug, version, best["version"])
+        applied = True
+        log(f"no copy builds this sample differently, so the title's own date decides: {best['version']} "
+            f"(compiler built {best['built']}" + (f", the game was linked {_day(linked)}" if linked else "")
+            + "); all future builds use it")
+    else:
+        # A project that already reproduces functions keeps the compiler that reproduced them: a tie here is
+        # the title's date guessing, and it must not move work that is already matching away from its compiler.
+        log(f"{best['version']} is the XDK closest to the game's own date (compiler built {best['built']}), "
+            f"but this project already matches {proven} function(s) with {original}: keeping {original}")
     return {"ranked": ranked, "best": best["version"], "original": original,
             "applied": applied, "tested": len(funcs), "linked": _day(linked)}
