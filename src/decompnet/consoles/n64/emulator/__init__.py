@@ -160,6 +160,7 @@ class Run:
     errors: list[str] = field(default_factory=list)
     timed_out: bool = False  # stopped by the timeout before its last VI (a game that never starts its video counts none)
     recorded: list[Path] = field(default_factory=list)  # EMU_RECORD: each call's <path>.state and <path>.rdram
+    frame_dumps: dict[int, Path] = field(default_factory=dict)  # EMU_FRAME_DUMP: {frame: file}
 
 
 def parse(log: str) -> Run:
@@ -175,6 +176,8 @@ def parse(log: str) -> Run:
                                 tuple(numbers[7:])))
         elif parts[0] == "dumped" and len(parts) >= 3:
             out.dumps[int(parts[1])] = Path(line.split(None, 2)[2])
+        elif parts[0] == "framedump" and len(parts) >= 3:
+            out.frame_dumps[int(parts[1])] = Path(line.split(None, 2)[2])
         elif parts[0] == "recorded" and len(parts) >= 4:
             out.recorded.append(Path(line.split(None, 3)[3]))
         elif parts[0] == "stopped" and len(parts) == 2:
@@ -182,6 +185,56 @@ def parse(log: str) -> Run:
         elif parts[0] in ("error", "core:"):
             out.errors.append(line)
     return out
+
+
+REPORT = ("watch ", "break ", "dumped ", "recorded ", "stopped ")
+
+
+class _Output:
+    """What a run printed, in bounded memory. The report lines parse() reads are all kept (EMU_MAX caps hits);
+    anything else is kept up to NOISE characters, a line repeated in a row counted rather than stored. A homemade
+    ROM the core can't run printed "core: not compiled exception" 800,000 times a second, 1.4 GB a minute, all kept:
+    a test worker grew to 15 GB. The same line STUCK times in a row within STUCK_SECONDS, nothing else between, is a
+    stuck emulator (a warning a game prints once a frame takes minutes to repeat that often): `stuck` names it and
+    run() stops it."""
+    NOISE = 256 * 1024
+    STUCK = 10_000
+    STUCK_SECONDS = 10.0
+
+    def __init__(self, clock=time.monotonic):
+        self.lines, self.noise, self.last, self.repeats, self.stuck = [], 0, None, 0, None
+        self.clock, self.since, self.window = clock, 0.0, 0
+
+    def add(self, line: str):
+        if line.startswith(REPORT):
+            self._flush()
+            self.lines.append(line)
+            return
+        if line == self.last:
+            self.repeats += 1
+            self.window += 1
+            if self.window >= self.STUCK:
+                if self.clock() - self.since <= self.STUCK_SECONDS:
+                    self.stuck = line.strip()
+                self.since, self.window = self.clock(), 0  # (a slow repeat: judge the next STUCK afresh)
+            return
+        self._flush()
+        self.last, self.repeats, self.window, self.since = line, 1, 1, self.clock()
+        if self.noise < self.NOISE:
+            self.lines.append(line)
+            self.noise += len(line)
+
+    def _note(self) -> str:
+        return f"(the line above {self.repeats - 1:,} more times)\n" if self.repeats > 1 else ""
+
+    def _flush(self):
+        if (note := self._note()) and self.noise < self.NOISE:
+            self.lines.append(note)
+            self.noise += len(note)
+        self.last, self.repeats = None, 0
+
+    def text(self) -> str:
+        return "".join(self.lines) + (self._note() if self.noise < self.NOISE else "")
 
 
 def installed() -> Path | None:
@@ -193,16 +246,22 @@ def installed() -> Path | None:
 def run(rom: Path, vis: int, *, inputs: str = "", dumps: dict[int, Path] | None = None,
         watches: list[tuple[int, int]] | tuple = (), breaks: list[int] | tuple = (), report_from: int = 0,
         max_hits: int = 200, expansion_pak: bool = False, timeout: float = 1800,
-        record: tuple[Path, int] | None = None, stop=lambda: False, on_record=None, pending: int = 0) -> Run:
+        record: tuple[Path, int] | None = None, stop=lambda: False, on_record=None, pending: int = 0,
+        frame_dumps: dict[int, Path] | None = None, input_clock: str = "vi") -> Run:
     """Run the user's ROM in the reversing emulator for `vis` vertical interrupts. `inputs`: the input script
-    (input.c); `dumps`: {vi: file}; `watches`: (physical address, length) write breakpoints; `breaks`: virtual
+    (input.c), timed in retraces or, with `input_clock` "frames", in the game's frames (its graphics tasks); `dumps`:
+    {vi: file}; `frame_dumps`: {frame: file}, RDRAM as the game hands over that graphics task; `watches`: (physical address, length) write breakpoints; `breaks`: virtual
     addresses to stop at (breakpoints need the slower pure interpreter)."""
     folder = installed()
     if folder is None:
         raise EmulatorError("The reversing emulator isn't installed: install mupenRE under Compilers & tools → Tools (it builds from its source).")
     env = {**os.environ, "EMU_VIS": str(vis), "EMU_MAX": str(max_hits), "EMU_FROM": str(report_from)}
-    for key in ("EMU_INPUT", "EMU_DUMP", "EMU_WATCH", "EMU_BREAK", "EMU_8MB"):
+    for key in ("EMU_INPUT", "EMU_DUMP", "EMU_WATCH", "EMU_BREAK", "EMU_8MB", "EMU_FRAME_DUMP", "EMU_INPUT_CLOCK"):
         env.pop(key, None)
+    if input_clock == "frames":
+        env["EMU_INPUT_CLOCK"] = "frames"
+    if frame_dumps:
+        env["EMU_FRAME_DUMP"] = ",".join(f"{n}:{Path(p).resolve()}" for n, p in sorted(frame_dumps.items()))
     if inputs:
         env["EMU_INPUT"] = inputs
     if dumps:
@@ -225,7 +284,7 @@ def run(rom: Path, vis: int, *, inputs: str = "", dumps: dict[int, Path] | None 
                 folder / f"input.{SO}", folder / f"video.{SO}", Path(rom).resolve()]
         proc = subprocess.Popen(limits.capped([str(a) for a in argv]), cwd=tmp, env=env, stdout=subprocess.DEVNULL,
                                 stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
-        started, chunks, cut = time.monotonic(), [], False
+        started, cut = time.monotonic(), False
         # line by line: a run cut short keeps what it reported (a killed run's child can hold the pipe open)
         lines: queue.Queue = queue.Queue()
 
@@ -236,6 +295,7 @@ def run(rom: Path, vis: int, *, inputs: str = "", dumps: dict[int, Path] | None 
         reader = threading.Thread(target=read, daemon=True)
         reader.start()
         ended = False
+        kept = _Output()
         while not ended:  # the run, ended early by `stop` (a user's Stop) or the timeout
             if stop() or time.monotonic() - started > timeout:
                 cut = True
@@ -248,16 +308,22 @@ def run(rom: Path, vis: int, *, inputs: str = "", dumps: dict[int, Path] | None 
             if line is None:
                 ended = True
                 continue
-            chunks.append(line)
+            kept.add(line)
+            if kept.stuck:
+                proc.kill()
+                break
             if on_record is not None and line.startswith("recorded "):
                 on_record(Path(line.rstrip("\n").split(None, 3)[3]))  # (meanwhile the emulation goes on, or waits)
         proc.wait()
         reader.join(2)
-        while not lines.empty():
+        while not lines.empty() and not kept.stuck:
             line = lines.get()
             if line is not None:
-                chunks.append(line)
-        text = "".join(list(chunks))
+                kept.add(line)
+        text = kept.text()
+    if kept.stuck:
+        raise EmulatorError(f"The emulator is stuck repeating {kept.stuck!r} and was stopped "
+                            f"(after {kept.repeats:,} times, frame {parse(text).vis or 0}).")
     result = parse(text)
     if cut:
         result.timed_out = True

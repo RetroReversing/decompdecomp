@@ -493,8 +493,32 @@ u32 w2c_env_osViGetCurrentFramebuffer(struct w2c_env *e) { (void)e; return frame
 u32 w2c_env_osViGetNextFramebuffer(struct w2c_env *e) { (void)e; return frame_buffer; }
 
 static void port_timers(void);
+/* PORT_RAM_DUMPS="vi:file,vi:file": the game's RAM (8 MB from 0x80000000, big-endian) written at those retraces,
+   laid out as the reversing emulator writes its dumps at the same retraces (consoles/n64/emulator, EMU_DUMP), so the
+   two compare word by word and tools/n64_frame_compare.py draws each one's frame. PORT_FRAME_DUMPS="n:file,...":
+   the same as the game hands over its nth graphics task (its nth frame, its display list finished), as the
+   emulator's video plugin writes its own (EMU_FRAME_DUMP): the console's frame and the port's at the same point in
+   the game, however long each took to get there. */
+static void ram_dumps(const char *var, unsigned long now) {
+    for (const char *p = getenv(var); p && *p;) {
+        char *end;
+        unsigned long at = strtoul(p, &end, 10);
+        if (*end != ':') return;
+        const char *path = end + 1, *next = strchr(path, ',');
+        size_t n = next ? (size_t)(next - path) : strlen(path);
+        if (at == now && n < 1024) {
+            char name[1024];
+            memcpy(name, path, n); name[n] = 0;
+            FILE *f = fopen(name, "wb");
+            if (f) { fwrite(M + 0x80000000u, 1, 0x800000, f); fclose(f); }
+            else fprintf(stderr, "%s: can't write %s\n", var, name);
+        }
+        p = next ? next + 1 : path + n;
+    }
+}
 static void retrace(void) {
     vi_count++;
+    ram_dumps("PORT_RAM_DUMPS", vi_count);
     port_timers();
     if (vi.queue && vi_count % vi.every == 0) put(vi.queue, vi.msg, 0, 0);
 }
@@ -551,6 +575,7 @@ void w2c_env_osSpTaskStartGo(struct w2c_env *e, u32 task) {
     (void)e;
     uint32_t type = be32(task);
     if (type == 1) gfx_tasks++; else audio_tasks++;
+    if (type == 1) ram_dumps("PORT_FRAME_DUMPS", gfx_tasks);
     if (type == 1) port_render_task(task);
     if (type == 2) port_audio_task(task);
     if (gfx_tasks + audio_tasks <= 4) LOG("RSP task type %u: data %08X, %X bytes", type, be32(task + 48), be32(task + 52));
@@ -601,7 +626,10 @@ u32 w2c_env_osContInit(struct w2c_env *e, u32 mq, u32 bits, u32 status) {
 static void si_done(uint32_t mq) { if (!post_event(EV_SI) && mq) put(mq, 0, 0, 0); }
 u32 w2c_env_osContStartReadData(struct w2c_env *e, u32 mq) { (void)e; si_done(mq); return 0; }
 /* PORT_INPUT: the first controller, scripted by frame shown: "300:START,306:-,400:A+UP,500:SX=60+SY=-20".
-   Each entry sets the state from that frame on: buttons joined by +, "-" for none, SX/SY for the stick. */
+   Each entry sets the state from that frame on: buttons joined by +, "-" for none, SX/SY for the stick. With
+   PORT_INPUT_CLOCK=vi the times are retraces instead, as the reversing emulator's scripts count them (EMU_INPUT), and
+   with PORT_INPUT_CLOCK=frames the game's frames (the graphics tasks it has handed over, EMU_INPUT_CLOCK=frames), so
+   one script drives both the same way. */
 static int8_t stick_x, stick_y;
 int port_live_input(uint16_t *buttons, int8_t *x, int8_t *y); /* live.c: the keyboard, with PORT_LIVE */
 void port_live_start(void);
@@ -617,7 +645,12 @@ static void scripted_input(void) {
 static void script_input(void) {
     static const char *script;
     static int loaded;
-    if (!loaded) { loaded = 1; script = getenv("PORT_INPUT"); }
+    static int by_vi; /* the clock: 0 frames shown, 1 retraces, 2 graphics tasks */
+    if (!loaded) {
+        loaded = 1; script = getenv("PORT_INPUT");
+        const char *clock = getenv("PORT_INPUT_CLOCK");
+        by_vi = !clock ? 0 : !strcmp(clock, "vi") ? 1 : !strcmp(clock, "frames") ? 2 : 0;
+    }
     buttons = 0; stick_x = stick_y = 0;
     if (!script) return;
     static const struct { const char *name; uint16_t bit; } names[] = {
@@ -640,7 +673,7 @@ static void script_input(void) {
             p += n;
             if (*p == '+') p++;
         }
-        if (at <= swaps) { buttons = b; stick_x = (int8_t)sx; stick_y = (int8_t)sy; }
+        if (at <= (by_vi == 1 ? vi_count : by_vi == 2 ? gfx_tasks : swaps)) { buttons = b; stick_x = (int8_t)sx; stick_y = (int8_t)sy; }
         if (*p == ',') p++;
     }
 }
