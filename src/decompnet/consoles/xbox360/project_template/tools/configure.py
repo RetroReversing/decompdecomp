@@ -3,8 +3,10 @@
 
     XSDK_CC=powerpc-xsdk-elf-gcc python tools/configure.py VERSION
 
-The compiler comes from XSDK_CC, else from the xsdk kit registered in Setup (so a user who set the kit up needs no
-environment variables), else powerpc-xsdk-elf-gcc on PATH; flags come from XSDK_FLAGS. Nothing comes from a pinned
+The compiler comes from XSDK_CC, else from a registered xdk360 XDK (the real Microsoft cl.exe, run through Wine),
+else from the xsdk kit registered in Setup (so a user who set a kit up needs no environment variables), else
+powerpc-xsdk-elf-gcc on PATH; flags come from XSDK_FLAGS. For the real XDK the generated rule prefixes wine and
+uses MSVC switches; XSDK_FLAGS must then be MSVC-style too (see the template README). Nothing comes from a pinned
 pack. The build cuts every function out of the user's own XEX2 copy into ELF64 PPC64 objects (tools/delink.py), one
 per source file, which objdiff compares with the compiled candidate. Made by decompdecomp.
 """
@@ -31,22 +33,25 @@ FLAGS = os.environ.get(
 ).split()
 
 
-def find_compiler() -> str:
-    """XSDK_CC, else the xsdk kit's registered compiler, else the driver on PATH. No pinned pack is involved."""
+def find_compiler() -> tuple[str, str]:
+    """(compiler, runner): XSDK_CC, else a registered xdk360 XDK (the real cl.exe, runner "wine"), else the xsdk
+    kit's compiler, else the driver on PATH. The real XDK wins because a game built with it needs that compiler;
+    nothing here comes from a pinned pack. OwnCompiler.runner comes straight from the kit."""
     given = os.environ.get("XSDK_CC")
     if given:
-        return given
-    try:  # the project runs under the app's Python, where decompnet (and the registered kit) is available
+        return given, ""
+    try:  # the project runs under the app's Python, where decompnet (and the registered kits) is available
         from decompnet import kits
-        for own in kits.compilers(["xsdk"]):
-            if own.exe.is_file():
-                return str(own.exe)
+        for kid in ("xdk360", "xsdk"):
+            for own in kits.compilers([kid]):
+                if own.exe.is_file():
+                    return str(own.exe), own.runner
     except Exception:  # no decompnet here, or no kit set up: fall back to PATH and warn below if that fails too
         pass
-    return "powerpc-xsdk-elf-gcc"
+    return "powerpc-xsdk-elf-gcc", ""
 
 
-CC = find_compiler()
+CC, RUNNER = find_compiler()
 
 
 def q(argv: list[str]) -> str:
@@ -54,11 +59,15 @@ def q(argv: list[str]) -> str:
 
 
 def main() -> None:
-    if shutil.which(CC) is None:
+    if RUNNER == "wine":
+        # cl.exe is a Windows program: the compiler path itself exists, but it is wine that must be on this machine.
+        if shutil.which(os.environ.get("DECOMPNET_WINE") or "wine") is None:
+            sys.stderr.write("warning: wine not found; the real XDK's cl.exe needs it (see the template README)\n")
+    elif shutil.which(CC) is None:
         sys.stderr.write(f"warning: {CC!r} not found; install your xsdk kit in Setup or set XSDK_CC before building\n")
     units = json.loads(CONFIG.read_text(encoding="utf-8"))["units"]
     compile_cmd = q([
-        sys.executable, "tools/compile.py", "--compiler", CC, "--include", "include",
+        sys.executable, "tools/compile.py", "--compiler", CC, "--runner", RUNNER, "--include", "include",
         "--config", str(CONFIG), "--output", "$out", "--source", "$in", "--", *FLAGS,
     ])
     # delink.py takes the whole functions.json and an output directory, writing one object per unit; a single

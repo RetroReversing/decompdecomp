@@ -1,19 +1,39 @@
 Xbox 360 project template (decompdecomp, stage 3)
 =================================================
 
-This is a deliberately small scaffold. It needs the user's own xsdk kit: decompdecomp
-does not bundle or download the Xbox XDK. Nothing here is run when a project is
-created; configure.py and compile.py are here for the user's first build.
+This is a deliberately small scaffold. It needs a user-supplied compiler: decompdecomp
+bundles or downloads neither xsdk nor Microsoft's XDK. Nothing here is run when a
+project is created; configure.py and compile.py are here for the user's first build.
 
 Configure:
-    XSDK_CC=powerpc-xsdk-elf-gcc python tools/configure.py VERSION
+    python tools/configure.py VERSION
     ninja
 
-Environment (all optional except that the compiler must exist):
-    XSDK_CC    compiler to call (default: powerpc-xsdk-elf-gcc)
-    XSDK_FLAGS flags passed to the compiler (defaults to the list below)
+Which compiler is used, in order:
+    XSDK_CC           an explicit compiler path (native, no wine wrapper)
+    xdk360 kit        a registered real Microsoft XDK (cl.exe), preferred when set up
+    xsdk kit          a registered free xsdk GCC toolchain
+    PATH              powerpc-xsdk-elf-gcc (the default)
 
-Default flags, chosen for PowerPC64 / Cell / the xsdk runtime:
+Environment (all optional except that the compiler must exist):
+    XSDK_CC                  compiler to call (see the order above)
+    XSDK_FLAGS               flags passed to the compiler (defaults to the list below)
+    DECOMPNET_WINE           the wine binary, when the real XDK is used
+    DECOMPNET_WINE_PREFIX    its wine prefix (never your ~/.wine)
+
+Real Xbox 360 XDK (xdk360 kit):
+    The real Microsoft PowerPC cl.exe is the compiler retail games were built with.
+    On Linux and macOS it is a Windows program and needs Wine, which you install and
+    keep updated yourself; decompdecomp does not pin or ship a Windows runtime.
+    configure.py wraps the chosen cl.exe with wine and compile.py then uses MSVC
+    switches (/I, /c, /Fo), so XSDK_FLAGS must be set to MSVC-style flags too:
+        XSDK_FLAGS='/O2 /I<your XDK include path>' python tools/configure.py VERSION
+    The copy's own headers and libraries (XDK/include/xbox, XDK/lib/xbox) are needed
+    for real builds; most compiler-only extractions do not include them. The
+    compile-over-Wine path is wired up and the compilers are verified to answer /?
+    under Wine, but byte-matching a real game with it is NOT verified here.
+
+Default flags, chosen for PowerPC64 / Cell / the xsdk runtime (xsdk only):
     -mcpu=cell -fno-pic -mcall-xsdk -ffreestanding
     -fno-builtin -fno-exceptions -fno-rtti
 

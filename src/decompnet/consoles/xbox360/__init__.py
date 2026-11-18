@@ -2,8 +2,9 @@
 
 Stage 1 sniffs an XEX2 file and describes it (``scratch.py`` reads the few header fields
 it needs). Stage 2a adds the user-supplied xsdk kit (``kits/xsdk.py``: the free GCC 15
-cross toolchain and SDK, a user copy rather than a pinned pack) and a small original demo
-(``projects/demo-xbox360``). Stage 3 creates a PROJECT-mode decomp project from a
+cross toolchain and SDK, a user copy rather than a pinned pack) alongside the user's real
+Microsoft XDK (``kits/xdk360.py``: the PowerPC cl.exe retail games used, run under Wine)
+and a small original demo (``projects/demo-xbox360``). Stage 3 creates a PROJECT-mode decomp project from a
 ``functions.jsonl`` map beside the game (no Ghidra needed). Stage 4a discovers functions
 with Ghidra, through a disposable ELF64/PPC64 wrapper, when there is no map. For a
 basic-compressed XEX2 the project judges against an expanded image written to
@@ -32,7 +33,7 @@ class Xbox360(Console):
     compilers = (Compiler("xbox360-xsdk-placeholder", "Xbox 360 XDK (placeholder)",
                           "PLACEHOLDER - the xsdk kit supplies the real compiler"),)
     packs = ()
-    kits = ("xsdk",)  # the user's own xsdk toolchain and SDK (kits/xsdk.py)
+    kits = ("xsdk", "xdk360")  # the user's own xsdk toolchain and SDK, and optionally their real Microsoft XDK
     guides = ("ppc", "cpp")
     compiler_guide = ""  # no new guide: xsdk's own README documents the toolchain
     m2c = ""  # m2c has no PowerPC64 target (as with the PS3)
