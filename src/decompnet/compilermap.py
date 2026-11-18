@@ -139,6 +139,8 @@ def build(functions: list[tuple[int, int, bytes, Label, bool, Label | None]], bi
     """The map from (address, size, code, the compiler the game builds it with today, matched, the compiler the
     judge confirmed for it or None) of every function."""
     funcs = sorted(functions)
+    if not funcs:  # no functions to map (e.g. a console with one global compiler and no per-file ranges): empty map
+        return CompilerMap({}, [], Counter(), set(), {})
     q = {f[0]: _quirks_of(f[2], big_endian) for f in funcs if len(f[2]) // 4 >= MIN_INSNS}
     known: dict[int, Label] = {f[0]: f[5] or f[3] for f in funcs if f[4] or f[5]}  # matched or confirmed
     kinds = sorted({kind(f[3]) for f in funcs} | {kind(lab) for lab in known.values()})

@@ -44,6 +44,14 @@ def test_the_judges_confirmations_spread_to_their_neighbours():
     assert run.label == CW
 
 
+def test_an_empty_project_maps_to_nothing_without_crashing():
+    """No functions (a console with one global compiler and no per-file ranges, e.g. Xbox 360) used to reach
+    max(range(0)) and raise 'max() iterable argument is empty'."""
+    built = cm.build([], big_endian=True)
+    assert built.of == {} and built.runs == [] and not built.contradicted
+    assert not built.proposals(256, 3)
+
+
 def test_without_confirmations_nothing_is_proposed():
     funcs = [(0x100000 + i * 0x40, 0x40, code(), GCC, i % 2 == 0, None) for i in range(10)]
     built = cm.build(funcs, big_endian=False)
