@@ -22,6 +22,31 @@ end you get a project that builds your game again, exactly.
 The map of a big game updates ten times faster after a match. With 16 agents on two games, the app answers in under
 a tenth of a second (1.4 s before), and agents restart by themselves after a crash or a usage limit.
 
+## Fork notes (mrppp/decompdecomp)
+
+This is a personal fork of [RetroReversing/decompdecomp](https://github.com/RetroReversing/decompdecomp),
+itself a fork of [n-delic/decompdecomp](https://github.com/n-delic/decompdecomp). It tracks
+RetroReversing `main`. The following changes are local to this fork; they are small, isolated
+fixes and can be dropped with a single `git revert` each once the fixes land upstream.
+
+- **IDO 5.3 C++ install** (`src/decompnet/toolchains.toml`): the pinned URL pointed at
+  `ido5.3_c++.tar.xz`, which does not exist (HTTP 404). The real archive in the
+  `LLONSIT/qemu-irix-helpers` `n` branch is `ido5.3_cfront.tar.xz`. Both the URL and the
+  SHA-256 have been corrected to that file (verified to contain `usr/bin/qemu-irix`,
+  `usr/lib/driver` and `usr/lib/CC`). Without this, "IDO 5.3 C++ (IRIX emulation)" cannot install.
+
+- **Tool usage counters** (`src/decompnet/app/tool_policy.py`): call counts were written to
+  SQLite on every tool call, which queues behind agents' own writes and stalls the GUI when
+  many helpers run at once. They are now counted in memory under a lock and flushed to both
+  usage tables at most every 30 seconds, retaining per-task attribution. This follows the
+  approach upstream took; a crash loses at most one flush interval of counting.
+
+- **Boundary investigator scope** (`src/decompnet/app/boundary_investigations.py`): `bind()`
+  only ever set the boundary-investigator tool scope and never cleared it. Because named
+  agent identities are reused, an agent that ran one boundary review stayed restricted to the
+  three advisory tools for the rest of the process, with `guard()` refusing every later tool
+  call. The scope is now removed when that agent starts any non-boundary session.
+
 <p align="center">
   <img alt="decompdecomp on Demo Quest 64: the autopilot matches 20 functions for free, then a helper matches six more, each judged byte for byte." src=".github/assets/demo.webp" width="900">
   <br>
