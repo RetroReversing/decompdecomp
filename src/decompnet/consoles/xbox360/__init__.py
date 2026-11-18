@@ -13,6 +13,7 @@ basic-compressed XEX2 the project judges against an expanded image written to
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from .. import BETA, PROJECT, Compiler, Console
@@ -39,6 +40,9 @@ class Xbox360(Console):
     guides = ("ppc", "cpp")
     compiler_guide = ""  # no new guide: xsdk's own README documents the toolchain
     m2c = ""  # m2c has no PowerPC64 target (as with the PS3)
+    # Autopilot's drafts come from Ghidra instead (drafts.py): forks/ghidra.py decompiles the delinked
+    # ELF64 object objdiff judges against, which is the only machine decompiler that reads PPC64 here.
+    own_drafts = True
     ram = (0x80000000, 0x90000000)  # Xenon's 1 GB virtual address space
     demo = "demo-xbox360"  # a small original C demo, built into a XEX2 by its build.py
     demo_tools = ("ghidra", "objdiff-cli")  # what importing and judging that demo needs
@@ -100,6 +104,37 @@ class Xbox360(Console):
         manifest = fp.manifest or {}
         scratch.set_xdk360_compiler(fp.root, manifest.get("version"), compiler)
         return ".decomp.wtf.json"
+
+    def prepare_drafts(self, fp) -> str | None:
+        """Ghidra's drafts need its types declared: write ``include/ghidra.h`` when the project lacks it."""
+        from .drafts import GHIDRA_H, GHIDRA_HEADER
+
+        path = fp.root / "include" / GHIDRA_HEADER
+        if path.exists():
+            return None
+        path.write_text(GHIDRA_H, encoding="utf-8")
+        return path.relative_to(fp.root).as_posix()
+
+    def draft_symbols(self, fp) -> dict[str, str]:
+        """Every function the project names, by that name, so a draft's callee keeps it instead of Ghidra's
+        ``func_0x<offset>``, which names nothing outside the delinked object it came from."""
+        version = (fp.manifest or {}).get("version")
+        try:
+            info = json.loads((fp.root / "config" / str(version) / "functions.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        names = {fn.get("name") for units in (info.get("units") or {}).values() for fn in units}
+        return {name: name for name in names if name}
+
+    def compilable_draft(self, fp, symbol: str, draft: str, known: str = "") -> tuple[str, str] | None:
+        """Ghidra's decompilation of this function as C the PPC compiler accepts (drafts.py).
+
+        No exact drafts yet: PowerPC leaf shapes would be a console-specific reader of the instruction
+        forms (as ``consoles/pc/drafts.py`` does for x86), so autopilot's only draft here is Ghidra's.
+        """
+        from . import drafts
+
+        return drafts.compilable(draft, symbol, self.draft_symbols(fp), known)
 
     def on_start(self, net, slug: str, log=print) -> None:
         """A project imported by an older decompdecomp keeps the build tools it was made with, so fixes to them
