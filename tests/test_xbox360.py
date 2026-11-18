@@ -70,7 +70,5 @@ def test_game_info(tmp_path: Path):
     assert info["image_base"] == 0x80000000
 
 
-def test_upload_name_and_create_project_is_honest(tmp_path: Path):
+def test_upload_name(tmp_path: Path):
     assert XBOX360.upload_name(b"anything") == "game.xex"
-    with pytest.raises(NotImplementedError, match="later stage"):
-        XBOX360.create_project(tmp_path, tmp_path / "game.xex")

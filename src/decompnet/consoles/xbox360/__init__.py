@@ -3,7 +3,9 @@
 Stage 1 sniffs an XEX2 file and describes it (``scratch.py`` reads the few header fields
 it needs). Stage 2a adds the user-supplied xsdk kit (``kits/xsdk.py``: the free GCC 15
 cross toolchain and SDK, a user copy rather than a pinned pack) and a small original demo
-(``projects/demo-xbox360``). Project creation and Ghidra integration are still later work.
+(``projects/demo-xbox360``). Stage 3 creates a PROJECT-mode decomp project from a
+``functions.jsonl`` map beside the game (no Ghidra needed). Ghidra-based discovery for
+games without a map remains a later option.
 """
 
 from __future__ import annotations
@@ -45,18 +47,17 @@ class Xbox360(Console):
         return "game.xex"
 
     def create_project(self, root: Path, game: Path, *, compiler: str | None = None, log=print) -> dict:
-        raise NotImplementedError(
-            "Xbox 360 project creation is not implemented yet: this stage only sniffs "
-            "XEX2 files and reports game info. Project creation, the compiler pin and "
-            "Ghidra integration are planned for a later stage."
-        )
+        from . import scratch
+
+        return scratch.create(root, game, compiler=compiler, log=log)
 
     def game_info(self, game: Path) -> dict:
         from . import scratch
         return scratch.game_info(game)
 
     def tool_args(self) -> list[str]:
-        # The xsdk kit supplies a compiler once set up; no pinned pack, so no fixed build args.
+        # The xsdk kit supplies the compiler and flags at build time (XSDK_CC / XSDK_FLAGS read by the
+        # project template's configure.py). There is no pinned pack, so no fixed build args to pass here.
         return []
 
 
