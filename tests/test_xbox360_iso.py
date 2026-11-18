@@ -24,12 +24,12 @@ def _table(entries: list[tuple[str, bool, int, int]]) -> bytes:
     return bytes(out)
 
 
-def make_disc(path: Path, *, partition: int = 0) -> Path:
-    """A disc image with default.xex, a Content/data.bin and a directory, at ``partition``'s offset."""
+def make_disc(path: Path, *, partition: int = 0, boot: str = "default.xex") -> Path:
+    """A disc image with the boot executable, a Content/data.bin and a directory, at ``partition``'s offset."""
     sectors = 64
     image = bytearray(partition + sectors * iso.SECTOR)
     base = partition
-    root = _table([("Content", True, 34, 32), ("default.xex", False, 35, len(XEX))])
+    root = _table([("Content", True, 34, 32), (boot, False, 35, len(XEX))])
     content = _table([("data.bin", False, 36, 4)])
     image[base + 33 * iso.SECTOR:base + 33 * iso.SECTOR + len(root)] = root
     image[base + 34 * iso.SECTOR:base + 34 * iso.SECTOR + len(content)] = content
@@ -83,3 +83,51 @@ def test_extracting_default_xex_writes_it(tmp_path: Path):
     """The one call importing makes: take the game's executable out and leave it somewhere."""
     written = iso.extract_default_xex(make_disc(tmp_path / "game.iso"), tmp_path / "default.xex")
     assert written.read_bytes() == XEX
+
+
+def test_a_disc_is_identified_as_xbox_360_not_a_playstation(tmp_path: Path):
+    """A full disc dump starts with a DVD-video partition whose ISO 9660 filesystem a PlayStation sniff claimed;
+    its XDVDFS volume with a default.xex is what makes it an Xbox 360 disc."""
+    from decompnet import consoles
+    from decompnet.consoles.xbox360 import XBOX360
+
+    path = make_disc(tmp_path / "game.iso")
+    with path.open("r+b") as handle:  # the video partition's volume descriptor
+        handle.seek(16 * iso.SECTOR)
+        handle.write(b"\x01CD001\x01")
+
+    assert consoles.identify(path).id == "xbox360"
+    assert XBOX360.upload_name(path.read_bytes()) == "game.iso"
+    assert XBOX360.upload_name(XEX) == "game.xex"
+
+
+def test_an_original_xbox_disc_is_not_claimed_by_the_xbox_360(tmp_path: Path):
+    """Its boot executable is default.xbe, so the Xbox 360 sniff leaves it to the Xbox even though the filesystem
+    is the same XDVDFS."""
+    from decompnet.consoles.xbox360 import XBOX360
+
+    path = make_disc(tmp_path / "xbox.iso", boot="default.xbe")
+
+    assert XBOX360.sniff(path.read_bytes()[:1024], path) is False
+
+
+def test_a_disc_is_read_through_to_its_executable(tmp_path: Path):
+    """Creating a project from a disc reads its default.xex, and remembers the disc it came from."""
+    from decompnet.consoles.xbox360 import scratch
+
+    extracted, disc = scratch._game_file(make_disc(tmp_path / "game.iso"), lambda line: None)
+
+    assert extracted.name == "default.xex" and extracted.read_bytes() == XEX
+    assert disc is not None and disc.name == "game.iso"
+
+
+def test_a_file_that_is_neither_says_so(tmp_path: Path):
+    """A file that is neither a XEX2 nor a disc is a ForkError naming both, not a stack trace."""
+    from decompnet.consoles.xbox360 import scratch
+    from decompnet.forks.project import ForkError
+
+    plain = tmp_path / "nonsense.bin"
+    plain.write_bytes(b"neither executable nor disc")
+
+    with pytest.raises(ForkError, match="not a readable XEX2 program or an Xbox 360 disc image"):
+        scratch._game_file(plain, lambda line: None)

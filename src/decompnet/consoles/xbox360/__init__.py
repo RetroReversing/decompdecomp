@@ -48,12 +48,33 @@ class Xbox360(Console):
     demo_tools = ("ghidra", "objdiff-cli")  # what importing and judging that demo needs
 
     def sniff(self, head: bytes, file) -> bool:
-        """A structurally plausible XEX2 (magic + sane header offsets)."""
+        """A XEX2 program -- or the disc image one sits in: an XDVDFS volume with a ``default.xex`` at its root.
+
+        A disc can't be recognised from its first bytes (the volume descriptor is at sector 32 of the game
+        partition, after a video partition on XGD2/XGD3 discs), and that video partition's ISO 9660 filesystem is
+        what made a disc image look like a PlayStation game to the sniffs asked before this one. The file itself is
+        therefore asked, and only for its own filesystem's boot executable, so an original Xbox disc (default.xbe)
+        still belongs to the Xbox.
+        """
         from .scratch import is_xex2
-        return is_xex2(head)
+
+        if is_xex2(head):
+            return True
+        if not isinstance(file, Path):
+            return False
+        from . import iso
+
+        try:
+            with iso.Disc(file) as disc:
+                disc.find("default.xex")
+        except (iso.IsoError, OSError):
+            return False
+        return True
 
     def upload_name(self, data: bytes) -> str:
-        return "game.xex"
+        from .scratch import MAGIC
+
+        return "game.xex" if bytes(data[:4]) == MAGIC else "game.iso"
 
     def create_project(self, root: Path, game: Path, *, compiler: str | None = None, log=print) -> dict:
         from . import scratch

@@ -774,9 +774,10 @@ def _registry() -> list[Console]:
     from .xbox360 import XBOX360
 
     # the order sniff is asked in: a file is the first console's that says it's its own (the PSP and the PS1 before
-    # the PS2, whose sniff takes any ISO 9660 disc and any MIPS ELF; the Xbox before them all: a full Xbox disc dump
-    # starts with a DVD video partition; the PS3 before the PS2 too, though the PS2 takes only 32-bit MIPS ELFs)
-    return [N64, XBOX, PSP, PS1, PS3, PS2, PS4_CONSOLE, XBOX360, GBA, GAMECUBE, WII, PC, NDS, *PUBLIC_ONLY]
+    # the PS2, whose sniff takes any ISO 9660 disc and any MIPS ELF; the Xbox and the Xbox 360 before them all: a
+    # full disc dump starts with a DVD video partition, whose ISO 9660 filesystem is what a PlayStation sniff sees;
+    # the PS3 before the PS2 too, though the PS2 takes only 32-bit MIPS ELFs)
+    return [N64, XBOX360, XBOX, PSP, PS1, PS3, PS2, PS4_CONSOLE, GBA, GAMECUBE, WII, PC, NDS, *PUBLIC_ONLY]
 
 
 CONSOLES: list[Console] = _registry()

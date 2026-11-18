@@ -657,6 +657,33 @@ def set_xdk360_compiler(root: Path, version: str | None, compiler: str | None, *
     _configure(root, version, None if record else compiler)
 
 
+def _game_file(game: Path, log) -> tuple[Path, Path | None]:
+    """(the XEX2 to make the project from, the disc image it came from or None).
+
+    A user may point at the disc rather than at the executable. Its ``default.xex`` is taken out to a temporary file
+    -- the project keeps its own copy of the executable anyway -- and the disc's path is remembered as provenance, so
+    a project can still say where its code came from.
+    """
+    try:
+        with game.open("rb") as handle:
+            head = handle.read(8)
+    except OSError as exc:
+        raise ForkError(f"{game} can't be read: {exc}") from None
+    if is_xex2(head):
+        return game, None
+    from . import iso
+
+    try:
+        with iso.Disc(game) as disc:
+            data = disc.boot_executable()
+    except (iso.IsoError, OSError) as exc:
+        raise ForkError(f"{game} is not a readable XEX2 program or an Xbox 360 disc image: {exc}") from None
+    extracted = Path(tempfile.mkdtemp(prefix="xex2-disc-")) / "default.xex"
+    extracted.write_bytes(data)
+    log(f"{game.name} is a disc image: reading its default.xex ({len(data)} bytes)")
+    return extracted, game
+
+
 def create(root: Path, game: Path, *, compiler: str | None = None, log=print) -> dict:
     """Build a PROJECT-mode decomp project in ``root`` from a function map beside ``game``, or from Ghidra.
 
@@ -670,6 +697,7 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
     objects from the game (no xsdk kit needed); compiling the candidate objects needs the user's xsdk kit and is
     left to the user's first real ``ninja prepare`` build.
     """
+    game, disc = _game_file(game, log)
     info = game_info(game)
     try:
         data = game.read_bytes()
@@ -766,7 +794,8 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
 
     (root / ".decomp.wtf.json").write_text(json.dumps({
         "created": "from scratch", "platform": "xbox360", "version": version, "compiler": chosen,
-        "game": {"what": "your own copy of the game's XEX2", "path": f"orig/{version}.xex", "sha1": info["sha1"]},
+        "game": {"what": "your own copy of the game's XEX2", "path": f"orig/{version}.xex", "sha1": info["sha1"],
+                 **({"disc": str(disc)} if disc else {})},
         "setup": [["python", "tools/configure.py", version], ["ninja", "prepare"]],
     }, indent=2), encoding="utf-8")
     (root / ".gitignore").write_text("orig/\nbuild/\nbuild.ninja\n.ninja_*\nobjdiff.json\n__pycache__/\n.decomp-wtf/\n",

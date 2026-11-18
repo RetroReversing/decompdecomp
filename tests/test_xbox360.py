@@ -71,4 +71,6 @@ def test_game_info(tmp_path: Path):
 
 
 def test_upload_name(tmp_path: Path):
-    assert XBOX360.upload_name(b"anything") == "game.xex"
+    """A XEX2 is saved as the executable; a disc image (the file a disc dump starts with) as a disc."""
+    assert XBOX360.upload_name(b"XEX2" + bytes(28)) == "game.xex"
+    assert XBOX360.upload_name(bytes(32)) == "game.iso"
