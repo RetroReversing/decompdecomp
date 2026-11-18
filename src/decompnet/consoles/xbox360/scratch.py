@@ -533,6 +533,46 @@ def write_tools(root: Path) -> list[str]:
     return changed
 
 
+def selected_xdk360_compiler() -> str:
+    """The compiler a project with no recorded selection builds with: the first registered xdk360 copy, else the
+    first xsdk copy, else the placeholder. This mirrors tools/configure.py's default so the console's idea of the
+    project's "own" compiler agrees with the compiler baked into build.ninja."""
+    from ... import kits
+
+    for kid in ("xdk360", "xsdk"):
+        for own in kits.compilers([kid]):
+            if own.exe.is_file():
+                return own.version
+    return "xbox360-xsdk-placeholder"
+
+
+def xdk360_compiler(manifest: dict) -> str | None:
+    """The XDK copy id recorded in this project's manifest, if it names one (xdk360_compiler)."""
+    return manifest.get("xdk360_compiler")
+
+
+def _configure(root: Path, version: str | None) -> None:
+    """Regenerate build.ninja after a compiler change. X360 bakes the compiler into `rule cc`, unlike PC's per-file
+    map that configure.py re-reads: until this runs the next build would still use the old compiler. The manifest is
+    the source of truth (configure.py reads xdk360_compiler from it), so no extra argument is passed here."""
+    _run([sys.executable, "tools/configure.py", version or "game"], root,
+         "reconfiguring the build for a compiler", print)
+
+
+def set_xdk360_compiler(root: Path, version: str | None, compiler: str | None) -> None:
+    """Record ``compiler`` as the project's one global XDK selection (None or the placeholder clears the key) and
+    regenerate build.ninja so the choice takes effect on the next build. The console hook commits the manifest file
+    that holds the choice."""
+    path = root / ".decomp.wtf.json"
+    manifest = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    if compiler and compiler != "xbox360-xsdk-placeholder":
+        manifest["xdk360_compiler"] = compiler
+    else:
+        manifest.pop("xdk360_compiler", None)
+    write_atomic(path, json.dumps(manifest, indent=2))
+    _configure(root, version)
+
+
 def create(root: Path, game: Path, *, compiler: str | None = None, log=print) -> dict:
     """Build a PROJECT-mode decomp project in ``root`` from a function map beside ``game``, or from Ghidra.
 
