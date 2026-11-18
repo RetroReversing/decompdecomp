@@ -47,6 +47,16 @@ typedef double float10;
 typedef long double longdouble;
 typedef int code(void);
 
+/* Ghidra calls a 1-byte truth value `bool`; C has none without <stdbool.h>, which these compilers don't ship,
+   and the compiler then reports the *function name* as a syntax error. stdbool defines `bool` as a macro, so
+   this stands aside when it was included. */
+#if !defined(__cplusplus) && !defined(bool)
+typedef unsigned char bool;
+#endif
+#if !defined(__cplusplus) && !defined(true)
+enum { false = 0, true = 1 };
+#endif
+
 #define CONCAT22(a, b) ((uint)((((uint)(a)) << 16) | ((uint)(b) & 0xFFFF)))
 #define SUB42(a, b) ((ushort)((uint)(a) >> 16))
 #define SUB41(a, b) ((uchar)((uint)(a) >> 24))
