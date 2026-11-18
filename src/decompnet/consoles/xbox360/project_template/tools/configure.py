@@ -56,7 +56,11 @@ def main() -> None:
     lines.append(f"build {' '.join(targets)}: delink {CONFIG} tools/delink.py")
     for unit, obj in zip(units, objects):
         lines.append(f"build {obj}: cc src/auto/{unit}.c | {CONFIG}")
-    lines.append("build prepare: phony " + " ".join([*targets, *objects]))
+    # Delinking the target objects reads only this project's image and functions.json (stdlib), while compiling
+    # the candidate objects needs the user's xsdk kit. Split them so an import can build just the targets, and
+    # leave the full build (targets + candidates) as the default for when the kit is installed.
+    lines.append("build prepare-targets: phony " + " ".join(targets))
+    lines.append("build prepare: phony " + " ".join(["prepare-targets", *objects]))
     lines.append("default prepare")
     Path("build.ninja").write_text("\n".join(lines) + "\n", encoding="utf-8")
 

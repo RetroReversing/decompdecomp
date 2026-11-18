@@ -90,13 +90,32 @@ def test_map_functions_rejects_ambiguous_maps(tmp_path: Path):
         scratch.map_functions(game, info, xex)
 
 
-def test_create_builds_a_judgeable_project(tmp_path: Path):
+def test_create_builds_a_judgeable_project(tmp_path: Path, monkeypatch):
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, root, what, log):
+        calls.append(cmd)
+        if cmd[-1] == "prepare-targets":
+            # Stand in for delink.py (no real ninja or xsdk kit): write one target object per unit so create()'s
+            # post-build check passes.
+            cfg = json.loads((root / "config" / "MyGame" / "functions.json").read_text(encoding="utf-8"))
+            target_dir = root / "build" / "MyGame" / "target"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            for unit in cfg["units"]:
+                (target_dir / f"{unit}.o").write_bytes(b"")
+        return (True, "")
+
+    monkeypatch.setattr(scratch, "_run", fake_run)
     game = _game(tmp_path, [
         _row(BASE, BASE + 0x10, "entry"),
         _row(BASE + 0x2000, BASE + 0x2010, "far_away"),  # the gap makes a second unit
     ])
     root = tmp_path / "project"
     info = XBOX360.create_project(root, game)
+
+    # The first build configures the project, then delinks target objects only (candidates need the user's kit).
+    assert any("tools/configure.py" in cmd and "MyGame" in cmd for cmd in calls)
+    assert [cmd[-1] for cmd in calls][-1] == "prepare-targets"
     assert info["platform"] == "xbox360" and info["sources"] == 2
     assert info["id"] == "MyGame" and info["sha1"] == scratch.game_info(game)["sha1"]
 
@@ -124,6 +143,21 @@ def test_create_builds_a_judgeable_project(tmp_path: Path):
     assert (root / "tools" / "configure.py").is_file() and (root / "tools" / "compile.py").is_file()
     manifest = json.loads((root / ".decomp.wtf.json").read_text(encoding="utf-8"))
     assert manifest["platform"] == "xbox360" and manifest["version"] == info["id"]
+    assert manifest["setup"] == [["python", "tools/configure.py", "MyGame"], ["ninja", "prepare"]]
+
+
+def test_create_reports_missing_target_objects(tmp_path: Path, monkeypatch):
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, root, what, log):
+        calls.append(cmd)
+        return (True, "")  # no target objects written
+
+    monkeypatch.setattr(scratch, "_run", fake_run)
+    game = _game(tmp_path, [_row(BASE, BASE + 0x10, "entry")])
+    with pytest.raises(ForkError, match="target object"):
+        XBOX360.create_project(tmp_path / "project", game)
+    assert [cmd[-1] for cmd in calls][-1] == "prepare-targets"
 
 
 def test_create_without_a_map_has_an_actionable_error(tmp_path: Path, monkeypatch):

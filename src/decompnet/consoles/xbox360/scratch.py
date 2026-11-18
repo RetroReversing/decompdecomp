@@ -37,6 +37,8 @@ from ...forks.project import ForkError
 
 MAGIC = b"XEX2"
 MAX_DESCRIPTORS = 4096
+TOOL_SECONDS = 3600
+ERROR_TAIL = 1500
 
 # optional-header directory keys (big-endian u32 key -> u32 value)
 K_ENTRY = 0x10100
@@ -445,10 +447,10 @@ def write_atomic(path: Path, text: str) -> None:
 
 
 def objdiff_config(version: str, groups: dict[str, list[Function]]) -> dict:
-    """The initial objdiff.json, so the project is detectable and judgeable before the first kit build.
+    """The initial objdiff.json, so the project is detectable and judgeable even before the first kit build.
 
-    Target objects are cut from the XEX2 by a delinker that is not part of this stage; the paths are the
-    conventional ones so ``tools/configure.py`` can fill them in when the user's xsdk kit is available.
+    The target objects are delinked from the XEX2 at import time (no xsdk kit needed). ``tools/configure.py``
+    writes the same file again, so this stays a faithful fallback, with the same conventional paths.
     """
     build = Path("build") / version
     return {
@@ -464,6 +466,26 @@ def objdiff_config(version: str, groups: dict[str, list[Function]]) -> dict:
     }
 
 
+def _run(cmd: list[str], root: Path, what: str, log) -> None:
+    """Run a build command in the project, raising an actionable ForkError (with the tool's tail) on failure."""
+    from ...forks.project import ForkProject
+
+    ok, tail = ForkProject(root).run(cmd, log=log, timeout=TOOL_SECONDS)
+    if not ok:
+        raise ForkError(f"{what} failed:\n{tail[-ERROR_TAIL:]}")
+
+
+def _ninja() -> str:
+    """The ninja bundled next to this interpreter, or the one on PATH; fail clearly when there is none."""
+    bundled = Path(sys.executable).with_name("ninja")
+    if bundled.is_file():
+        return str(bundled)
+    found = shutil.which("ninja")
+    if found:
+        return found
+    raise ForkError("ninja is needed to delink the project's target objects; install it and try again")
+
+
 def create(root: Path, game: Path, *, compiler: str | None = None, log=print) -> dict:
     """Build a PROJECT-mode decomp project in ``root`` from a function map beside ``game``, or from Ghidra.
 
@@ -473,8 +495,9 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
     the project judges against the EXPANDED image written to ``orig/<version>.image.bin`` (offset 0); the raw
     ``.xex`` is kept beside it for identity and an uncompressed body is judged there at its payload offset.
     Encrypted and normal/delta-compressed bodies are not handled, so use a function map (or prepare an unencrypted
-    basic-compression copy) for those. ``root`` must not exist yet. A user xsdk kit is needed only to build the
-    project, not to create it.
+    basic-compression copy) for those. ``root`` must not exist yet. Creating the project delinks only the target
+    objects from the game (no xsdk kit needed); compiling the candidate objects needs the user's xsdk kit and is
+    left to the user's first real ``ninja prepare`` build.
     """
     info = game_info(game)
     try:
@@ -549,10 +572,23 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
                        "#include \"common.h\"\n", encoding="utf-8")
     write_atomic(root / "objdiff.json", json.dumps(objdiff_config(version, groups), indent=2))
 
+    # Only the target objects are built here: delinking reads this project's image and functions.json (stdlib
+    # only), while compiling the candidate objects needs the user's xsdk kit, which may not be set up yet. The
+    # project's default `ninja prepare` builds both once the kit is available; import runs `prepare-targets`.
+    _run([sys.executable, "tools/configure.py", version], root, "the first build", log)
+    _run([_ninja(), "prepare-targets"], root, "the delink targets", log)
+    if not (root / "objdiff.json").exists():
+        raise ForkError("the first build finished without writing objdiff.json")
+    targets = [root / "build" / version / "target" / f"{u}.o" for u in groups]
+    missing = [str(t.relative_to(root)) for t in targets if not t.is_file()]
+    if missing:
+        raise ForkError("delink finished without writing every target object (e.g. "
+                        f"{', '.join(missing[:3])}); check config/{version}/functions.json and tools/delink.py")
+
     (root / ".decomp.wtf.json").write_text(json.dumps({
         "created": "from scratch", "platform": "xbox360", "version": version, "compiler": chosen,
         "game": {"what": "your own copy of the game's XEX2", "path": f"orig/{version}.xex", "sha1": info["sha1"]},
-        "setup": [[sys.executable, "tools/configure.py", version]],
+        "setup": [["python", "tools/configure.py", version], ["ninja", "prepare"]],
     }, indent=2), encoding="utf-8")
     (root / ".gitignore").write_text("orig/\nbuild/\nbuild.ninja\n.ninja_*\nobjdiff.json\n__pycache__/\n.decomp-wtf/\n",
                                      encoding="utf-8")
@@ -564,6 +600,8 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
         f"2. Install your xsdk kit, then `XSDK_CC=powerpc-xsdk-elf-gcc python tools/configure.py {version}` and "
         "`ninja`. See `project_template/README` for the flags.\n"
         "3. Decompiled code goes in `src/`; `objdiff.json` shows each function's progress.\n\n"
+        "At import time only the target objects were delinked from your XEX2 (that needs no xsdk kit). Compiling "
+        "the candidate objects needs your kit, so run step 2 for the full build once it is installed.\n\n"
         "XEX2 has no ELF sections: `text` here is the whole image, addresses are runtime VAs, and no relocations "
         "are recovered by this stage. For a basic-compressed XEX2 the project judges against the expanded image "
         f"in `orig/{version}.image.bin` (the raw `{version}.xex` is kept for identity); for an uncompressed one it "
