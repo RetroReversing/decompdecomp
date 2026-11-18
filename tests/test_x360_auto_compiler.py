@@ -49,7 +49,7 @@ def wire(monkeypatch, *, matches, original=ORIGINAL, fail_at=None, recorded=None
     def judge(net, slug, fn, log):
         if fail_at is not None and fn["name"] == fail_at:
             raise RuntimeError("Wine build failed")
-        return bool(matches(state["current"], fn))
+        return 0.0 if matches(state["current"], fn) else 10.0
 
     monkeypatch.setattr(survey, "judge", judge)
 
@@ -178,6 +178,52 @@ def test_no_matches_is_not_evidence(monkeypatch):
     assert out["applied"] is False and out["tested"] == 3
     assert state["set"][-1] == ORIGINAL
     assert any("not evidence" in line for line in lines)
+
+
+def test_distance_ranks_compilers_no_copy_matches_with(monkeypatch):
+    """Every copy tying at 0/3 says nothing; the copy that brings the same sample closer is the evidence."""
+    distances = {"xdk360-000": 40.0, "xdk360-111": 10.0, "xdk360-222": 25.0}
+    lines = []
+    state = wire(monkeypatch, matches=lambda current, fn: True)  # only used to build the fake judge
+    monkeypatch.setattr(survey, "judge", lambda net, slug, fn, log: distances[state["current"]])
+    out = survey.survey_xdk360(None, "dash-dash", limit=3, log=lines.append)
+
+    assert [r["version"] for r in out["ranked"]] == ["xdk360-111", "xdk360-222", "xdk360-000"]
+    assert all(r["matched"] == 0 for r in out["ranked"])
+    assert out["ranked"][0]["score"] == 10.0 and out["ranked"][2]["score"] == 40.0
+    assert out["applied"] is False  # closer is not proof: it stays a ranking until something is exact
+    assert any("mean distance 10.0" in line for line in lines)
+
+
+def test_the_project_s_own_compiler_is_named_when_it_is_best(monkeypatch):
+    """A copy that loses on distance keeps the project's own compiler, and says so."""
+    distances = {"xdk360-000": 10.0, "xdk360-111": 40.0, "xdk360-222": 25.0}
+    state = wire(monkeypatch, matches=lambda current, fn: True)
+    monkeypatch.setattr(survey, "judge", lambda net, slug, fn, log: distances[state["current"]])
+    out = survey.survey_xdk360(None, "dash-dash", limit=3, log=lambda line: None)
+
+    assert out["best"] == ORIGINAL and out["applied"] is False
+    assert state["set"][-1] == ORIGINAL
+
+
+def test_stop_ends_the_survey_and_puts_the_compiler_back(monkeypatch):
+    """Stop must not wait for the remaining copies, and the project's own compiler must be restored anyway."""
+    from decompnet.network import NetworkError
+
+    state = wire(monkeypatch, matches=lambda current, fn: True)
+    calls = {"n": 0}
+
+    def stop():
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise NetworkError("survey stopped.")
+
+    monkeypatch.setattr(survey, "_stop_requested", stop)
+    with pytest.raises(NetworkError):
+        survey.survey_xdk360(None, "dash-dash", limit=3, log=lambda line: None)
+
+    assert state["set"][-1] == ORIGINAL
+    assert calls["n"] == 2  # one copy was tried, then Stop was honoured
 
 
 def test_too_few_copies_or_no_sources_is_a_noop(monkeypatch):

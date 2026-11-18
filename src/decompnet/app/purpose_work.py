@@ -223,6 +223,15 @@ def checkpoint():
     if check:check()
 
 
+def checkpoint_owner():
+    """The cancellation check of the job this thread was started for, for work that never goes through an
+    Executor: a `support.start` job hands its check to `owner()` and a long loop must call it, or Stop waits
+    for the whole loop to end (an XDK survey tries 17 compilers and ignored Stop until the last one)."""
+    inherited = _OWNER.get()
+    if inherited and inherited[2]:
+        inherited[2]()
+
+
 def shutdown():
     """Signal active work without changing the user's saved background preferences."""
     with _LOCK:groups = list(_ACTIVE.values())
