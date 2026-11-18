@@ -28,9 +28,37 @@ This is a personal fork of [RetroReversing/decompdecomp](https://github.com/Retr
 itself a fork of [n-delic/decompdecomp](https://github.com/n-delic/decompdecomp). It tracks
 RetroReversing `main`. Issues are disabled here: please report bugs and request features on the
 [RetroReversing repo](https://github.com/RetroReversing/decompdecomp/issues) or ask on the
-[Discord](https://discord.gg/hhEm3xZagB), not on this fork. The three changes below are local
-fixes only; they are small and isolated and can each be dropped with a single `git revert`
-once they land upstream.
+[Discord](https://discord.gg/hhEm3xZagB), not on this fork. The fixes below are local and
+isolated; each can be dropped with a single `git revert` once it lands upstream.
+
+## Xbox 360 console (new in this fork)
+
+An **Xbox 360** target was added on top of RetroReversing `main`, in PROJECT mode (objdiff),
+with `arch = "ppc64"`. It is BETA: the pipeline is structurally complete and unit-tested, but
+no real retail game has been matched end to end here (Ghidra is not installed in the build
+environment, and the cross toolchain is user-supplied).
+
+- **Recognition** (`consoles/xbox360/scratch.py`): sniffs XEX2 files and reports their header
+  facts. `read_xex2` reads the payload/security offsets, image base and entry point from the
+  documented XEX2 header layout (no code copied from other projects).
+- **User-supplied xsdk kit** (`kits/xsdk.py`): the free [xenosworks/xsdk](https://github.com/xenosworks/xsdk)
+  GCC 15 cross toolchain and SDK are ~1.5 GB with no distributable pin, so Setup records the
+  user's copy and the kit reads it in place. The compiler version comes from `-dumpversion`.
+- **Function discovery**: a `functions.jsonl` map beside the game supplies functions directly;
+  without one, Ghidra discovers them through a disposable big-endian ELF64/PPC64 wrapper of
+  the XEX2 image. Generate maps with your own Ghidra/PowerPC probing work and drop them beside
+  the game.
+- **Project creation** (`scratch.create`): writes a v4 `config/functions.json`, copies the game
+  to `orig/`, and scaffolds source stubs. XEX2 has no ELF section table, so `text` is
+  approximated as the whole image at its payload offset, and no relocations are recovered yet.
+- **Delinker** (`project_template/tools/delink.py`): a standalone stdlib PPC64 big-endian tool
+  that cuts functions out of the game into ELF64 `EM_PPC64` relocatable objects with RELA
+  relocations for objdiff to judge. Byte-matching still needs the user's xsdk kit to compile
+  candidates.
+- **Demo** (`projects/demo-xbox360/`): a small original C program built into an XEX2 with the
+  documented xsdk flags, link script and `elf2xex.py`.
+
+Stage-by-stage detail is in the `console/xbox360` branch's commit messages.
 
 - **IDO 5.3 C++ install** (`src/decompnet/toolchains.toml`): the pinned URL pointed at
   `ido5.3_c++.tar.xz`, which does not exist (HTTP 404). The real archive in the
