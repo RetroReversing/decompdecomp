@@ -84,6 +84,15 @@ def test_efficiency_preserves_token_categories_and_includes_failed_work():
     assert not session_efficiency.summarize([record(1,2)],{})
 
 
+def test_context_accepts_a_string_compiler_like_project_consoles(tmp_path):
+    # PROJECT-mode consoles store the compiler as a plain id (e.g. xbox360), not a dict.
+    net, _ = _game(tmp_path, [('f', 10, 'open')])
+    with net.store.tx() as db:
+        db.execute('UPDATE projects SET config=json_set(config, "$.compiler", "project")')
+    ctx = session_efficiency.context(net, 'game', {})
+    assert ctx['compiler'] == 'project'
+
+
 def test_workload_measurements_are_project_scoped_and_retained(tmp_path):
     net,_=_game(tmp_path,[('f',100,'open')]);a,_=net.local_agent('a')
     ctx=session_efficiency.context(net,'game',{})
