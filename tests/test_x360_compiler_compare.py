@@ -96,6 +96,23 @@ def test_configure_resolves_exact_copy_and_bakes_it(tmp_path, monkeypatch, two_x
     assert str(a.exe) not in ninja
 
 
+def test_a_wine_compiler_gets_msvc_flags_not_gcc(tmp_path, monkeypatch, two_xdks):
+    """A real XDK cl.exe rejects GCC flags, so the generated build must default to MSVC switches for runner wine."""
+    a, b = two_xdks
+    mod = load_configure()
+    root, _ = project(tmp_path)
+    (root / "config" / "v").mkdir(parents=True)
+    (root / "config" / "v" / "functions.json").write_text(
+        json.dumps({"units": {"a": []}}), encoding="utf-8")
+    monkeypatch.delenv("XSDK_FLAGS", raising=False)
+    monkeypatch.setattr(mod, "ROOT", root)
+    monkeypatch.setattr(mod, "MANIFEST", root / ".decomp.wtf.json")
+    monkeypatch.setattr(sys, "argv", ["configure.py", "v", "--compiler", b.version])
+    mod.main()
+    ninja = (root / "build.ninja").read_text(encoding="utf-8")
+    assert "-- /O2" in ninja and "-mcpu=cell" not in ninja
+
+
 def test_xsdk_cc_exe_defaults_to_wine(tmp_path, monkeypatch, two_xdks):
     """(b) A cl.exe given through XSDK_CC is run under wine unless DECOMP_X360_RUNNER is explicitly provided."""
     mod = load_configure()

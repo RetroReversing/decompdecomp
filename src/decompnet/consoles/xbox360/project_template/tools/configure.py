@@ -94,6 +94,8 @@ def main() -> None:
     build = Path("build") / args.version
     flags = os.environ.get(
         "XSDK_FLAGS",
+        "/O2 /G5 /MT"
+        if runner == "wine" else  # the real XDK's cl.exe rejects GCC flags: MSVC switches instead
         "-mcpu=cell -fno-pic -mcall-xsdk -ffreestanding -fno-builtin -fno-exceptions -fno-rtti",
     ).split()
 
