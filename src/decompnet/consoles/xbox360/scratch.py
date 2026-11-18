@@ -139,6 +139,20 @@ def read_xex2(data: bytes) -> dict:
     }
 
 
+_VERSION = re.compile(rb"(?:Xbox Live Client|Xbox Downloader)/(\d{1,2}\.\d{1,5}\.\d{1,5}\.\d{1,3})")
+
+
+def title_version(data: bytes) -> str | None:
+    """The version a title reports about itself ("Xbox Live Client/2.0.16202.0").
+
+    A retail XEX2 need not carry the execution-info header that would name its build, but its HTTP user agents do:
+    a dashboard's own strings say which system update it is, which the PE date only bounds. For a basic-compressed
+    XEX2 the strings are in the EXPANDED image, not the raw file.
+    """
+    found = _VERSION.search(data)
+    return found.group(1).decode("ascii") if found else None
+
+
 def game_info(game: Path) -> dict:
     """What an XEX2 file is: platform, an id/title from its name, its sha1, header facts."""
     data = game.read_bytes()
@@ -148,6 +162,8 @@ def game_info(game: Path) -> dict:
         "title": game.stem,
         "sha1": hashlib.sha1(data).hexdigest(),
     }
+    if version := title_version(data):
+        info["version"] = version
     try:
         xex = read_xex2(data)
     except ValueError:
@@ -669,8 +685,8 @@ def _game_file(game: Path, log) -> tuple[Path, Path | None]:
             head = handle.read(8)
     except OSError as exc:
         raise ForkError(f"{game} can't be read: {exc}") from None
-    if is_xex2(head):
-        return game, None
+    if head[:4] == MAGIC:
+        return game, None  # a XEX2 (however broken) is create's to explain, not the disc reader's
     from . import iso
 
     try:
@@ -757,6 +773,14 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
     except OSError:
         shutil.copyfile(game, original)
     judge_rel, judge_sha1, judge_offset = judge_image(root, game, xex, fmt, version)
+    if not info.get("version"):
+        # The strings are in the image the project judges against: for a compressed XEX2 the raw file has none.
+        try:
+            info["version"] = title_version((root / judge_rel).read_bytes())
+        except OSError:
+            info["version"] = None
+        if info["version"]:
+            log(f"this is version {info['version']} (from the title's own strings)")
     (root / "include").mkdir(exist_ok=True)
     (root / "include" / "common.h").write_text(TYPES_H, encoding="utf-8")
 
@@ -795,15 +819,18 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
     (root / ".decomp.wtf.json").write_text(json.dumps({
         "created": "from scratch", "platform": "xbox360", "version": version, "compiler": chosen,
         "game": {"what": "your own copy of the game's XEX2", "path": f"orig/{version}.xex", "sha1": info["sha1"],
-                 **({"disc": str(disc)} if disc else {})},
+                 **({"disc": str(disc)} if disc else {}),
+                 **({"version": info["version"]} if info.get("version") else {})},
         "setup": [["python", "tools/configure.py", version], ["ninja", "prepare"]],
     }, indent=2), encoding="utf-8")
     (root / ".gitignore").write_text("orig/\nbuild/\nbuild.ninja\n.ninja_*\nobjdiff.json\n__pycache__/\n.decomp-wtf/\n",
                                      encoding="utf-8")
+    version_note = f"Its own strings report version {info['version']}.\n\n" if info.get("version") else ""
     (root / "README.md").write_text(
         f"# {info['title']} decompilation\n\n"
         "Started from scratch with decompdecomp: functions were found by Ghidra or read from a `functions.jsonl` "
         f"map beside your own XEX2 copy ({source}), and objdiff compares each source file with the original.\n\n"
+        f"{version_note}"
         f"1. Your copy of the program is here as `orig/{version}.xex` (never commit it).\n"
         f"2. Install your xsdk kit, then `XSDK_CC=powerpc-xsdk-elf-gcc python tools/configure.py {version}` and "
         "`ninja`. See `project_template/README` for the flags.\n"
