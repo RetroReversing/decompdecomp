@@ -36,7 +36,7 @@ class Xbox360(Console):
     packs = ()
     # the manifest holds xdk360_compiler, the one global compiler selection (see file_compiler below)
     compiler_config = (".decomp.wtf.json",)
-    kits = ("xsdk", "xdk360")  # the user's own xsdk toolchain and SDK, and optionally their real Microsoft XDK
+    kits = ("xsdk", "xdk360", "xextool")  # the user's own xsdk toolchain and SDK, and optionally their real Microsoft XDK, and XexTool (decrypts a disc's executable for us)
     guides = ("ppc", "cpp")
     compiler_guide = ""  # no new guide: xsdk's own README documents the toolchain
     m2c = ""  # m2c has no PowerPC64 target (as with the PS3)

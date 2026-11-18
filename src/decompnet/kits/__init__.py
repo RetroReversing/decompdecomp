@@ -173,9 +173,10 @@ def _registry() -> list[Kit]:
     from .visualcpp import VISUALCPP
     from .xdk import XDK
     from .xdk360 import XDK360
+    from .xextool import XEXTOOL
     from .xsdk import XSDK
 
-    return [XDK, XDK360, VISUALCPP, PS3SDK, XSDK, *OWN_COMPILERS]
+    return [XDK, XDK360, XEXTOOL, VISUALCPP, PS3SDK, XSDK, *OWN_COMPILERS]
 
 
 KITS: list[Kit] = _registry()

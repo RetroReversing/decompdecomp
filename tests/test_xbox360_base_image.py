@@ -67,6 +67,25 @@ def test_a_file_this_cannot_be_is_refused_with_a_reason():
         scratch.read_base_image(build_pe(virtual_address=0x2FFF, image_size=0x3000))
 
 
+def test_the_xextool_kit_exposes_the_tool_and_conversion_needs_it(tmp_path, monkeypatch):
+    """XexTool is the user's own copy: a kit names its folder, and without one the import falls back to the reason."""
+    from decompnet import kits
+    from decompnet.kits.xextool import Xextool
+
+    folder = tmp_path / "xextool_v6.6"
+    folder.mkdir()
+    (folder / "xextool.exe").write_bytes(b"MZ" + bytes(64))
+
+    kit = kits.get("xextool")
+    assert kit is not None and kit.id == "xextool"
+    assert kit.locate(folder) == folder.resolve()
+    tool = Xextool().compilers(folder)[0]
+    assert tool.version == "xextool" and tool.runner == "wine"
+
+    monkeypatch.setattr(kits, "compilers", lambda ids=None: [])
+    assert scratch.xextool_base_image(tmp_path / "game.xex", log=lambda line: None) is None
+
+
 def test_the_app_recognises_a_base_image_as_an_xbox_360_game(tmp_path):
     path = tmp_path / "default.exe"
     path.write_bytes(build_pe())

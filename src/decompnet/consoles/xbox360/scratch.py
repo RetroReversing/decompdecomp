@@ -28,6 +28,7 @@ import os
 import re
 import shutil
 import struct
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -774,6 +775,43 @@ def _game_file(game: Path, log) -> tuple[Path, Path | None]:
     return extracted, game
 
 
+def xextool_base_image(game: Path, log=print) -> Path | None:
+    """The decrypted base image of a XEX2 this console can't read, made with the user's XexTool kit.
+
+    XexTool is a Windows program, so it runs through Wine with plain file names in a scratch folder (a path with a
+    space, or a leading slash, is a Windows switch). None when the kit isn't set up, or when what it writes isn't a
+    PowerPC PE: some copies report a normal-compressed body and hand it back still compressed.
+    """
+    from ... import kits, wine
+
+    exe = next((own.exe for own in kits.compilers(["xextool"]) if own.exe.is_file()), None)
+    if exe is None:
+        return None
+    wine_bin = os.environ.get("DECOMPNET_WINE") or shutil.which("wine")
+    if wine_bin is None:
+        log("XexTool is a Windows program and wine isn't on this machine: install wine, then try again")
+        return None
+    work = Path(tempfile.mkdtemp(prefix="xextool-"))
+    shutil.copyfile(game, work / "in.xex")
+    log(f"converting {game.name} with XexTool (under wine)…")
+    try:
+        result = subprocess.run([wine_bin, str(exe), "-b", "base.bin", "in.xex"], cwd=work,
+                                env={**os.environ, **(wine.build_env(always=True) or {})},
+                                capture_output=True, text=True, timeout=TOOL_SECONDS)
+    except (OSError, subprocess.SubprocessError) as error:
+        log(f"XexTool couldn't run: {error}")
+        return None
+    out = work / "base.bin"
+    if not out.is_file():
+        said = ((result.stdout or "") + (result.stderr or "")).strip()[-300:]
+        log(f"XexTool wrote no base image{':' + chr(10) + said if said else ''}")
+        return None
+    if not is_base_image(out.read_bytes()[:0x1000]):
+        log("XexTool wrote an image that isn't a PowerPC PE: this disc is compressed in a way it can't unpack")
+        return None
+    return out
+
+
 def create(root: Path, game: Path, *, compiler: str | None = None, log=print) -> dict:
     """Build a PROJECT-mode decomp project in ``root`` from a function map beside ``game``, or from Ghidra.
 
@@ -803,21 +841,31 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
         if xex["image_base"] is None:
             raise ForkError("this XEX2 has no image base, so function addresses cannot be mapped to file offsets")
         fmt = read_file_format(data, xex)
-        require_usable_image(fmt)  # an image this console can't analyse is refused here, not halfway through
+        try:
+            require_usable_image(fmt)
+        except ForkError:
+            # The user's own XexTool can write the decrypted image out of a disc's executable. Without it, the
+            # refusal above is exactly what they need to read.
+            converted = xextool_base_image(game, log)
+            if converted is None:
+                raise
+            log(f"{game.name}'s own image can't be read here; using the base image your XexTool wrote")
+            data = converted.read_bytes()
+            from_base_image = True
     else:
-        # A decrypted base image (what `xextool -b` writes for an encrypted or normal-compressed disc): its loader
-        # view is a flat image, which is what everything below expects (a VA's offset is va - image_base), so map
-        # it once and work from that.
+        from_base_image = True
+    if from_base_image:
+        # A decrypted base image (what `xextool -b` writes): its loader view is one flat image, which is what
+        # everything below expects (a VA's offset is va - image_base), so map it once and work from that.
         mapped = read_base_image(data)
         xex = {"image_base": mapped["image_base"], "image_size": mapped["image_size"], "payload_offset": 0,
                "entry_point": mapped["entry_point"], "headers": {}}
         fmt = {"encryption": 0, "compression": 0, "blocks": []}
-        from_base_image = True
         flat = Path(tempfile.mkdtemp(prefix="xbox360-base-")) / "image.bin"
         flat.write_bytes(mapped["image"])
         game = flat
-        log(f"{provided.name} is a decrypted base image: {mapped['image_size']} bytes at "
-            f"0x{mapped['image_base']:X}, entry 0x{mapped['entry_point']:X}")
+        log(f"base image: {mapped['image_size']} bytes at 0x{mapped['image_base']:X}, "
+            f"entry 0x{mapped['entry_point']:X}")
     # Ghidra analysed the expanded image of a basic-compressed XEX2, so a VA's file offset starts at 0 in that image;
     # the raw payload offset is the base only for an uncompressed body.
     base_offset = _base_offset(xex, fmt)
