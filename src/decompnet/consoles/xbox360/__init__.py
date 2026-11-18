@@ -105,6 +105,30 @@ class Xbox360(Console):
         scratch.set_xdk360_compiler(fp.root, manifest.get("version"), compiler)
         return ".decomp.wtf.json"
 
+    def file_ranges(self, fp) -> dict[str, list[tuple[int, int]]]:
+        """Where each source file's code lives in the game, by the unit's functions in ``config/<version>/functions.json``.
+
+        The Settings panel's "only for these address ranges" and the compiler map's suggestions need this, and an
+        Xbox 360 project has no ``vram`` on its functions: the addresses only exist in the analysis each unit was
+        cut from, so they are read from there rather than from the database.
+        """
+        version = (fp.manifest or {}).get("version")
+        try:
+            config = json.loads((fp.root / "config" / str(version) / "functions.json").read_text(encoding="utf-8"))
+            objdiff = json.loads((fp.root / "objdiff.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        sources = {(unit.get("name") or ""): ((unit.get("metadata") or {}).get("source_path") or "")
+                   for unit in objdiff.get("units") or []}
+        ranges: dict[str, list[tuple[int, int]]] = {}
+        for unit, entries in (config.get("units") or {}).items():
+            source = sources.get(unit) or ""
+            spans = [(entry["addr"], entry["addr"] + max(int(entry.get("size") or 0), 1))
+                     for entry in entries or [] if isinstance(entry.get("addr"), int)]
+            if source and spans:
+                ranges[source] = [(min(start for start, _ in spans), max(end for _, end in spans))]
+        return ranges
+
     def prepare_drafts(self, fp) -> str | None:
         """Ghidra's drafts need its types declared: write ``include/ghidra.h`` when the project lacks it."""
         from .drafts import GHIDRA_H, GHIDRA_HEADER

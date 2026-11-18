@@ -180,6 +180,22 @@ def test_a_trial_switch_does_not_record_a_choice(tmp_path: Path, monkeypatch):
     assert calls == ["xdk360-b", None]  # a recorded choice is read from the manifest
 
 
+def test_file_ranges_come_from_the_units_analysis(tmp_path: Path):
+    """Settings' address ranges need where each file's code is. Xbox 360 functions have no vram, so the addresses
+    come from the analysis the units were cut from; without this the range check found no file at all."""
+    from types import SimpleNamespace
+
+    (tmp_path / "config" / "v").mkdir(parents=True)
+    (tmp_path / "config" / "v" / "functions.json").write_text(json.dumps({"units": {
+        "text_1000": [{"name": "FUN_1000", "addr": 0x1000, "size": 0x20},
+                      {"name": "FUN_1100", "addr": 0x1100, "size": 0x10}]}}), encoding="utf-8")
+    (tmp_path / "objdiff.json").write_text(json.dumps({"units": [
+        {"name": "text_1000", "metadata": {"source_path": "src/auto/text_1000.c"}}]}), encoding="utf-8")
+    fp = SimpleNamespace(root=tmp_path, manifest={"version": "v"})
+
+    assert XBOX360.file_ranges(fp) == {"src/auto/text_1000.c": [(0x1000, 0x1110)]}
+
+
 def test_game_build_time_follows_the_manifest(tmp_path: Path):
     """A project's manifest names its game; the survey dates the title from that copy when it's still on disk."""
     (tmp_path / "orig").mkdir()
