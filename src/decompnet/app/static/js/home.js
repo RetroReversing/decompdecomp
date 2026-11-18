@@ -118,6 +118,16 @@ drop.addEventListener("drop", (e) => {
   pickFiles(e.dataTransfer.files);
 });
 $("file").addEventListener("change", () => pickFiles($("file").files));
+/* A file dropped anywhere on the page goes to the same place: the panel is a small target, and a browser's default is
+   to navigate away from the app and lose the view. Only while the add-game panel is the one showing. */
+document.addEventListener("dragover", (e) => {
+  if (e.dataTransfer?.types?.includes("Files") && !$("dropIdle").hidden) e.preventDefault();
+});
+document.addEventListener("drop", (e) => {
+  if (!e.dataTransfer?.files?.length || $("dropIdle").hidden || drop.contains(e.target)) return;
+  e.preventDefault();
+  pickFiles(e.dataTransfer.files);
+});
 /* A game with its PC debug symbols or PS4 function map. */
 const DEBUG_FILE = /\.(pdb|map)$|(?:^|\.)functions\.jsonl$/i;
 function pickFiles(list) {
@@ -279,13 +289,37 @@ function isXbe(head, dv) {
   return head.length >= 0x178 && dv.getUint32(0, true) === 0x48454258 && dv.getUint32(0x104, true) % 0x1000 === 0;
 }
 
-/* An Xbox disc image (XDVDFS): its descriptor is at 64 KiB in an XISO, past the video partition in a full dump. A
-   full dump starts like a DVD video disc, so this is asked before the other disc checks. */
+/* An Xbox disc image (XDVDFS): its descriptor is at 64 KiB in an XISO or a game-partition rip, and past the video
+   partition in a full dump. A full dump starts like a DVD video disc, so this is asked before the other disc checks.
+   An Xbox 360 dump keeps its game partition at a fixed offset per generation: 0xFD90000 (XGD2) or 0x2080000 (XGD3).
+   Where the filesystem sits at the XISO offset, the boot executable's name says which console it is (default.xex is
+   Xbox 360, default.xbe the original Xbox) — a 360 disc's video partition is ISO 9660, which the checks below would
+   otherwise read as a PlayStation disc. */
 async function identifyXboxDisc(file) {
+  const MAGIC = "MICROSOFT*XBOX*MEDIA";
+  const stem = file.name.replace(/\.[^.]*$/, "");
+  const readAt = async (at, length) => new Uint8Array(await file.slice(at, at + length).arrayBuffer());
+  const magicAt = async (at) => {
+    if (file.size < at + MAGIC.length) return false;
+    return String.fromCharCode(...await readAt(at, MAGIC.length)) === MAGIC;
+  };
+  const bootName = async (descriptor) => {  // the first entry of the root directory names the boot executable
+    const head = await readAt(descriptor, 0x20);
+    const sector = new DataView(head.buffer).getUint32(0x14, true);
+    if (!sector || file.size < sector * 2048 + 64) return "";
+    const entry = await readAt(sector * 2048, 64);
+    const nameLength = entry[13];  // left/right (4), sector (4), size (4), attributes (1), name length (1)
+    return String.fromCharCode(...entry.slice(14, 14 + nameLength)).toLowerCase();
+  };
+  for (const at of [0xFD90000 + 0x10000, 0x2080000 + 0x10000]) {
+    if (await magicAt(at)) return { title: stem, size: file.size, platform: "xbox360", order: "Xbox 360 disc image" };
+  }
   for (const at of [0x10000, 0x18310000]) {
-    if (file.size < at + 20) continue;
-    if (String.fromCharCode(...new Uint8Array(await file.slice(at, at + 20).arrayBuffer())) === "MICROSOFT*XBOX*MEDIA")
-      return { title: file.name.replace(/\.[^.]*$/, ""), size: file.size, platform: "xbox", order: "Xbox disc image" };
+    if (!await magicAt(at)) continue;
+    const boot = at === 0x10000 ? await bootName(at).catch(() => "") : "";
+    return boot.endsWith(".xex")
+      ? { title: stem, size: file.size, platform: "xbox360", order: "Xbox 360 disc image" }
+      : { title: stem, size: file.size, platform: "xbox", order: "Xbox disc image" };
   }
   return null;
 }
