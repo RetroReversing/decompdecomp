@@ -1965,7 +1965,7 @@ platform = "N64"
 arch = "mips"
 family = "ido"
 license = "proprietary"
-source = "https://raw.githubusercontent.com/LLONSIT/qemu-irix-helpers/n/qemu/ido5.3_c++.tar.xz"
+source = "https://raw.githubusercontent.com/LLONSIT/qemu-irix-helpers/n/qemu/ido5.3_cfront.tar.xz"
 description = "Explicit SGI comparison profile. Bundled emulator is a Linux x86_64 program; Windows uses WSL; macOS uses the optional local Linux VM. Install only after license acceptance."
 requires = ["runtime-irix-host"]
 driver = "consoles/n64/irix.py"
@@ -1973,8 +1973,8 @@ flags = ["-O2", "-mips2", "-G", "0", "-32", "-non_shared", "-Xcpluscomm", "-woff
 cmd = ["/usr/bin/env", "LD_LIBRARY_PATH={tc:runtime-irix-host}", "{python}", "{driver}", "--root", "{tc}", "--profile", "ido-5.3-cxx", "{src}", "{obj}", "{include}", "{flags}"]
 cplusplus = true
 [["ido-5.3-cxx".parts]]
-url = "https://raw.githubusercontent.com/LLONSIT/qemu-irix-helpers/n/qemu/ido5.3_c++.tar.xz"
-sha256 = "851426c63ffb0688c702793113c2d9aa3c703c7a4e9d4240fc99d1862f79e4b9"
+url = "https://raw.githubusercontent.com/LLONSIT/qemu-irix-helpers/n/qemu/ido5.3_cfront.tar.xz"
+sha256 = "18b40acdc7b7f7c4ef840245f3f0a62d6be8b92738eee77dc02e05f378fa6fc7"
 platforms = ["linux-x86_64"]
 
 ["ido-6.0"]
