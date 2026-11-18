@@ -63,5 +63,32 @@ class Xbox360(Console):
         # project template's configure.py). There is no pinned pack, so no fixed build args to pass here.
         return []
 
+    def build_env(self) -> dict[str, str]:
+        """Where wine and the app's prefix are (DECOMPNET_WINE / DECOMPNET_WINE_PREFIX), read by a project's
+        tools/compile.py when the real XDK's cl.exe builds a unit under Wine. As on the PC and the original Xbox,
+        this is read at build time, not baked into build.ninja, so an older configure.py is never given an argument
+        it doesn't know and the env is picked up as soon as wine is installed."""
+        from ... import wine
+
+        return wine.build_env(always=True)
+
+    def on_start(self, net, slug: str, log=print) -> None:
+        """A project imported by an older decompdecomp keeps the build tools it was made with, so fixes to them
+        never reached it: its stale configure.py kept selecting the free xsdk GCC even when a real XDK was
+        registered. Bring those tools up to the current template (scratch.write_tools) once, when the stamp in
+        the manifest differs from scratch.tools_version(), and remember it so it is tried only when tools change."""
+        from . import scratch
+
+        if not net.fork_slug(slug):
+            return
+        fp = net.forks.get(slug)[1]
+        manifest = fp.manifest or {}
+        if manifest.get("created") != "from scratch" or manifest.get("tools") == scratch.tools_version():
+            return
+        changed = scratch.write_tools(fp.root)
+        fp.update_manifest(tools=scratch.tools_version())
+        if changed:
+            log(f"updated this project's build tools to decompdecomp's current ones ({', '.join(changed)})")
+
 
 XBOX360 = Xbox360()

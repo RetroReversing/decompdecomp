@@ -128,6 +128,10 @@ def game_info(game: Path) -> dict:
 # Stage 4a: a GHIDRA-DISCOVERY path for games with no map, through a disposable ELF64/PPC64 wrapper below.
 
 TEMPLATE = Path(__file__).with_name("project_template")
+# The project's build tools, copied into a new project once by create() (shutil.copytree below). Derived from the
+# template so a tool added to it later (e.g. ninja_syntax.py) is picked up too; on_start refreshes an existing
+# project's copies of these, which is the fix for imported projects keeping stale tools forever.
+TOOLS = tuple(f"tools/{p.name}" for p in sorted((TEMPLATE / "tools").glob("*.py")))
 UNIT_BYTES = 0x1000  # a source file is a run of roughly this many bytes of neighbouring functions
 GAP_BYTES = 0x400  # a hole this big between functions starts another source file
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -496,6 +500,37 @@ def _ninja() -> str:
     if found:
         return found
     raise ForkError("ninja is needed to delink the project's target objects; install it and try again")
+
+
+def tools_version() -> str:
+    """A short hash of the template's build tools. A project's manifest records it, and Xbox360.on_start compares
+    it, so a change to these tools reaches every existing project once (the fix for imported projects never
+    receiving tool updates)."""
+    digest = hashlib.sha1()
+    for rel in TOOLS:
+        src = TEMPLATE / rel  # = Path(__file__).parent / "project_template" / rel
+        digest.update(rel.encode() + b"\0" + src.read_bytes())
+    return digest.hexdigest()[:12]
+
+
+def write_tools(root: Path) -> list[str]:
+    """Bring an existing project's build tools up to the current template (the PC scratch.write_tools pattern).
+
+    An imported project copies the template once (shutil.copytree in create), so its tools/configure.py and
+    tools/compile.py stay stale: the old configure.py only asked kits.compilers(["xsdk"]) and had no runner, so
+    re-running it always re-selected the free xsdk GCC even after the user registered a real XDK. Each tool file is
+    replaced when its content differs; none of them holds per-project settings (the game's flags live in the
+    environment/config, not here). Returns the tool paths that changed, for the caller's log line."""
+    changed = []
+    for rel in TOOLS:
+        src = TEMPLATE / rel
+        dest = root / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)  # older projects have tools/, but don't assume it
+        text = src.read_text(encoding="utf-8")
+        if not dest.exists() or dest.read_text(encoding="utf-8") != text:
+            dest.write_text(text, encoding="utf-8")
+            changed.append(rel)
+    return changed
 
 
 def create(root: Path, game: Path, *, compiler: str | None = None, log=print) -> dict:
