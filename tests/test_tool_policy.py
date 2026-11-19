@@ -109,3 +109,38 @@ def test_task_usage_records_errors_and_ignores_connection_probes(tmp_path):
     net._agent_tool_tasks[agent.id] = 'polishing'
     tool_policy.record(net, agent, 'game', 'guide')
     assert {r['task']:r['calls'] for r in net.store.all('SELECT * FROM agent_tool_task_usage')} == {'matching':1,'polishing':1}
+
+
+def test_a_failed_flush_keeps_its_counts_for_the_next_one(tmp_path, monkeypatch):
+    """The buffer was emptied before the write, so a failed write dropped the counts it held."""
+    net, _ = _game(tmp_path, [('f', 10, 'open')])
+    tool_policy.ensure(net)
+    tool_policy.flush(net)
+    agent, _ = net.local_agent('reader')
+    monkeypatch.setattr(tool_policy, 'FLUSH_SECONDS', 1e9)  # buffered, as between flushes
+    for _ in range(3):
+        tool_policy.record(net, agent, 'game', 'guide')
+    before = (net.store.one('SELECT calls FROM agent_tool_usage WHERE name=?', 'guide') or {'calls': 0})['calls']
+
+    real = net.store.tx
+
+    def broken():
+        raise RuntimeError('database is locked')
+
+    monkeypatch.setattr(net.store, 'tx', broken)
+    with pytest.raises(RuntimeError):
+        tool_policy.flush(net)
+    monkeypatch.setattr(net.store, 'tx', real)
+    tool_policy.record(net, agent, 'game', 'guide')
+    tool_policy.flush(net)
+    assert net.store.one('SELECT calls FROM agent_tool_usage WHERE name=?', 'guide')['calls'] == before + 4
+
+
+def test_quitting_saves_the_buffered_tool_counts():
+    """A quit soon after the agents' last calls lost the counts still in the buffer (FLUSH_SECONDS)."""
+    import inspect
+
+    from decompnet.app import server
+
+    source = inspect.getsource(server)
+    assert "tool_policy.flush(net)" in source.split("def stop_workers", 1)[1].split("shutdown_lock", 1)[0]
