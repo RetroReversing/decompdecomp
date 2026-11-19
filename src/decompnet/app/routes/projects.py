@@ -502,7 +502,8 @@ def register(app: App) -> None:
         cfg = json.loads(proj["config"])
         fork = bool(net.fork_slug(slug))
         if cfg.get("kind") != "rom" and not (fork and net.forks.overview(slug).get("reimports")):
-            raise NetworkError("only ROM projects and PC projects started from scratch can be reimported")
+            raise NetworkError("only ROM projects, and projects started from scratch on a console that can analyse them "
+                               "again (PC, Xbox 360), can be reimported")
         if slug in net.rooms or slug in net.links:
             raise NetworkError("leave the shared room before reimporting this game")
         if consoles.identify(path).id != consoles.of(cfg).id:

@@ -152,3 +152,81 @@ def test_the_import_takes_its_functions_from_the_table_without_ghidra(tmp_path, 
     assert got == [(a, n, f"FUN_{a:08x}") for a, n in FUNCS]
     assert any("function table (.pdata) lists 3 functions" in line for line in logs)
     assert any("small leaf functions" in line for line in logs), "what is missing without Ghidra is said"
+
+
+def _project(tmp_path, units):
+    """A project made by an earlier import: its config (functions in `units`) and its image."""
+    import json
+
+    root = tmp_path / "proj"
+    (root / "config" / "game").mkdir(parents=True)
+    (root / "orig").mkdir()
+    (root / "orig" / "game.xex").write_bytes(memory_layout_image())
+    (root / "src" / "auto").mkdir(parents=True)
+    info = {"target_format_version": 4, "elf": "orig/game.xex", "sha1": "", "image_base": BASE, "entry": BASE + TEXT_VA,
+            "text": {"va": BASE, "offset": 0, "size": IMAGE_SIZE},
+            "units": {u: [{"name": n, "addr": a, "offset": a - BASE, "size": s, "relocs": []} for n, a, s in fns]
+                      for u, fns in units.items()}}
+    (root / "config" / "game" / "functions.json").write_text(json.dumps(info), encoding="utf-8")
+    return root
+
+
+def _units(root):
+    import json
+
+    info = json.loads((root / "config" / "game" / "functions.json").read_text(encoding="utf-8"))
+    return {u: [(f["name"], f["addr"] - BASE, f["size"]) for f in fns] for u, fns in info["units"].items()}
+
+
+def test_a_reimport_takes_the_table_and_keeps_matched_functions_names_and_files(tmp_path, monkeypatch):
+    """An older import's analysis (fragments, a wrong length) gives way to the table; a matched function keeps its
+    extent, a function the project named keeps its name, and each stays in the file that held it."""
+    from decompnet.forks import ghidra
+
+    monkeypatch.setattr(ghidra, "available", lambda: False)
+    a, b, c = (start for start, _ in FUNCS)
+    root = _project(tmp_path, {"text_82002000": [
+        ("Init", a, 0x8),                   # named by polishing; the old analysis cut it short
+        ("FUN_82002018", a + 0x18, 0x8),    # a fragment of the table's second function
+        ("Matched", c, 0x8),                # matched: stays as it is
+    ]})
+    said = scratch.reanalyse_functions(root, "game", keep={"Matched"}, log=lambda line: None)
+    assert said and "3 matched" not in said and "1 matched kept" in said
+    assert _units(root) == {"text_82002000": [("Init", TEXT_VA, 0x10), (f"FUN_{b:08x}", TEXT_VA + 0x10, 0x20),
+                                              ("Matched", TEXT_VA + 0x30, 0x8)]}
+    assert scratch.reanalyse_functions(root, "game", keep={"Matched"}, log=lambda line: None) is None, "nothing left to change"
+
+
+def test_a_reimport_gives_code_no_file_held_files_of_its_own(tmp_path, monkeypatch):
+    from decompnet.forks import ghidra
+
+    monkeypatch.setattr(ghidra, "available", lambda: False)
+    a = FUNCS[0][0]
+    root = _project(tmp_path, {"text_82002000": [("FUN_82002000", a, 0x10)]})
+    scratch.reanalyse_functions(root, "game", log=lambda line: None)
+    got = _units(root)
+    assert got["text_82002000"] == [("FUN_82002000", TEXT_VA, 0x10)]
+    [new_unit] = [u for u in got if u != "text_82002000"]
+    assert [n for n, _, _ in got[new_unit]] == [f"FUN_{FUNCS[1][0]:08x}", f"FUN_{FUNCS[2][0]:08x}"]
+    assert (root / "src" / "auto" / f"{new_unit}.c").read_text(encoding="utf-8").endswith('#include "common.h"\n')
+
+
+def test_a_reimport_refuses_an_image_whose_table_does_not_match_its_code(tmp_path, monkeypatch):
+    import pytest
+
+    from decompnet.forks import ghidra
+    from decompnet.forks.project import ForkError
+
+    monkeypatch.setattr(ghidra, "available", lambda: False)
+    root = _project(tmp_path, {"text_82002000": [("FUN_82002000", FUNCS[0][0], 0x10)]})
+    image = bytearray((root / "orig" / "game.xex").read_bytes())
+    image[TEXT_VA:TEXT_VA + 0x100] = bytes(0x100)  # the code isn't where the table says (a mis-mapped image)
+    (root / "orig" / "game.xex").write_bytes(bytes(image))
+    with pytest.raises(ForkError, match="start a new project"):
+        scratch.reanalyse_functions(root, "game", log=lambda line: None)
+
+
+def test_the_console_offers_reimport():
+    from decompnet.consoles.xbox360 import XBOX360
+
+    assert XBOX360.reimports is True
