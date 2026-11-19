@@ -21,6 +21,8 @@ import re
 import threading
 import time
 
+from ..network import NetworkError
+
 log = logging.getLogger(__name__)
 
 # How often the preparer looks, and how long a prepared claim may be given (its receipt reads the saved candidate).
@@ -38,6 +40,7 @@ class Ahead:
         self.prepared: dict[int, dict] = {}
         self.lock = threading.Lock()
         self.stopping = threading.Event()
+        self.unreadable: set[tuple[int, str]] = set()  # (helper, project) said once: see tick
 
     def routes(self) -> dict:
         with self.lock:
@@ -68,7 +71,16 @@ class Ahead:
                 continue
             with self.lock:
                 taken = {e["function_id"] for a, e in self.prepared.items() if a != agent_id and e["slug"] == slug}
-            fresh = prepare(self.net, agent_id, slug, taken)
+            try:
+                fresh = prepare(self.net, agent_id, slug, taken)
+            except NetworkError as error:
+                # One helper's project gone (removed while it still ran, as when a game is imported again): this
+                # helper is left to the app. It used to end the whole round, every two seconds, so no other helper
+                # had a claim prepared either, and the log filled with the same traceback.
+                if (agent_id, slug) not in self.unreadable:
+                    self.unreadable.add((agent_id, slug))
+                    log.info("Not preparing claims for helper %s: %s", agent_id, error)
+                fresh = None
             with self.lock:
                 if fresh is None:
                     self.prepared.pop(agent_id, None)

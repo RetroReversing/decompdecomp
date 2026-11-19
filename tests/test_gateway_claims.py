@@ -155,3 +155,22 @@ def test_a_claim_the_app_refuses_is_reported_on_the_next_reply(served, monkeypat
     assert wait(lambda: replies.append(call(served.gateway.url, served.token, "get_claims", {})) or
                 "finished your earlier claim_function call" in replies[-1])
     assert "is claimed by other" in replies[-1] and "## CLAIMED" in replies[-1], replies[-1]
+
+
+def test_a_helper_whose_project_is_gone_does_not_stop_the_others(tmp_path, caplog):
+    """A helper still listed for a removed project made every round raise ("not in the catalog"), every two
+    seconds: no other helper had a claim prepared, and the log filled with the traceback."""
+    import logging
+
+    net, _ = _game(tmp_path, [("a", 4, "open"), ("b", 8, "open")])
+    live, _ = net.local_agent("live")
+    orphan, _ = net.local_agent("orphan")
+    ahead = claim_ahead.Ahead(net, lambda: {orphan.id: "removed-game", live.id: "game"})
+    with caplog.at_level(logging.INFO, logger=claim_ahead.log.name):
+        ahead.tick()
+        ahead.tick()
+    routes = ahead.routes()
+    assert str(live.id) in routes, "the other helper still gets its claim prepared"
+    assert str(orphan.id) not in routes
+    said = [r for r in caplog.records if "Not preparing claims" in r.getMessage()]
+    assert len(said) == 1, "said once, not every round"
