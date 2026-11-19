@@ -519,7 +519,7 @@ def test_the_fork_release_finds_nothing_left_to_restore_after_leave_best(tmp_pat
     assert calls == [fn['best_source']], 'restored once, then nothing left to restore'
 
 
-def test_asking_for_the_tree_under_a_project_lock_is_reported_once(caplog):
+def test_asking_for_the_tree_under_a_project_lock_is_reported_once():
     """Any remaining path that takes the source tree from under a project lock shows itself in the log."""
     import logging
 
@@ -529,16 +529,27 @@ def test_asking_for_the_tree_under_a_project_lock_is_reported_once(caplog):
 
     tree, project = _TreeLock(), ProjectLock()
     forkengine._INVERSIONS_SEEN.clear()
+    said = []
 
-    def inverted():
-        with project, tree.shared():
-            pass
+    class Keep(logging.Handler):  # its own handler: other tests reconfigure the app's logger (propagation, levels)
+        def emit(self, record):
+            said.append(record.getMessage())
 
-    with caplog.at_level(logging.WARNING, logger="decompdecomp"):
+    logger = logging.getLogger("decompdecomp")
+    handler, level, disabled = Keep(logging.WARNING), logger.level, logger.disabled
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    logger.disabled = False
+    try:
         with tree.shared(), project:  # the right order says nothing
             pass
-        assert not [r for r in caplog.records if 'lock order' in r.message]
+        assert not [m for m in said if 'lock order' in m]
         for _ in range(3):
-            inverted()
-    assert len([r for r in caplog.records if 'lock order' in r.message]) == 1, 'once per call site'
+            with project, tree.shared():
+                pass
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(level)
+        logger.disabled = disabled
+    assert len([m for m in said if 'lock order' in m]) == 1, 'once per call site'
     assert not held_by_this_thread()
