@@ -109,3 +109,16 @@ def test_draft_symbols_lists_the_project_functions(tmp_path: Path):
     fp = SimpleNamespace(root=tmp_path, manifest={"version": "game"})
 
     assert XBOX360.draft_symbols(fp) == {"FUN_92179300": "FUN_92179300"}
+
+
+def test_a_function_the_project_spells_func_keeps_that_spelling():
+    """A map entry without a name is func_<address> in the project (scratch.create). The draft defined FUN_<address>,
+    a symbol objdiff never pairs with the delinked one, so autopilot's drafts never applied to those functions."""
+    assert drafts.c_name("func_92179300") == "func_92179300"
+    assert drafts.c_name("FUN_92179300") == "FUN_92179300"
+
+    prelude, definition = drafts.compilable(DRAFT, "func_92179300", symbols={"func_006C31D0": "func_006C31D0"},
+                                            known="void func_92179300(int a, int *b, undefined4 *c);")
+    assert definition.startswith("void func_92179300(")
+    assert "FUN_92179300" not in definition
+    assert "func_006C31D0(" in definition and "func_0x006c31d0" not in definition, "a func_ callee is named too"
