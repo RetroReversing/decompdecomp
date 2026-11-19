@@ -1153,6 +1153,16 @@ class Manager:
                 self.remove(sid)
         return len(paused)
 
+    def remove_stopped(self, slug: str) -> int:
+        """Forget the helpers on this project that are no longer live, without touching a running one.
+        Saved work, attribution and cost totals remain: only the sessions, their transcripts and conversation
+        settings go."""
+        with self._lock:
+            stopped = [s.id for s in self.sessions.values() if s.slug == slug and s.state not in LIVE]
+            for sid in stopped:
+                self.remove(sid)
+        return len(stopped)
+
     def costs(self, slug: str) -> list[dict]:
         """What each model's helpers spent on a project and what they matched (helper_sessions): which models to run
         more of. Cheapest per match first; models with no match last. A model spinning in the last SPIN_WINDOW gets

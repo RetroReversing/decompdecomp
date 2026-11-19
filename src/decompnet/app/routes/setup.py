@@ -406,7 +406,7 @@ def register(app: App) -> None:
 
     @mcp.custom_route("/api/agents/stop", methods=["POST"])
     async def api_agents_stop(request: Request) -> Response:
-        """Stop a helper, remove it, remove paused helpers on a project, or stop every helper there."""
+        """Stop a helper, remove it, remove stopped or paused helpers on a project, or stop every helper there."""
         if (bad := guard(request, write=True)):
             return bad
         data = await body(request)
@@ -414,6 +414,9 @@ def register(app: App) -> None:
             await app.control(manager.remove, str(data.get("id")))
         elif data.get("remove_paused") and data.get("slug"):
             removed = await app.control(manager.remove_paused, str(data["slug"]))
+            return JSONResponse({"ok": True, "removed": removed})
+        elif data.get("remove_stopped") and data.get("slug"):
+            removed = await app.control(manager.remove_stopped, str(data["slug"]))
             return JSONResponse({"ok": True, "removed": removed})
         elif data.get("slug"):
             await app.control(manager.stop_project, str(data["slug"]))

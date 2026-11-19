@@ -805,6 +805,43 @@ def test_remove_paused_stops_and_deletes_only_paused_helpers_on_the_project(tmp_
     }
 
 
+def test_remove_stopped_deletes_only_non_live_sessions_of_the_project_and_keeps_matches(tmp_path, quiet):
+    net = _game(tmp_path)
+    m = agents.Manager(net, tmp_path, URL)
+    stopped_ids = [
+        m.start("claude", "game", 1, {"model": "stopped-a"})[0],
+        m.start("claude", "game", 1, {"model": "stopped-b"})[0],
+    ]
+    (paused_id,) = m.start("claude", "game", 1, {"model": "paused"})
+    (working_id,) = m.start("claude", "game", 1, {"model": "working"})
+    (elsewhere_id,) = m.start("claude", "other", 1, {"model": "stopped-elsewhere"})
+    for sid in stopped_ids + [paused_id, elsewhere_id]:
+        m.sessions[sid].state = "stopped" if sid in stopped_ids + [elsewhere_id] else "paused"
+        m._save(m.sessions[sid])
+    m.sessions[working_id].state = "working"
+    m._save(m.sessions[working_id])
+
+    # a matched function stays attributed to a helper that is about to be removed
+    helper, _ = net.local_agent(m.sessions[stopped_ids[0]].agent_name)
+    matched_source = "int f0(void) { return 1; }"
+    with net.store.tx() as db:
+        db.execute("UPDATE functions SET matched_source=?, matched_agent_id=? WHERE name='f0'",
+                   (matched_source, helper.id))
+    match = net.store.one("SELECT matched_source, matched_agent_id FROM functions WHERE name='f0'")
+    assert match["matched_source"] == matched_source and match["matched_agent_id"] is not None
+
+    assert m.remove_stopped("game") == 3
+
+    assert all(sid not in m.sessions for sid in stopped_ids + [paused_id])
+    assert working_id in m.sessions and m.sessions[working_id].state == "working"
+    assert elsewhere_id in m.sessions and m.sessions[elsewhere_id].state == "stopped"
+    rows = net.store.all("SELECT id, state FROM helpers ORDER BY id")
+    assert {str(row["id"]): row["state"] for row in rows} == {
+        working_id: "working", elsewhere_id: "stopped",
+    }
+    assert net.store.one("SELECT matched_source, matched_agent_id FROM functions WHERE name='f0'") == match
+
+
 def test_an_api_helper_starts_again_with_its_endpoints_key(tmp_path, quiet):
     """An API helper's key is never in its record: started again by hand, it gets it from its saved endpoint, and one
     whose endpoint is gone says so."""
