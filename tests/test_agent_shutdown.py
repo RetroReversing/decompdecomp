@@ -210,6 +210,9 @@ def test_quit_exits_after_blocked_recovery_without_racing_a_final_folder_sync(tm
     monkeypatch.setattr(window,'close_app',lambda:None)
     monkeypatch.setattr(server.wine,'stop',lambda:None)
     monkeypatch.setattr(server.os,'_exit',lambda code:exited.append(code))
+    # quit_app also starts the real deadline timer (exit_after): it outlived this test's _exit stub and, minutes
+    # later, hard-exited whichever test worker it was in, which hung the parallel run.
+    monkeypatch.setattr(server,'exit_after',lambda seconds:None)
     try:
         quit_app()
         assert exited==[0] and manager._down and net.shutting_down

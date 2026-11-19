@@ -176,3 +176,16 @@ def pytest_runtest_protocol(item, nextitem):
         yield
     finally:
         _running["test"] = None
+
+
+@pytest.fixture(autouse=True)
+def _no_shutdown_deadline_left_behind():
+    """A test that runs the app's real quit starts its deadline timer (shutdown_progress.exit_after), which hard-exits
+    the process when it fires: left running, it killed whichever parallel test worker it was in minutes later, and
+    the whole run hung. Stub server.exit_after in such a test."""
+    import threading
+
+    before = {t.ident for t in threading.enumerate() if t.name == 'shutdown-deadline'}
+    yield
+    left = [t for t in threading.enumerate() if t.name == 'shutdown-deadline' and t.ident not in before]
+    assert not left, "this test left the app's quit deadline timer running: stub server.exit_after"
