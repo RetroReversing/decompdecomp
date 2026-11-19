@@ -231,3 +231,39 @@ def test_create_skips_undersized_rows_defensively(tmp_path: Path, monkeypatch):
     names = {fn["name"] for fns in cfg["units"].values() for fn in fns}
     assert names == {"real"}
     assert any("dropped 1 stub(s) with size < 4 bytes" in msg for msg in logs)
+
+
+def test_a_disc_import_uses_the_map_beside_the_disc_and_is_named_after_it(tmp_path: Path, monkeypatch):
+    """A disc's executable is taken out to a temporary default.xex. The map was looked for beside that temporary file
+    (the user's map ignored: with Ghidra, silently replaced by its guesses), and the project was named after it,
+    so every disc import was "default"."""
+    games = tmp_path / "games"
+    games.mkdir()
+    disc = games / "Racing Game.iso"
+    disc.write_bytes(b"a disc")
+    (games / "functions.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in [_row(BASE, BASE + 0x10, "entry"), _row(BASE + 0x20, BASE + 0x30, "helper")]),
+        encoding="utf-8")
+    temporary = tmp_path / "xex2-disc-tmp"
+    temporary.mkdir()
+    extracted = temporary / "default.xex"
+    extracted.write_bytes(_xex2())
+    monkeypatch.setattr(scratch, "_game_file", lambda game, log: (extracted, game))
+
+    def fake_run(cmd, root, what, log):
+        return (True, "")
+
+    monkeypatch.setattr(scratch, "_run", fake_run)
+    root = tmp_path / "project"
+    logs: list[str] = []
+    try:
+        scratch.create(root, disc, log=logs.append)
+    except ForkError:
+        pass  # a later build step may refuse a synthetic game; what matters is what create() wrote first
+    version = "Racing_Game"
+    cfg = json.loads((root / "config" / version / "functions.json").read_text(encoding="utf-8"))
+    names = {fn["name"] for fns in cfg["units"].values() for fn in fns}
+    assert names == {"entry", "helper"}, "the functions come from the map beside the disc"
+    assert (root / "orig" / f"{version}.xex").exists()
+    assert not (root / "config" / "default").exists()
+    assert any("using the function map beside the game: 2 functions" in line for line in logs)

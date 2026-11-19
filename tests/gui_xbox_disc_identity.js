@@ -55,6 +55,18 @@ function discWrites(descriptorAt, boot) {
   const xbox = await env.identifyXboxDisc(disc(4 * 1024 ** 3, discWrites(0x10000, "default.xbe")));
   assert.equal(xbox.platform, "xbox");
 
+  // The root table is a tree: its first entry is the tree's root, which needn't be the boot executable. A 360 rip
+  // whose root entry is "Media" (default.xex reached through its right child) is still a 360 disc.
+  const tree = discWrites(0x10000, "Media");
+  const rootTable = new Uint8Array(64);
+  const first = new TextEncoder().encode("Media"), boot = new TextEncoder().encode("default.xex");
+  new DataView(rootTable.buffer).setUint16(2, 20 / 4, true);  // right child at byte 20 of the table
+  rootTable[13] = first.length; rootTable.set(first, 14);
+  rootTable[20 + 13] = boot.length; rootTable.set(boot, 20 + 14);
+  tree[33 * 2048] = rootTable;
+  const rooted = await env.identifyXboxDisc(disc(7 * 1024 ** 3, tree));
+  assert.equal(rooted.platform, "xbox360", "default.xex found below the tree's root entry");
+
   // A PlayStation disc is still a PlayStation disc: no XDVDFS anywhere.
   assert.equal(await env.identifyXboxDisc(disc(700 * 1024 ** 2, {})), null);
   console.log("ok - xbox 360 discs are recognised before the ISO 9660 checks");

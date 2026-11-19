@@ -307,13 +307,28 @@ async function identifyXboxDisc(file) {
     if (file.size < at + MAGIC.length) return false;
     return String.fromCharCode(...await readAt(at, MAGIC.length)) === MAGIC;
   };
-  const bootName = async (descriptor) => {  // the first entry of the root directory names the boot executable
+  const bootName = async (descriptor) => {  // the boot executable in the root directory: default.xex or default.xbe
+    // The root directory is a binary tree (each entry: left/right child offsets in 4-byte units from the table's
+    // start), as iso.py walks it. Its first entry is the tree's root, which is not the boot executable when it sorts
+    // elsewhere ("Media"): reading only that one tagged such a 360 rip as an original Xbox disc.
     const head = await readAt(descriptor, 0x20);
-    const sector = new DataView(head.buffer).getUint32(0x14, true);
-    if (!sector || file.size < sector * 2048 + 64) return "";
-    const entry = await readAt(sector * 2048, 64);
-    const nameLength = entry[13];  // left/right (4), sector (4), size (4), attributes (1), name length (1)
-    return String.fromCharCode(...entry.slice(14, 14 + nameLength)).toLowerCase();
+    const view = new DataView(head.buffer);
+    const sector = view.getUint32(0x14, true);
+    const size = Math.min(Math.max(view.getUint32(0x18, true), 2048), 1 << 20);
+    if (!sector || file.size < sector * 2048 + 14) return "";
+    const table = await readAt(sector * 2048, size);
+    const names = [], seen = new Set(), pending = [0];
+    while (pending.length && names.length < 4096) {
+      const at = pending.pop();
+      if (seen.has(at) || at + 14 > table.length) continue;
+      seen.add(at);
+      const entry = new DataView(table.buffer, table.byteOffset + at, 14);
+      const nameLength = table[at + 13];  // left/right (4), sector (4), size (4), attributes (1), name length (1)
+      if (nameLength) names.push(String.fromCharCode(...table.slice(at + 14, at + 14 + nameLength)).toLowerCase());
+      for (const child of [entry.getUint16(0, true), entry.getUint16(2, true)]) if (child && child !== 0xffff) pending.push(child * 4);
+    }
+    return names.find((name) => name === "default.xex") || names.find((name) => name === "default.xbe")
+      || names.find((name) => name.endsWith(".xex") || name.endsWith(".xbe")) || "";
   };
   for (const at of [0xFD90000 + 0x10000, 0x2080000 + 0x10000]) {
     if (await magicAt(at)) return { title: stem, size: file.size, platform: "xbox360", order: "Xbox 360 disc image" };

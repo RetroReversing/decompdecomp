@@ -241,8 +241,11 @@ def file_offset(va: int, image_base: int, base_offset: int) -> int:
 
 
 def map_functions(game: Path, info: dict, xex: dict, *, base_offset: int | None = None,
-                  log=print) -> list[dict] | None:
+                  beside: Path | None = None, log=print) -> list[dict] | None:
     """Read the functions of the game from a ``functions.jsonl`` beside it, or return None if there is none.
+
+    ``beside`` is the file the user gave, when ``game`` is one made from it (a disc's extracted default.xex, a base
+    image's flat copy, both in a temporary folder): the map is looked for next to what the user pointed at.
 
     Each line is a JSON object with hex ``a`` (function VA), ``end`` (exclusive VA, hex string or int),
     optional ``n`` (name) and optional ``ranges`` (lists of ``[start, end]`` VAs). VAs are converted to file
@@ -259,9 +262,10 @@ def map_functions(game: Path, info: dict, xex: dict, *, base_offset: int | None 
     image_end = base + size
 
     # same candidate list as the PS4 connector, so a probe's output works unchanged
-    candidates = [game.with_suffix(".functions.jsonl"), game.parent / "functions.jsonl",
-                  game.parent / "functions" / "functions.jsonl"]
-    extras = sorted(p for p in game.parent.iterdir() if p.is_file()
+    where = beside or game
+    candidates = [where.with_suffix(".functions.jsonl"), where.parent / "functions.jsonl",
+                  where.parent / "functions" / "functions.jsonl"]
+    extras = sorted(p for p in where.parent.iterdir() if p.is_file()
                     and (p.name.lower().endswith(".functions.jsonl") or p.name.lower() == "functions.jsonl"))
     if not any(p.is_file() for p in candidates):
         if len(extras) > 1:
@@ -878,8 +882,13 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
     objects from the game (no xsdk kit needed); compiling the candidate objects needs the user's xsdk kit and is
     left to the user's first real ``ninja prepare`` build.
     """
+    given = game  # what the user pointed at: its folder holds their function map, its name names the project
     game, disc = _game_file(game, log)
     info = game_info(game)
+    if disc is not None:
+        # The executable was taken out of the disc as a temporary default.xex: named after that, every disc import
+        # was "default" (config/default/, orig/default.xex) and a second one collided with the first.
+        info["id"] = info["title"] = disc.stem
     provided = game  # what the user pointed at, for provenance when it is a decrypted base image
     try:
         data = game.read_bytes()
@@ -926,7 +935,9 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
     version = re.sub(r"[^A-Za-z0-9_.-]+", "_", info["id"]) or "game"
     chosen = compiler or "xbox360-xsdk-placeholder"
     log(f"reading {game.name}: image at 0x{xex['image_base']:X} ({xex['image_size']} bytes)")
-    found = map_functions(game, info, xex, base_offset=base_offset, log=log)
+    # The map is looked for beside what the user gave: `game` is a temporary file for a disc or a base image, and
+    # looking beside it ignored their map (with Ghidra, silently replacing it with Ghidra's guesses).
+    found = map_functions(game, info, xex, base_offset=base_offset, beside=given, log=log)
     source = "function map"
     if found:
         log(f"using the function map beside the game: {len(found)} functions")

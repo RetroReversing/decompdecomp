@@ -71,10 +71,10 @@ _UNWRITABLE = re.compile(
     r"\b(in_[A-Z][A-Z0-9]*|unaff_\w+|extraout_\w+|in_stack_\w+|stack0x\w+|halt_baddata|swi|"
     r"CONCAT\d+|SUB\d+|ZEXT\d+|SEXT\d+|POPCOUNT)\b|\.\_\d+_\d+_|WARNING: Bad instruction")
 
-_HEAD = re.compile(r"^(?P<ret>[^\n;{}]*?)\s*(?P<name>FUN_[0-9A-Fa-f]{8,16})\s*\((?P<params>[^()]*)\)\s*\{", re.M)
+_HEAD = re.compile(r"^(?P<ret>[^\n;{}]*?)\s*(?P<name>(?:FUN|func)_[0-9A-Fa-f]{8,16})\s*\((?P<params>[^()]*)\)\s*\{", re.M)
 # The project's own prototype for a function, as its unit file declares it: the draft must agree with this,
 # because the file keeps that declaration and C rejects a definition whose type differs (C2371).
-_DECL = re.compile(r"^[ \t]*(?P<ret>[A-Za-z_][\w \t*]*?)\s+(?P<name>FUN_[0-9A-Fa-f]{8,16})\s*\((?P<params>[^;{)]*)\)\s*;", re.M)
+_DECL = re.compile(r"^[ \t]*(?P<ret>[A-Za-z_][\w \t*]*?)\s+(?P<name>(?:FUN|func)_[0-9A-Fa-f]{8,16})\s*\((?P<params>[^;{)]*)\)\s*;", re.M)
 _GLOBAL = re.compile(r"\b_*(?:DAT|BSS)_([0-9A-Fa-f]{8,16})\b")
 _CALLEE = re.compile(r"\bfunc_(0x[0-9A-Fa-f]+)\b")
 _VALUE_RETURN = re.compile(r"\breturn\s+([^;]+);")
@@ -107,8 +107,16 @@ def c_name(symbol: str) -> str | None:
     The address keeps the case it was given in: the delinked target's symbol is exactly what objdiff pairs
     the compiled object against, so a draft must define that spelling and not a normalised one.
     """
-    found = re.search(r"(?:FUN|func)_([0-9A-Fa-f]{8,16})", symbol or "")
-    return f"FUN_{found.group(1)}" if found else None
+    found = re.search(r"(FUN|func)_([0-9A-Fa-f]{8,16})", symbol or "")
+    # The prefix is the project's too: a map entry without a name is func_<address> (scratch.create), and turning
+    # that into FUN_ defined a symbol objdiff never pairs, so autopilot's drafts never applied to those functions.
+    return f"{found.group(1)}_{found.group(2)}" if found else None
+
+
+def _known_callee(symbols: dict[str, str], offset: str) -> str | None:
+    """The project's name for Ghidra's func_0x<address> callee, in either spelling the project uses (FUN_/func_)."""
+    address = offset[2:].upper()
+    return next((symbols[name] for name in (f"FUN_{address}", f"func_{address}") if name in symbols), None)
 
 
 def _widths(text: str) -> str:
@@ -122,7 +130,7 @@ def _widths(text: str) -> str:
 
 def _calls_site(symbols: dict[str, str], body: str) -> set[str]:
     """The callees a draft names that the project can spell (its own functions, by name)."""
-    return {match for match in _CALLEE.findall(body) if f"FUN_{match[2:].upper()}" in symbols}
+    return {match for match in _CALLEE.findall(body) if _known_callee(symbols, match) is not None}
 
 
 def compilable(draft: str, symbol: str, symbols: dict[str, str] | None = None,
@@ -176,9 +184,8 @@ def compilable(draft: str, symbol: str, symbols: dict[str, str] | None = None,
     # Symbols the project already names keep that name: a callee is FUN_<address> rather than Ghidra's
     # func_0x<offset>, which names nothing outside the delinked object it came from.
     for offset in _CALLEE.findall(body):
-        callee = f"FUN_{offset[2:].upper()}"
-        if callee in symbols:
-            body = re.sub(rf"\bfunc_{offset}\b", symbols[callee], body)
+        if (callee := _known_callee(symbols, offset)) is not None:
+            body = re.sub(rf"\bfunc_{offset}\b", callee, body)
 
     prelude = [f'#include "{GHIDRA_HEADER}"']
     for address in sorted({m for m in _GLOBAL.findall(body)}):
