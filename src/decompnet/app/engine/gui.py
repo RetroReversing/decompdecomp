@@ -276,26 +276,45 @@ class GuiMixin:
 
     def live_overview(self, slug: str) -> tuple[dict, str]:
         """The overview for the live poll and a version of it: a digest of its stable part (taken once per rebuild)
-        and of the small in-memory part. Unchanged polls neither rebuild nor serialise the whole overview."""
+        and of the small in-memory part. Unchanged polls neither rebuild nor serialise the whole overview.
+
+        One project may rebuild its overview at a time, and only while nothing else is: the app's live lane has two
+        slots, so a second poll that started its own multi-minute rebuild for the same project took both and left
+        every other project's page loading behind it (a 38,694-function project did exactly that). A poll that finds
+        a rebuild already running answers with the cheap overview instead, which paints the page and says it is
+        still coming.
+        """
         proj = self._project(slug)
         store = self.project_store(proj['id'])
         state = self.__dict__.setdefault('_live_overviews', {})
+        building = self.__dict__.setdefault('_live_building', set())
         lock = self.__dict__.setdefault('_live_overview_lock', threading.Lock())
         transactional = getattr(store._local, 'in_tx', False)  # (uncommitted rows never go into the cache)
         key = None if transactional else self.live_overview_key(proj)
         now = time.monotonic()
         with lock:
             item = state.get(slug)
-        if key is None or item is None or item[0] != key or item[1] <= now:
-            full = self.overview(slug, room_members=False)
-            stable = {k: v for k, v in full.items() if k not in self.LIVE_VOLATILE}
-            digest = hashlib.sha256(json.dumps(stable, separators=(',', ':'), sort_keys=True, default=str).encode()).hexdigest()[:24]
-            item = (key, now + self.LIVE_OVERVIEW_TTL, stable, digest)
-            if key is not None:
-                with lock:
-                    state[slug] = item
-                    for other in [s for s, v in state.items() if v[1] <= now]:
-                        state.pop(other, None)
+            stale = key is None or item is None or item[0] != key or item[1] <= now
+            mine = stale and slug not in building
+            if mine:
+                building.add(slug)
+        if stale and not mine:
+            # Somebody else is already rebuilding this project: don't spend the other lane slot on it too.
+            return self.overview(slug, room_members=False, quick=True), 'pending'
+        try:
+            if stale:
+                full = self.overview(slug, room_members=False)
+                stable = {k: v for k, v in full.items() if k not in self.LIVE_VOLATILE}
+                digest = hashlib.sha256(json.dumps(stable, separators=(',', ':'), sort_keys=True, default=str).encode()).hexdigest()[:24]
+                item = (key, now + self.LIVE_OVERVIEW_TTL, stable, digest)
+                if key is not None:
+                    with lock:
+                        state[slug] = item
+                        for other in [s for s, v in state.items() if v[1] <= now]:
+                            state.pop(other, None)
+        finally:
+            with lock:
+                building.discard(slug)
         stable, digest = item[2], item[3]
         volatile = self.live_volatile(slug, stable)
         moving = hashlib.sha256(json.dumps(volatile, separators=(',', ':'), sort_keys=True, default=str).encode()).hexdigest()[:12]
