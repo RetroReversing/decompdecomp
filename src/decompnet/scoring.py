@@ -63,7 +63,18 @@ def _same_value(target: str, candidate: str) -> bool:
     ('lis r10, DAT_92005640@h'). The direction matters: only a *symbol on the candidate side* is accepted, so a
     candidate that used a bare literal where the game references its data still reads as different.
     """
-    return bool(_NUM.match(target)) and _address_of(candidate) == int(target, 0)
+    if not _NUM.match(target):
+        return False
+    value, number = _address_of(candidate), int(target, 0)
+    if value is None:
+        return False
+    if value == number:
+        return True
+    # A half (@h/@ha/@l) is 16 bits, and the disassembly prints an immediate or displacement signed: a target's
+    # 'addi r11, r11, -0x59c0' is the low half 0xA640 a candidate's 'DAT_9200A640@l' names. Read unsigned only,
+    # every low half of 0x8000 or more stayed different and identical code scored below 100%.
+    half = _ADDRESS_SYMBOL.match(candidate).group(2)
+    return bool(half) and value & 0x8000 and value - 0x10000 == number
 
 
 @dataclass
