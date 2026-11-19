@@ -154,7 +154,7 @@ def test_maximum_mode_uses_detected_cores_without_multiplying_budget(monkeypatch
     from decompnet import compiler
     from decompnet.app import deep_throughput
     net = setup(monkeypatch)
-    monkeypatch.setattr(deep_throughput.os,'cpu_count',lambda:4)
+    monkeypatch.setattr(deep_throughput,'usable_cores',lambda:4)
     paths=[]
     def path(net,slug,name,minutes,allowance,log,profiles,*,lane):
         paths.append((lane.index,allowance,log.compile_pool))

@@ -253,6 +253,9 @@ class GuiMixin:
     LIVE_OVERVIEW_TTL = 10.0
     LIVE_OVERVIEW_AUTO_MAX = 250_000  # a guard against absurd sizes, not a routine limit: see _live_build
     LIVE_BUILD_BACKOFF = 15.0  # a project whose overview keeps failing is retried at most this often
+    LIVE_COSTLY_BUILD = 0.5  # a build this slow is not repeated on every counter move: see _live_stale
+    LIVE_KEEP_EXPIRED = 600.0  # an expired entry stays this long to be served while its rebuild runs
+    LIVE_KEY_COUNTERS = (3, 4)  # live_overview_key's attempts and newest event: they move on every compile
     LIVE_VOLATILE = ('autopilot', 'permuter', 'twins', 'progress_syncing', 'progress_sync', 'room')
 
     def live_overview_key(self, proj) -> tuple:
@@ -284,6 +287,10 @@ class GuiMixin:
         took minutes: two concurrent polls then held both slots of the app's two-slot live lane, and every other
         project's page sat at "loading additional project details" behind them. The poll now answers with the cheap
         overview (marked ``overview_pending``) and the real one arrives in the cache when the build finishes.
+
+        While a rebuild runs, the overview already cached keeps being served (stale while it revalidates): answering
+        with the cheap one instead flashed "loading additional project details" on the page every time the cache
+        expired, and a busy project's page could stay on it for good. The cheap overview is for a first build only.
         """
         proj = self._project(slug)
         store = self.project_store(proj['id'])
@@ -305,17 +312,14 @@ class GuiMixin:
             if failed.get(slug, 0) <= now:
                 failed.pop(slug, None)
             holding_back = failed.get(slug, 0) > now
-            stale = not holding_back and (key is None or item is None or item[0] != key or item[1] <= now)
+            stale = not holding_back and self._live_stale(item, key, now)
             mine = stale and slug not in building
             if mine:
                 building.add(slug)
-        if stale and not mine:
-            return self._live_pending(slug, now)  # somebody is building it: don't take the other slot too
         if mine and too_big:
             with lock:
                 building.discard(slug)
-            return self._live_pending(slug, now)  # not at the price of the rest of the app
-        if mine:
+        elif mine:
             try:
                 threading.Thread(target=self._live_build, args=(slug, proj['id']), daemon=True,
                                  name=f"live-overview-{slug[:24]}").start()
@@ -324,13 +328,30 @@ class GuiMixin:
                 with lock:
                     building.discard(slug)
                     failed[slug] = now + self.LIVE_BUILD_BACKOFF
-            return self._live_pending(slug, now)
-        if item is None:  # held back after a failure and nothing cached to show
+        # Nothing cached for this very project (a first build, one held back after a failure, one too big to
+        # summarise, or a slug that now names another project): paint with the cheap overview.
+        if item is None or tuple(item[0][:2]) != (slug, proj['id']):
             return self._live_pending(slug, now)
         stable, digest = item[2], item[3]
         volatile = self.live_volatile(slug, stable)
         moving = hashlib.sha256(json.dumps(volatile, separators=(',', ':'), sort_keys=True, default=str).encode()).hexdigest()[:12]
         return stable | volatile | {'overview_pending': False}, f'{digest}.{moving}'
+
+    def _live_stale(self, item, key, now: float) -> bool:
+        """Whether a cached entry (key, expires, stable, digest, settled) should be rebuilt.
+
+        A function or settings change (map_revision, the shared header) rebuilds at once. When only the busy counters
+        moved (attempts and the newest event, LIVE_KEY_COUNTERS in live_overview_key), a costly build
+        (LIVE_COSTLY_BUILD or slower) waits for its `settled` time, five times its own cost after it finished: a
+        project whose agents compile several times a second moves those on every poll, and would otherwise be
+        summarised back to back for as long as they work."""
+        if key is None or item is None or item[1] <= now:
+            return True
+        old, new = tuple(item[0]), tuple(key)
+        if old == new:
+            return False
+        moved = {i for i in range(max(len(old), len(new))) if old[i:i + 1] != new[i:i + 1]}
+        return not moved <= set(self.LIVE_KEY_COUNTERS) or item[4] <= now
 
     def _live_pending(self, slug: str, now: float) -> tuple[dict, str]:
         """The cheap overview while a real one is being built: it paints the page and marks the numbers provisional."""
@@ -346,8 +367,12 @@ class GuiMixin:
         """Read one project's full overview off the request thread and cache it, or leave the cache alone.
 
         Everything is re-read here rather than taken from the poll that started this: the project could have been
-        deleted or replaced while the thread waited, and the store's connection belongs to this thread. A key that
-        moved during the minutes-long read discards the result instead of caching a stale overview as fresh.
+        deleted or replaced while the thread waited, and the store's connection belongs to this thread.
+
+        The result is cached under the key read before the build. A key that moved meanwhile is not a reason to
+        throw it away: on a project where agents are working, `attempts` and the newest event move during almost
+        every build, and discarding them left the page on the cheap overview indefinitely. The next poll sees the
+        newer key and rebuilds (_live_stale), serving this one until then.
         """
         lock = self.__dict__.get('_live_overview_lock')
         state = self.__dict__.get('_live_overviews', {})
@@ -366,13 +391,12 @@ class GuiMixin:
             took = time.monotonic() - started
             stable = {k: v for k, v in full.items() if k not in self.LIVE_VOLATILE}
             digest = hashlib.sha256(json.dumps(stable, separators=(',', ':'), sort_keys=True, default=str).encode()).hexdigest()[:24]
-            if self.live_overview_key(self._project(slug)) != key:
-                return  # it changed while being read: don't publish it as the current overview
             now = time.monotonic()
+            settled = now + (took * 5 if took >= self.LIVE_COSTLY_BUILD else 0.0)
             with lock:
                 # A summary that took a while is not rebuilt every ten seconds: wait a multiple of its own cost.
-                state[slug] = (key, now + max(self.LIVE_OVERVIEW_TTL, took * 5), stable, digest)
-                for other in [s for s, v in state.items() if v[1] <= now]:
+                state[slug] = (key, now + max(self.LIVE_OVERVIEW_TTL, took * 5), stable, digest, settled)
+                for other in [s for s, v in state.items() if v[1] + self.LIVE_KEEP_EXPIRED <= now]:
                     state.pop(other, None)
                 failed.pop(slug, None)
         except Exception:  # a project that always fails must not spawn a thread on every poll
