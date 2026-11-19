@@ -33,6 +33,7 @@ from . import (
     draft_repairs,
     permuter_focus,
     permuter_local,
+    plateau_steps,
     repair_ranking,
     repair_sequence_lane,
     repair_sequences,
@@ -447,6 +448,7 @@ class Search(Permuter):
         layout_probes=0
         expanded = set()
         residual_bursts = 0
+        plateau_bursts = 0
         counters = {'compile_failed': 0, 'frontier_pruned': 0, 'depth_limit': 0}
         self.local_status = {'reason': 'searching', **counters}
         while best > 0:
@@ -722,6 +724,26 @@ class Search(Permuter):
                                 queue[offset:offset] = siblings
                                 offset += len(siblings)
                                 queue[offset:offset] = [c for _,c in selected]
+                        # A structural step that came out level with its parent may need one more to pay off.
+                        parent_proof = feedback.proofs.get(parent_source, {})
+                        if (plateau_bursts < plateau_steps.BURSTS and len(parent_path)+1 < repair_sequences.MAX_STEPS
+                                and plateau_steps.plateau(labels.get(candidate,'local_repair'),
+                                                          parent_proof.get('score', best), score,
+                                                          parent_proof.get('output'), measured_output)):
+                            followup_labels = {}
+                            followup = draft_repairs.variants(candidate,fn['name'],proj['arch'],fn['asm'] or '',flags,
+                                followup_labels,limit=None,header=header,entry_scope=draft_repairs.promoted_entry_repairs.scope(self.net,proj,fn))
+                            selected = plateau_steps.select([(followup_labels.get(c,'local_repair'),c) for c in followup
+                                if c not in queue], labels.get(candidate,'local_repair'), self.local_seen)
+                            if selected:
+                                plateau_bursts += 1
+                                counters['plateau_steps'] = counters.get('plateau_steps', 0) + len(selected)
+                                self.log(f"{labels.get(candidate,'local_repair')} came out level ({score} against "
+                                         f"{parent_proof.get('score', best)}); trying {len(selected)} follow-up repairs from it.")
+                                for family,child in selected:
+                                    labels[child] = family
+                                    parents[child] = (candidate,measured_rows,parent_path+[labels.get(candidate,'local_repair')])
+                                queue[0:0] = [c for _,c in selected]
                     if score is not None and score < best:
                         source_rows[candidate] = repair_ranking.evidence(self.net,fn['id'],agent.id)
                         lineage.retain(parent_source,candidate,labels.get(candidate,'local_repair'),exact=score==0,max_steps=repair_sequences.MAX_STEPS+repair_sequence_lane.EXTRA_DEPTH if candidate in feedback.loan_sources else repair_sequences.MAX_STEPS)
