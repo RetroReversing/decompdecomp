@@ -449,3 +449,18 @@ def test_the_compilers_of_the_kits_are_kept_between_calls(monkeypatch):
         kits.forget()  # (leave the cache as the rest of the suite expects it)
     assert len(walked) == after_first, "asking again must not walk the kit folders again"
     assert [c.version for c in second] == [c.version for c in first]
+
+
+def test_xextool_v6_6_is_a_known_build(tmp_path):
+    """XexTool runs on the user's own disc and its output is trusted only after checks: Setup now also says whether
+    the copy is the build decompdecomp knows."""
+    import hashlib
+
+    from decompnet.kits.xextool import XEXTOOL
+
+    assert XEXTOOL.known_files == ("xextool.exe",) and len(XEXTOOL.known) == 1
+    [digest] = XEXTOOL.known
+    assert len(digest) == 64 and "v6.6" in XEXTOOL.known[digest]
+    (tmp_path / "xextool.exe").write_bytes(b"not the real one")
+    said = XEXTOOL.verify(tmp_path)
+    assert "doesn't know" in said and hashlib.sha256(b"not the real one").hexdigest() not in XEXTOOL.known
