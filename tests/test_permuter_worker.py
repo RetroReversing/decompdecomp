@@ -106,7 +106,8 @@ def test_worker_diagnostics_have_timestamp_pid_revision_and_keep_stdout_json(tmp
     assert json.loads(result.stdout)=={'kind':'status','jobs':{}}
     assert len(result.stdout.splitlines())==1
     assert re.search(r'\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} WARNING .*pid=\d+',result.stderr)
-    assert 'Permuter worker starting:' in result.stderr and 'RetroReversing fork' in result.stderr
+    from decompnet.app import build_info  # (a fork names itself: build_info.FORK, not upstream's wording)
+    assert 'Permuter worker starting:' in result.stderr and build_info.FORK in result.stderr
     assert 'Uncaught permuter worker error' in result.stderr
     assert 'Synthetic worker failure' in result.stderr
     assert 'Synthetic normal exit' not in result.stderr
