@@ -183,6 +183,23 @@ class Xbox360(Console):
 
         return drafts.compilable(draft, symbol, self.draft_symbols(fp), known)
 
+    reimports = True  # Settings' Reimport: the project's functions found again from its own image (reimport)
+
+    def reimport(self, net, slug: str, game: Path, log=print) -> str | None:
+        """The project's functions found again as an import finds them now (the image's function table, then Ghidra),
+        from the project's own copy of the image, every match, note and name kept (scratch.reanalyse_functions,
+        through forkengine.reanalyse, which sets the project up again and takes the change back if that fails). The
+        image is the one the project judges against, so `game` (the copy the user chose) isn't read again."""
+        from . import scratch
+
+        fp = net.forks.get(slug)[1]
+        version = (fp.manifest or {})["version"]
+        matched = {r["name"] for r in net.project_store(slug).all(
+            "SELECT name FROM functions WHERE project_id=? AND status='matched'", net.project_row(slug)["id"])}
+        log("finding this project's functions again from its own image: its function table (.pdata), then Ghidra")
+        return net.forks.reanalyse(slug, lambda fp: scratch.reanalyse_functions(fp.root, version, matched, log=log),
+                                   log=log)
+
     def on_start(self, net, slug: str, log=print) -> None:
         """A project imported by an older decompdecomp keeps the build tools it was made with, so fixes to them
         never reached it: its stale configure.py kept selecting the free xsdk GCC even when a real XDK was

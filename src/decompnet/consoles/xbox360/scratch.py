@@ -606,6 +606,91 @@ def ghidra_functions(game: Path, xex: dict, *, base_offset: int | None = None, l
     return found or None
 
 
+def reanalyse_functions(root: Path, version: str, keep: set[str] = frozenset(), log=print) -> str | None:
+    """A new account of a project's functions, from its own image, keeping the work: Settings' Reimport.
+
+    The functions come as the import finds them now: the image's function table (.pdata), with Ghidra's for the code
+    it has no entry for (pdata.merge). Every matched function (``keep``) keeps its name and extent, and what the new
+    account has there yields to it; a function at a start the project already had keeps the project's name (a real
+    one given by polishing); each function goes to the source file whose code held its address, so agents' C stays
+    where it is, and code no file held gets files of its own. Returns what changed, as a sentence; None: nothing did.
+    """
+    from ...forks import ghidra
+    from . import pdata
+
+    path = root / "config" / version / "functions.json"
+    info = json.loads(path.read_text(encoding="utf-8"))
+    text, image_base = info["text"], info["image_base"]
+    base_offset, image_size = text["offset"], text["size"]
+    elf = root / info["elf"]
+    data = elf.read_bytes()
+    table = pdata.functions(data[base_offset:base_offset + image_size], image_base, log=log)
+    if not table:
+        raise ForkError("this project's image has no function table that matches its code, so a reimport can't "
+                        "improve its functions: start a new project from your copy of the game instead")
+    xex = {"image_base": image_base, "image_size": image_size, "payload_offset": base_offset,
+           "entry_point": info.get("entry"), "headers": {}}
+    analysed = ghidra_functions(elf, xex, base_offset=base_offset, log=log) if ghidra.available() else None
+    rows = [{"name": f"FUN_{addr:08x}", "addr": addr, "offset": file_offset(addr, image_base, base_offset),
+             "size": size, "ranges": [[addr, addr + size]]} for addr, size in table]
+    fresh, added, dropped = pdata.merge(rows, analysed)
+
+    old = [dict(fn, unit=unit) for unit, fns in info["units"].items() for fn in fns]
+    by_addr = {fn["addr"]: fn for fn in old}
+    kept = [fn for fn in old if fn["name"] in keep]
+    out = list(kept)
+    for row in fresh:
+        if any(row["addr"] < k["addr"] + k["size"] and k["addr"] < row["addr"] + row["size"] for k in kept):
+            continue  # a matched function's extent stands
+        before = by_addr.get(row["addr"])
+        fn = {"name": before["name"] if before else row["name"], "addr": row["addr"], "offset": row["offset"],
+              "size": row["size"], "relocs": before.get("relocs", []) if before and before["size"] == row["size"] else []}
+        out.append(fn)
+    out.sort(key=lambda fn: fn["addr"])
+    used: set[str] = set()
+    for fn in out:  # one symbol, one function: a clash takes the address-named spelling
+        if fn["name"] in used:
+            fn["name"] = f"func_{fn['addr']:08X}"
+        used.add(fn["name"])
+    if [(f["addr"], f["size"], f["name"]) for f in out] == [(f["addr"], f["size"], f["name"]) for f in sorted(old, key=lambda f: f["addr"])]:
+        return None
+
+    spans = [(fns[0]["addr"], fns[-1]["addr"] + fns[-1]["size"], unit) for unit, fns in info["units"].items() if fns]
+    homeless: list[Function] = []
+    for fn in out:
+        if "unit" in fn and fn["name"] in keep:
+            continue
+        fn["unit"] = next((unit for start, end, unit in spans if start <= fn["addr"] < end), "")
+        if not fn["unit"]:
+            homeless.append(Function(fn["addr"], fn["offset"], fn["size"], fn["name"]))
+    added_units: dict[str, list[Function]] = {}
+    for unit, fns in units(homeless).items():
+        name = unit
+        while name in info["units"] or name in added_units:
+            name += "_new"
+        added_units[name] = fns
+    home = {f.addr: unit for unit, fns in added_units.items() for f in fns}
+    for fn in out:
+        if not fn["unit"]:
+            fn["unit"] = home[fn["addr"]]
+    for unit, fns in added_units.items():
+        src = root / "src" / "auto" / f"{unit}.c"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text(f"/* {len(fns)} function{'s' if len(fns) != 1 else ''} from 0x{fns[0].addr:08X}, found by a new "
+                       "analysis. */\n#include \"common.h\"\n", encoding="utf-8")
+    grouped: dict[str, list[dict]] = {}
+    for fn in out:
+        grouped.setdefault(fn.pop("unit"), []).append(fn)
+    info["units"] = {unit: sorted(fns, key=lambda f: f["addr"])
+                     for unit, fns in sorted(grouped.items(), key=lambda kv: min(f["addr"] for f in kv[1]))}
+    write_atomic(path, json.dumps(info, indent=1))
+    previous = {(f["addr"], f["size"]) for f in old}
+    changed = sum((f["addr"], f["size"]) not in previous for f in out)
+    return (f"{len(out):,} functions (it had {len(old):,}), {changed:,} of them new or with another extent, from the "
+            f"image's function table" + (f" and Ghidra ({added:,} functions the table has no entry for)" if analysed else "")
+            + (f"; {len(added_units)} new source files" if added_units else "") + f"; {len(kept)} matched kept as they were")
+
+
 def units(functions: list[Function]) -> dict[str, list[Function]]:
     """Source files: runs of neighbouring functions of about UNIT_BYTES each."""
     out: dict[str, list[Function]] = {}
