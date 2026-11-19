@@ -654,6 +654,34 @@ def test_a_project_is_analysed_again_and_says_so(per_file):
     assert not (root / "src" / "half.c").exists()
 
 
+
+def test_a_project_without_git_is_still_put_back(per_file, monkeypatch):
+    """Taking a change back was `git checkout`, which does nothing in a project without a repository (an Xbox 360
+    project made from scratch has none): a reimport whose build failed said "taken back" and left its new config and
+    1,327 new source files behind, the project's database still on the old functions."""
+    net, slug, agent, root, state, lerp = per_file
+    shutil.rmtree(root / ".git")
+    config = root / "tools" / "reference" / "game.c"  # (this demo keeps what an analysis changes in tools/)
+    before = config.read_bytes()
+
+    def refused(fp):
+        config.write_bytes(b"a new analysis")
+        (fp.root / "src" / "half.c").write_text("/* half */\n")
+        raise ForkError("dsd refused it")
+    assert net.forks.reanalyse(slug, refused, paths=("tools",), log=lambda *_: None) is None
+    assert config.read_bytes() == before and not (root / "src" / "half.c").exists()
+
+    def found(fp):
+        config.write_bytes(b"a new analysis")
+        (fp.root / "src" / "auto").mkdir(parents=True, exist_ok=True)
+        (fp.root / "src" / "auto" / "new.c").write_text("/* new */\n")
+        return "more functions"
+    monkeypatch.setattr(ForkProject, "run", lambda self, cmd, **kw: (False, "the build failed"))
+    assert net.forks.reanalyse(slug, found, paths=("tools",), log=lambda *_: None) is None  # its build failed: back
+    assert config.read_bytes() == before and not (root / "src" / "auto" / "new.c").exists()
+    said = net.store.all("SELECT detail FROM events WHERE kind='analysis' ORDER BY id")[-1]["detail"]
+    assert "taken back" in said
+
 def test_an_older_projects_build_tools_get_the_fixes_and_keep_its_settings(tmp_path):
     """Its tools/ came from the template when it was made: dead stripping in its link dropped every overlay holding
     only data (nothing points at one: the game loads it by number), so the overlays after it moved and the rebuild
