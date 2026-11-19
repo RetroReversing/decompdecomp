@@ -560,6 +560,80 @@ def test_a_sync_finishes_an_upgrade_that_stopped_before_following_the_moved_save
     assert rebuildable_repository.interrupted(root/'progress') is None
 
 
+def test_commit_follows_an_upgrade_that_stopped_before_following_the_moved_save(project, monkeypatch):
+    # A game with saved history was upgraded in place and stopped before its setting followed the save. Commit,
+    # straight after (no sync between), worked out the folder from the old setting and wrote it back before a sync
+    # moved it again; it now follows the move first, and commits the save where it is.
+    from decompnet.app import rebuildable_repository
+    net, root, _ = project
+    git(root, 'init', '--initial-branch=main')
+    git(root, 'config', 'user.name', 'Test')
+    git(root, 'config', 'user.email', 'test@example.invalid')
+    git(root, 'add', '.')
+    git(root, 'commit', '-qm', 'existing portable history')
+    update = net._update_cfg
+    def stopped(slug, change, **kwargs):
+        probe = {}
+        change(probe)
+        if 'repository_sync_folder' in probe:
+            raise RuntimeError('stopped between the move and the setting')
+        return update(slug, change, **kwargs)
+    monkeypatch.setattr(net, '_update_cfg', stopped)
+    with pytest.raises(RuntimeError):
+        repository_setup.run(net, 'game', 'checkpoint', '', lambda _:None)
+    # (The upgrade's own sync now follows the move as it stops; one that stopped before that left the old setting.)
+    def old_setting(cfg):
+        cfg['progress_folder'] = str(root)
+        for key in ('save_folder', 'repository_sync_folder'):cfg.pop(key, None)
+    update('game', old_setting, synchronize=False)
+    assert rebuildable_repository.interrupted(root) == root
+    written = []
+    def recorded(slug, change, **kwargs):
+        probe = {}
+        change(probe)
+        written.append(probe.get('progress_folder'))
+        return update(slug, change, **kwargs)
+    monkeypatch.setattr(net, '_update_cfg', recorded)
+    lines = []
+    state = repository_setup.run(net, 'game', 'checkpoint', '', lines.append)
+    assert state['checkpoint'] and state['folder'] == str(root/'progress')
+    assert str(root) not in written  # never pointed back at the folder the save left
+    assert any('following it' in line for line in lines)
+    cfg = net.cfg(net.project_row('game'))
+    assert cfg['progress_folder'] == cfg['save_folder'] == str(root/'progress')
+    assert f'progress/{saves.MANIFEST}' in git(root, 'ls-files').splitlines()
+    assert git(root, 'status', '--porcelain', '--', 'progress') == ''
+
+
+def test_commit_keeps_the_flat_layout_when_the_game_cant_be_exported_yet(project):
+    # An N64 game with overlapping overlay banks has no rebuildable export yet, and Commit refused it altogether:
+    # 1,098 matches stayed out of its repository. It now commits the saved progress where it is.
+    from decompnet.rom.export import ExportError
+    net, root, _ = project
+    console = net.console(net.project_row('game'))
+    def unsupported(net, slug, out, log):
+        raise ExportError('Rebuildable export does not yet support overlapping overlay banks.')
+    console.export_project = unsupported
+    git(root, 'init', '--initial-branch=main')
+    git(root, 'config', 'user.name', 'Test')
+    git(root, 'config', 'user.email', 'test@example.invalid')
+    git(root, 'add', '.')
+    git(root, 'commit', '-qm', 'existing portable history')
+    before = git(root, 'rev-parse', 'HEAD')
+    net._update_cfg('game', lambda cfg: cfg.update(instructions='Progress since the last commit'))
+    lines = []
+    state = repository_setup.run(net, 'game', 'checkpoint', '', lines.append)
+    assert state['checkpoint'] and not state['rebuildable']
+    assert git(root, 'rev-parse', 'HEAD~1') == before
+    assert saves.MANIFEST in git(root, 'ls-files').splitlines() and not (root/'build.py').exists()
+    assert any('current layout instead' in line for line in lines)
+    assert 'Progress since the last commit' in git(root, 'show', f'HEAD:{saves.MANIFEST}')
+    assert net.cfg(net.project_row('game'))['progress_folder'] == str(root)
+    # creating a repository still needs the export: it would only make a flat one
+    with pytest.raises(ExportError):
+        repository_setup.run(net, 'game', 'init', '', lambda _:None)
+
+
 def test_upgrade_keeps_the_repositorys_own_notice_and_agents_rules(project):
     """An N64 save tracking a hand-written NOTICE.md was refused ("Untrack game/private files"), and its own AGENTS.md
     would then have collided with the export's."""

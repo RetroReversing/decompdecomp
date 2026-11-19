@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from ..network import NetworkError
+from ..rom.export import ExportError
 from . import repository_git, repository_operations, repository_progress, repository_sync, saves
 
 git = repository_git.git
@@ -170,6 +171,8 @@ def checkpoint(net, slug, root, path, log, *, message='Save decompilation progre
         paths.add('.gitignore')
     commit = repository_progress.commit_snapshot(root, files, paths, log, expected_head=head, expected_branch=branch,
         message=message)
+    from . import score_commits
+    score_commits.checkpointed(net, slug)
     return commit
 
 
@@ -182,12 +185,21 @@ def run(net, slug, action, origin, log, *, github_name="", visibility="private")
     with repository_operations.push(root_at(path) or path, slug, log, check, label='Setting up progress repository') as output:
         log = output
         with net.progress._project_lock(slug):
+            from . import rebuildable_repository
+            if net.is_rom(proj) and (moved := rebuildable_repository.follow(net, slug, path, log)) != path:
+                path, proj = moved, net.project_row(slug)
             root = root_at(path)
             if action in ('init', 'checkpoint', 'github') and net.is_rom(proj):
-                from . import rebuildable_repository
                 if not rebuildable_repository.full(root):
                     if (path/saves.MANIFEST).is_file():bind(net, slug, path, proj, log)
-                    path = rebuildable_repository.prepare(net, slug, path, root, log)
+                    try:
+                        path = rebuildable_repository.prepare(net, slug, path, root, log)
+                    except ExportError as unsupported:
+                        # An N64 game with overlapping overlay banks can't be exported as a rebuildable tree yet,
+                        # and Commit refused it altogether: its saved progress had no way into its repository.
+                        # The export is built aside first, so nothing moved; commit the save as it is.
+                        if action != 'checkpoint' or root is None or root != path:raise
+                        log(f'{unsupported} Committing the saved progress in its current layout instead.')
                     root = root_at(path)
                     proj = net.project_row(slug)
             if action == 'init':
