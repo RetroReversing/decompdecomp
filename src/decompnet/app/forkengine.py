@@ -1065,12 +1065,30 @@ class ForkEngine:
         version = (fp.manifest or {}).get("version") or cfg.get("version")
         checks = cfg.get("origin") == "scratch" and consoles.REBUILD_CHECK in console.features
         paths = [p for p in paths if (fp.root / p).exists()]  # git refuses a path the project hasn't
+        # Without a git repository (an Xbox 360 project made from scratch has none) `git checkout` takes nothing back:
+        # a reimport whose build failed said "taken back" and left its new config and 1,327 new source files behind,
+        # with the project's database still on the old functions. Such a project is snapshotted here instead.
+        versioned = fp.git("rev-parse", "--is-inside-work-tree")[0]
+        watched = sorted({*paths, "src"})
+
+        def files() -> set[Path]:
+            return {f for d in watched if (fp.root / d).is_dir() for f in (fp.root / d).rglob("*") if f.is_file()}
+
         def untracked() -> set[str]:
+            if not versioned:
+                return {str(f.relative_to(fp.root)) for f in files()}
             ok, out = fp.git("ls-files", "-z", "--others", "--exclude-standard")
             return set(out.split("\0")) - {""} if ok else set()
 
+        snapshot = {} if versioned else {f: f.read_bytes() for d in paths for f in (fp.root / d).rglob("*") if f.is_file()}
+
         def undo() -> None:  # the files the step added go too (agents can't add any: the tree is the step's)
-            fp.git("checkout", "HEAD", "--", *paths)
+            if versioned:
+                fp.git("checkout", "HEAD", "--", *paths)
+            else:
+                for f, data in snapshot.items():
+                    f.parent.mkdir(parents=True, exist_ok=True)
+                    f.write_bytes(data)
             for rel in untracked() - there:
                 (fp.root / rel).unlink(missing_ok=True)
 
