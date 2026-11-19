@@ -35,6 +35,8 @@ def _registered(cid: str):
     id the console exposes (OwnCompiler.version, e.g. xdk360-21256.3) to the exact cl.exe it points at."""
     try:  # the project runs under the app's Python, where decompnet (and the registered kits) is available
         from decompnet import kits
+        if hasattr(kits, "resolve"):  # also an id the copy was known by before (an older recorded selection)
+            return kits.resolve(cid, ["xdk360"])
         return next((own for own in kits.compilers(["xdk360"]) if own.version == cid), None)
     except Exception:  # no decompnet here, or no kit set up: the caller falls back
         return None

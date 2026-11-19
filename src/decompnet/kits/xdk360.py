@@ -70,14 +70,22 @@ class Xdk360(Kit):
         cl = find(root, CL)
         if cl is None:
             return []
-        build = self.build(root) or self._folder_build(root) or "unknown"
+        # The id is the XDK build the folder is named after. cl.exe's version resource can't be it: XDK 20353,
+        # 21119 and 21256.3 all say 16.0.11886.0, so they collapsed into one compiler (kits.compilers keeps one per
+        # id) and neither the survey nor the compiler picker could tell them apart. The version-resource id they
+        # were known by stays an alias (kits.resolve), so a project that recorded it keeps building.
+        folder_build = self._folder_build(root)
+        version = self.build(root) or "unknown"
+        build = folder_build or version
+        aliases = (f"{VERSION}-{version}",) if folder_build and version != folder_build else ()
         include = find(root, "include/xbox", dirs=True)
         includes = (include,) if include else ()
         # A full copy has XDK/lib/xbox too; OwnCompiler has no field for libraries, so the project build reads
         # them from `root` when it needs them rather than putting a platform-specific path in `flags`.
+        name = f"XDK {build} PowerPC C/C++" + (f" ({version})" if version != build else "")
         return [OwnCompiler(
-            f"{VERSION}-{build}", f"XDK {build} PowerPC C/C++", cl, includes,
-            runner="wine", build=build, root=root, args=(), flags=(),
+            f"{VERSION}-{build}", name, cl, includes,
+            runner="wine", build=version, root=root, args=(), flags=(), aliases=aliases,
         )]
 
 

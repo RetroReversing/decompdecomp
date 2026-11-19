@@ -45,6 +45,7 @@ class OwnCompiler:
     args: tuple[str, ...] = ()
     flags: tuple[str, ...] = ()
     like: str = ""  # a pinned compiler it runs as (its command, with this copy's folder, `root`, in the pack's place)
+    aliases: tuple[str, ...] = ()  # ids it was known by before (a project may have recorded one): see resolve
 
 
 class Kit:
@@ -174,11 +175,21 @@ def forget() -> None:
     _file_version.cache_clear()
 
 
+def resolve(cid: str | None, kids) -> OwnCompiler | None:
+    """The copy among the kits `kids` that the compiler id `cid` names: its own id (OwnCompiler.version) first, then
+    an id it was known by before (OwnCompiler.aliases), so a project that recorded an older id keeps its compiler."""
+    if not cid:
+        return None
+    found = compilers(kids)
+    return (next((c for c in found if c.version == cid), None)
+            or next((c for c in found if cid in c.aliases), None))
+
+
 def own_compiler(cid: str) -> OwnCompiler | None:
     """The compiler of the user's copies that a ROM project's compiler id names (OwnCompiler.version), or None: the
     id is a pinned toolchain's, or a copy that isn't set up here. This is how project.compiler_config, and the
     toolchains registry's get/known/installed, find a kit's compiler beside the pinned ones."""
-    return next((c for c in compilers(k.id for k in KITS) if c.version == cid), None)
+    return resolve(cid, [k.id for k in KITS])
 
 
 def _registry() -> list[Kit]:

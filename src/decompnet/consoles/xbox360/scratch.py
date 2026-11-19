@@ -687,9 +687,22 @@ def selected_xdk360_compiler() -> str:
     return "xbox360-xsdk-placeholder"
 
 
+def xdk360_copies() -> list:
+    """Every registered Xbox 360 XDK copy (kits.OwnCompiler, one per XDK build): what the compiler survey tries."""
+    from ... import kits
+
+    return kits.compilers(["xdk360"])
+
+
 def xdk360_compiler(manifest: dict) -> str | None:
-    """The XDK copy id recorded in this project's manifest, if it names one (xdk360_compiler)."""
-    return manifest.get("xdk360_compiler")
+    """The XDK copy id recorded in this project's manifest, if it names one (xdk360_compiler), as that copy is
+    called now: a project that recorded an older id (XDK copies were once named by cl.exe's version resource,
+    xdk360-16.0.11886.0) gets its copy's current one, so it compares equal to the ids the survey and picker list."""
+    from ... import kits
+
+    recorded = manifest.get("xdk360_compiler")
+    own = kits.resolve(recorded, ["xdk360"]) if recorded else None
+    return own.version if own is not None else recorded
 
 
 def source_key(source: str) -> str:

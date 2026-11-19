@@ -42,8 +42,10 @@ def test_build_prefers_cl_exe_and_exposes_a_wine_compiler(tmp_path: Path, monkey
     assert XDK360.build(root) == "16.0.11886.0"
     assert XDK360.build(root.parent) == "16.0.11886.0"
     [own] = XDK360.compilers(root)
-    assert own.version == "xdk360-16.0.11886.0" and own.build == "16.0.11886.0"
-    assert own.name == "XDK 16.0.11886.0 PowerPC C/C++"
+    # the id is the XDK build the folder is named after; cl.exe's version is the build and an alias
+    assert own.version == "xdk360-20353" and own.build == "16.0.11886.0"
+    assert own.aliases == ("xdk360-16.0.11886.0",)
+    assert own.name == "XDK 20353 PowerPC C/C++ (16.0.11886.0)"
     assert own.exe == root / "bin" / "win32" / "cl.exe"
     assert own.runner == "wine" and own.root == root.resolve()
     assert own.args == () and own.flags == () and own.includes == ()
@@ -69,3 +71,40 @@ def test_headers_are_exposed_when_a_full_copy_has_them(tmp_path: Path, monkeypat
 def test_a_copy_without_cl_exe_gives_no_compiler(tmp_path: Path):
     assert XDK360.build(tmp_path / "nothing") is None
     assert XDK360.compilers(tmp_path / "nothing") == []
+
+
+def test_xdk_builds_sharing_one_cl_version_stay_separate_compilers(tmp_path: Path, monkeypatch):
+    """XDK 20353, 21119 and 21256.3 all ship cl.exe 16.0.11886.0: keyed on that, they collapsed into one compiler
+    (kits.compilers keeps one per id), and neither the survey nor the picker could tell them apart."""
+    from decompnet import kits
+
+    roots = [make_xdk(tmp_path, build) for build in ("20353", "21119", "21256.3")]
+    monkeypatch.setattr(xdk360, "file_version", lambda at: "16.0.11886.0" if at.name.lower() == "cl.exe" else "")
+    monkeypatch.setattr(kits, "folders", lambda kid: roots if kid == "xdk360" else [])
+    kits.forget()
+    try:
+        found = kits.compilers(["xdk360"])
+        assert [c.version for c in found] == ["xdk360-20353", "xdk360-21119", "xdk360-21256.3"]
+        assert kits.resolve("xdk360-21119", ["xdk360"]).exe == roots[1] / "bin" / "win32" / "cl.exe"
+        # a project that recorded the old version-resource id still resolves (to the first copy, as it built before)
+        assert kits.resolve("xdk360-16.0.11886.0", ["xdk360"]).version == "xdk360-20353"
+        assert kits.resolve("xdk360-99999", ["xdk360"]) is None
+    finally:
+        kits.forget()
+
+
+def test_a_recorded_old_id_reads_as_its_copy_s_current_one(tmp_path: Path, monkeypatch):
+    from decompnet import kits
+    from decompnet.consoles.xbox360 import scratch
+
+    roots = [make_xdk(tmp_path, build) for build in ("20353", "21119")]
+    monkeypatch.setattr(xdk360, "file_version", lambda at: "16.0.11886.0" if at.name.lower() == "cl.exe" else "")
+    monkeypatch.setattr(kits, "folders", lambda kid: roots if kid == "xdk360" else [])
+    kits.forget()
+    try:
+        assert scratch.xdk360_compiler({"xdk360_compiler": "xdk360-16.0.11886.0"}) == "xdk360-20353"
+        assert scratch.xdk360_compiler({"xdk360_compiler": "xdk360-21119"}) == "xdk360-21119"
+        assert scratch.xdk360_compiler({"xdk360_compiler": "xdk360-gone"}) == "xdk360-gone"  # kept as recorded
+        assert scratch.xdk360_compiler({}) is None
+    finally:
+        kits.forget()

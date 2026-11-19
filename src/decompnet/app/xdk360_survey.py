@@ -36,14 +36,13 @@ from pathlib import Path
 
 from ..network import NetworkError
 
-KID = "xdk360"
-
 
 def registered_compilers():
-    """Every registered xdk360 copy (``OwnCompiler``: version, exe, runner wine, one per XDK build)."""
-    from .. import kits
+    """Every registered XDK copy (``OwnCompiler``: version, exe, runner wine, one per XDK build), as the Xbox 360
+    console lists them: only kits/ and the console that takes a kit name it (tests/test_kits.py)."""
+    from ..consoles.xbox360 import scratch
 
-    return kits.compilers([KID])
+    return scratch.xdk360_copies()
 
 
 COMPILER_FILES = ("cl.exe", "c1.dll", "c1xx.dll", "c2.dll")  # the driver and the C front/back ends
