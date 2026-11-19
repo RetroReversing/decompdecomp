@@ -459,3 +459,86 @@ def test_note_publication_records_project_wait_and_retains_lock_scope(monkeypatc
     assert metrics.get('candidate_lock_wait', 0.) == 0.
     assert not held
     assert published == ([] if fails else ['game'])
+
+
+def test_a_release_restores_the_best_source_before_it_takes_the_project_lock(monkeypatch):
+    """A compile takes the source tree, then the project lock (judging._record). A fork release compiled its best
+    source back from under the project lock: the opposite order. With a writer waiting for the tree (a file survey),
+    the release, a compile and the writer deadlocked a project's agents and page for 91 minutes."""
+    from contextlib import contextmanager, nullcontext
+    from types import SimpleNamespace
+
+    held, order = [], []
+
+    @contextmanager
+    def project_lock():
+        held.append(True)
+        order.append('project lock')
+        try:
+            yield
+        finally:
+            held.pop()
+
+    def leave_best(agent, slug, function):
+        assert not held, 'the restoring compile must not run under the project lock'
+        order.append(('leave_best', slug, function))
+
+    progress = SimpleNamespace(foreground=nullcontext, _project_lock=lambda slug: project_lock(),
+                               foreground_changed=lambda slug: None)
+    net = SimpleNamespace(progress=progress, _attempt_locks={}, fork_slug=lambda slug: slug,
+                          forks=SimpleNamespace(leave_best=leave_best),
+                          _function=lambda *args: {'id': 1, 'project_id': 1},
+                          project_store=lambda *args: SimpleNamespace(lock=threading.RLock()))
+    monkeypatch.setattr(tools.asset_agents, 'scope', lambda *args: False)
+    with tools._tool_foreground(net, SimpleNamespace(id=1), 'game', 'release_function', {'function': 'f'}):
+        assert held
+    assert order == [('leave_best', 'game', 'f'), 'project lock']
+
+
+def test_the_fork_release_finds_nothing_left_to_restore_after_leave_best(tmp_path):
+    """ForkEngine.release calls leave_best again under the lock; once the best source was restored, it must not
+    compile a second time (that compile would be the deadlocking order again)."""
+    from types import SimpleNamespace
+
+    from decompnet.app.forkengine import ForkEngine
+
+    calls = []
+    fn = {'id': 7, 'name': 'f', 'best_source': 'int f(void){return 1;}', 'status': 'open', 'best_score': 3}
+    scores = [9]  # the agent's last try was worse than the best
+
+    def attempt(agent, slug, function, source):
+        calls.append(source)
+        scores.append(fn['best_score'])  # restoring the best records it as the agent's latest try
+
+    engine = SimpleNamespace(_fn=lambda slug, function: fn, attempt=attempt,
+                             net=SimpleNamespace(project_store=lambda slug: SimpleNamespace(
+                                 one=lambda *a: {'score': scores[-1]})))
+    agent = SimpleNamespace(id=1)
+    ForkEngine.leave_best(engine, agent, 'game', 'f')
+    ForkEngine.leave_best(engine, agent, 'game', 'f')
+    assert calls == [fn['best_source']], 'restored once, then nothing left to restore'
+
+
+def test_asking_for_the_tree_under_a_project_lock_is_reported_once(caplog):
+    """Any remaining path that takes the source tree from under a project lock shows itself in the log."""
+    import logging
+
+    from decompnet.app import forkengine
+    from decompnet.app.forkengine import _TreeLock
+    from decompnet.app.project_lock import ProjectLock, held_by_this_thread
+
+    tree, project = _TreeLock(), ProjectLock()
+    forkengine._INVERSIONS_SEEN.clear()
+
+    def inverted():
+        with project, tree.shared():
+            pass
+
+    with caplog.at_level(logging.WARNING, logger="decompdecomp"):
+        with tree.shared(), project:  # the right order says nothing
+            pass
+        assert not [r for r in caplog.records if 'lock order' in r.message]
+        for _ in range(3):
+            inverted()
+    assert len([r for r in caplog.records if 'lock order' in r.message]) == 1, 'once per call site'
+    assert not held_by_this_thread()

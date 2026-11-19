@@ -21,6 +21,7 @@ import struct
 import subprocess
 import threading
 import time
+import traceback
 from collections import defaultdict
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
@@ -149,6 +150,27 @@ def scaled(fuzzy: float | None, n_insns: int) -> int:
     return 0 if fuzzy >= 100 else max(1, round((1 - fuzzy / 100) * n_insns * 100))
 
 
+_INVERSIONS_SEEN: set[tuple] = set()
+
+
+def _report_inversion(mode: str) -> None:
+    """Log, once per call site, a thread asking for the source tree while it holds a project lock.
+
+    The order is tree, then project lock (a compile records under the project lock). The other order deadlocked a
+    project for 91 minutes once a writer waited for the tree: the release tool compiled from under the project lock
+    (ForkEngine.leave_best now runs first). This makes any other such path show itself in the log before it hangs."""
+    from .project_lock import held_by_this_thread
+    if not held_by_this_thread():
+        return
+    frames = traceback.extract_stack(limit=12)[:-3]
+    site = tuple((f.filename.rsplit('/', 1)[-1], f.lineno) for f in frames[-6:])
+    if site in _INVERSIONS_SEEN:
+        return
+    _INVERSIONS_SEEN.add(site)
+    logging.getLogger("decompdecomp").warning("lock order: the source tree (%s) asked for while holding a project lock, which can deadlock "
+                   "once a writer waits for the tree: %s", mode, " > ".join(f"{name}:{line}" for name, line in site))
+
+
 class _TreeLock:
     """Work on different source files runs side by side; a change any file may depend on (a header) runs alone.
     A thread that holds it exclusively may take it again either way."""
@@ -171,6 +193,7 @@ class _TreeLock:
             finally:
                 self._mine.depth -= 1
             return
+        _report_inversion("shared")
         with self._cond:
             while self._writer is not None or self._waiting:
                 self._cond.wait()
@@ -192,6 +215,7 @@ class _TreeLock:
             return
         if getattr(self._mine, "depth", 0):
             raise RuntimeError("a shared holder can't take the tree exclusively")
+        _report_inversion("exclusive")
         with self._cond:
             self._waiting += 1
             while self._writer is not None or self._readers:
@@ -4029,15 +4053,26 @@ class ForkEngine:
         fn = self._fn(slug, function)
         if (link := self.net.links.get(slug)) is not None:
             link.call("/collab/release", agent, function=fn["name"], notes=notes, not_c=not_c)
+        self.leave_best(agent, slug, function)
+        return Network.release(self.net, agent, function, notes, slug, not_c, claim_token=claim_token)
+
+    def leave_best(self, agent: Agent, slug: str, function: str) -> None:
+        """Put the function's file back at its best state for the next agent, when this agent's last try was worse.
+
+        A compile takes the source tree, then the project lock when it records (judging._record). The release tool
+        holds the project lock for its whole call (tools.py, so notes and their publication stay together), so it
+        calls this first, before taking that lock: compiling from under the project lock was the opposite order,
+        and with a writer waiting for the tree (a file survey) the three deadlocked, a project's agents and its
+        page for 91 minutes. The release's own call then finds nothing to restore."""
+        fn = self._fn(slug, function)
         latest = self.net.project_store(slug).one("SELECT score FROM attempts WHERE function_id=? AND agent_id=? ORDER BY id DESC LIMIT 1",
                                     fn["id"], agent.id)
         if (fn["best_source"] and fn["status"] != "matched" and latest and latest["score"] is not None
                 and fn["best_score"] is not None and latest["score"] > fn["best_score"]):
-            try:  # leave the file at its best state for the next agent
+            try:
                 self.attempt(agent, slug, function, fn["best_source"])
             except NetworkError:
                 pass
-        return Network.release(self.net, agent, function, notes, slug, not_c, claim_token=claim_token)
 
     def release_exempt(self, slug: str, fn) -> str | None:
         """Why compiling can't help with this function (release_function lets such a release through at once), or
