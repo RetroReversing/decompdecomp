@@ -24,6 +24,10 @@ class Xextool(Kit):
                    "is encrypted or compressed in a way decompdecomp cannot read. Give the folder holding "
                    "xextool.exe; on Linux and macOS it runs under Wine.")
     files = (EXE,)
+    known_files = (EXE,)
+    known = {  # SHA-256 of xextool.exe, read from the user's copy (its readme's changelog ends at v6.6)
+        "33c4048ca120d3209fb1f6e4198e870b8852c00e7868f0d9b9685ac1dc839cdd": "XexTool v6.6 (xorloser, September 2013)",
+    }
 
     def build(self, folder: Path) -> str | None:
         """XexTool's own version is in its banner, not its filename: nothing to read from the copy itself."""
