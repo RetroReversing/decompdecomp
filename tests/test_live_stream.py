@@ -82,12 +82,15 @@ def test_live_overview_is_rebuilt_only_when_a_counter_moves(app, monkeypatch):
         assert version2.split(".")[0] == net.live_overview("cached-overview")[1].split(".")[0]
     finally:
         net.autopilots.pop("cached-overview", None)
-    # and the TTL bounds anything no counter sees
+    # an entry waits at least a multiple of what its own build cost, so even a TTL of 0 does not make it hot
     monkeypatch.setattr(type(net), "LIVE_OVERVIEW_TTL", 0.0)
+    net.live_overview("cached-overview")
+    assert len(built) == 3, 'the fresh cache answers; the adaptive floor outlives a zero TTL'
+    # and dropping the entry is what forces the next rebuild
     net.forget_live_overview("cached-overview")
     net.live_overview("cached-overview")
-    settled(net, "cached-overview")  # TTL 0: that poll rebuilds too
-    assert len(built) == 5
+    settled(net, "cached-overview")
+    assert len(built) == 4
 
 
 def test_compact_live_skips_unchanged_sections_without_hashing_the_overview(app):
