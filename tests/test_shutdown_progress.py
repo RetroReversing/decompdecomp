@@ -87,6 +87,9 @@ def test_quit_reports_stages_and_failed_project_saves_before_exit(tmp_path,monke
     monkeypatch.setattr(net.progress,'flush',flush)
     monkeypatch.setattr(server.wine,'stop',lambda:calls.append('wine'))
     monkeypatch.setattr(server.os,'_exit',lambda code:calls.append(('exit',code)))
+    # quit_app also starts the real deadline timer (exit_after): it outlived this test's _exit stub and, minutes
+    # later, hard-exited whichever test worker it was in, which hung the parallel run.
+    monkeypatch.setattr(server,'exit_after',lambda seconds:None)
     # The fake shutdown above must not leave this test's real services behind.
     monkeypatch.setattr(manager,'_strays',lambda:set())
     try:quit_app()

@@ -23,7 +23,7 @@ def test_package_build_stamp_matches_committed_source(tmp_path):
                     'commit', '-qm', 'source'], check=True)
     stamp.stamp(root, package)
     metadata = json.loads((package / 'build-info.json').read_text())
-    assert len(metadata['commit']) == 40 and metadata['fork'] == 'RetroReversing'
+    assert len(metadata['commit']) == 40 and metadata['fork'] and metadata['fork'] in build_info.FORK
     (root / 'code').write_text('dirty')
     with pytest.raises(ValueError, match='Commit source changes'):
         stamp.stamp(root, package)
@@ -31,5 +31,5 @@ def test_package_build_stamp_matches_committed_source(tmp_path):
 
 def test_fork_label_includes_version_and_commit(monkeypatch):
     monkeypatch.setattr(build_info, 'commit', lambda: 'a' * 40)
-    assert 'RetroReversing fork' in build_info.label()
+    assert build_info.FORK in build_info.label()
     assert 'aaaaaaaaaaaa' in build_info.label()

@@ -482,7 +482,8 @@ def test_autosave_errors_show_cause_folder_build_and_retry_other_projects(tmp_pa
     assert auto.run_once() == ['good']
     assert advice in caplog.text and type(error).__name__ in caplog.text
     assert str(tmp_path / 'progress') in caplog.text
-    assert 'RetroReversing fork' in caplog.text
+    from decompnet.app import build_info  # (the fork's own name, build_info.FORK)
+    assert build_info.FORK in caplog.text
     auto.run_once()
     assert calls == ['bad', 'good', 'good']
     clock[0] += 31
