@@ -924,8 +924,8 @@ still take precedence. Identification uses recorded provenance or unambiguous fu
 without changing project settings or awarding matching C.
 Removing a managed folder removes its indexed references, while manual imports are preserved. The archive's source is never bundled; a signature is a hint until compiled C passes the judge.
 
-Library C that the user's own SDK archive reproduces can be set aside instead of matched (Libraries for this game,
-off by default, `sdk_assembly.SETTING`). An N64 racing game had its Controller Pak functions named from the user's
+Library C that the user's own SDK archive reproduces is set aside instead of matched (Libraries for this game,
+on unless the project turns it off, `sdk_assembly.SETTING`). An N64 racing game had its Controller Pak functions named from the user's
 libultra archive and still went to the agents for C that a port replaces and a rebuild needn't. The judge is the
 same as for SDK assembly: the archive's object linked at the function's address, every code and data byte
 compared. With a port kit only what it replaces or its glue supplies is set aside; its native code (libultra's
@@ -2109,6 +2109,19 @@ reuse the saved map. See [ROM Explorer](docs/ROM_EXPLORER.md) for support and li
   the time against 62% for the rest, because agents guessed the layouts.
 
 ## Next
+
+### Deep passes that climb under a closer compiler profile
+
+A deep pass scores candidates only under the function's own settings; other profiles are exact-only probes. An N64
+game's `strcmp`, from a library built with GCC's scheduling off, matched with `-fno-schedule-insns
+-fno-schedule-insns2` and three loops' loads reordered together, but under the function's `-O2` every reorder looks
+like no change, and with the stored C that profile scores worst of all (83.5% against 97.2%), so neither the flag
+search nor the permuter can find it (docs/COMPILER_MATCHING_LEARNINGS.md, 19 November 2026). Next: when a flag
+variant comes closer than the function's own settings (the flag search now tries both scheduling flags; `-fno-schedule-insns2`
+alone took it to 99.1%), let the deep pass score a share of its candidates under that profile, and under the
+scheduling-off profile try statement orders that follow the target's instruction order; a match there goes through
+the existing profile-bundle recheck before the function's settings change. Every console whose compiler has
+scheduling flags (GCC and EE-GCC, SNC's `-Xsched=0`).
 
 ### ROM projects as project folders: editable units
 

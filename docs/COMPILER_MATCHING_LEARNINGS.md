@@ -7245,3 +7245,192 @@ be plain (no calls, steps or assignment).
 Not reproduced for the new case (`func_801973D0`): the agent also changed float-bit arguments
 (`0x42B40000`) to float literals (`90.0f`) with a prototype parameter retyped to `f32`, and retyped
 four `u16` result globals; the table rewrite alone only improved it.
+
+### KMC GCC 2.7.2: a null guard's return layout, and why a found match went unused (18 November 2026)
+
+Evidence level: one new match on an N64 game's 19-instruction function, checked offline with the pinned
+compiler and the project's own header (bytes equal to the target apart from the two `jal` targets, which are
+filled in at link time). The app's own judge recorded the same pair as exact (`reuse_trials`); not yet saved
+as a match.
+
+Target: `beqz s0, Lzero` (delay slot `sw ra`), the body, then `j Lexit; nop`, `Lzero: addu v0, zero, zero`, `Lexit:`
+epilogue. With `gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2`:
+- m2c's `if (p != NULL) { return f(...); } return 0;` gives `bnez` and `j Lexit` with the zero in its delay slot:
+  no match. The same with two returns in an if/else, or a ternary: no match.
+- `if (p == NULL) { return 0; } return f(...);` (the existing `guard_shape` rewrite): **exact**.
+- `s32 ret; if (p != NULL) { ret = f(...); } else { ret = 0; } return ret;`: **exact**. With the arms the other
+  way round: no match. decomp-repair 0.5.3 adds this single-exit form to `guard_shape`, in both arm orders.
+- None of them match at `-O1`. The comparison job had moved the function to `-O1` on its own, because m2c's draft
+  scored 82.6% there against 70.5% at `-O2`. A draft follows whatever settings its shape happens to suit, so a
+  better draft score is no evidence of the game's settings; auto-apply now skips that case unless it is exact.
+
+The deep pass found the `guard_shape` pair exact at `-O2` (the project default) in its targeted repairs, but
+`-O2` was not the function's own setting, so the pair became an open compiler suggestion (automatic compiler
+changes off). The probe then reported "no score", and the pass spent 10,000 more variants reporting "0
+improvements". It now ends there, naming the suggestion. With decomp-permuter not installed, 9,970 of those
+variants came from the simple mutator casting to zlib's `uInt`/`uLong`, which the game never declares, and
+failed to compile; the mutator now uses only typedefs the source or header has.
+
+### KMC GCC 2.7.2: float arguments m2c wrote as bit patterns (18 November 2026)
+
+Evidence level: one new match on an N64 game's 73-instruction function, checked offline with the pinned compiler
+and the project's own header (bytes equal to the target apart from the `jal` targets); plus a controlled
+regression test on homemade C (`tests/test_float_bit_arguments.py`, compiler output only).
+
+`gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2`. The near miss (score 60) differed in two instructions only: before
+the last call, the target sets `lui $a1, 0x437A` and then `move $a0, $zero`; m2c's
+`h(0, 0x437A0000, ...)` with an `M2C_UNK` second parameter set them the other way round.
+- Second parameter `f32`, argument `250.0f`: **exact**. Same with the first parameter `void *` and `NULL`, or `s16`.
+- Unprototyped call, `(f32)` casts, other operand orders of the third argument: no match.
+- Retyping only another callee's `0x3F000000` to `0.5f` (same `lui` either way): no match on its own, harmless
+  together with the `250.0f` change.
+Under o32 an `f32` after an integer first argument travels in the same integer register with the same bits, so
+only the scheduling changes. decomp-repair 0.5.4's `float_bit_argument_repairs` (label `float_argument_bits`, the
+same as `observed_repairs`' narrower version, which needed `s32`/`int` prototypes and four known constants) does
+this for any short ordinary float, o32 flags only, when every call to the callee passes such a literal there.
+This is the "float-bit arguments to float literals with an `f32` parameter" repair listed as not reproduced in
+the 9-10 November record-table batch.
+
+### KMC GCC 2.7.2: byte offsets on symbols of unknown type (18 November 2026)
+
+Evidence level: one new match on an N64 game's 31-instruction function, checked offline with the pinned compiler
+and the project's own header (equal to the target apart from relocated `%hi`/`%lo` words, which resolve to the
+same addresses); plus a controlled regression test on homemade C (`tests/test_unknown_symbol_offsets.py`).
+
+`gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2`. The draft (score 10) read three words of a table of 16-byte records
+as `*(&D_800C0784 + temp_a2)` with `temp_a2 = arg2 * 0x10` and the symbols declared `extern M2C_UNK`. m2c meant a
+byte offset; with `M2C_UNK` = `s32`, C scaled it by 4 again, so the draft had `sll 6` where the game has `sll 4`.
+- `temp_a2 = arg2 * 4` (offset in elements, everything else unchanged): **exact**.
+- `*(M2C_UNK *)((s8 *)&D + (arg2 * 0x10))`, the temporary folded into each use: **exact**.
+- The same byte form keeping the temporary: no match (the shift is scheduled at the top, in its own register).
+- A record array, `typedef struct { s32 active; u8 *items; s32 count; s32 pad; } Entry; extern Entry D_800C0784[];`
+  with `D_800C0784[arg2].count` etc.: **exact**, also with `arg1 >= 0 && arg2 >= 0` for m2c's `~x >> 31` tests.
+- Typing the symbols `s8` and casting each load: no match (the shift moves to the top).
+- `m2cfix.refine_draft`'s `extern char D[]` loads single bytes: not equivalent.
+decomp-repair 0.5.5's `unknown_symbol_offset_repairs` (label `unknown_symbol_offsets`) offers the element and byte
+forms, with the temporary folded where nothing reassigns its operands.
+
+### KMC GCC 2.7.2: u8 counters m2c masks, and an element index read before its base (18 November 2026)
+
+Evidence level: one new match on an N64 game's 44-instruction function, checked offline with the pinned compiler
+and the project's own header (equal to the target apart from the `jal` targets); plus controlled regression
+tests on homemade C (`tests/test_masked_counters.py`, compiler output only).
+
+`gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2 -fno-schedule-insns` (the function's own setting; plain `-O2`,
+`-O1`, `-O3`, the other KMC/SN/PM/EGCS builds were all further away). m2c's draft scored 1243 (43 words off).
+- `s8 arg1` that m2c then masks (`temp_a1 = arg1 & 0xFF`) as `u8 arg1`: 32 words off.
+- m2c's word counter and masked copy (`var_s1 += 1; var_v0 = var_s1 & 0xFF; } while ((u32) (var_s1 & 0xFF) < n)`)
+  as `u8 var_s1; for (var_s1 = 0; var_s1 < n; var_s1++)`: 41 alone, **2** together with the `u8` parameter.
+- The last two: the target computes `i * 3`, loads the base (`lw`), then shifts by 2; every single-expression
+  form (`base + i * 12`, `&items[i]` of 12-byte records, `s32 *` plus `i * 3`, `(i * 3) * 4`, operand orders,
+  temporaries for the whole address or the comparison, callback signatures) scheduled the shift before the load.
+  `t = i * 3; p = base; cb(p + t * 4, ...)` (or `s32 *p`, `p + t`): **exact**. Loading the base first instead
+  moves the `lw` to the top. gcc 2.7.2's second scheduler keeps the source's order between equal priorities.
+decomp-repair 0.5.6 adds `masked_counter_loop`, `byte_parameter_sign` and `call_index_staging` for these.
+
+The deep pass could not have found it: with one profile per candidate it compiled only the project default
+(`-O2`), so with the function's own `-fno-schedule-insns` every candidate went to the exact-only profile probe and
+nothing was ever scored. It also recompiled 88 rewrites that failed to compile 9,844 times. Both are fixed: the
+function's own settings come first, and a cached compile failure is skipped.
+
+### KMC GCC 2.7.2: delay-slot duplicates, char symbol widths, and struct members for scheduling (18 November 2026)
+
+Evidence level: one new match on an N64 game's 91-instruction function, checked offline with the pinned compiler
+and the project's own header with a relocation-aware comparison (every `%hi`/`%lo` addend resolves to the target's
+address); plus controlled regression tests on homemade C (`tests/test_delay_slot_duplicates.py`).
+
+`gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2` (the project default). The function's own setting,
+`-O2 -fno-schedule-insns -g3`, came from the compiler comparison's auto-apply on a 0.4-point draft gain and is
+wrong: the matching C is 52 words off with it. From m2c's draft (91 words off at `-O2`):
+- `var_v0 = arg0 * 2; if (c) { call(arg0); var_v0 = arg0 * 2; }`, gcc's delay-slot fill read twice, written once
+  after the `if`: 8 off (as m2c wrote it, the value lived across the call in `$s1`).
+- `*(D_8010D784 + off) = arg0` through m2c's refined `extern char D_8010D784[]` stores a byte; the target has `sw`:
+  `*(s32 *)(...)`: 7 off.
+- The last 7 were one block's order: the target loads a `u8` global before storing `1` through `temp_a0`. With
+  `temp_a0`'s fields as `M2C_FIELD` casts (or `*(u16 *)((u8 *)p + 2)`) the store came first; as struct members
+  (`((R *)temp_a0)->field_2`, or a typed `Slot *`): **exact**. gcc 2.7.2 treats a struct member reference
+  (`MEM_IN_STRUCT_P`) and a plain global as not aliasing, so the first scheduler may move the load past it.
+- Byte-offset forms of the record tables (`D_80117389` = `D_80117388 + 1`, `D_8010D7E1` = `D_8010D724 + 0xBD`) were
+  fine either way once the above held.
+Under the function's own wrong setting the first step looked worse (48 -> 54 words), so a search climbing on it
+rejects the path. decomp-repair 0.5.7 adds `delay_slot_duplicate` and `symbol_access_width`, and
+`inferred_record_layout` now reads `M2C_FIELD`. In this game 302 functions had their own setting applied this way
+(non-exact gains, median +2.9 points) before auto-apply stopped doing so. The Compiler panel's "Recheck unverified
+function settings" (`app/unverified_profiles.py`) removes such a setting unless the function matches only with it,
+and keeps it as a hypothesis the deep permuter still tries for an exact match; "Restore" puts them back.
+
+### KMC GCC 2.7.2: a stack object spans its views, not the whole frame (19 November 2026)
+
+Evidence level: three new matches in an N64 game (sibling 14-instruction functions), checked offline with the
+pinned compiler and the project's own header; plus a controlled regression test on homemade C
+(`tests/test_initial_drafts.py`, compiler output only).
+
+`gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2`. m2c can't type an address-taken stack object, so the app's initial
+draft repair writes every stack view as a member of one union. That union was the whole frame (0x38 bytes:
+outgoing argument slots, the object, `$ra`), so gcc placed it above a frame of its own: 0x50, every stack offset
+0x10 off, score 9. The same union from its lowest view (`sp+0x10`) up to the first saved-register store (`$ra` at
+0x30), 0x20 bytes with the views rebased: **exact**. Of 19 open functions in that game with the whole-frame
+union, the narrow one matched 3 and brought 11 closer; 3 compiled further away and 2 were unchanged, so new
+drafts get both (`initial_stack_frame`, `initial_stack_frame_whole`), and saved C gets `initial_frame_narrowed`
+as a repair the judge keeps only when it helps.
+
+### KMC GCC 2.7.2: four functions the deep pass left at m2c's draft, and a library built without scheduling (19 November 2026)
+
+Evidence level: four new matches in an N64 game, checked offline with the pinned compiler, the project's own header
+and the app's judge (a copy of the project, `RomNetwork._compile` + `_evaluate` + `scoring.diff`); each had just
+finished a deep pass of 10,000 variants with no improvement. Controlled regression tests on homemade C:
+`tests/test_exit_returns_and_operand_temporaries.py` here, and decomp-repair 0.5.8's own tests.
+
+`gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2` (the project default) for the first three:
+- A 30-instruction function at 96.1%, m2c's `if (a || b || (t = g(), v = t, t == -1)) { v = -1; } return v;`: the
+  -1 went through `$v1` and a copy. `if (...) return -1; return v;` alone was worse (88.8%); with m2c's copy
+  `v = t,` dropped and `return t;` as well: **exact**. decomp-repair `constant_exit_return` offers both.
+- A 19-instruction function at 88.9%, `p = (i * 0x18) + M2C_FIELD(M2C_FIELD(o, void **, 0x6C), s32 *, 4);`: the
+  index was scheduled between the two loads. Operands swapped, or a `Rec *` array index: 87.1%. The load chain in
+  a statement of its own first (`s32 base = ...; p = (i * 0x18) + base;`): **exact**; as `s8 *base`: 98.2%.
+  `address_temporary` (the whole address in a temporary) never splits one operand; `operand_temporary` does.
+- A 70-instruction function at 92.0%, m2c's delay-slot duplicate of a comparison, `var_v0 = arg0 != 0` before and
+  inside an `if`: carried in a variable it lived in `$s0` and was tested with `andi`. Moved after the `if` (as
+  `delay_slot_duplicate` does for arithmetic): 92.1%. Written in the condition where it's used,
+  `((arg0 != 0) & (arg2 != NULL)) && ...`, or `arg0 != 0 && arg2 != NULL && ...`: **exact**. The repair now accepts
+  comparisons (its value pattern refused any `=`) and offers that form.
+- A 65-instruction `strcmp` adapted from a matched twin in another game (same compiler, `-O2 -g3` there) at 97.2%:
+  only load order differed, the second pointer's load after the first pointer's increment, in all three loops.
+  Reordering the C changed nothing under `-O2`; nor did `-g`, `-g3`, `-O3`, `-fno-strength-reduce` or
+  `-fno-schedule-insns` alone. `-fno-schedule-insns2`: 99.1% (the byte loops exact). `-fno-schedule-insns
+  -fno-schedule-insns2` with the stored C: 83.5%, worse; with each pointer read and advanced in turn (`c = *s1++;
+  d = *s2++;`, and `s1 += 4` before the second word load): **exact**. A library built with scheduling off: the C's
+  statement order is the instruction order. Other compilers were far off (gcc 2.8.1 68.6%, egcs 52.1%, SN 72.1%).
+The flag search now tries `-fno-schedule-insns2` and both scheduling passes off. Still open: the deep pass scores
+candidates under the function's own settings only, where both reorders look like no change, and the right profile
+looks worst with the stored C, so it can't climb there by itself (ROADMAP).
+
+### KMC GCC 2.7.2: five more functions the deep pass left unimproved (19 November 2026)
+
+Evidence level: five new matches in an N64 game, checked offline with the pinned compiler, the project's own header
+and the app's judge on a copy of the project; each had just finished a 10,000-variant deep pass with no improvement.
+Controlled tests on homemade C: `tests/test_permuter_rewrites_second_batch.py` here, decomp-repair 0.5.9's own.
+
+`gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2` throughout:
+- 40 instructions at 98.7%, C borrowed from a matched sibling: only immediates differed (`0x2C00, 0xD, 0x1640,
+  0xC0, 0x2C` against the sibling's `0x3C00, 0xC, 0xF00, 0x40, 0x3C`). Paired in order of appearance: 99.5% (the
+  loop's step and bound are scheduled in the other order); smallest with smallest: **exact** (`target_constant`).
+- 31 instructions at 92.2%, a table of unknown type read as m2c's `*((M2C_UNK *)((s8 *)&D + i * 2))`: word loads
+  of the low half (`lh %lo(D+2)`). All as `s16`: 93.5% (the negated read is `lhu`); each as the target's load in
+  order (`s16, s16, u16`), or `-*(s16 *)...` for the negated one: **exact** (`symbol_access_width`).
+- 32 instructions at 96.2%: `D_800E1A68 = 0; D_800C7E6C = M2C_FIELD(arg0, u8 *, 0x44);` stored before the load,
+  which gcc won't move above a store the pointer could alias. Swapped, or the load in a temporary first:
+  **exact** (`load_before_store`).
+- 38 instructions at 95.0%: the game called `g(arg0, D, arg2, x, y)`, its `$a2` the caller's own and untouched, so
+  m2c wrote `g(arg0, D, x, y)` (one argument short, the last off the stack). With `arg2` passed: **exact**; at the
+  other positions 88.3-94.7% (`passthrough_argument`).
+- 21 instructions at 75.7%, m2c's `loop_1:` with two `if`s sharing a skip label: as `do { if (A && B) return 1;
+  step; } while (i < 0x21U); return 0;`: **exact**; as a `for` loop with the steps in its header: 98.1%; with the
+  counter initialised in another order: 97.9% (`goto_loop`).
+Tried and not matched: a 65-instruction function whose m2c `goto`/duplicate-return structure, written as plain
+`if`s, went from 95.1% to 99.6% (two parameters in swapped saved registers; parameter types and store order did not
+settle it; the general goto-to-return rewrite alone was worse, 86.3%); a 31-instruction float distance whose
+prologue the game scheduled after the arithmetic (no flag variant changed it); a flag test whose best C held
+`register D_80102ED4 = 0;`, a declaration shadowing the global that a rewrite had left (the plain store: 71.3%; read
+through a pointer, as the target's `addiu $a1, %lo(D)` suggests: 80.0%). Five open functions' best C in this game
+holds such a `register X = ...;` line.

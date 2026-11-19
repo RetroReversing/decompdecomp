@@ -55,11 +55,26 @@ def test_an_undefined_base_symbol_does_not_count_as_built_in_unit_scores(monkeyp
     assert result.unit_scores["demo_function"] is None
 
 
+def test_an_explicit_percentage_is_kept_while_the_rows_disagree(monkeypatch, tmp_path):
+    result = _diff(
+        monkeypatch,
+        tmp_path,
+        _function(match_percent=75.0, instructions=[_instruction("addi", "DIFF_REPLACE")]),
+        _function(match_percent=75.0, instructions=[_instruction("nop", "DIFF_REPLACE")]),
+    )
+    assert result.match_percent == 75.0
+    assert not result.matched
+    assert result.unit_scores["demo_function"] == 75.0
+
+
 @pytest.mark.parametrize("percent", [100.0, 75.0, 0.0])
-def test_a_defined_functions_explicit_match_percentage_is_preserved(monkeypatch, tmp_path, percent):
+def test_every_agreeing_row_is_100_percent_whatever_objdiff_reports(monkeypatch, tmp_path, percent):
+    """A unit whose every instruction agrees is whole, even when objdiff's own percentage says otherwise: it
+    compares the game's resolved address with the candidate's relocation and calls the difference one. That made a
+    byte-identical function read 99.8% and stay open (08bdde42)."""
     result = _diff(monkeypatch, tmp_path, _function(match_percent=percent), _function(match_percent=percent))
-    assert result.match_percent == percent
-    assert result.matched == (percent == 100.0)
+    assert result.match_percent == 100.0
+    assert result.matched
     assert result.unit_scores["demo_function"] == percent
 
 

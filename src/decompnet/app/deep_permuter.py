@@ -6,14 +6,14 @@ search space, so time/variant limits and cancellation always remain explicit.
 import copy
 import hashlib
 import json
-import os
+import re
 import sys
 import threading
 import time
 from collections import OrderedDict
 from contextlib import nullcontext
 
-from .. import compiler, scoring
+from .. import claim_stalls, compiler, scoring, stamped
 from ..candidate_work import preparation as candidate_preparation
 from ..candidate_work import trial
 from ..compile_sessions import batched
@@ -83,6 +83,8 @@ def validate(net, slug, name, minutes, max_variants):
     from .boundary_repairs import blocked
     if fn['id'] in blocked(net,proj):raise NetworkError('Review this function boundary before starting a deep pass.')
     fn = prepare_source(net, proj, fn)
+    from .untyped_register import restore
+    fn = restore(net, proj, fn)
     if fn['status'] != 'open' or not fn['best_source'] or fn['best_score'] is None:
         raise NetworkError('Choose an unmatched function with saved, scored C first.')
     return proj, fn
@@ -826,6 +828,15 @@ class Search(Permuter):
         # Imported files can change outside the database, so keep their full dependency scan.
         if fork or self.measuring_baseline:return None
         if not hasattr(self.net.project_store(proj['id']), 'read_version'):return None
+        fast = getattr(self, '_recent_fast', None)
+        if fast is not None:
+            # The same database inputs (every row, header and symbol a key reads bumps `inputs`), the same rows
+            # and environment, checked within the last second: only the source is new. Building the capture below
+            # ran four times per candidate; this check is a revision read and two dict comparisons in C.
+            version, rows_proj, rows_fn, environment, header, checked = fast
+            if (time.monotonic()-checked < 1 and environment is stamped.environment() and rows_proj == _row(proj)
+                    and rows_fn == _row(fn) and version == self.net.project_store(proj['id']).read_version('inputs', proj['id'])):
+                return self._recent_source(source, version, header)
         from .. import claim_stalls
         from ..candidate_work import remember
         from ..match_bundle import compiler_identity
@@ -844,7 +855,7 @@ class Search(Permuter):
         if not compiler._stable_inputs([source.encode(), (ctx['header'] if ctx else '').encode()]):return None
         rules = remember(('repair-rules', claim_stalls.repair_rules), claim_stalls.repair_rules)
         version=self.net.project_store(proj['id']).read_version('inputs',proj['id'])
-        environment=sorted(os.environ.items())
+        environment=stamped.environment()
         from ..candidate_work import current
         preparing = current() is not None and current().preparing
         identity = (remember(("prepared-compiler", compiler_identity, repr(own)), lambda:compiler_identity(own))
@@ -852,11 +863,26 @@ class Search(Permuter):
         capture=(version,tuple(dict(proj).items()),tuple(dict(fn).items()),identity,repr(rules),environment,
                  ctx['header'] if ctx else '')
         if capture!=getattr(self,'_recent_capture',None):
+            # Everything but the source is hashed once per capture: repr of the rows, rules and environment ran
+            # four times per candidate under the app's one interpreter, and grows with the function and project.
             self._recent_capture=capture;self._recent_keys=OrderedDict()
+            self._recent_base=hashlib.sha256(repr((dict(proj),dict(fn),identity,rules,environment)).encode()).digest()
+        header = ctx['header'] if ctx else ''
+        self._recent_fast = (version, dict(proj), dict(fn), environment, header, time.monotonic())
+        return self._recent_source(source, version, header, checked=True)
+
+    def _recent_source(self, source, version, header, checked=False):
         cache=self._recent_keys
         if source in cache:
             cache.move_to_end(source);return cache[source][0]
-        result=(version,hashlib.sha256(repr((dict(proj),dict(fn),source,identity,rules,environment)).encode()).digest())
+        from .. import compiler
+        if not checked and not compiler._stable_inputs([source.encode(), header.encode()]):return None
+        # Layout counts when the header's macros read line numbers (assert macros often do): there the exact text.
+        seen = getattr(self, '_header_layout', None)
+        if seen is None or seen[0] is not header:
+            seen = self._header_layout = (header, '__LINE__' in header or '__COUNTER__' in header)
+        layout = seen[1]
+        result=(version,hashlib.sha256(self._recent_base+(source if layout else equivalent_text(source)).encode()).digest())
         cache[source]=(result,len(source.encode()))
         while len(cache)>64 or sum(size for _,size in cache.values())>8*1024*1024:cache.popitem(last=False)
         return result
@@ -1018,6 +1044,25 @@ class Search(Permuter):
         return score
 
 
+_TOKENS = re.compile(r'"(?:\\.|[^"\\\n])*"|' r"'(?:\\.|[^'\\\n])*'|//[^\n]*|/\*[\s\S]*?\*/|"
+                     r"\.?\d(?:[eEpP][+-]|[\w.])*|[A-Za-z_]\w*|"
+                     r"\.\.\.|<<=|>>=|->|\+\+|--|<<|>>|<=|>=|==|!=|&&|\|\||[*/%+\-&^|]=|##|\S")
+
+
+def equivalent_text(source):
+    """`source` as the compiler's tokens, without comments or layout: two candidates that differ only there compile
+    to the same code, so the deep search scores one and skips the other. Operators are read longest first, as C's
+    lexer reads them (`i++ + j` is not `i+ ++j`). Anything with a preprocessor line or a line-number macro keeps its
+    exact text: there, layout can change what is compiled."""
+    if '#' in source or '__LINE__' in source or '__COUNTER__' in source:
+        return source
+    return ' '.join(token for token in _TOKENS.findall(source) if not token.startswith(('//', '/*')))
+
+
+def _row(row):
+    return row if isinstance(row, dict) else dict(row)
+
+
 def run(net, slug, name, minutes, max_variants, log, compiler_profiles=1, threads_per_function=1, maximum_throughput=False, compile_slots=0):
     deep_throughput.options(maximum_throughput, compile_slots)
     if maximum_throughput and getattr(log, 'compile_pool', None) is None and threads_per_function == 1:threads_per_function = min(max_variants, deep_throughput.width(True, compile_slots))
@@ -1054,6 +1099,7 @@ def run(net, slug, name, minutes, max_variants, log, compiler_profiles=1, thread
 @deep_compilation.shared
 @buffered
 @batched
+@claim_stalls.snapshot_rules  # one function's search is one operation: its lane fingerprints the repair code once
 def _run(net, slug, name, minutes, max_variants, log, compiler_profiles=1, *, lane=None):
     """Visit the supported local repairs, then spend the remaining budget on random permutations."""
     proj, fn = validate(net, slug, name, minutes, max_variants)
@@ -1072,10 +1118,10 @@ def _run(net, slug, name, minutes, max_variants, log, compiler_profiles=1, *, la
         search.random_salt = f"-lane-{lane.index}"
         search.parallel_lane = lane
     if not net.fork_slug(slug) and (slug not in net.links or compiler_profiles>1):
-        search.compiler_profiles = deep_profiles.selected(net, proj, compiler_profiles)
+        search.compiler_profiles = deep_profiles.selected(net, proj, compiler_profiles, fn)
         for profile in search.compiler_profiles:
             log('Selected profile: '+profile['toolchain']+' '+' '.join(profile['flags']))
-        log('Compiler profiles per candidate: '+str(len(search.compiler_profiles))+'. Default first; other profiles ranked by matched-function usage. Each profile test uses compile allowance.')
+        log('Compiler profiles per candidate: '+str(len(search.compiler_profiles))+". The function's own settings first, then the project default; other profiles ranked by matched-function usage. Each profile test uses compile allowance.")
     if sweeps:
         search.record_improvement = lambda score: sweeps.improvement(fn, score)
     search.report()

@@ -623,7 +623,7 @@
           <legend class="sr-only">Search options</legend>
           <h3>Search limits</h3>
           <div class="local-search-option-pair"><label class="field"><span>Minutes per function (1–120)</span><input id="deepSweepMinutes" type="number" min="1" max="120" value="5" required></label><label class="field"><span>Candidates per function (1–1,000,000)</span><input id="deepSweepVariants" type="number" min="1" max="1000000" value="10000" required></label></div>
-          <label class="field"><span>Compiler profiles per candidate (1–16)</span><input id="deepSweepProfiles" type="number" min="1" max="16" value="1" required><small>Default first, then other profiles ranked by matched functions. Each profile uses compile allowance. ROM rooms submit exact source, header and compiler settings for host verification. Imported builds use their own compiler settings.</small></label>
+          <label class="field"><span>Compiler profiles per candidate (1–16)</span><input id="deepSweepProfiles" type="number" min="1" max="16" value="1" required><small>Each function's own settings first, then the project default (always tried when it differs), then other profiles ranked by matched functions. Each profile uses compile allowance. ROM rooms submit exact source, header and compiler settings for host verification. Imported builds use their own compiler settings.</small></label>
           <h3>CPU use</h3>
           <label class="deep-sweep-repeat"><input id="deepSweepMaximum" type="checkbox"><span>Maximum throughput<small>Use all detected CPU cores, dedicated candidate generators and a shared compiler pool.</small></span></label>
           <div class="local-search-option-pair"><label class="field"><span>Concurrent compiles (1–256)</span><input id="deepSweepCompileSlots" type="number" min="1" max="256" placeholder="auto"><small>Blank uses all cores in maximum mode; balanced mode keeps its normal compiler allowance.</small></label><label class="field"><span>Functions at a time (1 or more)</span><input id="deepSweepThreads" type="number" min="1" placeholder="auto"><small>Leave blank for automatic.</small></label></div>
@@ -800,6 +800,14 @@
             <p id="compilerCleanupResult" class="small" role="status"></p>
             <pre id="compilerCleanupLog" class="joblog" hidden></pre>
           </div></details>
+          <details id="compilerRecheck" class="compiler-cleanup more" hidden>
+            <summary>Recheck unverified function settings <span class="disclosure-context" id="compilerRecheckContext"></span></summary><div class="more-body">
+            <p class="small muted">Find which function-only settings no match supports. Some functions got their own settings because they scored a little better on unmatched C, often m2c's draft, which says nothing about how the game was built, and searches then climb with the wrong settings.</p>
+            <p class="small muted">Each one is tried with its function's current C, with and without it. A setting stays if the function matches only with it. Otherwise it goes back to the project's settings and is kept as a hypothesis the deep permuter still tries for an exact match. Matched functions keep theirs, every affected match is checked before anything is saved, and saved scores are updated.</p>
+            <div class="row"><button id="compilerRecheckGo" class="primary" type="button">Recheck settings</button><button id="compilerRecheckStop" class="ghost" type="button" hidden>Stop</button><button id="compilerRecheckUndo" class="ghost" type="button" hidden>Restore removed settings</button></div>
+            <p id="compilerRecheckResult" class="small" role="status"></p>
+            <pre id="compilerRecheckLog" class="joblog" hidden></pre>
+          </div></details>
           <div id="compilerWaiting"></div>
           <details class="more"><summary>Automatic compiler changes</summary><div class="more-body"><label class="check" id="autoAdjustRow"><input type="checkbox" id="autoAdjust"><span><b>Apply proven changes by themselves.</b> When agents prove a part of the game was built with another compiler (its code matches with it, and its neighbours agree), the app uses it without asking you.</span></label></div></details>
           <details class="more" id="installedCompilerTest">
@@ -958,7 +966,7 @@
             <div id="sdkDetected" class="muted small"></div><div id="sdkChoices"></div>
             <div id="sdkSetAsideC" hidden>
               <label class="check"><input type="checkbox" id="sdkSetAsideCOn"><span>Set aside library code that library detection finds</span></label>
-              <p class="muted small">Library functions found by detection (the built-in libultra signatures, your SDK folders, functions you confirmed) go to the agents for matching C like the game's own code. With this on they're set aside instead: a port replaces that code and the rebuild uses its assembly. Where your SDK archive has a function, its bytes are linked and compared too. Code the port builds from C (libultra's math and synthesizer) is set aside too once you install libultra source (ultralib) in <a href="#/tools">Compilers &amp; tools</a>: the port then compiles ultralib's C for it. Without it, and for names the port doesn't know, it keeps its C work. Turning it off gives them back to the agents. <span id="sdkSetAsideCCount"></span></p>
+              <p class="muted small">Library functions found by detection (the built-in libultra signatures, your SDK folders, functions you confirmed) are set aside from C matching (on unless you turn it off): a port replaces that code and the rebuild uses its assembly. Where your SDK archive has a function, its bytes are linked and compared too. Code the port builds from C (libultra's math and synthesizer) is set aside too once you install libultra source (ultralib) in <a href="#/tools">Compilers &amp; tools</a>: the port then compiles ultralib's C for it. Without it, and for names the port doesn't know, it keeps its C work. Turning it off gives them back to the agents. <span id="sdkSetAsideCCount"></span></p>
             </div>
             <div class="row"><button class="ghost small-btn" id="sdkSelectionSave" type="button">Save selection</button><button class="ghost small-btn" id="sdkSetAsideCStop" type="button" hidden>Stop</button></div>
             <pre class="joblog" id="sdkSelectionLog" hidden></pre>

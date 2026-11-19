@@ -695,10 +695,26 @@ def target_scope(net, fn, revision):
     def load():return store.held_one('SELECT * FROM projects WHERE id=?', fn['project_id'])
     if current() is not None and hasattr(store, 'read_version'):
         version = store.read_version('inputs', fn['project_id'])
-        proj = remember(('scope-project', id(net), id(store), fn['project_id'], version), load)
+        if hasattr(store, 'read_cache'):
+            # Across candidates, not only within one: the project row changes only with `inputs`, and a deep
+            # search read all of it again for every candidate.
+            proj = store.read_cache.get(('scope-project', id(net), fn['project_id']), version, load)
+        else:
+            proj = remember(('scope-project', id(net), id(store), fn['project_id'], version), load)
     else:proj = load()
     rules = remember(('repair-rules', claim_stalls.repair_rules), claim_stalls.repair_rules)
-    return hashlib.sha256(repr((revision,candidate_scope.key(net,proj,fn),rules)).encode()).hexdigest()
+    scope = candidate_scope.key(net,proj,fn)
+    kept = _SCOPES.get((revision, scope))
+    if kept is not None and kept[0] == rules:
+        return kept[1]  # (the rules' repr, about 130 file digests, hashed once rather than for every candidate)
+    value = hashlib.sha256(repr((revision,scope,rules)).encode()).hexdigest()
+    if len(_SCOPES) >= 1024:
+        _SCOPES.clear()
+    _SCOPES[(revision, scope)] = (list(rules), value)
+    return value
+
+
+_SCOPES = {}
 
 
 def target_tried(net, fn, revision, family, old, scope=None):
@@ -737,7 +753,7 @@ def local_family(net, agent, slug, function, revision, family, old='', declarati
         source, actual = candidate(net, agent, slug, function)
         if revision != actual:
             raise stale(net,agent,fn,revision,source,actual,old)
-        if family in ('typed_temporary','branch_orientation','narrowing','source_lines','address_temporary','constant_local','comparison_load','stack_array','loop_induction','parameter_width','value_lifetime','sum_shape','call_result_inline'):
+        if family in ('typed_temporary','branch_orientation','narrowing','source_lines','address_temporary','operand_temporary','constant_local','comparison_load','stack_array','loop_induction','parameter_width','value_lifetime','sum_shape','call_result_inline'):
             if old or declaration or occurrence or target not in ('','next'):
                 raise NetworkError('Pattern families use function and revision only; omit target/old/declaration/occurrence.')
             proj = net._project(slug)

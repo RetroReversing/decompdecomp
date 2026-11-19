@@ -4,14 +4,17 @@ import functools
 import queue
 import threading
 import time
+from collections import deque
 from concurrent.futures import CancelledError, Future
 from contextlib import contextmanager, nullcontext
 
-from .. import compile_sessions, compile_sharing, compile_timing, compiler
+from .. import compile_sessions, compile_sharing, compile_timing, compile_worker, compiler
 from ..candidate_work import preparation as candidate_preparation
 
 
 class Ticket:
+    batch = None  # (group, net, proj, header, fn) when it may compile with others (Pool._run_batch)
+
     def __init__(self, key, snapshot, run, check):
         self.key, self.snapshot, self.run, self.check = key, snapshot, run, check
         self.future = Future()
@@ -29,22 +32,29 @@ class Ticket:
 
 
 class Pool:
-    def __init__(self, count=None, *, maximum=False):
+    def __init__(self, count=None, *, maximum=False, remote=True):
         from .deep_throughput import Metrics
-        self.count = count or min(4, compiler.concurrency_limit())
+        self.count = count or compiler.concurrency_limit()
         self.maximum = maximum
+        self.remote = remote  # compiles in child processes (compile_worker.py); a deep lane compiles in-thread
+        # A lane's compile threads compile several candidates of one function per compiler run (batch_compile.py):
+        # one run takes one compile slot for up to MAX candidates, so as many more may wait for it.
+        from ..batch_compile import MAX as BATCH
+        self.batching = 1 if remote else BATCH
+        self.unbatchable = set()  # groups whose candidates a batch can't give (their code refers to file-local data)
         self.slots = compiler.Admission(self.count)
         self.metrics = Metrics()
         self.metrics.gate = self.slots
         self.metrics.maximum = maximum
-        self.queue = queue.Queue(maxsize=self.count*2)
+        self.queue = queue.Queue(maxsize=self.count*2*self.batching)
         self.group = compile_sharing.Group()
         self.workers = []
         self.lock = threading.Lock()
         self.baselines = {}
         self.proposals = None
-        self.capacity = threading.BoundedSemaphore(self.count*2)
+        self.capacity = threading.BoundedSemaphore(self.count*2*self.batching)
         self.admission = threading.Lock()
+        self.lanes = 0  # searches preparing or holding a window now
 
     def proposal_pool(self):
         with self.lock:
@@ -57,23 +67,32 @@ class Pool:
             return self.proposals
 
     @contextmanager
-    def window(self, count, check):
+    def window(self, tickets, check):
         # Admit a whole small chunk atomically. Partial windows held by several
         # lanes would otherwise deadlock while each waited to submit its remainder.
+        # Each permit returns when its own compile ends (or is canceled), not when the lane has judged the
+        # whole chunk: a lane judges one candidate at a time, and holding every permit until then let one lane
+        # occupy the entire capacity while the compilers sat idle and every other lane queued here. That capped
+        # a sweep at one lane's judging speed (about 100 candidates a second) whatever the compile slots.
         acquired = 0
         locked = False
+        handed = False
         try:
-            if count:
+            if tickets:
                 while not self.admission.acquire(timeout=.05):check()
                 locked = True
-                for _ in range(count):
+                for _ in tickets:
                     while not self.capacity.acquire(timeout=.05):check()
                     acquired += 1
                 self.admission.release();locked = False
+                for ticket in tickets:
+                    ticket.future.add_done_callback(lambda _:self.capacity.release())
+                handed = True
             yield
         finally:
             if locked:self.admission.release()
-            for _ in range(acquired):self.capacity.release()
+            if not handed:
+                for _ in range(acquired):self.capacity.release()
 
     def submit(self, ticket):
         with self.lock:
@@ -87,20 +106,73 @@ class Pool:
             except queue.Full:pass
 
     def work(self):
-        from .workers import lower_priority
-        if not self.maximum:lower_priority()
+        from .workers import started_priority
+        if not self.maximum:started_priority()
         from .deep_throughput import scope
-        with scope(self), compile_sessions.session(), compile_sharing.group(self.group):
-            while (ticket := self.queue.get()) is not None:
+        # Each compile thread hands its compiles to a child process of its own (compile_worker.py): their Python
+        # no longer queues on the app's one interpreter lock.
+        with scope(self), compile_sessions.session(), compile_sharing.group(self.group), \
+                (compile_worker.remote(background=not self.maximum) if self.remote else nullcontext()):
+            pending = deque()
+            while (ticket := pending.popleft() if pending else self.queue.get()) is not None:
                 if not ticket.future.set_running_or_notify_cancel():continue
-                try:
-                    ticket.checkpoint()
-                    with compiler.cancellable(ticket.checkpoint), compile_timing.collect(ticket.compile_counts, append=True):
-                        result = ticket.run()
-                    ticket.checkpoint()
-                    ticket.future.set_result(result)
-                except BaseException as error:
-                    ticket.future.set_exception(error)
+                group = [ticket]
+                if (self.batching > 1 and getattr(ticket, 'batch', None) is not None
+                        and ticket.batch[0] not in self.unbatchable):
+                    # Queued candidates of the same function and header join this compiler run.
+                    while len(group) < self.batching:
+                        try:
+                            other = self.queue.get_nowait()
+                        except queue.Empty:
+                            break
+                        if other is None or getattr(other, 'batch', None) is None or other.batch[0] != ticket.batch[0]:
+                            pending.append(other)
+                            break
+                        if other.future.set_running_or_notify_cancel():
+                            group.append(other)
+                if len(group) > 1:
+                    self._run_batch(group)
+                else:
+                    self._run_one(ticket)
+
+    def _run_one(self, ticket):
+        try:
+            ticket.checkpoint()
+            with compiler.cancellable(ticket.checkpoint), compile_timing.collect(ticket.compile_counts, append=True):
+                result = ticket.run()
+            ticket.checkpoint()
+            ticket.future.set_result(result)
+        except BaseException as error:
+            ticket.future.set_exception(error)
+
+    def _run_batch(self, group):
+        """One compiler run for `group`; a candidate the batch can't take compiles on its own after it."""
+        _, net, proj, header, fn = group[0].batch
+        results = None
+        try:
+            group[0].check()
+            with compiler.cancellable(group[0].check), compile_timing.collect(group[0].compile_counts, append=True):
+                results = net._compile_batch(proj, header, [t.batch_source for t in group], fn)
+        except BaseException as error:
+            for ticket in group:
+                ticket.future.set_exception(error)
+            return
+        alone = sum(1 for index in range(len(group)) if not results or results[index] is None)
+        if alone:
+            compile_timing.add('batch_alone', alone)
+        if results and alone == len(group) and all(r is None for r in results) and _all_local(group):
+            # It compiled, and none could be used: a function that refers to its file's own data. One by one.
+            with self.lock:
+                self.unbatchable.add(group[0].batch[0])
+        for index, ticket in enumerate(group):
+            result = results[index] if results else None
+            if result is None:
+                self._run_one(ticket)
+                continue
+            if ticket.stopped.is_set():
+                ticket.future.set_exception(CancelledError())
+            else:
+                ticket.future.set_result(result)
 
     def close(self):
         # Search chunk contexts cancel their own pending/running tickets first.
@@ -125,10 +197,14 @@ def chunk(search, agent, proj, fn, sources, fork):
         if time.monotonic() >= search.deadline:
             from .deep_permuter import SearchLimit
             raise SearchLimit('Time limit reached')
+    with pool.lock:pool.lanes += 1
+    # Each lane asks for its share of the capacity: one lane asking for all of it held the admission lock while the
+    # permits came back one by one, and the other lanes queued behind it. A lane alone still fills the pipeline.
+    with pool.lock:share = max(2, pool.count*2*getattr(pool, 'batching', 1)//max(1, pool.lanes))
     try:
         with candidate_preparation():
             for source in sources:
-                if len(tickets) >= min(pool.count*2, search.limit-search.tested):break
+                if len(tickets) >= min(share, search.limit-search.tested):break
                 if source in tickets or source == fn['best_source']:continue
                 if random_safety.unsafe_update(fn['best_source'], source) or invalid_call(source, fn['name'], header):continue
                 key = search._recent_key(proj, fn, source, fork)
@@ -148,8 +224,12 @@ def chunk(search, agent, proj, fn, sources, fork):
                 snapshot = search.net._compile_snapshot(proj, fn, header, source)
                 ticket = Ticket(key[1], snapshot,
                                 lambda source=source:search.net._compile(proj, header, source, fn), check)
+                if hasattr(search.net, '_compile_batch'):
+                    # what batch_compile needs: the run's group (one function, one header) and this candidate
+                    ticket.batch = ((id(search.net), proj['id'], fn['id'], header), search.net, proj, header, fn)
+                    ticket.batch_source = source
                 tickets[source] = ticket
-        with pool.window(len(tickets), check):
+        with pool.window(list(tickets.values()), check):
             for ticket in tickets.values():pool.submit(ticket)
             search._ahead = tickets
             try:yield
@@ -157,6 +237,7 @@ def chunk(search, agent, proj, fn, sources, fork):
                 # Cancel before another lane is admitted into this window.
                 discard(search)
     finally:
+        with pool.lock:pool.lanes -= 1
         search._ahead = {}
         for ticket in tickets.values():
             if not ticket.counted and not ticket.cancel():
@@ -166,6 +247,11 @@ def chunk(search, agent, proj, fn, sources, fork):
                 ticket.counted = True
             else:ticket.cancel()
 
+
+
+def _all_local(group):
+    """Whether the last batch's candidates were all set aside for referring to file-local data (batch_compile)."""
+    return group[0].compile_counts.values.get('batch_alone_local', 0) >= len(group)  # (this batch's own counts)
 
 
 def discard(search):
@@ -187,7 +273,10 @@ def prepared(function):
         try:
             # Policy/history reads around the judge use the same DB snapshot semantics;
             # they must not trigger saved-tree synchronization before each candidate.
-            with self.net.progress.view() if hasattr(self.net, "progress") else nullcontext():
+            # Revisions are read once per candidate, as within an agent's tool call (Store.versions_held): a
+            # candidate asked read_revisions 29 times, each through the connection lock every lane shares.
+            from ..store import Store
+            with (self.net.progress.view() if hasattr(self.net, "progress") else nullcontext()), Store.versions_held():
                 return function(self, agent, proj, fn, source, best, fork)
         finally:self._ahead_current = previous
     return run

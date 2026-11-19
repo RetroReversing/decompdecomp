@@ -1,6 +1,7 @@
 """Throughput leases share hard limits, keep exact publication and restore normal scheduling."""
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -15,7 +16,8 @@ def test_cpu_defaults_and_validation(monkeypatch):
     monkeypatch.setattr(deep_throughput.os, 'cpu_count', lambda:10)
     assert deep_throughput.width(True,0)==10
     assert deep_throughput.width(True,7)==7
-    assert deep_throughput.width(False,0)<=4
+    monkeypatch.setattr(deep_throughput.compiler, 'concurrency_limit', lambda:17)
+    assert deep_throughput.width(False,0)==17  # balanced uses the machine, not a fixed 4
     for value in [-1,257,True,1.5,None]:
         with pytest.raises(NetworkError):deep_throughput.options(True,value)
     with pytest.raises(NetworkError):deep_throughput.options('yes',0)
@@ -207,3 +209,82 @@ def test_cancelled_gate_wait_clears_metrics_and_releases_partial_admission(monke
     assert metrics.snapshot()['compiler_waiting_shared'] == 0
     assert metrics.snapshot()['active_compiles'] == 0
     shared.release()
+
+
+def test_deep_search_workers_avoid_macos_utility_qos(monkeypatch):
+    """A user-started deep search must not drop to utility QoS on macOS (efficiency cores only)."""
+    from decompnet.app import workers
+    calls = []
+    monkeypatch.setattr(workers, 'lower_priority', lambda: calls.append('lower'))
+    monkeypatch.setattr(workers.sys, 'platform', 'linux')
+    workers.started_priority()
+    assert calls == ['lower']
+    for path in ('deep_sweep.py', 'deep_parallel.py', 'deep_compilation.py', 'deep_proposal_worker.py'):
+        source = (Path(workers.__file__).parent / path).read_text()
+        assert 'lower_priority' not in source, path
+
+
+def test_cached_compiler_identity_follows_toolchain_files(tmp_path, monkeypatch):
+    """The identity is cached for speed, but a changed compiler binary or manifest must change it."""
+    import os
+
+    from decompnet import match_bundle, toolchains
+    monkeypatch.setattr(toolchains, 'path', lambda tool: tmp_path)
+    monkeypatch.setattr(toolchains, 'get', lambda tool: {'name': tool})
+    (tmp_path/'cc1').write_bytes(b'one')
+    first = match_bundle.compiler_identity({'toolchain': 'gcc-test'})
+    assert match_bundle.compiler_identity({'toolchain': 'gcc-test'}) == first
+    (tmp_path/'cc1').write_bytes(b'two!')
+    os.utime(tmp_path/'cc1', ns=(1, 2))
+    assert match_bundle.compiler_identity({'toolchain': 'gcc-test'})['executables'] != first['executables']
+
+
+def test_cached_environment_follows_changes(monkeypatch):
+    before = __import__("decompnet.stamped").stamped.environment()
+    monkeypatch.setenv('DECOMP_TEST_ENVIRONMENT_CACHE', '1')
+    assert ('DECOMP_TEST_ENVIRONMENT_CACHE', '1') in __import__("decompnet.stamped").stamped.environment()
+    monkeypatch.delenv('DECOMP_TEST_ENVIRONMENT_CACHE')
+    assert __import__("decompnet.stamped").stamped.environment() == before
+
+
+def test_recent_key_fast_path_notices_a_changed_function_row():
+    """The fast path compares the rows: a function changed in memory never keeps the old key."""
+    from types import SimpleNamespace
+
+    from decompnet.app import deep_permuter
+    search = deep_permuter.Search.__new__(deep_permuter.Search)
+    store = SimpleNamespace(read_version=lambda kind, project: 3)
+    search.net = SimpleNamespace(project_store=lambda pid: store)
+    search.measuring_baseline = False
+    search._recent_keys = {}
+    search._recent_base = b'base'
+    proj, fn = {'id': 1}, {'id': 2, 'best_source': 'a'}
+    import time
+    search._recent_fast = (3, dict(proj), dict(fn), deep_permuter.stamped.environment(), '', time.monotonic())
+    assert search._recent_key(proj, fn, 'int f(void){return 1;}', None) is not None
+    calls = []
+    search.net.cfg = lambda proj: calls.append(True) or {}
+    assert search._recent_key(proj, dict(fn, best_source='b'), 'int f(void){return 1;}', None) is None  # slow path ran
+    assert calls
+
+
+def test_equivalent_text_keeps_what_the_compiler_could_tell_apart():
+    from decompnet.app.deep_permuter import equivalent_text as same
+    assert same('int f(int x){ /* note */ return x+1; }') == same('int f(int x)\n{\n    return x + 1; // note\n}')
+    assert same('i++ + j') != same('i+ ++j') and same('a - -b') != same('a--b')
+    assert same('s = "a  b";') != same('s = "a b";') and same("c = ' ';") != same("c = '  ';")
+    for exact in ('#define N 1\nint a = N;', 'int line = __LINE__;'):
+        assert same(exact) == exact
+
+
+def test_layout_counts_when_the_header_reads_line_numbers():
+    from decompnet.app import deep_permuter
+    search = deep_permuter.Search.__new__(deep_permuter.Search)
+    search._recent_base = b'base'
+    keys = {}
+    for header in ('int x;', '#define ASSERT(c) check(c, __LINE__)'):
+        search._recent_keys = {}
+        one = search._recent_source('int f(void){return 1;}', 1, header)
+        two = search._recent_source('int f(void)\n{\n  return 1;\n}', 1, header)
+        keys[header] = one == two
+    assert keys == {'int x;': True, '#define ASSERT(c) check(c, __LINE__)': False}
