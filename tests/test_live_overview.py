@@ -102,10 +102,11 @@ def test_a_failing_build_backs_off_instead_of_spawning_a_thread_each_poll():
     assert engine.builds == ['broken'], 'the backoff stops a hot loop on a project that always fails'
 
 
-def test_a_very_large_project_is_not_summarised_automatically():
-    """Summarising 38k functions takes minutes and holds the GIL against every other request: the poll paints with
-    the cheap overview instead, so the rest of the app stays usable."""
-    engine = Fake(functions=38_694)
+def test_an_absurdly_large_project_is_not_summarised_automatically():
+    """A summary is read off the request thread, but it still holds the GIL while it runs: past an absurd size the
+    poll paints with the cheap overview instead, so one project cannot throttle the rest. (The limit is high
+    because the reads are cheap when they are done right: 38k functions take under two seconds.)"""
+    engine = Fake(functions=500_000)
     overview, _ = GuiMixin.live_overview(engine, 'huge')
 
     assert overview['overview_pending'] is True

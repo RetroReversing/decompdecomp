@@ -430,3 +430,22 @@ def test_installed_packs_identify_compilers_and_keep_guest_archives_opaque():
             checked += 1
     if not checked:
         pytest.skip("needs a ROM console's compiler pack")
+
+
+def test_the_compilers_of_the_kits_are_kept_between_calls(monkeypatch):
+    """A project asks which compiler each of its files builds with, so this is asked thousands of times. Every
+    answer used to prove the kit was still where Setup recorded it by listing the folder and its parents
+    (Kit.locate -> find); one 38,694-function project's overview read 10,133,011 directory entries because of it,
+    and spent 65 s in listdir alone. Setup recording or dropping a copy calls kits.forget()."""
+    walked = []
+    real = kits.folders
+    monkeypatch.setattr(kits, "folders", lambda kid: (walked.append(kid), real(kid))[1])
+    kits.forget()
+    try:
+        first = kits.compilers(["xdk360"])
+        after_first = len(walked)
+        second = kits.compilers(["xdk360"])
+    finally:
+        kits.forget()  # (leave the cache as the rest of the suite expects it)
+    assert len(walked) == after_first, "asking again must not walk the kit folders again"
+    assert [c.version for c in second] == [c.version for c in first]

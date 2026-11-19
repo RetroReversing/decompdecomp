@@ -151,13 +151,27 @@ def folder(kid: str) -> Path | None:
 
 def compilers(kids) -> list[OwnCompiler]:
     """The compilers of every copy of the kits `kids` (a console's Console.kits) the user set up. Two copies of one
-    build give one compiler (the first copy's)."""
+    build give one compiler (the first copy's).
+
+    Kept between calls (see `find` and `forget`): a project asks this for every one of its files."""
+    return list(_compilers(tuple(kids)))
+
+
+@functools.lru_cache(maxsize=32)
+def _compilers(kids: tuple[str, ...]) -> tuple[OwnCompiler, ...]:
     out: dict[str, OwnCompiler] = {}
     for k in kids:
         for at in folders(k):
             for c in get(k).compilers(at):
                 out.setdefault(c.version, c)
-    return list(out.values())
+    return tuple(out.values())
+
+
+def forget() -> None:
+    """Forget the kit lookups kept between calls: Setup recorded a copy or dropped one, so the compilers it gives
+    are not the same any more."""
+    _compilers.cache_clear()
+    _file_version.cache_clear()
 
 
 def own_compiler(cid: str) -> OwnCompiler | None:

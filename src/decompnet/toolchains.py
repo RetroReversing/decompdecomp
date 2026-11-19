@@ -602,6 +602,8 @@ def _write_copies(tc: Toolchain, copies: list[str]) -> None:
     _write_manifest(dest, {"id": tc.id, "name": tc.name, "license": tc.license, "source": "local",
                            "folder": copies[0], "folders": copies, "installed_at": time.time(),
                            "license_accepted": bool(tc.proprietary), "wsl": False})
+    from . import kits  # (where its copies are has changed: the kit lookups kept from before are now out of date)
+    kits.forget()
 
 
 def remove_local(tid: str, folder: str | Path) -> None:
@@ -618,6 +620,8 @@ def remove_local(tid: str, folder: str | Path) -> None:
         _write_copies(tc, left)
     else:
         (path(tid, False) / MANIFEST).unlink(missing_ok=True)
+        from . import kits  # (it isn't set up any more: forget the copies that were read from it)
+        kits.forget()
 
 
 def install(tid: str, *, accept_license: bool = False, force: bool = False, log=print, linux: bool | None = None, vm: bool | None = None, folder: str | Path | None = None) -> Path:

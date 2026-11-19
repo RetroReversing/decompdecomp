@@ -251,7 +251,7 @@ class GuiMixin:
     # counters moves (live_overview_key) or after LIVE_OVERVIEW_TTL; what lives only in memory (autopilot, permuter,
     # twins, saved-progress checks, the room) is read fresh on every poll, as it costs no query.
     LIVE_OVERVIEW_TTL = 10.0
-    LIVE_OVERVIEW_AUTO_MAX = 20_000  # functions above which a project's full overview is not rebuilt by the poll
+    LIVE_OVERVIEW_AUTO_MAX = 250_000  # a guard against absurd sizes, not a routine limit: see _live_build
     LIVE_BUILD_BACKOFF = 15.0  # a project whose overview keeps failing is retried at most this often
     LIVE_VOLATILE = ('autopilot', 'permuter', 'twins', 'progress_syncing', 'progress_sync', 'room')
 
@@ -294,9 +294,11 @@ class GuiMixin:
         transactional = getattr(store._local, 'in_tx', False)  # (uncommitted rows never go into the cache)
         key = None if transactional else self.live_overview_key(proj)
         now = time.monotonic()
-        # A project this big takes minutes to summarise, and that work holds the GIL against every other request
-        # (other projects' pages crawled while one build ran): the poll paints with the cheap overview and leaves
-        # the full one alone, rather than making the whole app unusable to summarise one project.
+        # A project of absurd size would still hold the GIL against every other request for a long time while its
+        # overview is read, so above LIVE_OVERVIEW_AUTO_MAX the poll paints with the cheap overview instead. The
+        # limit is high because the reads are cheap when they are done right: a 38,694-function project's overview
+        # took minutes only because the kit lookup re-walked the XDK folder tree per file (kits.compilers is kept
+        # between calls now), and takes under two seconds with that fixed.
         too_big = not transactional and self._live_function_count(proj) > self.LIVE_OVERVIEW_AUTO_MAX
         with lock:
             item = state.get(slug)
