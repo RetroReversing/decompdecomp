@@ -825,13 +825,21 @@ def _tool_foreground(net, agent, slug, name, args):
             with store.lock:
                 lock = net._attempt_locks.setdefault((agent.id,fn['id']),threading.RLock())
             attempt = timed_lock(lock,'candidate_lock_wait')
-        # Keep note writes and their publication marker together so a finishing
-        # saved worker cannot acknowledge them before they are published.
-        with attempt, timed_lock(progress._project_lock(slug), 'progress_project_lock_wait') if notes and progress is not None else nullcontext():
-            if notes and name == 'release_function' and net._function(args['function'],slug)['id'] != fn['id']:
-                raise NetworkError('The function changed while this release waited. Read its current claim before releasing.')
-            yield
-            if notes and progress is not None:progress.foreground_changed(slug)
+        with attempt:
+            if notes and name == 'release_function' and getattr(net, 'forks', None) and (fork := net.fork_slug(slug)):
+                # Its restoring compile takes the source tree: before the project lock below, as every compile
+                # does (ForkEngine.leave_best), never from under it.
+                try:
+                    net.forks.leave_best(agent, fork, args['function'])
+                except NetworkError:
+                    pass
+            # Keep note writes and their publication marker together so a finishing
+            # saved worker cannot acknowledge them before they are published.
+            with timed_lock(progress._project_lock(slug), 'progress_project_lock_wait') if notes and progress is not None else nullcontext():
+                if notes and name == 'release_function' and net._function(args['function'],slug)['id'] != fn['id']:
+                    raise NetworkError('The function changed while this release waited. Read its current claim before releasing.')
+                yield
+                if notes and progress is not None:progress.foreground_changed(slug)
 
 
 # How long a tool call waits for a save or recheck to settle before the agent is told (agents were handed "Saved files

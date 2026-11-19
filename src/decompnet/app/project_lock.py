@@ -110,6 +110,13 @@ class _Monitor:
 
 
 _monitor = _Monitor()
+_held = threading.local()  # how many project lock entries this thread holds (any project)
+
+
+def held_by_this_thread() -> bool:
+    """Whether this thread holds any project's lock: what must come after the source tree (ForkEngine._tree), so
+    the tree lock reports a thread that asks for it while holding one (a lock-order inversion, which deadlocked)."""
+    return getattr(_held, 'count', 0) > 0
 
 
 class ProjectLock:
@@ -133,6 +140,7 @@ class ProjectLock:
 
     def _acquired(self, depth=1, phase='project work'):
         ident = threading.get_ident()
+        _held.count = getattr(_held, 'count', 0) + depth
         with self._metadata:
             if self._owner is not None and self._owner.thread == ident:
                 self._owner.depth += depth
@@ -161,6 +169,7 @@ class ProjectLock:
     def release(self):
         with self._metadata:
             self._lock.release()  # Invalid/non-owner releases must not change metadata.
+            _held.count = getattr(_held, 'count', 1) - 1
             self._owner.depth -= 1
             if not self._owner.depth:self._owner = None
 
