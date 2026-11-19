@@ -30,6 +30,7 @@ import hashlib
 import json
 import time
 from collections.abc import Callable
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -215,8 +216,30 @@ def _stop_requested() -> None:
     checkpoint_owner()
 
 
+def _project_to_itself(net, slug: str):
+    """The project's source tree, held alone (ForkEngine._tree exclusively) for as long as the survey runs.
+
+    The survey regenerates the project's one build.ninja for each XDK copy it tries. Without this, a helper's or
+    autopilot's compile that ran meanwhile built with whichever copy was being tried, and its verdict (a match
+    recorded or missed) came from a compiler the project doesn't use. Compiles take the tree shared, so they wait
+    for the survey and run with the project's own compiler once it has put it back; the survey's own judging
+    builds take it again from this thread. No engine (tests): nothing to hold."""
+    forks = getattr(net, "forks", None)
+    if forks is None:
+        return nullcontext()
+    return forks._tree(net._project(slug)).exclusive()
+
+
 def survey_xdk360(net, slug: str, *, limit: int = 12, apply: bool = True,
                   log: Callable[[str], None] = print) -> dict:
+    """Run the survey (_survey_xdk360) with the project's builds held until it ends (_project_to_itself)."""
+    log("waiting for the project's builds in progress to finish; helpers' compiles wait for the survey")
+    with _project_to_itself(net, slug):
+        return _survey_xdk360(net, slug, limit=limit, apply=apply, log=log)
+
+
+def _survey_xdk360(net, slug: str, *, limit: int = 12, apply: bool = True,
+                   log: Callable[[str], None] = print) -> dict:
     """Try every registered xdk360 copy on a sample, rank by exact matches, and default to the best.
 
     ``apply=False`` ranks and records the result without changing the project's compiler. With the

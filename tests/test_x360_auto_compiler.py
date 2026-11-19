@@ -5,6 +5,7 @@ the default switch and the restore-on-failure guarantee can be checked without a
 """
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -233,3 +234,37 @@ def test_too_few_copies_or_no_sources_is_a_noop(monkeypatch):
     monkeypatch.setattr(survey, "sample_functions", lambda net, slug, limit: [])
     out = survey.survey_xdk360(None, "dash-dash", log=lambda line: None)
     assert out["tested"] == 0 and out["ranked"] == []
+
+
+def test_the_survey_holds_the_project_s_builds_until_it_has_put_its_compiler_back(monkeypatch):
+    """The survey regenerates the one build.ninja for each copy it tries: a helper's compile meanwhile built with
+    whichever copy was being tried. Compiles take the tree shared, so they wait; the survey's own judging builds,
+    on its own thread, take it again."""
+    import threading
+
+    from decompnet.app.forkengine import _TreeLock
+
+    tree = _TreeLock()
+    net = SimpleNamespace(forks=SimpleNamespace(_tree=lambda proj: tree), _project=lambda slug: {"id": 1})
+    seen = []
+    helper_done = threading.Event()
+
+    def helper_compile():
+        with tree.shared():  # as ForkEngine._attempt does
+            seen.append(("helper", state["current"]))
+        helper_done.set()
+
+    def matches(current, fn):
+        with tree.shared():  # the survey's own judging builds: must not deadlock on its own hold
+            seen.append(("survey", current))
+        if fn is FUNCS[0] and current == "xdk360-111":
+            threading.Thread(target=helper_compile, daemon=True).start()
+            assert not helper_done.wait(0.2), "a helper's compile must wait while the survey tries copies"
+        return False
+
+    state = wire(monkeypatch, matches=matches)
+    survey.survey_xdk360(net, "dash-dash", limit=2, apply=False, log=lambda line: None)
+
+    assert helper_done.wait(2), "the helper's compile runs once the survey ends"
+    assert seen[-1] == ("helper", ORIGINAL), "and builds with the project's own compiler, put back"
+    assert all(who == "survey" for who, _ in seen[:-1])

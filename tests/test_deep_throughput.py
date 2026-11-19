@@ -13,7 +13,7 @@ from decompnet.network import NetworkError
 
 
 def test_cpu_defaults_and_validation(monkeypatch):
-    monkeypatch.setattr(deep_throughput.os, 'cpu_count', lambda:10)
+    monkeypatch.setattr(deep_throughput, 'usable_cores', lambda:10)  # (the cores this process may use)
     assert deep_throughput.width(True,0)==10
     assert deep_throughput.width(True,7)==7
     monkeypatch.setattr(deep_throughput.compiler, 'concurrency_limit', lambda:17)

@@ -112,3 +112,65 @@ def test_an_absurdly_large_project_is_not_summarised_automatically():
     assert overview['overview_pending'] is True
     assert engine.builds == [], 'no full overview build should start'
     assert not engine.__dict__.get('_live_building')
+
+
+class Busy(Fake):
+    """A project whose agents move `attempts` and the newest event on every read of its key."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.counter = 0
+
+    def live_overview_key(self, proj):
+        self.counter += 1
+        return (proj['slug'], 1, 'revision', self.counter)
+
+
+def test_a_key_that_moves_during_the_build_still_caches_the_overview():
+    """Discarding a build whose key moved left a busy project's page on "loading additional project details"
+    indefinitely: its key moves during every build."""
+    engine = Busy()
+    engine.release.set()
+    GuiMixin.live_overview(engine, 'busy')
+    assert engine.wait_for_build()
+
+    overview, _ = GuiMixin.live_overview(engine, 'busy')
+    assert overview['overview_pending'] is False and overview['functions'] == 10
+    engine.wait_for_build()
+
+
+def test_the_cached_overview_is_served_while_it_is_rebuilt():
+    """An expired entry is served while its rebuild runs: answering with the cheap overview instead flashed the
+    page back to "loading additional project details" every time the cache expired."""
+    engine = Fake()
+    engine.release.set()
+    GuiMixin.live_overview(engine, 'proj')
+    assert engine.wait_for_build()
+
+    engine.release.clear()
+    engine.started.clear()
+    key, _, stable, digest, settled = engine._live_overviews['proj']
+    engine._live_overviews['proj'] = (key, time.monotonic() - 1, stable, digest, settled)  # expired
+
+    overview, _ = GuiMixin.live_overview(engine, 'proj')
+    assert overview['overview_pending'] is False and overview['functions'] == 10
+    assert engine.started.wait(2), 'the expired entry is rebuilt behind the poll'
+    overview, _ = GuiMixin.live_overview(engine, 'proj')
+    assert overview['overview_pending'] is False, 'and still served while that rebuild runs'
+    engine.release.set()
+    assert engine.wait_for_build()
+    assert engine.builds == ['proj', 'proj']
+
+
+def test_a_costly_overview_waits_out_its_cost_before_a_moved_key_rebuilds_it():
+    engine = Busy()
+    engine.release.set()
+    GuiMixin.live_overview(engine, 'busy')
+    assert engine.wait_for_build()
+    key, expires, stable, digest, _ = engine._live_overviews['busy']
+    engine._live_overviews['busy'] = (key, expires, stable, digest, time.monotonic() + 60)  # as a slow build sets
+
+    for _ in range(3):
+        overview, _ = GuiMixin.live_overview(engine, 'busy')
+        assert overview['overview_pending'] is False
+    assert engine.builds == ['busy'], 'a moved key alone does not rebuild a costly overview back to back'
