@@ -425,7 +425,21 @@ def read_base_image(data: bytes) -> dict:
         raise ForkError("this PE's section table is implausible: it isn't a complete base image")
     if entry >= image_size:
         raise ForkError("this PE's entry point is outside its image: it isn't a complete base image")
+    from . import pdata
+
+    if pdata.memory_layout(data):
+        # XexTool writes its base images in MEMORY layout: every section already sits at its virtual address,
+        # though the section table still gives file offsets. Mapping it as a file moved each section by the
+        # difference (a game's .text by 0x5E00), and every target object was cut from the wrong bytes.
+        image = bytearray(data[:image_size])
+        image.extend(bytes(image_size - len(image)))
+        return {"image": bytes(image), "image_base": image_base, "image_size": image_size,
+                "entry_point": image_base + entry}
     image = bytearray(image_size)
+    # The headers too, as the loader maps them: the section table (and with it .pdata) is how the image's own
+    # function table is found later.
+    size_of_headers = min(struct.unpack_from("<I", data, opt + 60)[0], image_size, len(data))
+    image[:size_of_headers] = data[:size_of_headers]
     for index in range(sections):
         at = opt + header_size + index * 40
         try:
@@ -518,6 +532,13 @@ def ghidra_image(game: Path, xex: dict, tmp: Path) -> Path:
 def _base_offset(xex: dict, fmt: dict) -> int:
     """0 into a basic-compressed image's expanded bytes, else the raw file's payload offset."""
     return 0 if fmt.get("compression") == 1 else xex["payload_offset"]
+
+
+def _mapped_image(data: bytes, xex: dict, fmt: dict, base_offset: int) -> bytes:
+    """The image as mapped (offset 0 is the image base): what the image's own tables are read from."""
+    if fmt.get("compression") == 1:
+        return expand_basic_image(data, xex, fmt)
+    return data[base_offset:base_offset + xex["image_size"]]
 
 
 def judge_image(root: Path, game: Path, xex: dict, fmt: dict, version: str) -> tuple[str, str, int]:
@@ -925,7 +946,7 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
         fmt = {"encryption": 0, "compression": 0, "blocks": []}
         flat = Path(tempfile.mkdtemp(prefix="xbox360-base-")) / "image.bin"
         flat.write_bytes(mapped["image"])
-        game = flat
+        game, data = flat, mapped["image"]  # everything after reads the mapped image, not the basefile
         log(f"base image: {mapped['image_size']} bytes at 0x{mapped['image_base']:X}, "
             f"entry 0x{mapped['entry_point']:X}")
     # Ghidra analysed the expanded image of a basic-compressed XEX2, so a VA's file offset starts at 0 in that image;
@@ -943,15 +964,37 @@ def create(root: Path, game: Path, *, compiler: str | None = None, log=print) ->
         log(f"using the function map beside the game: {len(found)} functions")
     else:
         from ...forks import ghidra
+        from . import pdata
 
-        if not ghidra.available():
-            raise ForkError("no functions.jsonl map beside the game and no Ghidra to find them: put a map in the "
-                            "game's folder (one JSON object per line: {\"a\": \"<VA hex>\", \"end\": \"<VA hex>\", "
-                            "\"n\": \"name\"}; VAs are runtime addresses), or install Ghidra in Setup")
-        source = "Ghidra analysis"
-        found = ghidra_functions(game, xex, base_offset=base_offset, log=log)
+        # The image's own function table (.pdata) is the compiler's account of every function's start and length;
+        # Ghidra, where it is installed, only adds the functions the table has no entry for (and names).
+        table = pdata.functions(_mapped_image(data, xex, fmt, base_offset), xex["image_base"], log=log)
+        analysed = None
+        if ghidra.available():
+            analysed = ghidra_functions(game, xex, base_offset=base_offset, log=log)
+        if table:
+            rows = [{"name": f"FUN_{addr:08x}", "addr": addr,
+                     "offset": file_offset(addr, xex["image_base"], base_offset), "size": size,
+                     "ranges": [[addr, addr + size]]} for addr, size in table]
+            found, added, dropped = pdata.merge(rows, analysed)
+            source = "function table (.pdata)" + (" and Ghidra analysis" if analysed else "")
+            if analysed:
+                log(f"Ghidra added {added} functions the table has no entry for, and {dropped} of its own lay inside "
+                    "table functions (pieces of them, not functions): left out")
+            else:
+                # Leaf functions (no stack frame) get no unwind entry: on one game they were 6% of its functions.
+                log("no Ghidra: functions without an entry in the table (small leaf functions) are not in this "
+                    "project; install Ghidra in Setup and import again to have them too")
+        elif analysed:
+            source, found = "Ghidra analysis", analysed
+        elif not ghidra.available():
+            raise ForkError("no functions.jsonl map beside the game, no function table (.pdata) in its image and no "
+                            "Ghidra to find them: put a map in the game's folder (one JSON object per line: "
+                            "{\"a\": \"<VA hex>\", \"end\": \"<VA hex>\", \"n\": \"name\"}; VAs are runtime "
+                            "addresses), or install Ghidra in Setup")
         if not found:
-            raise ForkError("neither a functions.jsonl map nor Ghidra found functions in this XEX2 image")
+            raise ForkError("neither a functions.jsonl map, the image's function table nor Ghidra found functions in "
+                            "this XEX2 image")
 
     functions: list[Function] = []
     used: set[str] = set()
