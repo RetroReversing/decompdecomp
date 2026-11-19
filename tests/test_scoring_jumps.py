@@ -68,3 +68,41 @@ def test_a_backwards_branch_reads_by_its_distance():
     """Left as a signed distance so it can't be confused with a forward branch of the same magnitude."""
     assert _relative_jump("0x48", 0x50) == ".L-8"
     assert _relative_jump("0x58", 0x50) == ".L8"
+
+
+def test_a_half_printed_signed_is_the_same_operand():
+    """A half is 16 bits and the disassembly prints displacements and immediates signed: the game's
+    `addi r11, r11, -0x59c0` is the low half 0xA640 that `DAT_9200A640@l` names. Read unsigned only, every low half
+    of 0x8000 or more stayed a difference, and identical code scored below 100%."""
+    from decompnet.scoring import Insn, _classify
+
+    signed = Insn(4, "addi", "r11, r11, -0x59c0", "addi r11, r11, -0x59c0")
+    symbolic = Insn(4, "addi", "r11, r11, <DAT_9200A640@l>", "addi r11, r11, <DAT_9200A640@l>")
+    assert _classify(signed, symbolic) == (0, " ")
+
+    load = Insn(8, "lwz", "r3, -0x59c0(r11)", "lwz r3, -0x59c0(r11)")
+    load_symbolic = Insn(8, "lwz", "r3, <DAT_9200A640@l>(r11)", "lwz r3, <DAT_9200A640@l>(r11)")
+    assert _classify(load, load_symbolic) == (0, " ")
+
+    high = Insn(0, "lis", "r11, -0x6dff", "lis r11, -0x6dff")  # 0x9201, signed: @ha of 0x9200A640
+    high_symbolic = Insn(0, "lis", "r11, <DAT_9200A640@ha>", "lis r11, <DAT_9200A640@ha>")
+    assert _classify(high, high_symbolic) == (0, " ")
+
+
+def test_a_signed_half_one_off_still_differs():
+    from decompnet.scoring import Insn, _classify
+
+    symbolic = Insn(4, "addi", "r11, r11, <DAT_9200A640@l>", "addi r11, r11, <DAT_9200A640@l>")
+    assert _classify(Insn(4, "addi", "r11, r11, -0x59bf", "addi r11, r11, -0x59bf"), symbolic)[0] > 0
+    # a whole address is not a half: it is never read signed
+    whole = Insn(0, "li", "r3, -0x6dff5a00", "li r3, -0x6dff5a00")
+    assert _classify(whole, Insn(0, "li", "r3, <DAT_9200A600>", "li r3, <DAT_9200A600>"))[0] > 0
+
+
+def test_objdiff_rows_with_a_signed_half_agree():
+    from decompnet.forks.objdiff import _rows_agree
+
+    assert _rows_agree({"instruction": {"formatted": "addi r11, r11, -0x59c0"}},
+                       {"instruction": {"formatted": "addi r11, r11, DAT_9200A640@l"}}) is True
+    assert _rows_agree({"instruction": {"formatted": "lwz r3, -0x59c0(r11)"}},
+                       {"instruction": {"formatted": "lwz r3, DAT_9200A640@l(r11)"}}) is True
