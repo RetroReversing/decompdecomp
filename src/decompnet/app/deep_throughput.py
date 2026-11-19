@@ -1,12 +1,12 @@
 """Explicit throughput presets and bounded, source-free live counters."""
 import functools
-import os
 import threading
 import time
 from collections import deque
 from contextlib import ExitStack, contextmanager
 
 from .. import compile_timing, compiler
+from ..cores import usable_cores
 from ..network import NetworkError
 
 
@@ -20,7 +20,7 @@ def options(maximum=False, slots=0):
 def width(maximum, slots):
     # Balanced searches use the shared compiler limit (cores less one, kept for interactive compiles), like a
     # sweep already did. A fixed 4 left an 18-core machine three-quarters idle on a single function's search.
-    return slots or (min(256,max(1, os.cpu_count() or 1)) if maximum else compiler.concurrency_limit())
+    return slots or (min(256,max(1, usable_cores())) if maximum else compiler.concurrency_limit())
 
 
 class Metrics:

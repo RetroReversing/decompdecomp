@@ -21,6 +21,7 @@ import threading
 import time
 from pathlib import Path
 
+from ..cores import usable_cores
 from ..hostenv import NO_WINDOW
 from ..network import NetworkError
 
@@ -99,15 +100,19 @@ class Lanes:
         # Each lane's share of the machine: compiles mostly wait on the compiler, so about two in flight per core
         # keep every core busy. An equal slice of a large configured slot count (256 over 24 lanes) gave each lane
         # 10 compile threads and as many helper processes, hundreds in all on 18 cores, mostly idle.
-        share = max(2, -(-2 * (os.cpu_count() or 1) // self.count))
+        share = max(2, -(-2 * usable_cores() // self.count))
         self.slots = max(2, min(256, share, slots // self.count if slots else share))
         self.idle = queue.Queue()
         self.started = 0
+        self.lanes = set()  # every child, idle or busy: close must not miss one that is mid-turn
+        self.closed = False
         self.lock = threading.Lock()
         self.failed = False
         self.ident = 0
 
     def _take(self, check):
+        if self.closed:
+            raise Unavailable()  # (a closed pool starts nothing and has nothing to hand out)
         while True:
             try:
                 lane = self.idle.get_nowait()
@@ -118,14 +123,18 @@ class Lanes:
                     return lane
                 with self.lock:
                     self.started -= 1
+                    self.lanes.discard(lane)
                 continue
             with self.lock:
-                start = not self.failed and self.started < self.count
+                start = not self.failed and not self.closed and self.started < self.count
                 if start:
                     self.started += 1
             if start:
                 try:
-                    return Lane(self.net, background=not self.maximum)
+                    lane = Lane(self.net, background=not self.maximum)
+                    with self.lock:
+                        self.lanes.add(lane)
+                    return lane
                 except OSError as error:
                     with self.lock:
                         self.started -= 1
@@ -142,6 +151,7 @@ class Lanes:
                 return lane
             with self.lock:
                 self.started -= 1
+                self.lanes.discard(lane)
 
     def search(self, slug, name, minutes, variants, function_log, **options):
         """deep_permuter.run(...) for one function in a lane; raises Unavailable when no lane can take it."""
@@ -207,19 +217,23 @@ class Lanes:
                         raise RuntimeError(message['error'])
                     return message['result']
         finally:
-            if keep and lane.alive():
+            if keep and lane.alive() and not self.closed:
                 self.idle.put(lane)
             else:
                 with self.lock:
                     self.started -= 1
+                    self.lanes.discard(lane)
                 lane.close()
 
     def close(self):
-        while True:
-            try:
-                lane = self.idle.get_nowait()
-            except queue.Empty:
-                return
+        """Close every child, idle or busy. A sweep that ended while lanes were working used to leave those lanes
+        running for the life of the app: they were checked out, so draining the idle queue never saw them, and one
+        box ended up with nineteen lanes on eight cores."""
+        with self.lock:
+            self.closed = True
+            lanes = list(self.lanes)
+            self.lanes.clear()
+        for lane in lanes:
             lane.close()
 
 

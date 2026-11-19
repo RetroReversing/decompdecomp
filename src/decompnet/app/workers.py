@@ -6,6 +6,7 @@ import os
 import sys
 import threading
 
+from ..cores import usable_cores
 from .purpose_work import Executor
 
 RESERVED_CORES = 2  # left to the app itself and the agents' compiles
@@ -13,7 +14,7 @@ RESERVED_CORES = 2  # left to the app itself and the agents' compiles
 # some of its snappiness: the judge's own Python work (about 5 ms of a variant's 16) runs under the interpreter's one
 # lock. Demo ROM, 12 cores: 1 worker judged 80 variants a second, 2 129, 4 172, 8 193; a GUI request took 0.1 ms
 # alone, 6 ms beside 4 workers, 31 ms beside 8. Hence a setting, and a default that keeps two cores free.
-CORES = os.cpu_count() or 1
+CORES = usable_cores()
 
 
 def default_workers() -> int:

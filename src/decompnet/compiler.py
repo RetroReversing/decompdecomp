@@ -26,6 +26,7 @@ from decompnet.hostenv import NO_WINDOW
 
 from . import compile_cache, compile_sessions, compile_timing, limits, linuxvm, spawner, stamped, wsl
 from .compile_admission import Admission
+from .cores import usable_cores
 from .request_timing import span
 
 MAX_SOURCE_BYTES = 64 * 1024
@@ -33,7 +34,7 @@ MAX_SOURCE_BYTES = 64 * 1024
 # concurrency cap, so a hostile submission can't take the host down with it.
 LIMITS = ["--as=2147483648", "--cpu=30", "--fsize=67108864"]
 def concurrency_limit():
-    default = max(2, (os.cpu_count() or 4) - 1)
+    default = max(2, usable_cores() - 1)
     try:
         requested = int(os.environ.get('DECOMP_COMPILER_THREADS', '0'))
     except ValueError:

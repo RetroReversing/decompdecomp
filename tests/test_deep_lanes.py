@@ -91,7 +91,25 @@ def test_lanes_are_off_when_disabled(monkeypatch):
 
 
 def test_each_lane_gets_its_share_of_the_machine(net, monkeypatch):
-    monkeypatch.setattr(deep_lanes.os, 'cpu_count', lambda: 18)
+    monkeypatch.setattr(deep_lanes, 'usable_cores', lambda: 18)
     assert deep_lanes.Lanes(net, 24, 256).slots == 2  # not 256 // 24 = 10 compile threads each
     assert deep_lanes.Lanes(net, 4, 256).slots == 9
     assert deep_lanes.Lanes(net, 4, 8).slots == 2  # a smaller configured total still wins
+
+
+def test_close_reaches_a_lane_that_is_mid_turn(net):
+    """A sweep that ended while lanes were working left them running for the life of the app: they were checked
+    out, so draining the idle queue never saw them, and one box reached nineteen lanes on eight usable cores."""
+    lanes = deep_lanes.Lanes(net, 2, 4)
+    closed = []
+
+    class Busy:
+        def close(self):
+            closed.append(True)
+
+    lanes.lanes.add(Busy())  # mid-turn: never in the idle queue
+    lanes.close()
+    assert closed == [True]
+    assert lanes.closed and not lanes.lanes
+    with pytest.raises(deep_lanes.Unavailable):
+        lanes.search('game', 'f', 1, 10, Log())  # a closed pool starts nothing
