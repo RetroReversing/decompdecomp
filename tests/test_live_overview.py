@@ -17,7 +17,8 @@ class Fake(GuiMixin):
     LIVE_BUILD_BACKOFF = 30.0
     LIVE_VOLATILE = ('autopilot',)
 
-    def __init__(self, *, fail=False):
+    def __init__(self, *, fail=False, functions=4):
+        self.functions = functions
         self.builds = []
         self.fail = fail
         self.started = threading.Event()
@@ -44,6 +45,9 @@ class Fake(GuiMixin):
 
     def live_volatile(self, slug, stable):
         return {'autopilot': None}
+
+    def _live_function_count(self, proj):
+        return self.functions
 
     def wait_for_build(self, timeout=5):
         deadline = time.monotonic() + timeout
@@ -96,3 +100,14 @@ def test_a_failing_build_backs_off_instead_of_spawning_a_thread_each_poll():
         assert overview['overview_pending'] is True
 
     assert engine.builds == ['broken'], 'the backoff stops a hot loop on a project that always fails'
+
+
+def test_a_very_large_project_is_not_summarised_automatically():
+    """Summarising 38k functions takes minutes and holds the GIL against every other request: the poll paints with
+    the cheap overview instead, so the rest of the app stays usable."""
+    engine = Fake(functions=38_694)
+    overview, _ = GuiMixin.live_overview(engine, 'huge')
+
+    assert overview['overview_pending'] is True
+    assert engine.builds == [], 'no full overview build should start'
+    assert not engine.__dict__.get('_live_building')

@@ -251,6 +251,7 @@ class GuiMixin:
     # counters moves (live_overview_key) or after LIVE_OVERVIEW_TTL; what lives only in memory (autopilot, permuter,
     # twins, saved-progress checks, the room) is read fresh on every poll, as it costs no query.
     LIVE_OVERVIEW_TTL = 10.0
+    LIVE_OVERVIEW_AUTO_MAX = 20_000  # functions above which a project's full overview is not rebuilt by the poll
     LIVE_BUILD_BACKOFF = 15.0  # a project whose overview keeps failing is retried at most this often
     LIVE_VOLATILE = ('autopilot', 'permuter', 'twins', 'progress_syncing', 'progress_sync', 'room')
 
@@ -293,6 +294,10 @@ class GuiMixin:
         transactional = getattr(store._local, 'in_tx', False)  # (uncommitted rows never go into the cache)
         key = None if transactional else self.live_overview_key(proj)
         now = time.monotonic()
+        # A project this big takes minutes to summarise, and that work holds the GIL against every other request
+        # (other projects' pages crawled while one build ran): the poll paints with the cheap overview and leaves
+        # the full one alone, rather than making the whole app unusable to summarise one project.
+        too_big = not transactional and self._live_function_count(proj) > self.LIVE_OVERVIEW_AUTO_MAX
         with lock:
             item = state.get(slug)
             if failed.get(slug, 0) <= now:
@@ -304,6 +309,10 @@ class GuiMixin:
                 building.add(slug)
         if stale and not mine:
             return self._live_pending(slug, now)  # somebody is building it: don't take the other slot too
+        if mine and too_big:
+            with lock:
+                building.discard(slug)
+            return self._live_pending(slug, now)  # not at the price of the rest of the app
         if mine:
             try:
                 threading.Thread(target=self._live_build, args=(slug, proj['id']), daemon=True,
@@ -326,6 +335,11 @@ class GuiMixin:
         overview = self.overview(slug, room_members=False, quick=True)
         return overview | {'overview_pending': True}, f'{"0" * 24}.{int(now * 1000) % 16 ** 12:012x}'
 
+    def _live_function_count(self, proj) -> int:
+        """How many functions the project has, from its totals row (one indexed read): its overview cost grows with it."""
+        row = self.project_store(proj['id']).one('SELECT total FROM project_totals WHERE project_id=?', proj['id'])
+        return int(row['total'] or 0) if row else 0
+
     def _live_build(self, slug: str, expected_id) -> None:
         """Read one project's full overview off the request thread and cache it, or leave the cache alone.
 
@@ -345,14 +359,17 @@ class GuiMixin:
             if getattr(store._local, 'in_tx', False):
                 return
             key = self.live_overview_key(proj)
+            started = time.monotonic()
             full = self.overview(slug, room_members=False)
+            took = time.monotonic() - started
             stable = {k: v for k, v in full.items() if k not in self.LIVE_VOLATILE}
             digest = hashlib.sha256(json.dumps(stable, separators=(',', ':'), sort_keys=True, default=str).encode()).hexdigest()[:24]
             if self.live_overview_key(self._project(slug)) != key:
                 return  # it changed while being read: don't publish it as the current overview
             now = time.monotonic()
             with lock:
-                state[slug] = (key, now + self.LIVE_OVERVIEW_TTL, stable, digest)
+                # A summary that took a while is not rebuilt every ten seconds: wait a multiple of its own cost.
+                state[slug] = (key, now + max(self.LIVE_OVERVIEW_TTL, took * 5), stable, digest)
                 for other in [s for s, v in state.items() if v[1] <= now]:
                     state.pop(other, None)
                 failed.pop(slug, None)
