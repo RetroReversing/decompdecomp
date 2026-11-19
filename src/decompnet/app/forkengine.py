@@ -2645,10 +2645,18 @@ class ForkEngine:
         rows = self.net.project_store(proj['id']).all("SELECT id, name, status, n_insns, best_score, best_source, meta FROM functions "
                                   "WHERE project_id=? AND unit=?", proj["id"], unit)
         held = self._held(proj, unit, text)
+        # A match the judge confirms stays one whatever objdiff's raw percent says (as in sync: _judged_matches),
+        # or every compile beside it reopened it and the next Check again matched it back (one Xbox 360 function
+        # at 99.83% raw flipped three times in an hour). Judged before the write, outside the transaction.
+        judged = {self._meta(r).get("symbol") for r in rows
+                  if r["status"] == "matched" and r["id"] != skip and not self._meta(r).get("reopened")
+                  and (sym := self._meta(r).get("symbol")) not in held and scores.get(sym) is not None
+                  and self.JUDGE_FROM <= scores[sym] < 100}
+        judged = self._judge(proj, unit, judged) if judged else set()
         with self.net.project_store(proj['id']).tx() as db:
             for r in rows:
                 sym = self._meta(r).get("symbol")
-                if r["id"] == skip or sym not in scores or r["status"] == "nosource":
+                if r["id"] == skip or sym not in scores or r["status"] == "nosource" or sym in judged:
                     continue
                 pct = scores[sym]
                 if pct is not None and pct >= 100 and sym not in held:
@@ -2667,6 +2675,26 @@ class ForkEngine:
                     db.execute("UPDATE functions SET best_score=?, "
                                "last_improved=CASE WHEN ? THEN ? ELSE last_improved END WHERE id=?",
                                (score, improved, time.time(), r["id"]))
+
+    def _judge(self, proj, unit: str, symbols: set[str]) -> set[str]:
+        """The `symbols` of `unit` the app's judge (ForkProject.diff) calls matched, read under the shared tree lock
+        (re-entrant: the callers that build hold it already)."""
+        try:
+            _, fp, _ = self.get(proj["slug"])
+            found = next((u for u in fp.units() if u.name == unit), None)
+        except (NetworkError, ForkError):
+            return set()
+        if found is None:
+            return set()
+        confirmed = set()
+        with self._tree(proj).shared():
+            for sym in symbols:
+                try:
+                    if fp.diff(found, sym).matched:
+                        confirmed.add(sym)
+                except (ObjdiffError, ForkError):
+                    pass
+        return confirmed
 
     def _matched(self, db, proj, r, agent: Agent | None, text: str | None) -> None:
         """Record a function that matches now (outside compile_and_diff, which records its own)."""

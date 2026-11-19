@@ -1777,3 +1777,36 @@ def test_measuring_keeps_a_match_the_judge_confirms_though_objdiffs_rows_differ(
     status = {r["name"]: r["status"] for r in net.store.all("SELECT name, status FROM functions")}
     assert status == {"operand": "matched", "before": "matched", "really": "open", "never": "open"}
     assert sorted(judged) == ["before", "operand", "really"], "only matched (or once matched) functions are judged again"
+
+
+def test_a_unit_diff_keeps_a_match_the_judge_confirms_though_objdiffs_rows_differ(tmp_path, monkeypatch):
+    """The unit diff run before and after every compile took a match's status from objdiff's raw percent, as Check
+    again did: a function the judge confirms at 99.83% raw was reopened by each compile beside it and matched back by
+    the next Check again (three flips in an hour on one Xbox 360 game)."""
+    from types import SimpleNamespace
+
+    from decompnet.forks.project import ForkProject
+
+    net = RomNetwork(tmp_path / "decomp.db", tmp_path / "ws")
+    root = tmp_path / "ws" / "p"
+    root.mkdir(parents=True)
+    (root / "objdiff.json").write_text(json.dumps({"units": []}))
+    net.forks._register("p", "P", "fork", root, {"kind": "fork", "version": "X", "fork_kind": "objdiff", "ready": False}, "x")
+    fn = lambda name: {"name": name, "size": "40", "metadata": {"virtual_address": "1"}, "fuzzy_match_percent": 100.0}
+    report = {"measures": {}, "units": [{"name": "main/a", "functions": [fn("operand"), fn("really"), fn("far")]}]}
+    monkeypatch.setattr(ForkProject, "report", lambda self: report)
+    monkeypatch.setattr(ForkProject, "units", lambda self: [SimpleNamespace(name="main/a", source="src/a.c", target=None)])
+    (root / "src").mkdir()
+    (root / "src" / "a.c").write_text("/* C */\n")
+    net.forks.sync("p", log=lambda *_: None)
+    judged = []
+
+    def diff(self, unit, symbol):
+        judged.append(symbol)
+        return SimpleNamespace(matched=symbol == "operand")
+    monkeypatch.setattr(ForkProject, "diff", diff)
+    proj = net._project("p")
+    net.forks._apply_scores(proj, "main/a", {"operand": 99.83, "really": 99.6, "far": 60.0}, via="unit diff")
+    status = {r["name"]: r["status"] for r in net.store.all("SELECT name, status FROM functions")}
+    assert status == {"operand": "matched", "really": "open", "far": "open"}
+    assert sorted(judged) == ["operand", "really"], "a function far from matching isn't judged again"
