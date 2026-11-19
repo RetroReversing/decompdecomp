@@ -174,13 +174,22 @@ def flush(net):
         net._tool_calls_flushed = time.time()
     if not pending:
         return
-    with net.store.tx() as db:
-        db.executemany('INSERT INTO agent_tool_usage VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET '
-                       'calls=calls+excluded.calls,last_used=MAX(COALESCE(last_used,0),excluded.last_used)',
-                       [(name, calls, last) for (name, task), (calls, last) in pending.items()])
-        db.executemany('INSERT INTO agent_tool_task_usage VALUES(?,?,?) ON CONFLICT(name,task) DO UPDATE SET '
-                       'calls=calls+excluded.calls',
-                       [(name, task, calls) for (name, task), (calls, last) in pending.items()])
+    try:
+        with net.store.tx() as db:
+            db.executemany('INSERT INTO agent_tool_usage VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET '
+                           'calls=calls+excluded.calls,last_used=MAX(COALESCE(last_used,0),excluded.last_used)',
+                           [(name, calls, last) for (name, task), (calls, last) in pending.items()])
+            db.executemany('INSERT INTO agent_tool_task_usage VALUES(?,?,?) ON CONFLICT(name,task) DO UPDATE SET '
+                           'calls=calls+excluded.calls',
+                           [(name, task, calls) for (name, task), (calls, last) in pending.items()])
+    except BaseException:
+        # The buffer was taken before the write: put its counts back for the next flush instead of losing them.
+        with _counting:
+            merged = net.__dict__.setdefault('_tool_calls', {})
+            for key, (calls, last) in pending.items():
+                have, seen = merged.get(key, (0, last))
+                merged[key] = (have + calls, max(seen, last))
+        raise
 
 
 def usage(net):

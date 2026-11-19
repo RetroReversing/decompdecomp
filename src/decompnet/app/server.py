@@ -26,7 +26,20 @@ from starlette.responses import JSONResponse, Response
 from .. import agents as kinds
 from .. import hostenv, wine
 from ..network import NetworkError
-from . import agents, collab, maintenance, progress, routes, saves, tools, updates, window, workers
+from . import (
+    agent_shutdown,  # noqa: F401  # imported now, not at quit: an AppImage's files can be gone by then
+    agents,
+    collab,
+    maintenance,
+    progress,
+    routes,
+    saves,
+    tool_policy,
+    tools,
+    updates,
+    window,
+    workers,
+)
 from .engine import RomNetwork
 from .routes import (
     browser_bridge,
@@ -103,6 +116,8 @@ def build(net: RomNetwork, home: Path, port: int, secret: str, *, headless: bool
         bounded('Stopping deep searches and queued repairs',lambda _:net.deep_sweeps.shutdown(),5)
         bounded('Stopping the permuter process',lambda _:net.permuter.close(),5)
         stopped=bounded('Saving agent recovery and releasing claims',lambda notify:manager.shutdown(notify=notify),30)
+        # Tool-call counts are buffered for FLUSH_SECONDS: a quit soon after the agents' last calls lost them.
+        bounded('Saving tool usage counts',lambda _:tool_policy.flush(net),3)
         if stopped:
             bounded('Saving remaining project progress',lambda notify:flush_progress(status,notify),max(0,deadline-time.monotonic()))
         else:

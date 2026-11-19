@@ -275,6 +275,7 @@ def register(app: App) -> None:
             def tool_snapshot():
                 blocked = tool_policy.disabled(net)
                 own = set((helper.options.get('selection') or {}).get('disabled_tools', [])) if helper else set()
+                tool_policy.flush(net)  # counts are buffered (FLUSH_SECONDS): show the last ones too
                 usage = {r['name']:dict(r) for r in net.store.all('SELECT * FROM agent_tool_usage')}
                 tasks = {}
                 for row in net.store.all('SELECT * FROM agent_tool_task_usage'):
