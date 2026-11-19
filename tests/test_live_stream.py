@@ -38,27 +38,41 @@ def counting(net, monkeypatch):
     original = type(net).overview
 
     def overview(self, slug, **kw):
-        built.append(slug)
+        if not kw.get("quick"):  # the cheap overview a pending poll paints with is not a rebuild
+            built.append(slug)
         return original(self, slug, **kw)
     monkeypatch.setattr(type(net), "overview", overview)
     return built
+
+
+def settled(net, slug):
+    """Wait for the background overview build, then read what the next poll would serve."""
+    for _ in range(500):
+        if not getattr(net, "_live_building", set()):
+            return net.live_overview(slug)
+        time.sleep(0.01)
+    raise AssertionError("the overview build did not finish")
 
 
 def test_live_overview_is_rebuilt_only_when_a_counter_moves(app, monkeypatch):
     _, net, _ = app
     proj = tiny_game(net, "cached-overview")
     built = counting(net, monkeypatch)
-    first, version = net.live_overview("cached-overview")
+    pending, _ = net.live_overview("cached-overview")
+    assert pending["overview_pending"] is True  # the poll answers at once; the build runs behind it
+    first, version = settled(net, "cached-overview")
     again, same = net.live_overview("cached-overview")
     assert built == ["cached-overview"] and same == version and again["functions"] == first["functions"] == 4
     # a function's change moves map_revision: the next poll rebuilds and shows it
     with net.store.tx() as db:
         db.execute("UPDATE functions SET status='matched', best_score=0 WHERE project_id=? AND name='func_0'", (proj["id"],))
-    after, moved = net.live_overview("cached-overview")
+    net.live_overview("cached-overview")
+    after, moved = settled(net, "cached-overview")
     assert len(built) == 2 and moved != version and after["matched"] == 1
     # an event (last_activity) moves the key too
     net.record_event("cached-overview", "note", "hello")
     net.live_overview("cached-overview")
+    settled(net, "cached-overview")
     assert len(built) == 3
     # what lives in memory is read on every poll without a rebuild, and changes the version
     net.autopilots["cached-overview"] = {"state": "running", "matched": 1, "stop": threading.Event()}
@@ -72,13 +86,15 @@ def test_live_overview_is_rebuilt_only_when_a_counter_moves(app, monkeypatch):
     monkeypatch.setattr(type(net), "LIVE_OVERVIEW_TTL", 0.0)
     net.forget_live_overview("cached-overview")
     net.live_overview("cached-overview")
-    net.live_overview("cached-overview")
+    settled(net, "cached-overview")  # TTL 0: that poll rebuilds too
     assert len(built) == 5
 
 
 def test_compact_live_skips_unchanged_sections_without_hashing_the_overview(app):
     client, net, _ = app
     tiny_game(net, "compact-live")
+    net.live_overview("compact-live")
+    settled(net, "compact-live")  # let the overview build once, so its version is the stable digest
     first = client.get("/api/live", params={"slug": "compact-live", "compact": "1"}).json()
     assert {"overview", "claims", "sessions"} <= set(first) and first["versions"]["overview"]
     second = client.get("/api/live", params={"slug": "compact-live", "compact": "1",

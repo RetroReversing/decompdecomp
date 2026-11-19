@@ -469,7 +469,8 @@ async function pickFile(file, extras = []) {
   }
   // A disc image would be copied through the browser byte for byte, and only its boot executable is wanted: read it
   // where it is instead. Also offered for any large file, whichever console it turns out to be.
-  if (file instanceof Blob && (DISC_PLATFORMS.has(p) || info.size >= NO_COPY_ABOVE)) {
+  if (typeof Blob !== "undefined" && file instanceof Blob
+      && (DISC_PLATFORMS.has(p) || info.size >= NO_COPY_ABOVE)) {
     $("romStatus").insertAdjacentHTML("beforeend",
       ` Copying ${MB(info.size)} through the browser is slow: <button class="link-btn" type="button" id="romNoCopy">read it where it is</button> instead.`);
     $("romNoCopy").onclick = (e) => {

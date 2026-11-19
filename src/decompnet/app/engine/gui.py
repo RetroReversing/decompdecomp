@@ -251,6 +251,7 @@ class GuiMixin:
     # counters moves (live_overview_key) or after LIVE_OVERVIEW_TTL; what lives only in memory (autopilot, permuter,
     # twins, saved-progress checks, the room) is read fresh on every poll, as it costs no query.
     LIVE_OVERVIEW_TTL = 10.0
+    LIVE_BUILD_BACKOFF = 15.0  # a project whose overview keeps failing is retried at most this often
     LIVE_VOLATILE = ('autopilot', 'permuter', 'twins', 'progress_syncing', 'progress_sync', 'room')
 
     def live_overview_key(self, proj) -> tuple:
@@ -275,50 +276,93 @@ class GuiMixin:
         return out
 
     def live_overview(self, slug: str) -> tuple[dict, str]:
-        """The overview for the live poll and a version of it: a digest of its stable part (taken once per rebuild)
-        and of the small in-memory part. Unchanged polls neither rebuild nor serialise the whole overview.
+        """The overview for the live poll and a version of it: a digest of its stable part and of the small
+        in-memory part. Unchanged polls neither rebuild nor serialise the whole overview.
 
-        One project may rebuild its overview at a time, and only while nothing else is: the app's live lane has two
-        slots, so a second poll that started its own multi-minute rebuild for the same project took both and left
-        every other project's page loading behind it (a 38,694-function project did exactly that). A poll that finds
-        a rebuild already running answers with the cheap overview instead, which paints the page and says it is
-        still coming.
+        A rebuild runs in a daemon thread. It used to run inside the poll, and on a 38,694-function project that
+        took minutes: two concurrent polls then held both slots of the app's two-slot live lane, and every other
+        project's page sat at "loading additional project details" behind them. The poll now answers with the cheap
+        overview (marked ``overview_pending``) and the real one arrives in the cache when the build finishes.
         """
         proj = self._project(slug)
         store = self.project_store(proj['id'])
         state = self.__dict__.setdefault('_live_overviews', {})
         building = self.__dict__.setdefault('_live_building', set())
+        failed = self.__dict__.setdefault('_live_failed', {})
         lock = self.__dict__.setdefault('_live_overview_lock', threading.Lock())
         transactional = getattr(store._local, 'in_tx', False)  # (uncommitted rows never go into the cache)
         key = None if transactional else self.live_overview_key(proj)
         now = time.monotonic()
         with lock:
             item = state.get(slug)
-            stale = key is None or item is None or item[0] != key or item[1] <= now
+            if failed.get(slug, 0) <= now:
+                failed.pop(slug, None)
+            holding_back = failed.get(slug, 0) > now
+            stale = not holding_back and (key is None or item is None or item[0] != key or item[1] <= now)
             mine = stale and slug not in building
             if mine:
                 building.add(slug)
         if stale and not mine:
-            # Somebody else is already rebuilding this project: don't spend the other lane slot on it too.
-            return self.overview(slug, room_members=False, quick=True), 'pending'
-        try:
-            if stale:
-                full = self.overview(slug, room_members=False)
-                stable = {k: v for k, v in full.items() if k not in self.LIVE_VOLATILE}
-                digest = hashlib.sha256(json.dumps(stable, separators=(',', ':'), sort_keys=True, default=str).encode()).hexdigest()[:24]
-                item = (key, now + self.LIVE_OVERVIEW_TTL, stable, digest)
-                if key is not None:
-                    with lock:
-                        state[slug] = item
-                        for other in [s for s, v in state.items() if v[1] <= now]:
-                            state.pop(other, None)
-        finally:
-            with lock:
-                building.discard(slug)
+            return self._live_pending(slug, now)  # somebody is building it: don't take the other slot too
+        if mine:
+            try:
+                threading.Thread(target=self._live_build, args=(slug, proj['id']), daemon=True,
+                                 name=f"live-overview-{slug[:24]}").start()
+            except Exception:  # couldn't start: undo the mark so a later poll can try again
+                logging.getLogger(__name__).exception('could not start the live overview build for %s', slug)
+                with lock:
+                    building.discard(slug)
+                    failed[slug] = now + self.LIVE_BUILD_BACKOFF
+            return self._live_pending(slug, now)
+        if item is None:  # held back after a failure and nothing cached to show
+            return self._live_pending(slug, now)
         stable, digest = item[2], item[3]
         volatile = self.live_volatile(slug, stable)
         moving = hashlib.sha256(json.dumps(volatile, separators=(',', ':'), sort_keys=True, default=str).encode()).hexdigest()[:12]
-        return stable | volatile, f'{digest}.{moving}'
+        return stable | volatile | {'overview_pending': False}, f'{digest}.{moving}'
+
+    def _live_pending(self, slug: str, now: float) -> tuple[dict, str]:
+        """The cheap overview while a real one is being built: it paints the page and marks the numbers provisional."""
+        overview = self.overview(slug, room_members=False, quick=True)
+        return overview | {'overview_pending': True}, f'{"0" * 24}.{int(now * 1000) % 16 ** 12:012x}'
+
+    def _live_build(self, slug: str, expected_id) -> None:
+        """Read one project's full overview off the request thread and cache it, or leave the cache alone.
+
+        Everything is re-read here rather than taken from the poll that started this: the project could have been
+        deleted or replaced while the thread waited, and the store's connection belongs to this thread. A key that
+        moved during the minutes-long read discards the result instead of caching a stale overview as fresh.
+        """
+        lock = self.__dict__.get('_live_overview_lock')
+        state = self.__dict__.get('_live_overviews', {})
+        building = self.__dict__.get('_live_building', set())
+        failed = self.__dict__.setdefault('_live_failed', {})
+        try:
+            proj = self._project(slug)
+            if proj['id'] != expected_id or lock is None:
+                return  # the slug now names another project (or nothing): the next poll decides
+            store = self.project_store(proj['id'])
+            if getattr(store._local, 'in_tx', False):
+                return
+            key = self.live_overview_key(proj)
+            full = self.overview(slug, room_members=False)
+            stable = {k: v for k, v in full.items() if k not in self.LIVE_VOLATILE}
+            digest = hashlib.sha256(json.dumps(stable, separators=(',', ':'), sort_keys=True, default=str).encode()).hexdigest()[:24]
+            if self.live_overview_key(self._project(slug)) != key:
+                return  # it changed while being read: don't publish it as the current overview
+            now = time.monotonic()
+            with lock:
+                state[slug] = (key, now + self.LIVE_OVERVIEW_TTL, stable, digest)
+                for other in [s for s, v in state.items() if v[1] <= now]:
+                    state.pop(other, None)
+                failed.pop(slug, None)
+        except Exception:  # a project that always fails must not spawn a thread on every poll
+            logging.getLogger(__name__).exception('live overview build failed for %s', slug)
+            with lock:
+                failed[slug] = time.monotonic() + self.LIVE_BUILD_BACKOFF
+        finally:
+            with lock:
+                building.discard(slug)
 
     def forget_live_overview(self, slug: str | None = None) -> None:
         """Rebuild the next live overview now (settings saved outside the counters' sight)."""
