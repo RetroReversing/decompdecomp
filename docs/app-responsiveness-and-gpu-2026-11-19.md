@@ -153,3 +153,34 @@ ollama ps
 Commit hashes: `08bdde42` (objdiff rows), `22797023` (over-thread overview), `c73e0018`
 (summary cap), `873c37d2` (TTL test), `18c229b5` (XDK lookup cache), `09ebe461` (remove
 stopped agents), `937dfd2f` (upstream merge), `c6d166cc` (core sizing and lane close).
+
+## State at hand-off (2026-11-19, ~11:40 UTC)
+
+**Running**
+
+- The AppImage (`1.0.9-rr.2`, built from `c6d166cc`) runs **detached** (`setsid nohup`), so a shell session
+  ending cannot take it down. Its port and secret are in `~/Decomp-RetroReversing/.decomp/server.json`;
+  `pgrep -f decompnet.app.cli` finds it.
+- The permuter / deep sweep is **stopped** (deliberately, after the lane leak). The next start uses **6 lanes**
+  on this machine.
+- ollama: `OLLAMA_KEEP_ALIVE=2m` in `/etc/systemd/system/ollama.service.d/override.conf`, no model loaded.
+  The app's helpers poll `/api/tags`; that is discovery, not inference.
+
+**Projects**
+
+- `dash-dash`: 70 matched of 18,819. Two near-misses were reopened when the lanes were killed
+  (`FUN_9218ce48`, unit diff 95.00%; `FUN_9217fb20`, 99.85%). They are `open` and the deep pass retries them.
+- `lego-dimensions-usa-europe-en-fr-de-es-n`: 38,694 functions, 12 matched; overview 0.8-1.7 s.
+
+**Open items**
+
+- Run the XDK survey on LEGO; it still builds with `xbox360-xsdk-placeholder`.
+- Rename `orig/<version>.xex` for base-image projects and split manifest provenance
+  (`source` / `extracted_xex` / `base_image` / `mapped_image`).
+- Hash `xextool.exe` in the kit.
+- The opencode helper DB is keyed per credential, which pins helpers to a stale key until their DBs are cleared.
+- Known test residuals, neither new: `tests/test_kits.py` (2 failures) and `tests/test_fork_judge.py`
+  (20 errors; this machine's git 2.17 has no `git init -b`).
+
+**Next action**: restart the permuter on dash-dash (6 lanes) so the two reopened near-misses are retried, or
+run the XDK survey on LEGO.
