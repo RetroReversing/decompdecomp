@@ -1157,6 +1157,45 @@ class ForkEngine:
             self.link_soon(slug)  # files that are finished but not linked yet (in the project as it came, too)
         return measures
 
+    JUDGE_FROM = 90.0  # objdiff's raw score from which a function with matched C is judged again (_judged_matches)
+
+    def _judged_matches(self, proj, fp, units, rows, all_rows, broken) -> set[tuple[str, str]]:
+        """(unit, symbol) of the functions the app's judge calls matched though objdiff's raw report says under 100%.
+
+        A match is judged per function (ForkProject.diff: a resolved address and the symbol that names it are one
+        operand, a signed displacement and the half it names are one value), while the report's percent comes from
+        objdiff's own rows. Measuring the whole project from the report reopened every match whose only difference
+        was such an operand: on one Xbox 360 game a Check again took 7 matches, and earlier ones 25 more, that the
+        judge still confirms. Only functions that are matched, or were (their matched C kept), and that the report
+        puts at JUDGE_FROM or more are judged again, so a measure stays one diff per such function at most."""
+        prior = {}
+        for r in all_rows:
+            prior.setdefault((r["unit"], self._meta(r).get("symbol")), r)
+        keys = all_rows[0].keys() if all_rows else ()
+        recheck = []
+        for uname, f in rows:
+            raw = f.get("fuzzy_match_percent")
+            old = prior.get((uname, f["name"]))
+            if (raw is None or not self.JUDGE_FROM <= raw < 100 or uname in broken or old is None
+                    or not (old["status"] == "matched" or ("matched_source" in keys and old["matched_source"]))
+                    or self._meta(old).get("reopened")):  # given back on purpose: not matched again by a measure
+                continue
+            recheck.append((uname, f["name"]))
+        confirmed: set[tuple[str, str]] = set()
+        if not recheck:
+            return confirmed
+        with self._tree(proj).exclusive():  # never read an object while a build writes it
+            for uname, sym in recheck:
+                unit = units.get(uname)
+                if unit is None:
+                    continue
+                try:
+                    if fp.diff(unit, sym).matched:
+                        confirmed.add((uname, sym))
+                except (ObjdiffError, ForkError):
+                    pass
+        return confirmed
+
     def sync(self, slug: str, log=print, rep: dict | None = None, broken: set[str] = frozenset(),
              agent: Agent | None = None) -> dict:
         """Measure the whole project with objdiff (or take a report just made) and update every function's state.
@@ -1186,6 +1225,7 @@ class ForkEngine:
             counts[f["name"]] += 1
         all_rows = self.net.project_store(slug).all("SELECT * FROM functions WHERE project_id=?", proj["id"])
         existing = {(r["unit"], self._meta(r).get("symbol"), self._meta(r).get("nth", 0)): r for r in all_rows}
+        confirmed = self._judged_matches(proj, fp, units, rows, all_rows, broken)
         used = {r["name"] for r in all_rows}
         nth: dict[tuple[str, str], int] = defaultdict(int)  # a unit can hold two functions of the same name
         held = {u: self._held(proj, u) for u in {r["unit"] for r in all_rows if '"held"' in (r["meta"] or "")}}
@@ -1240,6 +1280,10 @@ class ForkEngine:
                 if sym in aside:  # code the project says isn't the game's own (library code, middleware)
                     meta["asm_code"] = aside[sym]
                     meta["set_aside"] = True  # and progress takes it off, as no C code is (network.SET_ASIDE)
+                # the judge's 100%, not objdiff's raw rows (a held function stays under 100, as above)
+                judged = fuzzy is not None and (uname, sym) in confirmed and sym not in held.get(uname, ())
+                if judged:
+                    fuzzy = 100.0
                 status = "matched" if fuzzy is not None and fuzzy >= 100 else "open" if u and u.source else "nosource"
                 if status == "open" and any(meta.get(k) for k in _ASM_KEYS):
                     status = "asm"  # hand-written assembly (here or in its twin elsewhere): not for agents

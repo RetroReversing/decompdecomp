@@ -1738,3 +1738,42 @@ def test_code_under_a_macro_the_compiler_defines_isnt_hidden(tmp_path, macro):
     text = f"#ifdef {macro}\nint f(void) {{ return 1; }}\n#endif\n"
     (tmp_path / "src" / "a.c").write_text(text)
     assert ForkEngine._hidden(ForkProject(tmp_path), text, text.index("int f")) is None
+
+
+def test_measuring_keeps_a_match_the_judge_confirms_though_objdiffs_rows_differ(tmp_path, monkeypatch):
+    """A match is judged per function (a resolved address and the symbol that names it are one operand); the report's
+    percent is objdiff's raw rows. Check again reopened every match whose only difference was such an operand: one
+    Xbox 360 game lost 7 matches at a Check again, and 25 earlier, that the judge still confirmed."""
+    from types import SimpleNamespace
+
+    from decompnet.forks.project import ForkProject
+
+    net = RomNetwork(tmp_path / "decomp.db", tmp_path / "ws")
+    root = tmp_path / "ws" / "p"
+    root.mkdir(parents=True)
+    (root / "objdiff.json").write_text(json.dumps({"units": []}))
+    net.forks._register("p", "P", "fork", root, {"kind": "fork", "version": "X", "fork_kind": "objdiff", "ready": False}, "x")
+    fn = lambda name, pct: {"name": name, "size": "40", "metadata": {"virtual_address": "1"}, "fuzzy_match_percent": pct}
+    report = {"measures": {}, "units": [{"name": "main/a", "functions": [
+        fn("operand", 100.0), fn("before", 100.0), fn("really", 100.0), fn("never", 99.5)]}]}
+    monkeypatch.setattr(ForkProject, "report", lambda self: report)
+    monkeypatch.setattr(ForkProject, "units", lambda self: [SimpleNamespace(name="main/a", source="src/a.c", target=None)])
+    (root / "src").mkdir()
+    (root / "src" / "a.c").write_text("/* C */\n")
+    net.forks.sync("p", log=lambda *_: None)
+    assert {r["name"] for r in net.store.all("SELECT name FROM functions WHERE status='matched'")} == {"operand", "before", "really"}
+    with net.store.tx() as db:  # one demoted by an earlier measure: its matched C kept
+        db.execute("UPDATE functions SET status='open', matched_source='int before;' WHERE name='before'")
+    # objdiff's raw rows now say 99.x for three of them; the judge confirms "operand" and "before", not "really"
+    for f in report["units"][0]["functions"][:3]:
+        f["fuzzy_match_percent"] = 99.6
+    judged = []
+
+    def diff(self, unit, symbol):
+        judged.append(symbol)
+        return SimpleNamespace(matched=symbol in ("operand", "before"))
+    monkeypatch.setattr(ForkProject, "diff", diff)
+    net.forks.sync("p", log=lambda *_: None)
+    status = {r["name"]: r["status"] for r in net.store.all("SELECT name, status FROM functions")}
+    assert status == {"operand": "matched", "before": "matched", "really": "open", "never": "open"}
+    assert sorted(judged) == ["before", "operand", "really"], "only matched (or once matched) functions are judged again"
