@@ -406,3 +406,66 @@ def test_measured_guarded_loop_counter_reuse():
     assert 'while (j < n);' in dict(proposals(source, 'f', '', 'mips', KMC, rows, ''))[
         'guarded_loop_counter_reuse']
     assert 'guarded_loop_counter_reuse' not in dict(proposals(source, 'f', '', 'mips', EGCS, rows, ''))
+
+
+def test_shared_halfword_index_routed_for_kmc(monkeypatch):
+    from decompnet.app.diff_gated_repairs import measured_narrow_use
+
+    def candidate(source, name, rows):
+        assert source == 'void f(void) {}'
+        assert name == 'f'
+        assert rows == [('r', 'lh $a0, ($v0)', 'lh $v1, ($v0)')]
+        return [('shared_halfword_index', 'void f(void) { work(); }')]
+
+    monkeypatch.setattr(measured_narrow_use, 'shared_halfword_index_variants', candidate)
+    rows = [('r', 'lh $a0, ($v0)', 'lh $v1, ($v0)')]
+    assert 'shared_halfword_index' in dict(proposals('void f(void) {}', 'f', '', 'mips', KMC, rows, ''))
+    assert 'shared_halfword_index' not in dict(proposals('void f(void) {}', 'f', '', 'mips', EGCS, rows, ''))
+
+
+def test_byte_backedge_routed_for_kmc(monkeypatch):
+    from decompnet.app.diff_gated_repairs import measured_narrow_use
+
+    def candidate(source, name, rows):
+        assert (source, name) == ('void f(void) {}', 'f')
+        assert rows == [('r', 'lbu $a0, ($t0)', 'lbu $v0, ($t0)')]
+        return [('byte_backedge_carrier', 'void f(void) { work(); }')]
+
+    monkeypatch.setattr(measured_narrow_use, 'byte_backedge_variants', candidate)
+    rows = [('r', 'lbu $a0, ($t0)', 'lbu $v0, ($t0)')]
+    assert 'byte_backedge_carrier' in dict(proposals('void f(void) {}', 'f', '', 'mips', KMC, rows, ''))
+    assert 'byte_backedge_carrier' not in dict(proposals('void f(void) {}', 'f', '', 'mips', EGCS, rows, ''))
+
+
+def test_repeated_float_products_routed_for_kmc(monkeypatch):
+    from decompnet.app.diff_gated_repairs import float_intermediate_repairs
+
+    def candidate(source, name, rows):
+        assert (source, name) == ('void f(void) {}', 'f')
+        assert rows == [('r', 'mul.s $f0, $f6, $f2', 'mul.s $f2, $f6, $f2')]
+        return [('repeated_float_product_staging', 'void f(void) { work(); }')]
+
+    monkeypatch.setattr(float_intermediate_repairs, 'repeated_products', candidate)
+    rows = [('r', 'mul.s $f0, $f6, $f2', 'mul.s $f2, $f6, $f2')]
+    assert 'repeated_float_product_staging' in dict(proposals('void f(void) {}', 'f', '', 'mips', KMC, rows, ''))
+    assert 'repeated_float_product_staging' not in dict(proposals('void f(void) {}', 'f', '', 'mips', EGCS, rows, ''))
+
+
+def test_measured_boolean_byte_carrier():
+    source = """void f(void) {
+    s32 flag;
+    s32 value;
+    flag = 0;
+    if (ready) {
+        value = state != 7;
+        flag = (u8)value;
+    }
+    if (flag & 0xff) work();
+}
+"""
+    rows = [
+        (' ', 'sltu $v0, $zero, $v0', 'sltu $v0, $zero, $v0'),
+        ('|', 'move $s0, $v0', 'andi $s0, $v0, 0xff'),
+    ]
+    assert 'u8 flag;' in dict(proposals(source, 'f', '', 'mips', KMC, rows, ''))['boolean_byte_carrier']
+    assert 'boolean_byte_carrier' not in dict(proposals(source, 'f', '', 'mips', EGCS, rows, ''))

@@ -10493,3 +10493,132 @@ made single-row leftovers visible; the app's own diff already does this, but `co
 - decomp-repair 0.5.187 `scheduling_scope` proposes the pair; the deep permuter's local beam runs it
   (`loop_vector_shape_pass`).
 
+
+## A constant assigned early, shared through a `goto` join: sink it to the label (N64, KMC gcc 2.7.2 `-O2`)
+
+One hand match of an actor-update function (score 2225 -> 0, exact in the app's judge; one function, so one result, not a
+controlled one). The colour block sets three bytes to 0xFF or 0xBF, with the target storing 0xFF/0xBF in `$v0`.
+- m2c's form `v = 0xFF; if (c) { ...; if (!(t & 0x10)) { v = 0xBF; goto L; } stores of 0xFF } else { L: stores of v }`
+  put `v` in `$a0` (780). With the assignment moved to just before `L:` it lives in `$v0`, `li $v0,0xff` fills the
+  `bnez` delay slot and the `j tail` + `li $v0,0xbf` delay slot appear, as in the target.
+- A constant above 0x7F stored through `s8 *` is `li -1` (`addiu $v0,$zero,-1`); typed `u8` it is `li 0xff`.
+- A constant held in a local (`int c = 0xFF;`, the search's own `__repair_constant`) keeps a register and adds an extra
+  saved register (228 instructions against the target's 224): write its literal.
+- Failed: five hand spellings of the same branches (`goto` into a shared tail, a shared colour variable, duplicated
+  store blocks, the branchless `col = 0xFF; if (...) col = 0xBF;`) all ended at 450 or worse: `jump.c` inverts
+  `if (x) goto A; goto B;` and moves the fall-through block, so the *polarity* of the `if` and where the
+  assignment sits, not the spelling of the stores, decide the layout. Reading the target's raw assembly (delay slots
+  included) gave the polarity; the RTL dumps (`cc1 -dj -dr`) show where the pass moved the blocks.
+- decomp-repair v0.5.188 `join_initializer_sink` produces the sunk, literal and `u8` forms; on the function's saved best
+  the last child scores exactly like the hand-matched source locally, and it runs in the deep local pass.
+### Share a halfword index across two guarded score loops
+
+With `gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2`, a scratch N64 function
+scored 50. The target narrows the same callee's result into one register in
+both loops, while the draft uses two different registers. Reusing the same
+index local, declaring the score separately after its original declaration
+group, and inlining the second loop's halfword load as the left operand of the
+equality brought the linked score to 0. Leaving the score in its declaration
+group left score 40. The deep permuter reproduced and saved the byte match.
+
+### Reuse the entry byte carrier at a dispatch loop's back edge
+
+With `gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2`, a scratch N64 bytecode dispatch
+draft scored 140. Reusing the existing entry temporary for the back-edge byte load,
+sentinel comparison and opcode mask lowered the linked score to 125. The target
+and candidate then use the same register for all three operations. Using the
+narrowed opcode as both the sentinel and switch value did not improve the score.
+The deep permuter reproduced and saved the partial improvement.
+
+## Search shape: pairs of rewrites, branch polarity and the join sink's limits (N64, KMC gcc 2.7.2)
+
+From the same hand match as the join sink (one function; the numbers are that function's, not a controlled study).
+- Three changes (sink, literal, `u8` stores) each scored the same or worse alone. The deep local pass kept only
+  improvements and tried about six children, so it could never reach a pair. It now keeps the children that compiled
+  within 2x the best and runs the same rewrites on the nearest three (12 compiles in all): `<first>+<second>` families in
+  the repair log.
+- `branch_orientation` swaps `if/else` arms only where `negate` inverts a bare comparison; a bit test (`x & 0x10`), a `!`,
+  `&&`/`||` never flipped. decomp-repair 0.5.193 `branch_polarity` negates any side-effect-free condition and also writes
+  m2c's `if (c) { T; goto L; } R` as `if (!c) { R } else { T; goto L; }`. On this function the flipped variants compile to
+  the same length but score below the sunk form locally (0.68-0.74 against 0.75 exact): offered, not a fix by themselves.
+- `join_initializer_sink` now handles several constants, an assignment separated from its `if`, a join label after the
+  statement (no `else`) or in the then arm, and refuses a `goto` path that doesn't assign the value first or a second jump
+  to the label (both would read an unset register: the first version did not check).
+### KMC fixed Huffman lengths and controller-write stack objects
+
+- A fixed Huffman draft compiled with `gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2 -g3` matched
+  all 452 bytes once both builders shared the 288-word table and the same variable held the fill
+  index and each builder result. Restoring the array alone scored 1368. Using ordinary indexed loops
+  without the shared result variable scored 993.
+- A controller write compiled with the same flags matched all 360 bytes after restoring a separate
+  four-byte status buffer and a 12-byte unaligned reply aggregate. The draft reads a halfword from
+  the status buffer, polls a byte in that buffer, and extracts a byte from the copied reply. Restoring
+  both objects without reshaping the control flow scored 1135. Reversing their declarations in the
+  otherwise exact candidate scored 11 and changed the stack layout.
+- The 38-example isolated stack-slot replay rose from 15 to 17 byte-exact drafts, with 21 compilation
+  failures remaining.
+- Across the same 226 inputs as the earlier v0.5.148 replay, fresh byte-exact drafts increased from
+  8 to 25. The 17 changes were all prior compilation failures. There were still 161 compilation
+  failures and 40 generation failures.
+
+### KMC GCC 2.7.2: a once-only byte-cursor walk and the join's copy (`pointer_walk_index`, `join_copy_sink`)
+
+One N64 function (`gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2`), reached two ways. In a fresh scratch app the
+untouched m2c draft scored 255 and had two byte cursors (`char *`, stepping 4) and `while (counter == 0)`; the
+dev project's autopilot draft already had the indexed `for` and scored 15. Both ended with the same two register
+names differing (`$v1` for `$v0`, on the skipped-loop path and before the final `bnez`), plus, on the raw draft,
+the order of three hoisted loop constants.
+
+- The indexed loop, `for (i = 0; i < 1U; i++)` over `((s32 *)&D_800C4470)[i]`, is the exact order of the hoisted
+  constants (195 -> 15). The bound must be unsigned: `< 1` scored 200, `< 1U` and a `u32` counter scored 0.
+  `pointer_walk_index` now writes the byte-cursor walk this way (library 0.5.189).
+- The copy: m2c wrote `v = x;` before the inner guard and again at the `goto` label. The early one is a real
+  instruction before the inner test, so `$v0` (live as the loaded field) is taken and the copy gets `$v1`. Merging
+  the guards and putting `v = x;` at the end of each arm gives `$v0` (15 -> 0; 195 -> 180 on the raw draft).
+  `join_copy_sink` (0.5.189) does it, and treats an early `v = 0;` as the label's `v = x;` after `x = 0;`.
+
+Controlled result, one function: stock Deep Permuter, fresh import, the draft untouched, one compiler profile:
+255 -> 195 (m2c_refinement) -> 180 (join_copy_sink) -> 0 (pointer_walk_index), 169 candidates, matched.
+Before the app wired `join_copy_sink` into `draft_repairs.py` the same run stopped at 15 with the exact variant one
+call away: a library family the app never calls is not offered, whatever the library ships.
+
+Failed forms (compiled locally, 0.779 = the draft's own ratio): one copy of any shape (`r = s; if (!r)`, `&&` with
+one copy, a goto join with one copy) folds the move into `s`; `s`/copy as `u8`, `s16`, `u32` add extension
+instructions; one copy per arm without merging the guards leaves a `j` to a shared tail.
+
+A second route to the same bytes is the measured `shared_result_copy` family (0.5.178, the entry above): it keeps
+the early copy and moves the label. It needs the diff rows, and the app that held this function had library 0.5.166
+installed, so it had never been offered either. First thing to check on a stuck near-match: the app's library
+version.
+
+### Stage repeated interpolation products in one single-precision temporary
+
+With `gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2`, a scratch N64 function
+had a linked score of 95. Staging a recurring interpolation and its products
+in one unused single-precision local lowered the score to 60. Reusing a
+different, dead single-precision result for the final interpolation lowered
+it to 40. Both preparations retain the original grouping and literal types.
+Using the same staging temporary for the final conversion did not reach 40.
+The deep permuter reproduced the 95 to 40 improvement from the starting draft.
+
+### KMC dispatch bounds and explicit default cases
+
+- A renamed jump-table reference can use its numeric address alias even though the table data keeps the original
+  `jtbl_` label. Giving m2c one spelling for the paired relocations and table removed 27 generation failures
+  in the same isolated 226-example replay. Six of those drafts failed compilation, 18 compiled without a match,
+  two matched from fresh generation, and one matched through the existing goto-leaf permutation. The other
+  199 outcomes were identical.
+- For the two fresh matches, `gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2 -g3` built identical 80-byte and
+  100-byte functions. The source needed explicit leading cases whose table entries point to the dispatch guard's
+  default destination, and a signed local for the masked selector. With the alias fixed alone, omitting the
+  leading cases left scores of 2525 and 200. The compiler used a comparison chain for the first and rebased the
+  jump table to the first explicit case for the second.
+
+### Store a comparison result in a byte local
+
+With `gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2`, a scratch N64 draft
+scored 200. The target copies a comparison result into a saved register,
+while assigning an explicitly cast byte to a word local emitted an extra
+mask. Declaring the flag as a byte and assigning the result directly
+matched the linked bytes. Removing only the cast scored 235 because KMC
+coalesced the two locals. The deep permuter reproduced the exact match.
