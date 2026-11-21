@@ -1458,7 +1458,10 @@ saving the per-function profile.
 An isolated N64 audit found 70 open overlay functions with nonzero R_MIPS_26
 fields in loader-relocated calls. In 52 of those functions, different call
 offsets share one loader symbol. None of the matched functions in that copy
-had nonzero loader-relocated call fields.
+had nonzero loader-relocated call fields. All 142 nonzero call sites referred
+to zero-valued symbol records with tag byte `0x54`. Interpreting the field as
+a word offset reached a known function entry in the same overlay at 113 sites.
+The other 29 had no known entry at that offset in the function inventory.
 
 In a controlled retry, IDO 7.1 with
 `-O2 -G 0 -mips2 -32 -non_shared -Xcpluscomm -Wab,-r4300_mul -DNON_MATCHING`
