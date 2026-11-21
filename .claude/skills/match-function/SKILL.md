@@ -124,6 +124,12 @@ wrongly: a 1000 → 680 local improvement was 1090 → 1030 in the app. Confirm 
 - **Loop constants** (`li $s7,2` hoisted) land where the scheduler's priorities put them, not where you assign
   them; reordering or moving the assignments changed nothing. Unsolved: what makes the target's scheduler put them
   early. If you solve it, write it down here.
+- **A `do { } while (0)` is a scheduling boundary for GCC's second scheduler** (a display-list tail, `gcc-2.7.2-kmc`,
+  60 -> 0). When the first scheduler's output (`cc1 -dS`; `-dR` is the second; run the compiler's own `gcc -E` first)
+  already has the target's order and the final output hoists an add above a store, wrap the second half of the run,
+  through the final call, in the loop, and copy the call's global arguments into locals *before* it. `goto`, empty
+  `while (0)` and `if (0)` vanish before scheduling and do nothing; inline `asm` is refused by the judge. The wrapper
+  can swap `$s0`/`$s1`: keep the call inside it. decomp-repair `scheduling_scope` proposes it.
 - Declaration order, `register` and integer width hints often produce identical RTL: test one, don't grid them.
 - **IDO bit-packed unpackers** (an N64 audio-header function, `ido-7.1`, exact; the evidence is in
   COMPILER_MATCHING_LEARNINGS.md). The shape that matched: a `u8 *` parameter; stack arrays declared highest frame
