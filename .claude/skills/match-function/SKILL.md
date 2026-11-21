@@ -161,15 +161,14 @@ For each manual step that moved the score, answer: **could the permuter have don
 - No: write the rewrite or the search guide. Smallest useful form: a function in decomp-repair that takes source
   and returns variants, with a test that fails without it (see `call_scope_repairs.py` for the shape). Prove it by
   running it on the function you just matched: starting from the state *before* your fix, it must reach the fix.
-- **Prove it in a real run, not by calling the rewrite.** Calling `draft_repairs.variants` on the original draft
-  is not proof: the search saves its own best in a printed dialect (`*((u8 *) (((char *) p) + 5))`, `v = v + 2;`, a
-  braced `goto`) and adds devices such as the argument home-slot pointers, and a rewrite written against m2c's raw
-  spelling never fires on that. First test your rewrite on the function's *current best source* from `judge.py best`
-  as well as on the draft. Then run `scripts/scratch_run.py`: a throwaway app, a fresh import of the user's own
-  ROM, the app's untouched draft as baseline, the stock Deep Permuter with one compiler profile, and it exits 0 only
-  when the search ends "Matched". Build its environment from the worktree with your change
-  (`UV_PROJECT_ENVIRONMENT=/tmp/dd-scratch-venv uv sync`), never the one the user's app runs from. If the run
-  does not match, read why (which family fired, what the profile probe said) and fix that before stopping.
+- **No scratch proof run.** Do not run `scripts/scratch_run.py` (a throwaway app and a 20-minute fresh-import search
+  costs more than it tells you, and the user tests the repair themselves in their own app later). Instead: test your
+  rewrite on the function's *current best source* from `judge.py best` as well as on the draft (the search saves its
+  own best in a printed dialect, `*((u8 *) (((char *) p) + 5))`, `v = v + 2;`, a braced `goto`, and a rewrite written
+  against m2c's raw spelling never fires on that), add the unit test, wire it into the permuter, **merge, and then
+  connect to the running app to make sure the function is matched there too** (`judge.py diff SLUG FUNC` says
+  "matched"; the saved best is the source that judged 0). Say in the PR what you ran and that the real proof is
+  the user's run.
 - Record the evidence in `docs/COMPILER_MATCHING_LEARNINGS.md`: exact compiler and flags, the source change, the
   measured before/after, and failed experiments. Say which are controlled results and which are one function.
 - A change here needs its PR (AGENTS.md): branch `<type>/<name>`, test, `uv run ruff check`, merged after creation.
@@ -186,9 +185,9 @@ afterwards, leave its note with the evidenced blocker.
 The goal from the top of this file is met only when **both** hold:
 
 - the function's judged score is 0 (`judge.py diff` reports the app's verdict; re-read it, don't recall it); and
-- the permuter or app change from step 5 is merged (or an open PR with its test passing), `scratch_run.py` has
-  reported PROVEN for it (say what it printed), and your final message gives the before/after
-  evidence. "The rewrite produces an exact variant when I call it" does not meet this.
+- the permuter or app change from step 5 is merged (or an open PR with its test passing), the function is
+  confirmed matched in the app after the merge (`judge.py diff`), and your final message gives the before/after
+  evidence. Do not run `scratch_run.py`; the user tests the repair in their app.
 
 A long search with no new idea is not progress, and not a stopping point: when the score stops moving, go back to
 step 1 and read the diff again before spending more compiles.
