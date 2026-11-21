@@ -350,10 +350,13 @@ def process(net, slug, output=log.info):
         try:
             if not cfg.get('auto_commit_folder'):
                 # A new project can queue matches before it has its first Git checkpoint.
-                setup = repository_setup.status(net, slug)
-                if not setup['checkpoint'] or not setup['linked']:
+                root = repository_setup.root_at(saves.default_folder(net, slug).resolve())
+                if root is None or not repository_progress.linked_checkout(net, slug, root):
                     return
-                root, branch = checkout_settings(net, slug, setup['root'])
+                _, _, manifest_path = _manifest_path(net, slug, root)
+                if not repository_git.git(root, 'rev-parse', '--verify', '--quiet', 'HEAD:' + manifest_path, missing=True):
+                    return
+                root, branch = checkout_settings(net, slug, root)
 
                 def bind_checkout(current, setting=setting, root=root, branch=branch):
                     if current.get(setting) and not current.get('auto_commit_folder'):

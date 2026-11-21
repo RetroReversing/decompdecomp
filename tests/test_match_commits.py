@@ -68,23 +68,23 @@ def test_project_registration_defaults_only_new_rom_projects(tmp_path, config, e
 
 def test_default_queues_until_the_linked_checkout_has_a_checkpoint(automatic):
     net, root, _, _ = automatic
-    net._update_cfg('game', lambda cfg: cfg.update(auto_commit_matches=True))
-    metadata = root / '.git'
-    hidden_metadata = root.parent / 'held-git'
-    metadata.rename(hidden_metadata)
-    try:
-        match(automatic, note='Match the signed comparison')
+    net._update_cfg('game', lambda cfg: cfg.update(auto_commit_matches=True, save_folder=str(root.parent / 'backup')))
+    with net.progress._project_lock('game'):
+        branch = git(root, 'symbolic-ref', 'HEAD')
+        git(root, 'symbolic-ref', 'HEAD', 'refs/heads/no-checkpoint')
+        try:
+            match(automatic, note='Match the signed comparison')
+            match_commits.process(net, 'game')
+            state = match_commits.status(net, net.project_row('game'))
+            assert state['enabled'] and state['awaiting_checkout']
+            assert state['pending'] == 1 and not state['error']
+        finally:
+            git(root, 'symbolic-ref', 'HEAD', branch)
         match_commits.process(net, 'game')
         state = match_commits.status(net, net.project_row('game'))
-        assert state['enabled'] and state['awaiting_checkout']
-        assert state['pending'] == 1 and not state['error']
-    finally:
-        hidden_metadata.rename(metadata)
-    match_commits.process(net, 'game')
-    state = match_commits.status(net, net.project_row('game'))
-    assert state['enabled'] and not state['awaiting_checkout']
-    assert state['pending'] == 0
-    assert git(root, 'log', '-1', '--format=%s') == 'Match the signed comparison'
+        assert state['enabled'] and not state['awaiting_checkout'], state
+        assert state['pending'] == 0
+        assert git(root, 'log', '-1', '--format=%s') == 'Match the signed comparison'
 
 
 def test_one_commit_per_function_uses_notes_and_removes_only_its_draft(automatic):
