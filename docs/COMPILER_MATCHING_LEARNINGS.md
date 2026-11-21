@@ -11769,3 +11769,12 @@ Evidence: one function, judged 0 by the app (`matched best 0`). The two decomp-r
 combination), and `global_copy_forward` on that 60 child gives 0, scored with the app's judge-worker, no permuter run.
 Not controlled across other functions. `arm_store_sink` only fires when the branch condition reads nothing through a
 pointer, and `global_copy_forward` declines when a call follows the store or the global is written again.
+
+### Stage the corrected halfword call address before the stores
+
+With gcc-2.7.2-kmc `-G0 -mips3 -mgp32 -mfp32 -O2`, a draft scaled a
+two-byte call displacement twice. Correcting the pointer expression in
+place fixed the argument but changed the delay-slot store to use that
+argument as its base, leaving the score at 10. Assigning the corrected
+pointer a local immediately after the original base was loaded kept the
+store on its original base and produced an exact match.
