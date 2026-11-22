@@ -183,7 +183,9 @@ class Opencode(Agent):
             # the saved selection, but pass effort through its separate flag.
             base, _, variant = model.partition('#')
             model_args = ["-m", base, "--variant", variant]
-        return cmd + model_args, {"OPENCODE_DB": str((workdir / "opencode.db").resolve())}
+        oc_db = (workdir / "opencode.db").resolve()
+        _seed_opencode_db(oc_db)
+        return cmd + model_args, {"OPENCODE_DB": str(oc_db)}
 
     def parse(self, event: dict, state: dict) -> list[tuple[str, str] | None]:
         t = event.get("type")
@@ -273,6 +275,48 @@ class Opencode(Agent):
             return line
         m = re.search(r'\berror="((?:[^"\\]|\\.)*)"', line)
         return m.group(1).replace('\\"', '"') if m and re.search(r"level=error\b", line, re.I) else ""
+
+
+def _seed_opencode_db(dst_path: Path) -> None:
+    """Copy OpenCode 1.19+ account/credential rows into a helper's isolated OPENCODE_DB without copying session history."""
+    import sqlite3
+
+    main_db = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "opencode" / "opencode.db"
+    if not main_db.is_file():
+        return
+    src = dst = None
+    try:
+        src = sqlite3.connect(f"file:{main_db}?mode=ro", uri=True, timeout=5)
+        dst = sqlite3.connect(str(dst_path), timeout=5)
+        existing = {r[0] for r in dst.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "account" not in existing:
+            for (sql,) in src.execute(
+                "SELECT sql FROM sqlite_master WHERE type IN ('table','index') AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL"
+            ):
+                try:
+                    dst.execute(sql)
+                except sqlite3.OperationalError:
+                    pass
+        src_tables = {r[0] for r in src.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        for tbl in ("migration", "data_migration"):
+            if tbl in src_tables and dst.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0] == 0:
+                rows = src.execute(f"SELECT * FROM {tbl}").fetchall()
+                if rows:
+                    dst.executemany(f"INSERT OR IGNORE INTO {tbl} VALUES ({','.join(['?'] * len(rows[0]))})", rows)
+        for tbl in ("account", "account_state", "control_account", "credential"):
+            if tbl in src_tables:
+                rows = src.execute(f"SELECT * FROM {tbl}").fetchall()
+                dst.execute(f"DELETE FROM {tbl}")
+                if rows:
+                    dst.executemany(f"INSERT INTO {tbl} VALUES ({','.join(['?'] * len(rows[0]))})", rows)
+        dst.commit()
+    except sqlite3.Error:
+        pass
+    finally:
+        if dst is not None:
+            dst.close()
+        if src is not None:
+            src.close()
 
 
 OPENCODE = Opencode()
