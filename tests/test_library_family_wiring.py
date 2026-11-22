@@ -510,7 +510,7 @@ def test_the_search_loop_pointer_fold_and_hoisted_constant_scope_are_proposed_an
     labels = {}
     draft_repairs.variants(_SEARCH, 'release', 'mips', labels=labels, limit=None)
     assert 'lockstep_pointer_fold' in set(labels.values())
-    folded = next(text for text, label in labels.items() if label == 'lockstep_pointer_fold' and 'field' not in text.split('{', 1)[1].split('(void *')[0])
+    folded = next(text for text, label in labels.items() if label == 'lockstep_pointer_fold' and 'field +=' not in text)
     chained = {}
     draft_repairs.variants(folded, 'release', 'mips', labels=chained, limit=None)
     scoped = [text for text, label in chained.items() if label == 'hoisted_constant_loop_scope']
