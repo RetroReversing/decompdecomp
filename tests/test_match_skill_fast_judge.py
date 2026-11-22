@@ -38,7 +38,7 @@ def test_the_worker_describes_a_function_so_a_search_needs_only_its_name(tmp_pat
 
 def test_the_worker_serves_the_function_op_and_returns_the_apps_rows_on_request(tmp_path, monkeypatch):
     net = project(tmp_path)
-    rows = SimpleNamespace(score=12, render=lambda: "1 register\n- jr $ra | + jr $v0")
+    rows = SimpleNamespace(score=12, render=lambda **kw: "1 register\n- jr $ra | + jr $v0")
     monkeypatch.setattr(net, "_judge_with", lambda proj, fn, toolchain, flags, source: (False, rows, ""))
     target = bytes([1, 3, 0xE0, 8]).hex()
     request = {"slug": "game", "function": {"name": "f1", "vram": 0x80001100, "target": target},
