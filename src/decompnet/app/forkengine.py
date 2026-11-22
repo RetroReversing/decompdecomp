@@ -205,32 +205,63 @@ class _TreeLock:
         self._waiting = 0
         self._mine = threading.local()
         self._path = path
+        self._turnstile_path = path.with_suffix(".turnstile") if path is not None else None
         if self._path is not None and os.name != "nt":
             self._path.parent.mkdir(parents=True, exist_ok=True)
 
-    def _acquire_file_lock(self, *, shared: bool) -> int | None:
+    def _acquire_file_lock(self, *, shared: bool) -> tuple[int | None, int | None]:
         if self._path is None or os.name == "nt":
-            return None
+            return None, None
         import fcntl
 
-        fd = os.open(self._path, os.O_CREAT | os.O_RDWR, 0o600)
+        # Writer-fair turnstile: POSIX flock(LOCK_SH) is reader-preferring, so continuous
+        # shared readers across worker processes can starve a waiting exclusive writer.
+        # Strict lock order: turnstile (LOCK_EX) -> tree.lock (LOCK_SH or LOCK_EX).
+        turn_fd = os.open(self._turnstile_path, os.O_CREAT | os.O_RDWR, 0o600)
         try:
+            fcntl.flock(turn_fd, fcntl.LOCK_EX)
+        except BaseException:
+            os.close(turn_fd)
+            raise
+        fd = None
+        try:
+            fd = os.open(self._path, os.O_CREAT | os.O_RDWR, 0o600)
             fcntl.flock(fd, fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
         except BaseException:
-            os.close(fd)
+            if fd is not None:
+                os.close(fd)
+            try:
+                fcntl.flock(turn_fd, fcntl.LOCK_UN)
+            finally:
+                os.close(turn_fd)
             raise
-        return fd
+        if shared:
+            try:
+                fcntl.flock(turn_fd, fcntl.LOCK_UN)
+            finally:
+                os.close(turn_fd)
+            return fd, None
+        return fd, turn_fd
 
     @staticmethod
-    def _release_file_lock(fd: int | None) -> None:
-        if fd is None:
+    def _release_file_lock(fds: tuple[int | None, int | None]) -> None:
+        fd, turn_fd = fds
+        if fd is None and turn_fd is None:
             return
         import fcntl
 
         try:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            if fd is not None:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(fd)
         finally:
-            os.close(fd)
+            if turn_fd is not None:
+                try:
+                    fcntl.flock(turn_fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(turn_fd)
 
     @contextmanager
     def shared(self):

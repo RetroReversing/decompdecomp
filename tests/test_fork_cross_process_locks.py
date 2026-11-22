@@ -132,3 +132,42 @@ def test_in_memory_store_uses_memory_locks_without_files():
     proj = {"id": 1}
     with engine._tree(proj).exclusive(), engine._unit_lock(proj, "u"), engine._build_locks[1], engine._git_locks[1]:
         assert engine._lock_path(1, "build") is None
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX flock writer-fairness test")
+def test_cross_process_tree_lock_writer_not_starved_by_continuous_readers(tmp_path):
+    db_path = tmp_path / "decomp.db"
+    stop = tmp_path / "stop.txt"
+    ready1 = tmp_path / "r1.txt"
+    ready2 = tmp_path / "r2.txt"
+    engine = _make_engine(db_path)
+
+    def reader_code(ready_file):
+        return textwrap.dedent(f"""\
+            import pathlib, time
+            from types import SimpleNamespace
+            from decompnet.app.forkengine import ForkEngine
+
+            eng = ForkEngine(SimpleNamespace(store=SimpleNamespace(path={str(db_path)!r})))
+            stop = pathlib.Path({str(stop)!r})
+            ready = pathlib.Path({str(ready_file)!r})
+            while not stop.exists():
+                with eng._tree({{"id": 5}}).shared():
+                    if not ready.exists():
+                        ready.write_text("1")
+                    time.sleep(0.05)
+        """)
+
+    p1 = subprocess.Popen([sys.executable, "-c", reader_code(ready1)])
+    p2 = subprocess.Popen([sys.executable, "-c", reader_code(ready2)])
+    try:
+        _wait_for(ready1)
+        _wait_for(ready2)
+        t0 = time.monotonic()
+        with engine._tree({"id": 5}).exclusive():
+            elapsed = time.monotonic() - t0
+        assert elapsed < 2.0, f"exclusive writer was starved by readers ({elapsed:.2f}s)"
+    finally:
+        stop.write_text("1")
+        p1.wait(timeout=10)
+        p2.wait(timeout=10)
