@@ -1549,7 +1549,8 @@ optimization flag, retaining the replacement compiler and its other flags.
 
 An isolated N64 replay recovered seven exact matches via this fallback.
 These seven pairs failed with the fallback disabled and passed a fresh
-compile and exact cartridge reconstruction. Broader exploratory trials
+compile and exact verification. Their overlay entries also reproduced the
+original cartridge. Broader exploratory trials
 with other IDO optimization levels saved another ten exact matches.
 Those levels did not follow from this resident-profile rule.
 
