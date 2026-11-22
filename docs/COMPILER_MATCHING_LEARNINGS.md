@@ -13296,3 +13296,13 @@ One N64 function (`gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2`, saved best 215) 
    for the constant (860), keeping the variable inside each arm (20).
 decomp-repair 0.5.337 offers both (`masked_range_equality_chain`, `float_arm_constant_tail`); applied in that order from the
 saved best they reproduce the exact source. Evidence level: one function, rewrites controlled by unit tests.
+
+### Recover unsigned byte-table guards (KMC GCC 2.7.2)
+
+With `-G0 -mips3 -mgp32 -mfp32 -O2`, two signed byte loads disagreed
+with the target's unsigned loads. A public wrapper corroborated the
+unsigned table index. Correct the table type, combine the two early
+returns and express the halfword address as a shifted index plus the
+base. On a retail N64 function the linked score went from 968 to 0;
+the old dispatcher produced no candidate and the new rule produced one
+byte-exact candidate.
