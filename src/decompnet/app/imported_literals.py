@@ -9,6 +9,7 @@ from io import BytesIO
 from elftools.common.exceptions import ELFError
 from elftools.elf.elffile import ELFFile
 
+from .. import toolchains
 from ..arch.mips_immediates import shape
 from ..elfobj import _function_symbols
 from ..forks import csource
@@ -99,7 +100,7 @@ def run(twins, agent, proj, other, donors, prints, units, settings, job):
                 break
             unit = units[donor['unit']]
             profile = settings.for_unit(unit)
-            if profile is None:
+            if profile is None or toolchains.installed(profile['toolchain']) is None:
                 own = compiler_for(net.cfg(proj), row_full['vram'], row_full)
                 profile = own if own.get('toolchain') and not own.get('cmd') else None
             name = fingerprint.name or donor['name'].split('@')[0]
