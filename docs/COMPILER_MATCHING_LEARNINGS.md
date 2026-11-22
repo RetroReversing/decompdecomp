@@ -13728,7 +13728,9 @@ Compiler facts behind them:
   other load): the prototype takes the argument; with `(void)` the value was in `$v0`.
 - `frame_pad[2]` (volatile) had to go once the stack locals changed; the frame follows the locals, not the pad.
 
-Not solved at 10: the target's `sll $v0,$v0,3; addu $s1,$v0,$a1` (temp then add) against `sll $s1,$v0,3; addu $s1,$s1,$a1`
+Not solved at 10 (the saved best is judged 10; a later session may take it from there). Sched1 puts the `var_s4` chain first whatever the statement order, the chain order follows the variable (swapping which variable gets the 0xE chain moved it), and a two-statement `p = x*0xE8; p = p + base` is the only spelling that orders the 0xE chain first (the second set of the same pseudo), which is also what writes `sll $s1`. Tried without effect: an idx scratch variable (single or shared by both chains, one or two sets), `do {} while (0)` fences on either chain, an `inline` helper for either or both addresses, struct-array indexing, a named entry pointer with all statement orders, declaration order, a copy through a second variable.
+
+Open row: the target's `sll $v0,$v0,3; addu $s1,$v0,$a1` (temp then add) against `sll $s1,$v0,3; addu $s1,$s1,$a1`
 for a two-statement `p = x * 0xE8; p = p + base;`. Combined spellings put the other index chain first and flip the
 entry pointer to `$v0` (30-500).
 
