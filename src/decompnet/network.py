@@ -1094,7 +1094,7 @@ class Network:
                 return None
             try:
                 built = compile_source(replace(invocation, cmd=cmd, identity=None), header, source)
-            except OSError:
+            except Exception:  # (advice only: a twin that fails must never break the comparison it decorates)
                 return None
             return built.obj if built.ok else None
         return neutral_object(result.obj, fn['name'], filename, twin)
