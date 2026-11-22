@@ -195,73 +195,14 @@ class _CrossProcessLock:
 
 class _TreeLock:
     """Work on different source files runs side by side; a change any file may depend on (a header) runs alone.
-    A thread that holds it exclusively may take it again either way. On POSIX, an advisory flock coordinates
-    shared/exclusive access across separate worker processes (permuter_worker, deep_lanes) sharing the same tree."""
+    A thread that holds it exclusively may take it again either way."""
 
-    def __init__(self, path: Path | None = None):
+    def __init__(self):
         self._cond = threading.Condition()
         self._readers = 0
         self._writer: int | None = None
         self._waiting = 0
         self._mine = threading.local()
-        self._path = path
-        self._turnstile_path = path.with_suffix(".turnstile") if path is not None else None
-        if self._path is not None and os.name != "nt":
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-
-    def _acquire_file_lock(self, *, shared: bool) -> tuple[int | None, int | None]:
-        if self._path is None or os.name == "nt":
-            return None, None
-        import fcntl
-
-        # Writer-fair turnstile: POSIX flock(LOCK_SH) is reader-preferring, so continuous
-        # shared readers across worker processes can starve a waiting exclusive writer.
-        # Strict lock order: turnstile (LOCK_EX) -> tree.lock (LOCK_SH or LOCK_EX).
-        turn_fd = os.open(self._turnstile_path, os.O_CREAT | os.O_RDWR, 0o600)
-        try:
-            fcntl.flock(turn_fd, fcntl.LOCK_EX)
-        except BaseException:
-            os.close(turn_fd)
-            raise
-        fd = None
-        try:
-            fd = os.open(self._path, os.O_CREAT | os.O_RDWR, 0o600)
-            fcntl.flock(fd, fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
-        except BaseException:
-            if fd is not None:
-                os.close(fd)
-            try:
-                fcntl.flock(turn_fd, fcntl.LOCK_UN)
-            finally:
-                os.close(turn_fd)
-            raise
-        if shared:
-            try:
-                fcntl.flock(turn_fd, fcntl.LOCK_UN)
-            finally:
-                os.close(turn_fd)
-            return fd, None
-        return fd, turn_fd
-
-    @staticmethod
-    def _release_file_lock(fds: tuple[int | None, int | None]) -> None:
-        fd, turn_fd = fds
-        if fd is None and turn_fd is None:
-            return
-        import fcntl
-
-        try:
-            if fd is not None:
-                try:
-                    fcntl.flock(fd, fcntl.LOCK_UN)
-                finally:
-                    os.close(fd)
-        finally:
-            if turn_fd is not None:
-                try:
-                    fcntl.flock(turn_fd, fcntl.LOCK_UN)
-                finally:
-                    os.close(turn_fd)
 
     @contextmanager
     def shared(self):
@@ -278,24 +219,14 @@ class _TreeLock:
             while self._writer is not None or self._waiting:
                 self._cond.wait()
             self._readers += 1
-        try:
-            fd = self._acquire_file_lock(shared=True)
-        except BaseException:
-            with self._cond:
-                self._readers -= 1
-                self._cond.notify_all()
-            raise
         self._mine.depth = 1
         try:
             yield
         finally:
             self._mine.depth = 0
-            try:
-                self._release_file_lock(fd)
-            finally:
-                with self._cond:
-                    self._readers -= 1
-                    self._cond.notify_all()
+            with self._cond:
+                self._readers -= 1
+                self._cond.notify_all()
 
     @contextmanager
     def exclusive(self):
@@ -312,21 +243,11 @@ class _TreeLock:
             self._waiting -= 1
             self._writer = me
         try:
-            fd = self._acquire_file_lock(shared=False)
-        except BaseException:
+            yield
+        finally:
             with self._cond:
                 self._writer = None
                 self._cond.notify_all()
-            raise
-        try:
-            yield
-        finally:
-            try:
-                self._release_file_lock(fd)
-            finally:
-                with self._cond:
-                    self._writer = None
-                    self._cond.notify_all()
 
 
 BATCH_UNITS = 16  # units one run of a project's build takes at most
@@ -666,9 +587,7 @@ def _renamed_note(d) -> str:
 class ForkEngine:
     def __init__(self, net):
         self.net = net
-        self._trees: dict[int, _TreeLock] = _KeyedLocks(
-            lambda pid: _TreeLock(self._lock_path(pid, "tree.lock"))
-        )  # project id -> its source tree's lock
+        self._trees: dict[int, _TreeLock] = defaultdict(_TreeLock)  # project id -> its source tree's lock
         self._unit_locks: dict[tuple[int, str], _CrossProcessLock] = _KeyedLocks(
             lambda key: _CrossProcessLock(
                 self._lock_path(key[0], f"unit-{hashlib.sha1(key[1].encode('utf-8')).hexdigest()[:16]}")
