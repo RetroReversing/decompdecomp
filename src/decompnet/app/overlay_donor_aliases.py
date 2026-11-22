@@ -115,7 +115,7 @@ def retry(source, header, name, candidate, target, measure, stop):
 
 _DATA = re.compile(
     r'extern\s+([A-Za-z_]\w*(?:\s+[A-Za-z_]\w*)*)\s+(\**\s*)([A-Za-z_]\w*)'
-    r'\s*((?:\[\s*\d+\s*\]\s*)*)\s*;')
+    r'\s*((?:\[\s*\d*\s*\]\s*)*)\s*;')
 
 
 def offset_retry(source, header, name, candidate, target):
@@ -155,7 +155,7 @@ def offset_retry(source, header, name, candidate, target):
     declarations = []
     clean_header = csource._blank(header)
     for decl in seeds.declarations(header):
-        match = _DATA.fullmatch(decl.text)
+        match = _DATA.fullmatch(csource._blank(decl.text).strip())
         if not match or match[3] not in offsets:
             continue
         kind, pointers, symbol, dimensions = match.groups()

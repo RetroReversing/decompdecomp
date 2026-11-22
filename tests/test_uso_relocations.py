@@ -197,7 +197,7 @@ def test_overlay_data_rebase_preserves_compiler_relocations_and_exact_bytes(tmp_
         pytest.skip('needs IDO 5.3')
     cfg = compiler_config(tmp_path, {'compiler': {'toolchain': 'ido-5.3', 'flags': toolchains.get('ido-5.3').flags}})
     binding = uso_match.alias(64, 1)
-    header = 'extern int donor_data[16384];'
+    header = '/* donor declaration */ extern int donor_data[];'
     source = f'int example(void) {{ return donor_data[{start}]; }}'
     original = compile_source(cfg, header, source)
     expected = compile_source(cfg, f'extern int {binding}[16384];',
