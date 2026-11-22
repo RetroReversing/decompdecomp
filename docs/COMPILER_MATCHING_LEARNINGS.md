@@ -13689,8 +13689,10 @@ Controlled result for one function (181 instructions); each step measured with t
 | 3 | edge loop as two natural `for (j = 0; j < 16; j++) { if (rows[a].links[j] == 0) { ...; break; } }` loops under `if (edgeCount > 0) do { ... k++ } while (k < edgeCount)`, no duplicate arm | 114 |
 | 4 | the edge loop's induction pointer is `edges[k]` (a giv loop.c makes: its copy lands after the count copy in the preheader, as the target's does) | 114 (registers only) |
 | 5 | `i * sizeof(SearchRow) + (s32) sSearchEntries` (the base register second, as the target adds them) | 109 |
-| 6 | drop the unreferenced `volatile unsigned short pad` | 35 |
-| 7 | the counter start `do { do { do { k = 0; } while (0); } while (0); } while (0);` placed before the `if (edgeCount > 0)` that guards the loop | 0 |
+| 6 | drop the unreferenced `volatile unsigned short pad` (measured on the pointer-walk form of the edge loop, with the start wrapped in place) | 35 |
+| 7 | on the `edges[k]` form without the pad: the counter start `do { do { do { k = 0; } while (0); } while (0); } while (0);` placed before the `if (edgeCount > 0)` that guards the loop | 0 |
+
+Steps 3-5 were measured as one state (109-114 across the spellings), not as separate gains; steps 6 and 7 were measured on the two forms of the edge loop named in the rows.
 
 What decided step 7 is the allocator, read with `cc1 -dl -dg`: each temporary gets registers in order of
 `floor_log2(refs) * refs / live length`, a reference counting once per loop it sits in. The target gives the counter the
