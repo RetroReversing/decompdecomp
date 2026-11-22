@@ -16626,11 +16626,12 @@ What decided each step (GCC 2.7.2):
 - loop.c hoists at most the top few loop invariants, ranked by life x savings (dumped with `-dL`: "move-insn savings N
   moved to"). Making the stack-array address a user pointer variable freed a slot, so a loop-constant `0xDA380003` was
   hoisted and spilled instead of staying inline: scores 2700-3000. Keep that address a temporary.
-- Not yet found (open at 619): the case that builds `3 * x + 2` for the stream-slot sizes wants its value in `$v0`; the
-  autopilot's `var_s6` shared with the loop's byte offset gives the counter two more uses and the right allocation
-  order (counter before the matrix pointer) but puts that value in `$s6`; written as its own variable the counter and
-  the matrix pointer tie (0.1475 vs 0.1481) and swap `$s6`/`$s7`. Variants tried: an extra use, a user pointer, all 24
-  orders of the four preheader assignments, `while`/`for`/`goto`-join loop forms.
+- Counter vs matrix pointer (619 -> 459, decomp-repair 0.5.569): see the next table. The saved best shared one name (`var_s6`)
+  between a switch arm's `3 * n + 2` and the loop's byte offset; that gave the counter two more references and the right
+  allocation order, but put the arm's value in `$s6` (the target has `$v0`). Split alone, the counter (17 weighted
+  references over 463 insns, priority 0.1475) and the matrix pointer (17 over 461, 0.1481) tie and swap. A reference
+  inside a `do { } while (0);` counts at loop depth 2 (flow.c), so `do { var_s6 = 0; } while (0);` is one more weighted
+  reference at no instruction: 18 over 463 is 0.1555 and the counter wins.
 
 decomp-repair 0.5.563: `clamp_arm_stores`, `adjacent_array_store_order`, `global_field_load_stage`.
 
@@ -16665,11 +16666,12 @@ What decided each step (GCC 2.7.2):
 
 decomp-repair 0.5.564: `counter_derived_offset`.
 
-## A registration and a nested record loop: five loop and reload steps (KMC GCC 2.7.2, `-G0 -mips3 -mgp32 -mfp32 -O2`, an N64 game, one 180-instruction function, 1110 -> 501 by hand, open)
+## A registration and a nested record loop: eight steps, matched (KMC GCC 2.7.2, `-G0 -mips3 -mgp32 -mfp32 -O2`, an N64 game, one 180-instruction function, 1110 -> 0)
 
 Evidence level: one function, controlled chain (each step scored with the app's own judge from the saved best; the
-decomp-repair 0.5.565 families reproduce 1110 -> 1041 -> 831 -> 620 -> 600 from the saved source, tested one family at a
-time and chained in `tests/test_kmc_reload_hoist_wiring.py`'s shapes).
+decomp-repair 0.5.565 and 0.5.567 families with the existing `guard_temp_sink` and `loop_constant_stage` reproduce
+1110 -> 700 -> 490 -> 370 -> 250 -> 230 -> 221 -> 25 -> 15 -> 0 greedily from the saved source, one variant per step,
+`tests/test_kmc_reload_hoist_wiring.py` checks the lane offers each family).
 
 | step | edit | alone | combined |
 | --- | --- | --- | --- |
@@ -16681,7 +16683,10 @@ time and chained in `tests/test_kmc_reload_hoist_wiring.py`'s shapes).
 | E | `base = &D_table;` assigned at the entry; `last = base - 1;` stays where m2c read it (`entry_base_init`) | 1110 | 600 |
 | F | `var_s4 = arg1;` moved into the `if (arg2 != 0)` guard (`guard_temp_sink`, existing) | 1210 | 491 |
 | G | `volatile` dropped from the serial counter (`volatile_global_plain`, existing) | 1210 | 491 |
-| H | the identical-arm `if (temp)` on an uninitialised pointer removed | 1125 | 501 |
+| H | the found flag's copy written through the loop-bound local, not through `low`, the call's argument (`live_range_retarget`) | 501 | 285 |
+| I | the identical-arm `if (temp)` on an uninitialised pointer removed (`identical_arm_collapse`) | 1125 | 285 -> 15 after H, 25 -> 15 greedily |
+| J | the element pointer and the picked object written as one variable (`pointer_local_merge`) | 285 | 15 -> 270 -> 0 |
+| K | the loop's `4.0f` as a local set before the base address (`loop_constant_stage`, existing) | 270 | 0 |
 
 What decided each step (GCC 2.7.2):
 - loop.c moves an invariant out of a loop only when its pseudo is set once. `arg1 + n * 8` in the test is one set, so it
@@ -16697,11 +16702,25 @@ What decided each step (GCC 2.7.2):
   basic block, which is why the draft's read-before-write (`last = base - 1; base = &D;`) compiled to the target's three
   instructions and its valid spelling (assigned beside the read) scored 605. Assigned at the function's entry, before every
   label, cse does not know it inside the loop and the shape is the target's with valid C.
+- A copy `p = found` followed by the test of `p` survives cse when `p` is a multi-set user variable, and the target's
+  `move $v0,$a0; bnez $v0` needs the allocator to keep `p` and `found` in different registers. A pseudo that is copied into
+  an argument register for a call prefers it (`low` feeds `func_8000A4F4(low)`): global-alloc gave the copy `$a0`, the
+  register of `found`, and deleted the move. Any other multi-set integer local that is no call argument (the loop-bound
+  local, 285; the loop counter, 295) keeps the move; one set only is replaced by its source in cse and loses it.
+- Two names for one value's role are two pseudos with half the uses; the target's element and picked object share a
+  register because the original used one variable. The pass over `-dl -dg` (`;; N regs to allocate`, the conflicts table)
+  shows the element, which ranks first with priority 9.0, taking `$a0` ahead of everything and moving the flag and the count
+  one register along; written as the picked object's variable (disjoint ranges in one loop body) it takes `$v0`.
+- The hoisted `4.0f` goes before the loop's other preheader insns when its set comes first in the source; as a local set
+  just before the base address it matched where the compiler's own hoist put it behind them.
 - The saved registers come out right once the pseudos are the target's: the argument copies in `$s5`, `$s6`, `$fp`, the
   record cursor in `$s4`, the entry copy in `$s3`, the field pointer in `$s0`, the bound's base in `$s7`.
+- Failed: drop the `__base` assignment next to its read (605); the element merged into `entry` (1831); the natural
+  `D_table[n - 1]` index with the table an array (the base folds into `lui; addiu -4` held in `$fp`, arg2 in `$s7`, 285);
+  the base subtracted inside the loop (1923, the base takes `$fp`); a `for` form of the search loop (872, a pointer walk).
 
 decomp-repair 0.5.565: `counter_append_scope`, `loop_limit_reassign`, `outer_cursor_entry_copy`, `loaded_pointer_reuse`,
-`entry_base_init`.
+`entry_base_init`. 0.5.567: `live_range_retarget`, `pointer_local_merge`, `identical_arm_collapse`.
 
 ## A rejection loop's retry goto pinned in `do { } while (0)` (N64, `gcc-2.7.2-kmc`, 154 instructions, 475 -> 0)
 
@@ -16735,3 +16754,24 @@ Why (hypothesis): a branch to a label outside the innermost loop is rated "very 
 
 decomp-repair 0.5.566: `retry_goto_scope` proposes A with B as one child, A alone and B alone (the draft's `goto` is
 not touched by B when it is already inside `do { }`). Reproduced from the saved best: child 0 scores 0, the others 480 and 475.
+
+Chain from 619 (same function; exact judge at each step; each step reproduced by the library family named):
+
+| step | edit | score |
+| --- | --- | --- |
+| 4 | switch arm's value in its own variable and the counter's start in a one-shot scope, together (`reused_counter_split_scope`; split alone 814, scope alone 619) | 519 |
+| 5 | the four setup statements before the loop in another order: `spA9C = &sp120; <scoped counter start>; spAAC = spA6C; var_a1 = temp;` (`preheader_run_order`) | 459 |
+
+What decided them (GCC 2.7.2):
+- `loop_weight_scope` already did step 4's wrapper (the KMC edge-linking match of an earlier run) but never fired here:
+  `macros_safe` rejected `M2C_FIELD` (its body holds a struct and a `;`), so every family behind it was inert on a source
+  that kept the m2c prelude, and the counter step regex only knew `++` and `+= 1`, not `+= 0xC`. 0.5.569 whitelists the
+  m2c prelude macros and steps by any literal.
+- The wrapper's loop notes are scheduling barriers as well: the preheader splits into regions, so the same four
+  statements land in other orders. 459 is the best of all 24 orders times every wrapper/grouping tried (1296).
+- Open at 459: the hoisted `addiu $s7,$sp,0x90` of the matrix pointer comes last of the preheader in the compiler's
+  order where the target has it first (the target's order is hoisted insns, then the counter and pointer copies); and
+  a table entry loaded into `$v0` and copied to `$s0` in the branch's delay slot (cse merges the copy of the test's
+  value; no source spelling of the copy kept it). Both are 2 to 6 rows.
+
+decomp-repair 0.5.569: `reused_counter_split_scope`, `preheader_run_order`, `loop_weight_scope` (M2C macros, literal strides).
