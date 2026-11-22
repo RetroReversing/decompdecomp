@@ -184,6 +184,14 @@ void f(void)
     gAction = var;
   }
   g(gAction);
+}
+"""
+    labels = {}
+    out = draft_repairs.variants(source, 'f', 'mips', labels=labels, limit=None)
+    chained = [text for text in out if labels.get(text) == 'arm_switch_volatile_chain']
+    assert chained and all('extern volatile u16 gAction;' in text and 'switch (state)' in text for text in chained)
+    assert 'arm_switch_volatile_chain' in draft_repairs.AGENT_FAMILIES
+
 
 def test_loop_counter_value_split_is_proposed_and_known_to_agents():
     """A table initialiser's first loop counter, reused after the loop for the loaded count, went 20 -> 0 by splitting it,
@@ -205,10 +213,6 @@ void f(void) {
 """
     labels = {}
     out = draft_repairs.variants(source, 'f', 'mips', labels=labels, limit=None)
-    chained = [text for text in out if labels.get(text) == 'arm_switch_volatile_chain']
-    assert chained and all('extern volatile u16 gAction;' in text and 'switch (state)' in text for text in chained)
-    assert 'arm_switch_volatile_chain' in draft_repairs.AGENT_FAMILIES
-
     assert 'loop_counter_value_split' in set(labels.values())
     assert any('i_loop' in text and 'do{do{i=n;' in text and 'if(i!=0){\n      p=0;' in text for text in out)
     assert 'loop_counter_value_split' in draft_repairs.AGENT_FAMILIES
