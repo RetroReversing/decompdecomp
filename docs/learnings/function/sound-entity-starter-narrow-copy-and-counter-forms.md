@@ -19,6 +19,7 @@ The source change, and the measured result before and after (isolated judge, the
 | --- | --- | --- |
 | voice loop cursor `p += 8` as `(arg2 + i * 8)`, counter step last (`walk_counter_for`) | 2696 -> 2387 | loop.c reduced the cursor beside the counter into a giv with a register of its own (`$fp`); a counted loop leaves one giv in `arg2`'s register |
 | every counter of a width one variable (`loop_counter_unify`) | with the above, 2805 | `arg3` takes `$s0` and the counters `$s1` (one pseudo with every loop's references outranks the parameters in global.c) |
+| the field just stored read back through a volatile lvalue (`store_reload_volatile`) | 2805 -> 2525 | cse forwards the store otherwise; the target reloads it |
 | a byte read in both arms of an `if` read through a `u8` copy in the first arm (`arm_byte_copy_split`) | 2525 -> 2310 | cse leaves a copy of another machine mode alone; combine turns it into a `move`; the two arms stop sharing one address sum through the branch's delay slot |
 | the slot number copied before the call-free retry loop (`post_loop_copy`) | 830 -> 505 | `move $a1, $s5` before the loop, read after it, moves the loop's pseudos one register |
 | the first call argument of the 16-iteration loop as `i & 0xFF` at the call (`loop_argument_inline`) | 505 -> 305 | the entry copy is the same `andi` the loop repeats, not a folded constant |
@@ -28,7 +29,7 @@ The source change, and the measured result before and after (isolated judge, the
 | `t = G; G = (t + 1) & M; id = t;` (`global_read_store_copy`) | 110 -> 0 | with the copy after the store cse cannot fold the read into the local |
 
 The families above are in decomp-repair (arm_byte_copy_split, walk_counter_for, loop_counter_unify, post_loop_copy,
-loop_argument_inline, loop_literal_local, store_address_stage, global_read_store_copy); `reach.py`-style checks showed
+loop_argument_inline, loop_literal_local, store_address_stage, global_read_store_copy, store_reload_volatile); `reach.py`-style checks showed
 that no earlier family offered a child that moved the score at any of those steps except where the table says so.
 
 Failed experiments that would otherwise be repeated:
@@ -41,8 +42,8 @@ Failed experiments that would otherwise be repeated:
   in `do { } while (0)` (it adds loop-depth weight to every name in the statement, so it also lifts the counter it was
   meant to out-rank) and a scratch union around a pointer and an integer were each tried alone at most one row.
 - A volatile read of the entity field just stored (`*(void * volatile *) (e + 4)`) reproduces the target's reload of a field
-  it stored one instruction earlier (cse forwards the store otherwise); no faithful spelling was found (a different cast,
-  the member form, the cast form, an `u32` store), so the match carries it.
+  it stored one instruction earlier (cse forwards the store otherwise); no other spelling was found (a different cast,
+  the member form, the cast form, a `u32` store), so the match carries it and `store_reload_volatile` offers it.
 
 What is controlled evidence and what is one function:
 
