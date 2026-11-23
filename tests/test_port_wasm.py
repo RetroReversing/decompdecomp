@@ -994,3 +994,19 @@ def test_each_loop_of_wasm2cs_c_gets_a_safe_point(tmp_path):
     text = c.read_text()
     assert "{ port_loop_poll(); goto var_L0; }" in text and "goto var_B1;" in text and "port_loop_poll(); goto var_B" not in text
     assert text.startswith("void port_safe_point(void);") and other.read_text() == "goto var_L9;\n"
+
+
+def test_stopping_a_game_kills_one_that_ignores_the_request(tmp_path):
+    """A game stuck in its own loop kept running for an hour after Stop (terminate alone): the process is killed once
+    the grace time passes."""
+    import subprocess
+    import sys
+
+    from decompnet.port.wasm import play
+
+    proc = subprocess.Popen([sys.executable, "-c",
+                             "import signal,time,sys; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+                             "print('ready', flush=True); time.sleep(60)"], stdout=subprocess.PIPE, text=True)
+    assert proc.stdout.readline().strip() == "ready"  # the handler is installed
+    play.end(proc, grace=0.5)
+    assert proc.poll() is not None

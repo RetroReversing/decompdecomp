@@ -657,9 +657,9 @@ int main(void) {
     assert(memcmp(memory, "\x20\x30\x20\x30", 4) == 0);
     assert(memcmp(memory + 76, "\xB0\x00\x00\x01", 4) == 0);
     int invalid = traces;
-    w2c_env_osPiStartDma(NULL, 0, 0, 1, 0, 0x1400FFF0u, 8, 0);
+    w2c_env_osPiStartDma(NULL, 0, 0, 1, 0, 0x8080FFF0u, 8, 0);
     assert(traces == invalid);
-    w2c_env_osPiStartDma(NULL, 0, 0, 1, 0, 0x14FFFFFCu, 8, 0);
+    w2c_env_osPiStartDma(NULL, 0, 0, 1, 0, 0x81FFFFFCu, 8, 0);
     assert(traces == invalid + 1);
     return 0;
 }
@@ -691,18 +691,19 @@ static void post_event(int event) { assert(event == EV_PI); interrupts++; }
 #define BOOT_STACK_BUS 0x15000000u
 """ + _function(host, "stack_end") + "\n" + _function(host, "port_stack_bus") + "\n" + _function(host, "pi_register") + """
 int main(void) {
-    M = calloc(0x80800000u, 1);
+    M = calloc(0x82000000u, 1);
     assert(M);
     uint32_t read;
     assert(pi_register(0xA4600004u, 1, 0x10000002u, NULL));
     assert(pi_register(0xA4600000u, 1, 0x400u, NULL));
     assert(pi_register(0xA460000Cu, 1, 3, NULL));
     assert(!memcmp(M + 0x80000400u, rom + 2, 4));
-    assert(pi_register(0xA4600000u, 1, 0x1403FE90u, NULL));
+    /* a KSEG0 stack's physical address (osVirtualToPhysical of 0x8083FE90) is where the game's raw PI code points the DMA */
+    assert(pi_register(0xA4600000u, 1, 0x0083FE90u, NULL));
     assert(pi_register(0xA460000Cu, 1, 3, NULL));
-    assert(!memcmp(M + 0x1403FE90u, rom + 2, 4));
+    assert(!memcmp(M + 0x8083FE90u, rom + 2, 4));
     assert(pi_register(0xA460000Cu, 1, 4, NULL));
-    assert(M[0x1403FE94u] == 0);
+    assert(M[0x8083FE94u] == 0);
     assert(pi_register(0xA4600010u, 0, 0, &read) && read == 0);
     cart_io_busy = 1;
     assert(pi_register(0xA4600010u, 0, 0, &read) && read == 2);
@@ -818,3 +819,75 @@ def test_the_vi_shows_the_buffer_at_its_24_bit_origin():
     assert "fb & 0x00FFFFFFu" in text
     render = (HOST.parent / "render.c").read_text()
     assert "if (addr >= 0x800000) return;" in render
+
+
+def test_the_interpreter_runs_a_branch_in_a_taken_branchs_delay_slot(tmp_path):
+    """A copy loop ends in two `bnez $a3` in a row: the second sits in the first's delay slot. The interpreter took
+    that for an instruction it doesn't run and skipped it (20 lines of 'isn't one it runs' and a loop that never went
+    on). A taken branch in a taken branch's delay slot runs the first one's target once, then goes where the second
+    goes; one not taken in the slot, or in a slot of a branch not taken, is an ordinary instruction."""
+    cc = shutil.which("cc") or shutil.which("clang") or shutil.which("gcc")
+    if not cc:
+        pytest.skip("no C compiler")
+    mips = HOST.parent / "mips.c"
+    source = tmp_path / "t.c"
+    source.write_text(r'''
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include "MIPS_C"
+static uint8_t *mem;
+uint8_t *port_memory(void) { return mem; }
+uint64_t port_io_load(uint64_t a) { return a; }
+uint64_t port_io_store(uint64_t a, uint64_t v) { (void)v; return a; }
+uint32_t port_stack_bus(uint32_t a) { (void)a; return 0; }
+void port_safe_point(void) {}
+int port_thread_number(void) { return 0; }
+unsigned port_tlb_n;
+uint32_t port_tlb_canon(uint32_t a) { return a; }
+uint32_t port_tlb_alias(uint32_t a) { (void)a; return 0; }
+uint32_t w2c_env_0x5F_builtin_mips_read_count(struct w2c_env *e) { (void)e; return 0; }
+static void put(uint32_t at, const uint32_t *w, int n) {
+    for (int i = 0; i < n; i++) { uint32_t b = __builtin_bswap32(w[i]); memcpy(mem + at + 4 * i, &b, 4); }
+}
+int main(void) {
+    mem = mmap(0, 0x80100000u, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
+    /* 1000: addiu a3,a3,-1   the first branch's target: runs once for each pass through the pair
+       1004: addiu t1,t1,1    the loop body, the second branch's target
+       1008: bnez a3,1000     100C: bnez a3,1004, in the first's delay slot
+       1010: addiu t0,t0,1    reached only when neither is taken      1014: jr ra */
+    uint32_t code[] = {0x24E7FFFF, 0x25290001, 0x14E0FFFD, 0x14E0FFFD, 0x25080001, 0x03E00008, 0};
+    put(0x80001000u, code, 7);
+    uint64_t r[32] = {0}; uint32_t f[32] = {0};
+    r[7] = 3; r[31] = 0xFFFFFFF0u;
+    port_mips_run(0x80001004u, r, f);
+    printf("%d %d %d\n", (int)r[8], (int)r[9], (int)r[7]);
+    return 0;
+}
+'''.replace("MIPS_C", str(mips)))
+    subprocess.run([cc, "-O1", "-w", "-o", str(tmp_path / "t"), str(source)], check=True, capture_output=True)
+    done = subprocess.run([str(tmp_path / "t")], capture_output=True, text=True, timeout=30)
+    assert done.returncode == 0, done.stderr
+    assert "isn't one it runs" not in done.stderr
+    assert done.stdout.split() == ["1", "4", "0"]  # t0 once, the body four times, a3 counted down by the target
+
+
+def test_recompiled_and_interpreted_stacks_are_in_kseg0_above_the_ram():
+    """A game's loader told a RAM pointer from a ROM offset by its sign (`if ((s32)p >= 0)` means a cartridge address):
+    recompiled C's stack at 0x14000000 made a local's address a ROM offset, so it DMA'd from it and recursed (a racing
+    game's `osPiStartDma: 13A3AE48+4 is past the ROM's end`, no frames). Stacks sit where a console's do, just above
+    the 8 MB of RAM, with the host's DMA ranges and the 32-bit chip's mapping following them."""
+    from decompnet.port.wasm import recomp
+
+    top = recomp.STACKS + 33 * recomp.STACK_SIZE  # port_recomp_thread: up to thread 31's, (31 + 2) stacks
+    assert 0x80800000 <= recomp.STACKS and top <= 0x81100000
+    interp = (KIT / "mips.c").read_text()
+    at = int(re.search(r"#define MIPS_STACKS (0x[0-9A-Fa-f]+)u", interp).group(1), 16)
+    mips_stack = int(re.search(r"#define MIPS_STACK (0x[0-9A-Fa-f]+)u", interp).group(1), 16)
+    assert 0x80800000 <= at and at + 33 * mips_stack <= 0x82000000 and at >= top
+    host = HOST.read_text()
+    assert "addr >= 0x80800000u && addr < 0x82000000u" in host  # stack_end: DMAs into them are allowed
+    mem32 = (KIT / "miyoo" / "mem32.c").read_text()
+    assert f"{{0x{recomp.STACKS:08X}u," in mem32 and f"{{0x{at:08X}u," in mem32

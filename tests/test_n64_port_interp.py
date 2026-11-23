@@ -25,6 +25,9 @@ static uint8_t *mem;
 uint8_t *port_memory(void) { return mem; }
 uint64_t port_io_load(uint64_t a) { return a; }
 uint32_t port_stack_bus(uint32_t a) { return a >= 0x14000000u && a < 0x15000000u ? a : 0; }
+unsigned port_tlb_n;
+uint32_t port_tlb_canon(uint32_t a) { return a; }  /* (host.c's TLB windows: none here) */
+uint32_t port_tlb_alias(uint32_t a) { return a; }
 uint64_t port_io_store(uint64_t a, uint64_t v) { (void)v; return a; }
 void port_safe_point(void) {}
 /* a thread whose code jumps to itself is parked for good (host.c): here, say so with the word at DATA, and end */
@@ -425,7 +428,14 @@ def test_interpreter_preserves_its_frames_when_c_reenters_recompiled_code(tmp_pa
     # Use the runtime's actual stack handoff, with a small stand-in for a recompiled callee that writes its frame.
     runtime = recomp.BRIDGE_RUNTIME.split("void port_recomp_thread", 1)[0]
     source = HARNESS % {"c": C_FUNCTION, "code": CODE, "data": DATA}
-    source = source.replace("static int c_calls;", runtime + "\nstatic int c_calls;")
+    # the types the runtime's float-register switch (the game's Status.FR) needs from N64Recomp's header, stood in
+    stand_in = (
+        "typedef union { double d; struct { uint32_t u32l, u32h; }; } fpr;\n"
+        "typedef struct { fpr f0, f1; uint32_t *f_odd; int mips3_float_mode; } recomp_context;\n"
+        "static uint32_t cop0_status_value = 0x04000000u;\n"
+        "uint32_t port_cop0_status(void) { return cop0_status_value; }\n"
+        "void port_cop0_status_set(uint32_t value) { cop0_status_value = value; }\n")
+    source = source.replace("static int c_calls;", stand_in + runtime + "\nstatic int c_calls;")
     source = source.replace("(void)f; c_calls++; r[2]", "(void)f; c_calls++; memset(mem + port_recomp_sp - 4, 0, 4); r[2]")
     source = source.replace("port_mips_enter(r, f, 8);", "port_mips_enter(r, f, 8); port_recomp_sp = (uint32_t)r[29];")
     source = source.replace("printf(\" %d %08X %08X\\n\", c_calls, __builtin_bswap32(w0), __builtin_bswap32(w1));",
