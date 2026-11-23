@@ -58,5 +58,11 @@ One function: the combination in the last row, and which of the two `do { } whil
 BARRIER before the else label) are read from the compiler source (rtlanal.c, combine.c, global.c, cse.c); the effect
 of each is measured, not isolated.
 
-Library families (decomp-repair): `deref_member_store`, `postinc_copy_split`, `call_arg_late_update`,
-`early_global_byte_copy`.
+Library families (decomp-repair, #1347 and #1348): `deref_member_store`, `postinc_copy_split`,
+`call_arg_late_update`, `early_global_byte_copy`, then `relay_copy_fold` (the relay row), `helper_call_expand` (the
+`inline_fn` row; 515 -> 190 in the chain's state) and `fence_regroup`, which offers the last row as one child (100 -> 0;
+its single steps `fence_open`, `tail_guard_collapse`, `join_guard_flag`, `init_after_call` are offered too, none of them
+alone better than 100). `prove_chain.py` from the saved 1680 with the first four reaches 515 (1110, 710, 590, 515) and
+the existing families add only `arm_private_rename` (425); the three new ones close it. A search over which of the
+last row's edits are needed found only the full set of seven (fences opened x3, tail collapse, real condition, reset
+after the call, fence round the last two statements) reaches 0.
