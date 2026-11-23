@@ -27,8 +27,13 @@ def families():
     return tuple(family for repair in registry.all() for family in repair.families)
 
 
-def draft_context(source, name, header, arch, asm, flags):
-    return dict(source=source, name=name, header=header or '', arch=arch, asm=asm or '', flags=tuple(flags or ()))
+def draft_context(source, name, header, arch, asm, flags, words=None):
+    """What a declared repair may ask for. `words` (the constants the function loads from the game's data, as
+    app/pool_words.py reads them) is left out when the caller has none, which the registry allows (OPTIONAL)."""
+    context = dict(source=source, name=name, header=header or '', arch=arch, asm=asm or '', flags=tuple(flags or ()))
+    if words:
+        context['words'] = dict(words)
+    return context
 
 
 def local_calls(context):

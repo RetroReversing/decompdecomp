@@ -129,4 +129,9 @@ def scope(net, proj, fn):
     from ..project import compiler_for
     if net.fork_slug(proj['slug']):
         return {}
-    return profile_scope(proj['arch'], compiler_for(net.cfg(proj), fn['vram'], fn))
+    found = profile_scope(proj['arch'], compiler_for(net.cfg(proj), fn['vram'], fn))
+    # the constants the function loads from the game's data ride with the profile (draft_repairs takes them out again:
+    # the scope's other keys are keyword arguments of some families)
+    from . import pool_words
+    words = pool_words.read(net, proj, fn) if found else {}
+    return {**found, 'words': words} if words else found

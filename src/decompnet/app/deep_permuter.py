@@ -564,7 +564,8 @@ class Search(Permuter):
         flags = ()
         if any('flags' in item.needs for item in library_registry.runnable('local', arch)):
             flags = [] if self.net.fork_slug(proj['slug']) else compiler_for(self.net.cfg(proj), fn['vram'], fn).get('flags', [])
-        calls += library_registry.local_calls(library_registry.draft_context(source, name, header, arch, asm, flags))
+        words = draft_repairs.promoted_entry_repairs.scope(self.net, proj, fn).get('words') if any('words' in item.needs for item in library_registry.runnable('local', arch)) else None
+        calls += library_registry.local_calls(library_registry.draft_context(source, name, header, arch, asm, flags, words))
         register = permuter_focus.classify(rows, arch) == 'register'
         if register:
             calls.append((L + 'identical_float_guard.variants', (source, name, header, arch)))
@@ -1581,7 +1582,7 @@ class Search(Permuter):
             shape=allocation_evidence.diagnose(rows,proj['arch'])
             bit_choices = [(family,child) for family,child in generation_calls.generate(
                 'decomprepair.bit_predicate_repairs.variants', (source,fn['name'],header,proj['arch']),
-                dict(options['entry_scope']))
+                {key: value for key, value in options['entry_scope'].items() if key != 'words'})
                 if child not in self.local_seen] if (shape['register_only'] or shape['scheduling'] or shape['allocation_schedule']) else []
             bit_pass = bool(bit_choices) and not focused_pass
             cleanup_pass = bool(cleanup) and not focused_pass and not bit_pass
