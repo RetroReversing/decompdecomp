@@ -547,6 +547,23 @@ register, the status stays), the port's `PORT_SWAP_LOG` says when it blanked, an
 number and length. On a racing game they did: six blanks of 25, 25, 21, 25, 25 and 21 graphics tasks on both sides
 (where each began differed for three of them: a menu advanced hundreds of tasks apart between runs). On the console the
 screen is black at those moments; before the port honoured osViBlack it showed the buffer's leftovers instead.
+`tools/n64_task_diff.py CONSOLE_DUMP PORT_DUMP` says where two pictures of one task differ: the task's display list
+is traced on each side and compared with its pointers masked, so what's left is values the game computed. A racing
+game paused on its starting grid (the pad released, one START: the scene stands still on both sides, whatever the timing)
+ran 168 commands on each side and only one differed, the horizon's fill rectangle by one pixel. The emulator's `--break`
+on the function that wrote it (`drawPanelFill`) showed the console's own horizon settling from 146 to 140 over about 200
+retraces at the race start, then holding while paused: the port was paused nine retraces later in that settling, so
+the difference was when START landed, not a drawing or logic fault. A moving scene can't be matched by task or retrace
+number, but a scene held still by a pause or a menu can, and a difference there is found to the command.
+`PORT_VTIME=1` makes the native host's time virtual: the retrace fires when every game thread is waiting (or only the
+lowest-priority thread, the console's idle spin, is left) and the clock the game reads (osGetTime, the count register,
+the audio interface's drain) advances a retrace at a time, a microsecond per read within one. A run is the same
+whatever the machine's load (two runs of one retrace-timed input script had the same RAM at retrace 600 and 1,500, the
+same graphics tasks, swaps and DMAs) and takes less than the real time (2,000 retraces in 29 seconds). It showed what
+the console and the port have apart: counted in retraces, a racing game's video-mode blanks last 42, 27, 12 and 76 on the
+console and about 10 in the port, though they are the same 25, 25 and 21 graphics tasks on both: the console spends two
+to seven retraces on a frame where the port, with no CPU time to spend, spends one, so a scene is the same by game frame
+and not by retrace. `EMU_VI_LOG` lines now carry the retrace (`vi V`) as well as the task.
 `tools/n64_frame_scan.py FOLDER` needs no emulator: it looks through the frames a port saved (`PORT_FRAMES=FOLDER
 PORT_FRAME_EVERY=1`, `PORT_SWAP_LOG=file` to name each frame's graphics task) for static, flat-colour frames and runs of
 black, the ways a buffer shown before the game drew it looks. Moving scenes can't be compared pixel for pixel by task

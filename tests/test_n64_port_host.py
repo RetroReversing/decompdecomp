@@ -407,6 +407,7 @@ def test_the_cartridge_reads_as_the_rom(tmp_path):
 #include <stdio.h>
 #include <string.h>
 #define SP_STATUS 0xA4040010u
+#define DPC_BASE 0xA4100000u
 #define IO_SCRATCH 0x000A0000u
 #define IO_FAR(a) (a)
 static uint8_t M[0xA0010], rom[0x1000]; static size_t rom_size = sizeof rom;
@@ -1013,3 +1014,46 @@ def test_the_64dd_registers_read_as_open_bus_on_a_console_with_none(tmp_path):
     # both ways the game reaches it: osEPiReadIo and a direct read of the uncached alias
     assert "if (dd_range(dev)) { wbe32(data, open_bus(dev & ~3u)); return 0; }" in text
     assert "if (addr >= 0xA5000000u && addr < 0xA8000000u) { wbe32(IO_SCRATCH, open_bus((uint32_t)addr & ~3u))" in text
+
+def test_virtual_time_advances_a_retrace_at_a_time_and_reads_move_it_a_microsecond(tmp_path):
+    """PORT_VTIME: the clock the game reads (osGetTime, the count register, the audio interface) is the retrace count's,
+    not the wall clock's, so a run is the same on a loaded machine; reads within one retrace still advance it, by a
+    microsecond each and never into the next retrace, so a loop waiting for the time to pass ends."""
+    cc = shutil.which("cc") or shutil.which("clang") or shutil.which("gcc")
+    if not cc:
+        pytest.skip("no C compiler")
+    source = tmp_path / "t.c"
+    source.write_text("""#include <stdint.h>
+#include <stdio.h>
+#include <time.h>
+static int vtime = 1;
+static uint64_t vclock_us = 1000000;
+static unsigned vsub;
+static int retrace_us(void) { return 20000; }
+""" + _function(HOST.read_text(), "port_clock_seconds") + """
+int main(void) {
+    printf("%.6f %.6f\\n", port_clock_seconds(), port_clock_seconds());
+    for (int i = 0; i < 50000; i++) port_clock_seconds();
+    printf("%.6f\\n", port_clock_seconds());          /* the next retrace's start is 1.020000: never reached */
+    vclock_us += 20000; vsub = 0;
+    printf("%.6f\\n", port_clock_seconds());
+    return 0;
+}
+""")
+    subprocess.run([cc, "-o", str(tmp_path / "t"), str(source)], check=True, capture_output=True)
+    out = subprocess.run([str(tmp_path / "t")], check=True, capture_output=True, text=True).stdout.split()
+    assert out == ["1.000001", "1.000002", "1.019999", "1.020001"]
+
+
+def test_the_rdp_command_status_reads_idle_so_a_game_polling_it_gets_on():
+    """A game's own osDp routine writes 1 to DPC_STATUS (0xA410000C, clear XBUS DMEM DMA) and polls bit 0 until it
+    drops; the register was plain memory that kept the bit, so the thread spun for ever (a higher-priority thread
+    starved the rest: audio tasks stopped after a few seconds). The host draws a task when it starts, so the RDP
+    always reads idle: only CBUF_READY, counters 0, and writes to the status are dropped."""
+    text = HOST.read_text()
+    assert "#define DPC_BASE 0xA4100000u" in text
+    load = text[text.index("uint64_t port_io_load("):text.index("uint64_t port_io_store(")]
+    assert "addr >= DPC_BASE + 0x0Cu && addr < DPC_BASE + 0x20u" in load
+    assert "addr == DPC_BASE + 0x0Cu ? 0x80u : 0u" in load  # status: CBUF_READY alone; clock and busy counters 0
+    store = text[text.index("uint64_t port_io_store("):text.index("/* ---------------------------------------------------------------- VI */")]
+    assert "addr == DPC_BASE + 0x0Cu" in store  # the status write is a command, nothing to keep
