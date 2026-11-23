@@ -108,6 +108,10 @@ uint32_t port_tlb_canon(uint32_t a);
 uint32_t port_tlb_alias(uint32_t a);
 uint32_t port_tlb_jump(uint32_t slot, uint32_t imm); /* the target of a j/jal: top bits from the window's virtual base */
 void port_tlb_write(uint32_t pm, uint32_t entry_hi, uint32_t lo0, uint32_t lo1);
+void port_tlb_set(unsigned index, uint32_t pm, uint32_t entry_hi, uint32_t lo0, uint32_t lo1);
+uint32_t port_tlb_probe(uint32_t entry_hi);
+int port_tlb_read(unsigned index, uint32_t *pm, uint32_t *entry_hi, uint32_t *lo0, uint32_t *lo1);
+int port_tlb_invalid(uint32_t a); /* a page an entry covers with its valid bit clear: TLB Invalid, not a refill */
 HOT uint32_t mapped(uint32_t a) { return __builtin_expect(a < 0x80000000u && port_tlb_n, 0) ? port_tlb_canon(a) : a; }
 HOT uint8_t *at_load(uint32_t a) { a = mapped(a); return M + (a >= 0xA0000000u ? (uint32_t)port_io_load(a) : a); }
 HOT uint8_t *at_store(uint32_t a, uint64_t v) { a = mapped(a); return M + (a >= 0xA0000000u ? (uint32_t)port_io_store(a, v) : a); }
@@ -370,10 +374,36 @@ static const char *shape_hardware(const uint32_t *w, unsigned n, unsigned size, 
     return 0;
 }
 
+/* sdk_shapes.py's thread_getter: osGetThreadId (the offset read is 0x14) and osGetThreadPri (0x04): a branch on $a0, the
+   running thread loaded into $a0 from a global, one load into $v0 from $a0 in the return's delay slot, no store, no
+   call. Returns the offset, or 0. */
+static unsigned shape_thread_getter(const uint32_t *w, unsigned n) {
+    int skip = 0, lui = 0, load = 0, ret = -1;
+    if (n < 5 || n > 8) return 0;
+    for (unsigned i = 0; i < n; i++) {
+        uint32_t op = OPC(w[i]);
+        if (op == 3 || (op >= 0x28 && op <= 0x2B)) return 0;
+        if ((op == 4 || op == 5) && (RS(w[i]) == 4 || RT(w[i]) == 4)) skip = 1;
+        if (op == 0x0F) lui = 1;
+        if (op == 0x23 && RT(w[i]) == 4) load = 1;
+        if (w[i] == 0x03E00008u) { if (ret >= 0) return 0; ret = (int)i; }
+    }
+    uint32_t last = w[n - 1];
+    if (OPC(last) != 0x23 || RS(last) != 4 || RT(last) != 2 || ret != (int)n - 2) return 0;
+    return skip && lui && load && (IMM(last) == 0x14 || IMM(last) == 4) ? IMM(last) : 0;
+}
+
 /* sdk_shapes.py's identify(), the same tests over the function's words: the library's name, or 0 */
 static const char *shape_identify_words(const uint32_t *w, unsigned n) {
     unsigned size = n * 4;
     if (size < 12 || size > 700) return 0;
+    unsigned got = shape_thread_getter(w, n);
+    if (got) return got == 0x14 ? "osGetThreadId" : "osGetThreadPri";
+    if (size < 32) { /* (the 12-byte osGetCount and the 16-byte osAiGetLength: the hardware tests below) */
+        ShapeFeatures none;
+        shape_features(w, n, &none);
+        return shape_hardware(w, n, size, none.calls);
+    }
     ShapeFeatures f;
     shape_features(w, n, &f);
     if (size >= 100) { /* osCreateThread: the id into +0x14, flags cleared at +0x12, a state halfword at +0x10 */
@@ -450,7 +480,8 @@ static const char *shape_identify(const uint32_t *w, unsigned n, uint32_t vram) 
         return shape_calls_cp0_leaf(w, n, vram, 9) && shape_calls_interrupt_leaf(w, n, vram, 0) ? name : 0;
     if (!strncmp(name, "osVi", 4)) return shape_calls_interrupt_leaf(w, n, vram, 1) ? name : 0;
     /* every one of them but osCreateMesgQueue (six stores, no call) disables interrupts first */
-    if (!strcmp(name, "osCreateMesgQueue")) return name;
+    if (!strcmp(name, "osCreateMesgQueue") || !strcmp(name, "osGetThreadId") || !strcmp(name, "osGetThreadPri"))
+        return name; /* (the getters and the queue's creation call nothing) */
     /* osCreateThread calls only the interrupt disable and restore; the others call more (the thread lists' routines) */
     return shape_calls_interrupt_leaf(w, n, vram, !strcmp(name, "osCreateThread")) ? name : 0;
 }
@@ -634,9 +665,24 @@ static void call_c(Cpu *c, PortMipsCall fn) {
     c->r[0] = 0;
 }
 
+/* PORT_INTERP_TRACE=3: the last jumps this thread took ({from, to, $ra}), printed when the interpreter meets
+   something it can't run: a wild jump's first wrong step is in the lines before it. */
+#define JUMP_HISTORY 40
+static __thread struct { uint32_t from, to, ra, sp; } jumps[JUMP_HISTORY];
+static __thread unsigned jump_n;
+static void jump_history(const char *why, uint32_t pc) {
+    static int said;
+    if (tracing < 3 || said++ >= 4) return;
+    fprintf(stderr, "interpreter: %s at %08X; the last jumps (from -> to, $ra, $sp):\n", why, pc);
+    for (unsigned i = 0; i < JUMP_HISTORY && i < jump_n; i++) {
+        unsigned k = (jump_n - 1 - i) % JUMP_HISTORY;
+        fprintf(stderr, "  %08X -> %08X  ra %08X  sp %08X\n", jumps[k].from, jumps[k].to, jumps[k].ra, jumps[k].sp);
+    }
+}
 static void unknown(uint32_t pc, uint32_t op) {
     static int said;
     if (said++ < 20) fprintf(stderr, "interpreter: instruction %08X at %08X isn't one it runs: skipped\n", op, pc);
+    jump_history("an unknown instruction", pc);
 }
 
 /* One instruction at pc; a branch or jump says where it goes (*target, its delay slot still to run), or that a
@@ -751,8 +797,16 @@ static int step(Cpu *c, uint32_t pc, uint32_t op, uint32_t *target) {
         else if ((rs == 4 || rs == 5) && reg) *reg = (uint32_t)r[rt];
         /* The raw PI routine probes the TLB if its buffer lives on a compatibility stack.
            Expose a pair of 4 KB pages on the compatibility host’s PI bus. */
-        else if (op == 0x42000002u || op == 0x42000006u) port_tlb_write(c->page_mask, c->entry_hi, c->entry_lo[0], c->entry_lo[1]); /* tlbwi, tlbwr */
-        else if (op == 0x42000008u) c->tlb_index = port_stack_bus(c->entry_hi & ~0x1FFFu) ? 0 : 0x80000000u;
+        else if (op == 0x42000002u) port_tlb_set(c->tlb_index & 31u, c->page_mask, c->entry_hi, c->entry_lo[0], c->entry_lo[1]); /* tlbwi */
+        else if (op == 0x42000006u) port_tlb_write(c->page_mask, c->entry_hi, c->entry_lo[0], c->entry_lo[1]);                   /* tlbwr */
+        else if (op == 0x42000008u) { /* tlbp: an entry the game wrote answers first; the compatibility stack's pages after */
+            uint32_t found = port_tlb_probe(c->entry_hi);
+            c->tlb_index = found != 0x80000000u ? found : port_stack_bus(c->entry_hi & ~0x1FFFu) ? 0 : 0x80000000u;
+        }
+        else if (op == 0x42000001u && !(c->tlb_index & 0x80000000u) && port_tlb_read(c->tlb_index & 31u, &c->page_mask, &c->entry_hi,
+                                                                                    &c->entry_lo[0], &c->entry_lo[1])) {
+            /* tlbr of a slot the game wrote: its words back in the registers */
+        }
         else if (op == 0x42000001u && c->tlb_index == 0) {
             uint32_t bus = port_stack_bus(c->entry_hi & ~0x1FFFu);
             c->page_mask = 0;
@@ -870,33 +924,41 @@ void port_mips_run(uint32_t entry, uint64_t *regs, uint32_t *fregs) {
     uint32_t pc = entry;
     unsigned long steps = 0;
     int zeros = 0;
-    unsigned refills = 0;
+    unsigned fault_n = 0;
+    uint32_t fault_pc = 1;
     for (;;) {
-        /* A fetch from a virtual address no TLB entry covers is a TLB refill exception on the console: the game's own
-           handler (installed at the vector 0x80000000) reads Context, loads the page pair's EntryLo words from the
-           game's table, writes them with tlbwr and returns with eret to retry the fetch. A game that maps its main
-           program this way (a shooter linking it at 0x7F000000, 4 KB pages brought in as the code first runs) had
-           no window for it: "no instructions at 8F000CD0". Context holds the faulting page's number in bits 4 to
-           22, EntryHi its address. After a few refills of one address that don't map it, the game's table has no
-           page for it, and the fetch goes on as before. */
-        if (__builtin_expect(pc < 0x80000000u && port_tlb_n && !(c.status & 2u), 0) && mapped(pc) == pc && fetch(0x80000000u)) {
-            if (refills++ < 8) {
-                if (tracing) fprintf(stderr, "interpreter: TLB refill for a fetch at %08X (from %08X)\n", pc, entry);
-                c.epc = pc;
-                c.badvaddr = pc;
-                c.entry_hi = pc & ~0x1FFFu;
-                c.context = (c.context & ~0x7FFFF0u) | (((pc >> 13) & 0x7FFFFu) << 4);
-                c.cause = 2u << 2; /* TLBL */
-                c.status |= 2u;
-                pc = 0x80000000u;
-                continue;
+        /* A fetch from a virtual address no valid TLB entry covers is an exception on the console, and the game's own
+           handler answers it. No entry for the page at all is a TLB refill (the vector 0x80000000): the handler reads
+           Context, loads the page pair's EntryLo words from the game's table, writes them with tlbwr and returns with
+           eret to retry the fetch (a shooter links its program at 0x7F000000 and brings 4 KB pages in as the code first
+           runs: "no instructions at 8F000CD0"). An entry that covers the page with its valid bit clear is TLB Invalid
+           (the general vector 0x80000180): the game's general handler pages the code in from the cartridge, writes the
+           entry again, valid, and returns with eret. Context holds the faulting page's number in bits 4 to 22,
+           EntryHi its address, Cause the code (2, TLBL), EPC the fetch itself. A page that stays faulting after 16
+           refills (4 invalid exceptions: a libultra handler that hands the thread to a pager thread through kernel
+           state the host does not keep never retries) has no handler that maps it, and the fetch goes on as before. */
+        if (__builtin_expect(pc < 0x80000000u && port_tlb_n && !(c.status & 2u), 0) && mapped(pc) == pc) {
+            uint32_t vector = port_tlb_invalid(pc) ? 0x80000180u : 0x80000000u;
+            if (fetch(vector)) {
+                if (pc != fault_pc) { fault_pc = pc; fault_n = 0; }
+                if (fault_n++ < (vector == 0x80000180u ? 4u : 16u)) {
+                    if (tracing) fprintf(stderr, "interpreter: TLB %s for a fetch at %08X (from %08X)\n",
+                                         vector == 0x80000180u ? "invalid" : "refill", pc, entry);
+                    c.epc = pc;
+                    c.badvaddr = pc;
+                    c.entry_hi = pc & ~0x1FFFu;
+                    c.context = (c.context & ~0x7FFFF0u) | (((pc >> 13) & 0x7FFFFu) << 4);
+                    c.cause = 2u << 2; /* TLBL */
+                    c.status |= 2u;
+                    pc = vector;
+                    continue;
+                }
             }
-        } else if (pc >= 0x80000000u) {
-            refills = 0;
         }
         uint32_t op = fetch(pc), target = 0;
         if (op == 0 && ++zeros > 64) { /* a run of nothing: no code there (no ROM loaded where it was looked for) */
             fprintf(stderr, "interpreter: no instructions at %08X (from %08X): the function returns at once\n", pc, entry);
+            jump_history("no instructions", pc);
             break;
         }
         if (op) zeros = 0;
@@ -967,6 +1029,10 @@ void port_mips_run(uint32_t entry, uint64_t *regs, uint32_t *fregs) {
             continue; /* (only if it comes back: the same jump again) */
         }
         target = mapped(target); /* a jump to a mapped virtual address runs the code at its spelling */
+        if (tracing >= 3) {
+            unsigned k = jump_n++ % JUMP_HISTORY;
+            jumps[k].from = pc; jumps[k].to = target; jumps[k].ra = (uint32_t)c.r[31]; jumps[k].sp = (uint32_t)c.r[29];
+        }
         if (kind == 4 || jop >> 26 == 3) port_note_entry(target); /* a call: jal, jalr */
         pc = target;
         if (kind == 4) { /* a call through a pointer is a safe point, as host.c's port_func is for the game's C: only

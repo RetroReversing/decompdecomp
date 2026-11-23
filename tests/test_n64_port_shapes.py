@@ -44,6 +44,10 @@ uint32_t port_tlb_canon(uint32_t a) { return a; }
 uint32_t port_tlb_alias(uint32_t a) { return a; }
 uint32_t port_tlb_jump(uint32_t slot, uint32_t imm) { return (slot & 0xF0000000u) | imm; }
 void port_tlb_write(uint32_t pm, uint32_t hi, uint32_t lo0, uint32_t lo1) { (void)pm; (void)hi; (void)lo0; (void)lo1; }
+void port_tlb_set(unsigned i, uint32_t pm, uint32_t hi, uint32_t lo0, uint32_t lo1) { (void)i; (void)pm; (void)hi; (void)lo0; (void)lo1; }
+uint32_t port_tlb_probe(uint32_t hi) { (void)hi; return 0x80000000u; }
+int port_tlb_read(unsigned i, uint32_t *pm, uint32_t *hi, uint32_t *lo0, uint32_t *lo1) { (void)i; (void)pm; (void)hi; (void)lo0; (void)lo1; return 0; }
+int port_tlb_invalid(uint32_t a) { (void)a; return 0; }
 uint64_t port_io_store(uint64_t a, uint64_t v) { (void)v; return a; }
 void port_safe_point(void) {}
 void port_boot_spin(void) {}
@@ -57,7 +61,7 @@ int main(int argc, char **argv) {
     mem = mmap(NULL, 1ull << 32, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
     if (mem == MAP_FAILED || argc < 3) return 3;
     FILE *in = fopen(argv[1], "rb");
-    size_t n = fread(mem + 0x%(base)08Xu, 1, 0x10000, in);
+    size_t n = fread(mem + 0x%(base)08Xu, 1, 0x1E000, in); /* (below the leaves the words below call: 0x80020000) */
     fclose(in);
     (void)n;
     /* what the synthetic `jal` words call (0x80020000): an interrupt disable, `mfc0 $t0, Status; jr $ra; nop` */
@@ -122,6 +126,15 @@ def _functions():
     out.append(("yield", code(*yield_, pad=2)))
     out.append(("yield-not-runnable", code(*yield_[:2], i(9, 0, 14, 3), *yield_[3:], pad=2)))
     out += hardware.functions()  # the routines of the hardware, and their near misses
+    # osGetThreadId / osGetThreadPri: bnez $a0; nop; lui $a0, hi; lw $a0, lo($a0); jr $ra; lw $v0, off($a0)
+    bnez_a0 = i(5, 4, 0, 3)
+    running = [bnez_a0, NOP, i(0x0F, 0, 4, 0x800C), i(0x23, 4, 4, 0x1CB0), JR_RA]
+    out.append(("getter-id", code(*running, i(0x23, 4, 2, 0x14))))
+    out.append(("getter-pri", code(*running, i(0x23, 4, 2, 4))))
+    out.append(("getter-other-field", code(*running, i(0x23, 4, 2, 0x18))))
+    out.append(("getter-no-branch", code(NOP, NOP, *running[2:], i(0x23, 4, 2, 0x14))))
+    out.append(("getter-with-a-store", code(*running[:4], i(0x2B, 4, 5, 0x20), JR_RA, i(0x23, 4, 2, 0x14))))
+    out.append(("getter-calls", code(*running[:4], shapes.JAL, JR_RA, i(0x23, 4, 2, 0x14))))
     return out
 
 
@@ -141,7 +154,7 @@ def classified(tmp_path_factory):
         pytest.skip("no C compiler")
     tmp = tmp_path_factory.mktemp("shapes")
     cases = [(label, _with_return(code)) for label, code in _functions()]
-    image = bytearray(0x10000)
+    image = bytearray(0x1E000)  # (a function every 0x400 bytes: room for 120)
     for k, (_, code) in enumerate(cases):
         image[k * STRIDE:k * STRIDE + len(code)] = code
     (tmp / "image.bin").write_bytes(bytes(image))
@@ -172,7 +185,8 @@ def test_the_host_names_what_the_python_tests_name(classified):
 def test_the_host_names_each_routine_it_can_replace(classified):
     named = {name for _, _, name in classified}
     assert {"osCreateThread", "osYieldThread", "osStartThread", "osSetThreadPri", "osDestroyThread", "osRecvMesg",
-            "osSendMesg", "osJamMesg", "osCreateMesgQueue", "osSetEventMesg"} | set(hardware.EXPECTED.values()) <= named
+            "osSendMesg", "osJamMesg", "osCreateMesgQueue", "osSetEventMesg", "osGetThreadId",
+            "osGetThreadPri"} | set(hardware.EXPECTED.values()) <= named
 
 
 def test_a_near_miss_is_no_routine(classified):
@@ -180,7 +194,8 @@ def test_a_near_miss_is_no_routine(classified):
     for label in ("start-two-stores", "priority-reader", "destroy-runnable", "recv-no-modulo", "queue-short",
                   "queue-load", "event-structure", "create-no-flags", "create-no-pc", "create-id-on-the-stack", "create-inline",
                   "yield-not-runnable", "create-callees-not-interrupts", "create-one-callee-not-an-interrupt",
-                  "create-behind-an-indirect-jump"):
+                  "create-behind-an-indirect-jump", "getter-other-field", "getter-no-branch", "getter-with-a-store",
+                  "getter-calls"):
         assert by[label] == "-", label
     # the bytes alone say osCreateThread: it is the callees that are not the interrupt disable
     case = next(code for label, code, _ in classified if label == "create-callees-not-interrupts")

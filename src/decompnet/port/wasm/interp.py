@@ -27,7 +27,7 @@ from .recomp import EXPORT, HOST, IMPORT, _addresses, _demangle, _import_address
 # the libultra routines mips.c's shape_identify can name in code loaded at run time (consoles/n64/sdk_shapes.py's
 # identify() has the same tests): each the host defines is called in place of the game's copy
 SHAPE_NAMES = ("osCreateThread", "osYieldThread", "osStartThread", "osSetThreadPri", "osDestroyThread", "osRecvMesg",
-               "osSendMesg", "osJamMesg", "osCreateMesgQueue", "osSetEventMesg",
+               "osSendMesg", "osJamMesg", "osCreateMesgQueue", "osSetEventMesg", "osGetThreadId", "osGetThreadPri",
                # the routines of the hardware: the video manager's, the PI's DMA, the RSP, the audio interface, the
                # caches, the Count register and the timers (a game's own copy runs against the registers and kernel
                # lists the host doesn't keep: no retrace, no DMA, no graphics task)
