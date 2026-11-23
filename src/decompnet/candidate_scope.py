@@ -199,8 +199,25 @@ def state(net,proj,fn,shared=None):
             target=Path(target) if target else None
             if target is not None and not target.is_absolute():
                 target=fp.root/target
-            result += [digest(target) if target else None,repr(unit), dependencies(fp.root,unit.source),
-                       [(name,digest(fp.root/name)) for name in ('Makefile','build.ninja','objdiff.json','configure.py')]]
+            if shared is not None:
+                deps_memo = shared.setdefault('fork_deps', {})
+                dep_key = (str(fp.root), unit.source)
+                if dep_key not in deps_memo:
+                    deps_memo[dep_key] = dependencies(fp.root, unit.source)
+                unit_deps = deps_memo[dep_key]
+                build_files = shared.get('fork_build_files')
+                if build_files is None:
+                    build_files = shared['fork_build_files'] = [
+                        (name, digest(fp.root / name))
+                        for name in ('Makefile', 'build.ninja', 'objdiff.json', 'configure.py')
+                    ]
+            else:
+                unit_deps = dependencies(fp.root, unit.source)
+                build_files = [
+                    (name, digest(fp.root / name))
+                    for name in ('Makefile', 'build.ninja', 'objdiff.json', 'configure.py')
+                ]
+            result += [digest(target) if target else None, repr(unit), unit_deps, build_files]
         except (ForkError,OSError):
             result.append(('unavailable-project',digest(Path(proj['root'])/'objdiff.json')))
     return result
