@@ -32,7 +32,7 @@ Then three more edits, each by hand and now a family. A load that follows a stor
 together 100 (`load_stage_before_store`, PR 1505, chains 235 -> 160 -> 100 from the plain form). Three table-driven float
 updates `F = F + (f32) tab[i] * k;` had the product in the converted value's register where the target has it in the
 constant's: staging the product in ONE function-level `f32` that all three updates use fixed all six rows, 100 -> 60
-(`shared_product_local`, PR 1506). Mechanism, from local-alloc.c `combine_regs` and confirmed on toy programs: a product
+(`shared_product_local`, PR 1506), and the caption call's last two rows closed it at 0. Mechanism, from local-alloc.c `combine_regs` and confirmed on toy programs: a product
 in the expression is a block-local pseudo, tied to the multiply's first operand that dies there (the converted value); a
 local with sets in several blocks has no quantity, so local-alloc cannot tie it and the product is tied to the other
 operand, the constant. A toy that keeps the converted value alive past the multiply gives the same dest register.
@@ -46,11 +46,15 @@ Failed experiments that would otherwise be repeated:
   program a chain can step from (case labels inside `if`s, a union scratch, an uninitialised flag), so the clean rewrite
   was the only way in. `scaffold_strip` does not see a `#define`d union view.
 - Four spellings of the caption call (`var_a2 = lookupDataEntry(..)` local, nested call, block-local result, the global
-  read first) leave `move $a2,$v0` ahead of the `lui/lw` of the next argument where the target has it after, 60 -> 60: the
-  scheduler's order is decided elsewhere (a hint from grid.py: four spellings, identical instructions).
+  read first) leave `move $a2,$v0` ahead of the `lui/lw` of the next argument where the target has it after, 60 -> 60 (a
+  grid.py hint: four spellings, identical instructions). The fifth closed both rows, 60 -> 0: the global read through a
+  pointer set up before the first call, `s32 *p = &gG; v = lookup(..); caption(0, *p, v, ..);`
+  (`global_argument_address_stage`, PR 1508). sched.c's order puts the result move first when the load's address is
+  built in the same chain behind the call; the address pseudo born before the call shortens that chain (hypothesis from
+  the `-dS` order, not read from the priorities).
 
 What is controlled evidence and what is one function:
 
-The goto and staging results are controlled on this one function (each family reproduces the by-hand step from the
+The match is exact (0, byte-identical, re-checked after the library merges). The goto and staging results are controlled on this one function (each family reproduces the by-hand step from the
 state before it). The tie mechanism is read from the compiler source and reproduced on toy programs; the claim that the
 target's source used one shared float local is a hypothesis that fits all six rows.
