@@ -16,7 +16,7 @@ and the lower one then gets `$a1`, although its own priority is far below the fi
 Evidence: a 0/1 flag (priority 2.8, 12 references) and a character copy (priority 1.2, 9 references) in a loop. The target
 has the copy in `$a1` and the flag in `$a2`; our source gave the flag `$a1`. Naming the flag's variable also for a
 loop-2 value (`temp = ...; if (temp | c)`), so its live range overlaps the start pointer that prefers `$a1`, gave exactly
-the target's loop (35 -> 15), but the shared variable then took `$a2` in loop 2 as well (the target has `$v1` there).
+the target's loop (35 -> 15), but the shared variable then took `$a2` in loop 2 as well (the target has `$v1` there). decomp-repair's `disjoint_local_merge` now offers that pair (its 12-pair cap had hidden it).
 Raising the copy's priority above the flag's needs 16 weighted references (each `do { } while (0)` adds one: not
 faithful). So the missing step is a source in which the flag conflicts with a pseudo preferring `$a1` without being one
 variable with it. Open: no family produces it yet.
