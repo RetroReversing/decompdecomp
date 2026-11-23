@@ -32,8 +32,9 @@ Each row is one edit on the previous source (alone, in that order); the library 
 | the second tree, with its default written first | 13755 -> 13464 -> 12296 | `statement_tree_switch` |
 | table row 24 bytes wide, not 23; the converted coordinates staged in locals before the address local | 12296 -> 11136 | (hand) |
 | the info record's field at 0x12 (the flag read), `if (i == k) continue; if (kind == 5) continue;` | 11136 -> 10386 -> 9321 | `or_guard_continue` |
+| the slot count read through `volatile s32 *p` assigned in the loop's test (`i < *(p = &count)`) and in the body's `switch (*p)` | 9321 -> 9151 | `loop_bound_pointer` |
 
-`statement_tree_switch`, `arm_index_offsets` and `or_guard_continue` (decomp-repair, merged) each reproduce their row
+`statement_tree_switch`, `arm_index_offsets`, `or_guard_continue` and `loop_bound_pointer` (decomp-repair) each reproduce their row
 from the source before the edit with the exact judge: the library's child equals the hand edit.
 
 What the compiler did (read from `cc1 -dL -dr -dl -dg` of the candidate; the reasons are hypotheses where not quoted from
@@ -57,7 +58,7 @@ the source of loop.c):
 Failed experiments that would otherwise be repeated:
 
 - `volatile` on the two spilled halfword locals (15795 and 20560): the sign extension no longer folds.
-- the global count read through a pointer local (`s32 *pc = &count;`, 9946-10536): worse than the plain global.
+- the global count through a pointer local assigned before the loop (`s32 *pc = &count;`, volatile or not, 9946-10536): cse folds it back, worse than the plain global; only the volatile pointer assigned inside the loop's test keeps the address in a register (the target's `lui $a1; addiu $a1; lw ($a1)`).
 - `u16`/`s16`/`u32`/`s32` for the two halfword locals, `s32` for the loop counters, `u32` kind: all worse.
 - the case arms in another order (five permutations, 10931 - 14855 at best against 9321).
 - spellings of `2.0f * cy - 34.0f` (`cy * 2`, `cy + cy`, an int `34`): identical code.
@@ -68,5 +69,4 @@ The three families' rows are controlled (the library child reproduces the hand e
 else is one function. Unsolved here: the target keeps both halfword locals in stack slots and gives their registers to
 two hoisted addresses (the loop variable ends in `$fp`); the candidate keeps one of them in `$fp`. The two locals'
 allocation priorities (14 refs / 238 live, 0.176) are above the hoisted addresses' (about 0.09) in every spelling tried;
-the address of the slot count is also kept in a register in the target (`lui $a1; addiu $a1; lw 0($a1)`), which no pointer
-spelling reproduced; and 34.0 is hoisted into an extra callee-saved FP register in the candidate (frame 0xA0, target 0x98).
+`i = 0` sits in the call's delay slot in the target and after the loop's first test here; and 34.0 is hoisted into an extra callee-saved FP register in the candidate (frame 0xA0, target 0x98).
