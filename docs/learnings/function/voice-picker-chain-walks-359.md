@@ -40,7 +40,9 @@ scored 9232 and the steps below took it to 0. Each score is the app's judge on t
    the search loop and `addiu $t7,$zero,0xff` in the inner preheader).
 7. The masked cursor copy `pos = cur & 0xFFFF` as the first statement of the search loop instead of before it and
    after the cursor's step: 1550 -> 1020 (`loop_top_cursor_copy`, new).
-8. Statement placement and operand order: the last compare unsigned (1020 -> 820), `best = -1;` inside the search
+8. The last compare, a masked priority against a stored byte, as an unsigned compare (1020 -> 820,
+   `masked_compare_unsigned`, new; on the earlier form it also took the masked head compare, 2640 -> 2245). Then
+   statement placement and operand order: `best = -1;` inside the search
    `if` (-> 650), `cur = head;` before the third search's guard and its priority recomputed in the loop (-> 430), the
    third loop's cursor copy reused as its product (a `t1` shared, -> 360), and the third loop's compare in the target's
    load order. No family for these but the next one.
@@ -66,7 +68,7 @@ Failed experiments that would otherwise be repeated:
 
 What is controlled evidence and what is one function:
 
-Steps 2, 4, 6, 7, 9 and 11 are controlled on this function: each family, run on the source before the step, produces the
+Steps 2, 4, 6, 7, 8 (the compare), 9 and 11 are controlled on this function: each family, run on the source before the step, produces the
 child that the exact judge scores as above (reproduced in each library test and PR). Everything else is one function.
 Hypotheses, not read in the compiler's source: the guard/loop constant sharing (cse before jump.c's loop-test
 duplication), the second `andi` of the cursor copy (reorg fills the loop-back branch's slot with the first insn of the
