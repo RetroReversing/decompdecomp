@@ -490,7 +490,6 @@ const report={console:'Nintendo 64',kit:{name:'libultraship and Torch',summary:'
    const step=t.run('portSteps(projectReport)').find(x=>x.title==='Calls agree with what they call');
    assert.equal(step.drawer.label,'1,311 calls');
    assert.match(step.help.html,/getScore/,'the ? explains a disagreeing call with an example');
-   step.help.title&&t.run('dialog');
    assert.ok(step.detail.includes(step.drawer.label),'the count is part of the sentence, so it can be the button');
    step.drawer.open();
    assert.match(t.c.drawer.title,/1 functions their callers disagree with/);}
