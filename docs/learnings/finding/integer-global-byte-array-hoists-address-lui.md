@@ -6,7 +6,7 @@ evidence: controlled
 date: 2026-11-24
 ---
 
-A 40-instruction N64 function (a field load plus an integer global inside a `coss(...)` argument) sat at 60 with one
+A 44-instruction N64 function (a field load plus an integer global inside a `coss(...)` argument) sat at 60 with one
 differing row: the target issues `lui $v0, %hi(G)` before the prologue's `sw $ra`, two instructions above its
 `lw $v0, %lo(G)($v0)`; ours put the `lui` next to the `lw`, after the field load.
 
