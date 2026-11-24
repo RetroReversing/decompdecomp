@@ -210,6 +210,12 @@ function recompileStep(report) {
 
 /* The steps, from the report: each {title, pct (null: done or not, no share to show), detail, buttons and logs (the
    panel's own elements, moved into the step)}. */
+// Fix calls by old names has work only where the link check found a call to a renamed function or to a static one;
+// it stays while it runs, so a refresh doesn't drop its button mid-job.
+function needsRenamedCalls(link) {
+  return !!link?.groups?.some((g) => g.kind === "renamed" || g.kind === "static") || !!$("portRenameCalls")?.disabled;
+}
+
 function portSteps(report) {
   const code = report.code, pc = report.pc, link = report.link, assets = report.assets, calls = report.calls;
   const behaviour = report.behaviour, compared = behaviour ? behaviour.same + behaviour.differs : 0;
@@ -228,7 +234,7 @@ function portSteps(report) {
       detail: report.addresses.literals ? `${report.addresses.literals} in ${report.addresses.functions} functions` : "none left" },
     { title: "Compiles for a PC", pct: pc ? pct(pc.ok + pc.warned, pc.total) : 0,
       detail: pc ? `${(pc.ok + pc.warned).toLocaleString()} of ${pc.total.toLocaleString()} functions compile, ${pc.failed} don't`
-        : "not tried yet", buttons: ["portCompile", "portRenameCalls"], logs: ["portCompileLog", "portRenameLog"] },
+        : "not tried yet", failures: pc?.failures, buttons: ["portCompile", ...(needsRenamedCalls(link) ? ["portRenameCalls"] : [])], logs: ["portCompileLog", "portRenameLog"] },
     { title: "Links for a PC", pct: link ? (link.undefined || link.duplicates.length ? null : 100) : 0,
       detail: link ? `${link.undefined.toLocaleString()} symbols needed and defined nowhere`
         + (link.duplicates.length ? `, ${link.duplicates.length} defined twice` : "") : "after Compile for PC" },
@@ -274,6 +280,41 @@ function portSteps(report) {
   return [recompileStep(report), ...steps];
 }
 
+// The functions a PC compile refuses, in the shared side drawer: each a link to its page, with its error kinds and the
+// first error clang gave. Columns sort by their headings (the choice stays while the drawer is open).
+function openPortFailures(failures) {
+  let key = "name", dir = 1;
+  const body = dialog(`${failures.length.toLocaleString()} functions that don't compile for a PC`,
+    `<p class="small muted">Compile for PC refuses these. Open a function to see its C and fix it; the first error is shown here.</p>
+     <table class="compiler-table port-failure-table"><thead><tr></tr></thead><tbody></tbody></table>`, "port-failures");
+  const cols = [["name", "Function"], ["kind", "Kind"], ["message", "First error"]];
+  const value = (f, k) => k === "kind" ? f.kinds.join(", ") : f[k] || "";
+  const draw = () => {
+    const rows = [...failures].sort((x, y) => {
+      const a = value(x, key), b = value(y, key);
+      return (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b, undefined, {numeric: true}) * dir);
+    });
+    body.querySelector("tr").replaceChildren(...cols.map(([k, label]) => {
+      const th = document.createElement("th"); th.scope = "col";
+      th.setAttribute("aria-sort", k === key ? (dir > 0 ? "ascending" : "descending") : "none");
+      const sort = document.createElement("button"); sort.type = "button"; sort.className = "ghost small-btn";
+      sort.textContent = label + (k === key ? (dir > 0 ? " ▲" : " ▼") : "");
+      sort.onclick = () => { dir = k === key ? -dir : 1; key = k; draw(); };
+      th.append(sort); return th;
+    }));
+    body.querySelector("tbody").replaceChildren(...rows.map((f) => {
+      const tr = document.createElement("tr");
+      const name = document.createElement("td"), kind = document.createElement("td"), why = document.createElement("td");
+      const link = document.createElement("button"); link.type = "button"; link.className = "ghost small-btn mono";
+      link.textContent = f.name; link.onclick = () => { closeDialog(); openFn(f.name); };
+      name.append(link); kind.textContent = f.kinds.join(", ") || "error";
+      why.className = "small"; why.textContent = f.message ? `${f.file || "line"}${f.file ? ":" : " "}${f.line}: ${f.message}` : "";
+      tr.append(name, kind, why); return tr;
+    }));
+  };
+  draw();
+}
+
 function renderPortSteps(report, steps = portSteps(report)) {
   const list = $("portSteps");
   if (!list) return;
@@ -305,6 +346,13 @@ function renderPortSteps(report, steps = portSteps(report)) {
     share.textContent = step.status || (step.unavailable ? "not checked" : step.pct == null ? (step.play ? "" : "to do") : step.pct + "%");
     head.append(title, share);
     const detail = document.createElement("p"); detail.className = "small muted"; detail.textContent = step.detail;
+    if (step.failures?.length) {  // the count opens the list
+      const open = document.createElement("button"); open.type = "button"; open.className = "link-btn";
+      open.textContent = `${step.failures.length.toLocaleString()} don't`;
+      open.title = "Show the functions that don't compile, with their first error";
+      open.onclick = () => openPortFailures(step.failures);
+      detail.replaceChildren(step.detail.replace(/\d[\d,]* don't$/, ""), open);
+    }
     body.append(head);
     if (step.pct != null || step.emptyMeter) {
       const meter = document.createElement("div"); meter.className = "meter";
