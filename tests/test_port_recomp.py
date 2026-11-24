@@ -583,3 +583,17 @@ def test_a_call_into_the_games_c_starts_the_v0_word_from_the_callers_v0():
     runtime = recomp.BRIDGE_RUNTIME
     call = runtime.index("port_calls[lo].invoke(")
     assert "STORE_W(16, 0x%(regs)Xu, ctx->r2);" in runtime[:call][-300:]
+
+
+def test_a_longjmp_and_everything_that_calls_it_is_left_to_the_interpreter():
+    """A game's cooperative threads switch contexts with setjmp and longjmp: longjmp loads $sp and $ra from the
+    buffer, which C can't jump to, so as recompiled C the switch returned to longjmp's caller and no game context ever
+    ran. The function that sets $sp from memory and its callers (the yield, the task loop) run in the interpreter; a
+    function that only calls an ordinary one, and a normal epilogue (`addiu $sp`), stay recompiled."""
+    def fn(name, body):
+        return f"RECOMP_FUNC void {name}(uint8_t* rdram, recomp_context* ctx) {{\n{body}    return;\n;}}\n"
+    longjmp = fn("func_80297C7C", "    ctx->r31 = MEM_W(ctx->r4, 0XC);\n    ctx->r29 = MEM_W(ctx->r4, 0X8);\n")
+    yield_ = fn("func_8023903C", "    ctx->r29 = ADD32(ctx->r29, -0X20);\n    func_80297C7C(rdram, ctx);\n")
+    loop = fn("func_8028E614", "    func_8023903C(rdram, ctx);\n")
+    other = fn("func_80001000", "    ctx->r29 = ADD32(ctx->r29, -0X18);\n    func_80001100(rdram, ctx);\n    ctx->r29 = ADD32(ctx->r29, 0X18);\n")
+    assert recomp.unfinished([longjmp + yield_ + loop + other]) == {"func_80297C7C", "func_8023903C", "func_8028E614"}

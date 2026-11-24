@@ -1628,3 +1628,13 @@ int main(int argc, char **argv) {
     subprocess.run([cc, "-o", str(tmp_path / "t"), str(source)], check=True, capture_output=True)
     out = subprocess.run([str(tmp_path / "t"), str(trace)], check=True, capture_output=True, text=True).stdout.split()
     assert out == ["1", "2", "2299", "0", "1", "0"]
+
+
+def test_the_interpreter_can_trace_chosen_addresses_and_say_where_it_is():
+    """PORT_PC_TRACE=addr,... prints the registers each time the interpreter executes one of the addresses (a game's
+    coroutine switch, its dispatcher), and PORT_SAMPLE prints the interpreter's pc: how a game's own control flow is
+    followed when it can't be stepped."""
+    mips = (Path(__file__).resolve().parents[1] / "src/decompnet/consoles/n64/port_wasm/mips.c").read_text()
+    host = (Path(__file__).resolve().parents[1] / "src/decompnet/consoles/n64/port_wasm/host.c").read_text()
+    assert "PORT_PC_TRACE" in mips and "pc_trace(&c, pc)" in mips and "port_interp_pc = pc" in mips
+    assert "interpreter pc: %08X" in host
