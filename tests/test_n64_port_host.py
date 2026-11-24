@@ -1370,6 +1370,7 @@ def test_the_64dd_registers_read_as_open_bus_on_a_console_with_none(tmp_path):
     assert "if (dd_range(dev)) { wbe32(data, open_bus(dev & ~3u)); return 0; }" in text
     assert "if (addr >= 0xA5000000u && addr < 0xA8000000u) { wbe32(IO_SCRATCH, open_bus((uint32_t)addr & ~3u))" in text
 
+
 def test_virtual_time_advances_a_retrace_at_a_time_and_reads_move_it_a_microsecond(tmp_path):
     """PORT_VTIME: the clock the game reads (osGetTime, the count register, the audio interface) is the retrace count's,
     not the wall clock's, so a run is the same on a loaded machine; reads within one retrace still advance it, by a
@@ -1638,3 +1639,29 @@ def test_the_interpreter_can_trace_chosen_addresses_and_say_where_it_is():
     host = (Path(__file__).resolve().parents[1] / "src/decompnet/consoles/n64/port_wasm/host.c").read_text()
     assert "PORT_PC_TRACE" in mips and "pc_trace(&c, pc)" in mips and "port_interp_pc = pc" in mips
     assert "interpreter pc: %08X" in host
+
+
+def test_the_compiled_c_reads_a_low_window_above_the_modules_data_as_ram(tmp_path):
+    """A game maps a page pair at virtual 0x200000 (1 MB pages onto physical 0 and 0x100000) and keeps a class table at
+    virtual 0x43CAE0 in another window: its compiled C read the raw wasm address and got zeros, so a method slot read
+    as null and the call died ('called 00000000'). The loads and stores ask the window table for a window above the
+    module's own data (port_wasm_floor, 1 MB: the stack and the data sit below it), and get the RAM it maps."""
+    cc = shutil.which("cc") or shutil.which("clang") or shutil.which("gcc")
+    if not cc:
+        pytest.skip("no C compiler")
+    text = HOST.read_text()
+    code = text[text.index("static struct { uint32_t entry, target, bss, bss_size; int tv; } boot;"):
+                text.index("/* the console's RAM as the boot leaves it")]
+    source = tmp_path / "t.c"
+    source.write_text(_BOOT_HARNESS + code + """
+int main(void) {
+    port_tlb_write(0x1FE000, 0x200000, 0x1F, 0x401F); /* 1 MB pages, valid: physical 0 and 0x100000 */
+    printf("%u %08X %08X %08X %08X %08X\\n", port_tlb_hi, port_tlb_wasm(0x200010), port_tlb_wasm(0x300010),
+           port_tlb_wasm(0x0FFFF0), port_tlb_wasm(0x400000), port_tlb_wasm(0x9000C));
+    return 0;
+}
+""")
+    subprocess.run([cc, "-o", str(tmp_path / "t"), str(source)], check=True, capture_output=True)
+    done = subprocess.run([str(tmp_path / "t")], capture_output=True, text=True, check=True)
+    # the window's two halves at their spelling (the bytes are copied there), nothing below the floor or past the windows
+    assert done.stdout.split() == ["1", "80200010", "80300010", "000FFFF0", "00400000", "0009000C"]
