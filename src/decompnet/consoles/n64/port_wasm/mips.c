@@ -1163,6 +1163,7 @@ void port_mips_run(uint32_t entry, uint64_t *regs, uint32_t *fregs) {
         if (!(++steps & 0xFFFF)) { /* a thread spinning here gives the others their turn */
             interp_stats(0x10000);
             if (tracing > 1) fprintf(stderr, "interpreter: %08X still running, at %08X after %lu instructions\n", entry, pc, steps);
+            if (tracing >= 3 && steps >= (1ul << 22)) jump_history("a thread still running", pc); /* (a spin: what it was called from) */
 #ifndef PORT_WEB
             port_boot_spin();
 #endif
