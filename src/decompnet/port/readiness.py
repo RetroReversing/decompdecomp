@@ -106,6 +106,16 @@ def _behaviour(net, proj) -> dict | None:
     return s
 
 
+def _render_scan(proj) -> dict | None:
+    """The last Scan for rendering faults (port/render_scan.py), counted: the findings come from /api/render-scan."""
+    from .render_scan import summary
+    saved = summary(Path(proj["root"]))
+    if saved is None:
+        return None
+    return {"at": saved["at"], "settings": saved["settings"], "frames": saved["frames"],
+            "flagged": len(saved["findings"])}
+
+
 def _pictures(net, proj) -> dict | None:
     """The last Check pictures (app/picture_check.py): the port's pictures against the console's, counted. Never run here."""
     from ..app.picture_check import summary
@@ -258,6 +268,7 @@ def _readiness(net, slug: str) -> dict:
         "recomp": _recomp(net, proj) if rom_mode else None,
         "recomp_available": rom_mode and console.recompiler is not None,
         "behaviour": _behaviour(net, proj) if rom_mode else None,
+        "render_scan": _render_scan(proj) if rom_mode else None,
         "behaviour_available": rom_mode and console.recompiler is not None and console.emulator is not None,
         "pictures": _pictures(net, proj) if rom_mode else None,
         "pictures_available": rom_mode and console.emulator is not None,
