@@ -107,6 +107,8 @@ extern unsigned port_tlb_n;
 uint32_t port_tlb_canon(uint32_t a);
 uint32_t port_tlb_alias(uint32_t a);
 uint32_t port_tlb_jump(uint32_t slot, uint32_t imm); /* the target of a j/jal: top bits from the window's virtual base */
+uint32_t port_tlb_call(uint32_t a); /* a call spelled against KSEG0 that a window kept at its physical address maps */
+uint32_t port_tlb_spelled(uint32_t a); /* the project's name (0x80000000 | virtual) for code such a window holds */
 void port_tlb_write(uint32_t pm, uint32_t entry_hi, uint32_t lo0, uint32_t lo1);
 void port_tlb_set(unsigned index, uint32_t pm, uint32_t entry_hi, uint32_t lo0, uint32_t lo1);
 uint32_t port_tlb_probe(uint32_t entry_hi);
@@ -114,7 +116,9 @@ int port_tlb_read(unsigned index, uint32_t *pm, uint32_t *entry_hi, uint32_t *lo
 uint32_t port_tlb_wired(int set, uint32_t value); /* the Wired register: the slots below it are the game's alone */
 int port_tlb_invalid(uint32_t a); /* a page an entry covers with its valid bit clear: TLB Invalid, not a refill */
 int port_tlb_fault(uint32_t epc, uint32_t badvaddr, uint32_t cause); /* host.c: a fault the game's pager answers; 1 once it restarted the thread */
-HOT uint32_t mapped(uint32_t a) { return __builtin_expect(a < 0x80000000u && port_tlb_n, 0) ? port_tlb_canon(a) : a; }
+/* (KSEG0 and KSEG1 are 0x80000000 to 0xBFFFFFFF: the one compare says "outside them", the mapped user, supervisor and
+   KSEG2/KSEG3 space) */
+HOT uint32_t mapped(uint32_t a) { return __builtin_expect(a - 0x80000000u >= 0x40000000u && port_tlb_n, 0) ? port_tlb_canon(a) : a; }
 HOT uint8_t *at_load(uint32_t a) { a = mapped(a); return M + (a >= 0xA0000000u ? (uint32_t)port_io_load(a) : a); }
 HOT uint8_t *at_store(uint32_t a, uint64_t v) { a = mapped(a); return M + (a >= 0xA0000000u ? (uint32_t)port_io_store(a, v) : a); }
 HOT uint32_t lw(uint32_t a) { uint32_t v; memcpy(&v, at_load(a), 4); return __builtin_bswap32(v); }
@@ -574,7 +578,15 @@ const char *port_mips_shape_name(uint32_t vram) {
 /* `shapes`: also ask the structural test. Only a call's target is told by structure: the address a function returns
    to is no call, and a stub that returns into the start of a routine (a program's `jalr $a0`, whose return address is
    the routine after it) ran that routine again and again, each time returning to the same address. */
+static PortMipsCall with_c_at(uint32_t vram, int shapes);
 static PortMipsCall with_c(uint32_t vram, int shapes) {
+    PortMipsCall c = with_c_at(vram, shapes);
+    if (c) return c;
+    /* code a window keeps at its physical address is known by the project's name for it (0x80000000 | virtual) */
+    uint32_t name = port_tlb_spelled(vram);
+    return name != vram ? with_c_at(name, 0) : 0;
+}
+static PortMipsCall with_c_at(uint32_t vram, int shapes) {
     uint32_t slot = (vram >> 2) & (CACHE - 1);
     if (found[slot].vram == vram && (found[slot].call || (!port_mips_pattern_count && !port_mips_shape_count)))
         return found[slot].call;
@@ -933,7 +945,7 @@ static int step(Cpu *c, uint32_t pc, uint32_t op, uint32_t *target) {
 void port_mips_run(uint32_t entry, uint64_t *regs, uint32_t *fregs) {
     if (!M) M = port_memory();
     if (tracing < 0) tracing = getenv("PORT_INTERP_TRACE") ? atoi(getenv("PORT_INTERP_TRACE")) : 0;
-    entry = mapped(entry);
+    entry = port_tlb_call(mapped(entry));
     port_note_entry(entry);
     if (tracing) fprintf(stderr, "interpreter: %08X (%08X, %08X, %08X, %08X)\n", entry, (uint32_t)regs[4],
                          (uint32_t)regs[5], (uint32_t)regs[6], (uint32_t)regs[7]);
@@ -964,7 +976,7 @@ void port_mips_run(uint32_t entry, uint64_t *regs, uint32_t *fregs) {
            EntryHi its address, Cause the code (2, TLBL), EPC the fetch itself. A page that stays faulting after 16
            refills (4 invalid exceptions: a libultra handler that hands the thread to a pager thread through kernel
            state the host does not keep never retries) has no handler that maps it, and the fetch goes on as before. */
-        if (__builtin_expect(pc < 0x80000000u && port_tlb_n && !(c.status & 2u), 0) && mapped(pc) == pc) {
+        if (__builtin_expect(pc - 0x80000000u >= 0x40000000u && port_tlb_n && !(c.status & 2u), 0) && mapped(pc) == pc) {
             uint32_t vector = port_tlb_invalid(pc) ? 0x80000180u : 0x80000000u;
             if (fetch(vector)) {
                 if (pc != fault_pc) { fault_pc = pc; fault_n = 0; }
