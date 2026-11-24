@@ -114,7 +114,9 @@ void port_tlb_set(unsigned index, uint32_t pm, uint32_t entry_hi, uint32_t lo0, 
 uint32_t port_tlb_probe(uint32_t entry_hi);
 int port_tlb_read(unsigned index, uint32_t *pm, uint32_t *entry_hi, uint32_t *lo0, uint32_t *lo1);
 int port_tlb_invalid(uint32_t a); /* a page an entry covers with its valid bit clear: TLB Invalid, not a refill */
-HOT uint32_t mapped(uint32_t a) { return __builtin_expect(a < 0x80000000u && port_tlb_n, 0) ? port_tlb_canon(a) : a; }
+/* (KSEG0 and KSEG1 are 0x80000000 to 0xBFFFFFFF: the one compare says "outside them", the mapped user, supervisor and
+   KSEG2/KSEG3 space) */
+HOT uint32_t mapped(uint32_t a) { return __builtin_expect(a - 0x80000000u >= 0x40000000u && port_tlb_n, 0) ? port_tlb_canon(a) : a; }
 HOT uint8_t *at_load(uint32_t a) { a = mapped(a); return M + (a >= 0xA0000000u ? (uint32_t)port_io_load(a) : a); }
 HOT uint8_t *at_store(uint32_t a, uint64_t v) { a = mapped(a); return M + (a >= 0xA0000000u ? (uint32_t)port_io_store(a, v) : a); }
 HOT uint32_t lw(uint32_t a) { uint32_t v; memcpy(&v, at_load(a), 4); return __builtin_bswap32(v); }
@@ -395,6 +397,24 @@ static unsigned shape_thread_getter(const uint32_t *w, unsigned n) {
     return skip && lui && load && (IMM(last) == 0x14 || IMM(last) == 4) ? IMM(last) : 0;
 }
 
+/* osCreateMesgQueue's registers (sdk_shapes.py queue_creation): every store goes through $a0, the valid count and first
+   are $zero, the count argument ($a2) is stored at +0x10 and the ring's address ($a1) at +0x14, the two lists are a
+   temporary's address (no argument register, not $zero). The offsets alone matched a game's heap initialiser. */
+static int shape_queue_creation_registers(const uint32_t *w, unsigned n) {
+    int reg[6] = {-1, -1, -1, -1, -1, -1};
+    for (unsigned i = 0; i < n; i++) {
+        if (OPC(w[i]) != 0x2B) continue;
+        if (RS(w[i]) != 4) return 0;
+        uint32_t off = IMM(w[i]);
+        if (off > 0x14 || (off & 3)) return 0;
+        reg[off / 4] = (int)RT(w[i]);
+    }
+    for (int k = 0; k < 6; k++) if (reg[k] < 0) return 0;
+    if (reg[2] != 0 || reg[3] != 0 || reg[4] != 6 || reg[5] != 5) return 0;
+    for (int k = 0; k < 2; k++) if (reg[k] == 0 || (reg[k] >= 4 && reg[k] <= 7)) return 0;
+    return 1;
+}
+
 /* sdk_shapes.py's identify(), the same tests over the function's words: the library's name, or 0 */
 static const char *shape_identify_words(const uint32_t *w, unsigned n) {
     unsigned size = n * 4;
@@ -447,7 +467,8 @@ static const char *shape_identify_words(const uint32_t *w, unsigned n) {
         if (f.first_stores == 0 && !f.valid_down && f.valid_up) return "osSendMesg";
         if (f.first_stores == 1 && f.valid_down && f.count_loads >= 3 && f.valid_up) return "osJamMesg";
     }
-    if (size >= 32 && size <= 48 && f.calls == 0 && f.stored == 0x3Fu && !f.wide_load) return "osCreateMesgQueue";
+    if (size >= 32 && size <= 48 && f.calls == 0 && f.stored == 0x3Fu && !f.wide_load
+        && shape_queue_creation_registers(w, n)) return "osCreateMesgQueue";
     if (shape_event_message(w, n, size)) return "osSetEventMesg";
     return shape_hardware(w, n, size, f.calls);
 }
@@ -947,7 +968,7 @@ void port_mips_run(uint32_t entry, uint64_t *regs, uint32_t *fregs) {
            EntryHi its address, Cause the code (2, TLBL), EPC the fetch itself. A page that stays faulting after 16
            refills (4 invalid exceptions: a libultra handler that hands the thread to a pager thread through kernel
            state the host does not keep never retries) has no handler that maps it, and the fetch goes on as before. */
-        if (__builtin_expect(pc < 0x80000000u && port_tlb_n && !(c.status & 2u), 0) && mapped(pc) == pc) {
+        if (__builtin_expect(pc - 0x80000000u >= 0x40000000u && port_tlb_n && !(c.status & 2u), 0) && mapped(pc) == pc) {
             uint32_t vector = port_tlb_invalid(pc) ? 0x80000180u : 0x80000000u;
             if (fetch(vector)) {
                 if (pc != fault_pc) { fault_pc = pc; fault_n = 0; }

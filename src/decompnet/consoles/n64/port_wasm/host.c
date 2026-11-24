@@ -43,10 +43,15 @@ static int verbose = 1;
 
 #define LOG(...) do { if (verbose) { fprintf(stderr, __VA_ARGS__); fputc('\n', stderr); } } while (0)
 
-static uint32_t be32(uint32_t a) { uint32_t v; memcpy(&v, M + a, 4); return __builtin_bswap32(v); }
-static uint16_t be16(uint32_t a) { uint16_t v; memcpy(&v, M + a, 2); return __builtin_bswap16(v); }
-static void wbe32(uint32_t a, uint32_t v) { v = __builtin_bswap32(v); memcpy(M + a, &v, 4); }
-static void wbe16(uint32_t a, uint16_t v) { v = __builtin_bswap16(v); memcpy(M + a, &v, 2); }
+/* A game pointer in KSEG2/KSEG3 (0xC0000000 up: a game that maps its RAM at 0xE0000000 and keeps its queues, threads and
+   buffers there) is read and written where the interpreter and the compiled C find it, at the KSEG0 spelling of the
+   physical RAM it maps (port_tlb_canon); everything below is the console's own unmapped or low memory as before. */
+uint32_t port_tlb_canon(uint32_t a);
+static inline uint32_t gv(uint32_t a) { return __builtin_expect(a >= 0xC0000000u, 0) ? port_tlb_canon(a) : a; }
+static uint32_t be32(uint32_t a) { uint32_t v; memcpy(&v, M + gv(a), 4); return __builtin_bswap32(v); }
+static uint16_t be16(uint32_t a) { uint16_t v; memcpy(&v, M + gv(a), 2); return __builtin_bswap16(v); }
+static void wbe32(uint32_t a, uint32_t v) { v = __builtin_bswap32(v); memcpy(M + gv(a), &v, 4); }
+static void wbe16(uint32_t a, uint16_t v) { v = __builtin_bswap16(v); memcpy(M + gv(a), &v, 2); }
 uint8_t *port_memory(void) { return M; } /* for the renderer (render.c) */
 void port_render_task(uint32_t task); /* render.c: a graphics task's display list, drawn into the game's frame buffer */
 
@@ -84,7 +89,7 @@ void *port_func_as(uint32_t address, const char *type) {
     wasm_rt_funcref_table_t *table = &game.w2c_0x5F_indirect_function_table;
     if (address < table->size && table->data[address].func) return (void *)table->data[address].func;
     /* a function in a TLB window (a thread entry, a callback: 0x100010F8) is named by the physical address it maps */
-    if (port_tlb_n && address < 0x80000000u) address = port_tlb_canon(address);
+    if (port_tlb_n && (address < 0x80000000u || address >= 0xC0000000u)) address = port_tlb_canon(address);
     address = port_tlb_call(address);
     /* a function the game has C for, known by the project's name for its window address */
     uint32_t names[2] = {address, port_tlb_spelled(address)};
@@ -716,7 +721,7 @@ static unsigned long dmas;
    libultra's osVirtualToPhysical asks the TLB): the bytes go where the window keeps that address. Left as it was, the
    transfer wrote the wasm module's own low memory at the virtual address, and the code never reached the window. */
 static u32 dma_ram(u32 dram) {
-    if (dram < 0x80000000u && port_tlb_n) return port_tlb_canon(dram);
+    if (port_tlb_n && (dram < 0x80000000u || dram >= 0xC0000000u)) return port_tlb_canon(dram);
     return dram;
 }
 void port_tlb_physical_use(uint32_t a, uint32_t size); /* below, with the windows */
@@ -1420,7 +1425,9 @@ static void tlb_map(uint32_t pm, uint32_t va, uint32_t even, uint32_t odd) {
     va &= ~(2 * size - 1);
     for (int half = 0; half < 2; half++) {
         uint32_t phys = half ? odd : even, lo = va + (uint32_t)half * size;
-        if (phys == 0xFFFFFFFFu || lo >= 0x80000000u || phys >= 0x00800000u) continue;
+        /* (KSEG0 and KSEG1, 0x80000000 to 0xBFFFFFFF, are not mapped by the TLB; KSEG2 and KSEG3, 0xC0000000 up, are: a
+           game that maps its 8 MB of RAM at 0xE0000000, where its loader decompresses to, needs them) */
+        if (phys == 0xFFFFFFFFu || (lo >= 0x80000000u && lo < 0xC0000000u) || phys >= 0x00800000u) continue;
         unsigned i = 0;
         while (i < port_tlb_n && tlb_win[i].lo != lo) i++;
         /* a window made now is spelled (0x80000000 | virtual) only where the spelling holds nothing: a page of the boot
@@ -1546,7 +1553,7 @@ int port_tlb_invalid(uint32_t a) {
    what the split spells `0x80000000 | virtual` (the bytes at their physical alias); a window higher up (a game that
    maps its code at 0x10000000) can only be named by the physical address it maps, in KSEG0, as the split does. */
 uint32_t port_tlb_canon(uint32_t a) {
-    for (unsigned i = 0; a < 0x80000000u && i < port_tlb_n; i++)
+    for (unsigned i = 0; (a < 0x80000000u || a >= 0xC0000000u) && i < port_tlb_n; i++)
         if (a >= tlb_win[i].lo && a - tlb_win[i].lo < tlb_win[i].size) {
             /* a page at virtual 0 spelled `0x80000000 | virtual` is where libultra's osInitialize writes the exception
                vectors (0x80000000, 0x80000080, 0x80000100, 0x80000180): a game that keeps its own call dispatcher
