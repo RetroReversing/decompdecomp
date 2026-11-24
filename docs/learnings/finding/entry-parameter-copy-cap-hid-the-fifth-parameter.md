@@ -2,7 +2,7 @@
 title: entry parameter copy cap hid the fifth parameter
 kind: finding
 compiler: KMC GCC 2.7.2 (sn-n64-281), -G0 -mips2 -O1
-evidence: one function
+evidence: observation
 date: 2026-11-24
 ---
 
