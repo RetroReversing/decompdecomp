@@ -268,6 +268,8 @@ def test_a_hardware_register_gets_the_value_and_memory_its_big_endian_bytes(tmp_
 static uint64_t told[4]; static int n;
 uint64_t port_io_store(uint64_t addr, uint64_t value) { (void)addr; told[n++] = value; return 48; }
 uint64_t port_io_load(uint64_t addr) { (void)addr; return 48; }
+unsigned port_tlb_n;
+uint32_t port_tlb_canon(uint32_t a) { return a; }
 void port_safe_point(void) {}
 void port_boot_spin(void) {}
 int main(void) {
@@ -603,3 +605,74 @@ def test_a_jr_through_a_copy_of_ra_returns_instead_of_calling_the_callers_next_i
     assert "if ((uint32_t)ctx->r5 == (uint32_t)entry_ra) return;" in first
     assert first.index("entry_ra) return;") < first.index("LOOKUP_FUNC(ctx->r5)")
     assert "entry_ra" not in second  # `jr $ra` is already a return; a function with no other `jr` is left as it is
+
+
+def test_a_longjmp_and_everything_that_calls_it_is_left_to_the_interpreter():
+    """A game's cooperative threads switch contexts with setjmp and longjmp: longjmp loads $sp and $ra from the
+    buffer, which C can't jump to, so as recompiled C the switch returned to longjmp's caller and no game context ever
+    ran. The function that sets $sp from memory and its callers (the yield, the task loop) run in the interpreter; a
+    function that only calls an ordinary one, and a normal epilogue (`addiu $sp`), stay recompiled."""
+    def fn(name, body):
+        return f"RECOMP_FUNC void {name}(uint8_t* rdram, recomp_context* ctx) {{\n{body}    return;\n;}}\n"
+    longjmp = fn("func_80297C7C", "    ctx->r31 = MEM_W(ctx->r4, 0XC);\n    ctx->r29 = MEM_W(ctx->r4, 0X8);\n")
+    yield_ = fn("func_8023903C", "    ctx->r29 = ADD32(ctx->r29, -0X20);\n    func_80297C7C(rdram, ctx);\n")
+    loop = fn("func_8028E614", "    func_8023903C(rdram, ctx);\n")
+    other = fn("func_80001000", "    ctx->r29 = ADD32(ctx->r29, -0X18);\n    func_80001100(rdram, ctx);\n    ctx->r29 = ADD32(ctx->r29, 0X18);\n")
+    assert recomp.unfinished([longjmp + yield_ + loop + other]) == {"func_80297C7C", "func_8023903C", "func_8028E614"}
+
+
+def test_code_loaded_at_run_time_into_another_address_is_guarded_but_the_boot_copy_in_a_window_is_not(tmp_path):
+    """A fighting game's main loop calls the entry of the overlay for its mode by address: the split names one overlay
+    (ROM 0x3000, at 0x80169000) of the several the game loads into that slot, and the call ran that copy while another
+    mode's overlay was in RAM, so its loop spun on zero-length reads. The boot chip copies ROM 0x1000-0x101000 to the
+    entry address: a section anywhere else, or past that megabyte, only gets its address by the game's own loading. A
+    section a whole number of megabytes from where the boot copy put it is the same code spelled through a TLB window
+    (a shooter's program at virtual 0x104400): not an overlay."""
+    image = tmp_path / "rom.z64"
+    blob = bytearray(0x210000)
+    for at in (0x3000, 0x5000, 0x7000, 0x200000):
+        blob[at:at + 4] = (0x27BDFFE0).to_bytes(4, "big")
+    image.write_bytes(bytes(blob))
+    folder = tmp_path / "recomp"
+    folder.mkdir()
+
+    def section(name, rom, vram, fn):
+        return (f'[[section]]\nname = "{name}"\nrom = 0x{rom:X}\nvram = 0x{vram:X}\nsize = 0x20\n\nfunctions = [\n'
+                f'    {{ name = "{fn}", vram = 0x{vram:X}, size = 0x20 }},\n]\n\n')
+    (folder / "syms.toml").write_text(
+        section("entry", 0x1000, 0x80000400, "func_80000400")
+        + section("code_80169000", 0x3000, 0x80169000, "func_80169000")      # an overlay inside the boot megabyte
+        + section("code_80104400", 0x5000, 0x80104400, "func_80104400")      # 0x5000 boots at 0x80004400: +1 MB
+        + section("code_80006400", 0x7000, 0x80006400, "func_80006400")      # the boot copy's own address (plain)
+        + section("code_80200000", 0x200000, 0x80200000, "func_80200000"))   # past the boot copy
+    names = {"func_80000400", "func_80169000", "func_80104400", "func_80006400", "func_80200000"}
+    guards = recomp.overlay_guards(folder, image, names)
+    assert set(guards) == {"func_80169000", "func_80200000"}
+
+
+def test_recompiled_loads_and_stores_go_through_the_games_tlb_windows(tmp_path):
+    """A shooter's startup scanned a table at 0x002021A0 (a TLB window's virtual address) in recompiled code, which
+    read whatever sat at that place in the host's memory, so the list it walks never ended. port_at translates an
+    address the windows map, as the interpreter and the compiled C do."""
+    cc = shutil.which("cc") or shutil.which("clang") or shutil.which("gcc")
+    if cc is None:
+        pytest.skip("no C compiler")
+    (tmp_path / "t.c").write_text("#include <stdint.h>\n#include <stdio.h>\n#include <string.h>\ntypedef uint64_t gpr;\n"
+                                  + recomp.LOADS + r"""
+uint64_t port_io_store(uint64_t a, uint64_t v) { (void)v; return a; }
+uint64_t port_io_load(uint64_t a) { return a; }
+void port_safe_point(void) {}
+unsigned port_tlb_n = 1;
+uint32_t port_tlb_canon(uint32_t a) { return a >= 0x200000u && a < 0x300000u ? 0x80000000u | (a - 0x200000u + 0x1000u) : a; }
+/* the offsets port_at hands back from a base of 0: no memory is read */
+int main(void) {
+    uint8_t *base = 0;
+    printf("%lX %lX %lX\n", (unsigned long)(port_at(base, 0x2021A0, 0, 0) - base),
+           (unsigned long)(port_at(base, 0x80000100u, 0, 0) - base), (unsigned long)(port_at(base, 0x1000, 0, 0) - base));
+    return 0;
+}
+""")
+    subprocess.run([cc, "-o", str(tmp_path / "t"), str(tmp_path / "t.c")], check=True)
+    done = subprocess.run([str(tmp_path / "t")], capture_output=True, text=True, check=True)
+    # the window's address is where it maps; KSEG0 and an address no window covers are as they were
+    assert done.stdout.split() == ["800031A0", "80000100", "1000"]

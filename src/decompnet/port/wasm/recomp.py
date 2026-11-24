@@ -74,8 +74,15 @@ uint64_t port_io_load(uint64_t addr);
 uint64_t port_io_store(uint64_t addr, uint64_t value);
 /* the console's memory as the port keeps it: big-endian, at the console's own addresses from `rdram` (the host's
    memory base); uncached RAM and the hardware's registers through the host, as the WebAssembly code reaches them */
+extern unsigned port_tlb_n;
+uint32_t port_tlb_canon(uint32_t a);
 static inline uint8_t *port_at(uint8_t *rdram, gpr a, int store, uint64_t v) {
     uint32_t x = (uint32_t)a;
+    /* an address the game's own TLB maps (a table read at 0x002021A0 through a window, the program linked at a
+       virtual base) is the physical RAM it names: the same translation as the interpreter's and the compiled C's. A
+       shooter's startup scanned a table at such an address and read whatever sat at that place in the host's memory,
+       so its list never ended. */
+    if (__builtin_expect(x < 0x80000000u || x >= 0xC0000000u, 0) && port_tlb_n) x = port_tlb_canon(x);
     if (x >= 0xA0000000u) x = (uint32_t)(store ? port_io_store(x, v) : port_io_load(x));
     return rdram + x;
 }
@@ -297,6 +304,32 @@ def code_hash(words) -> int:
     return h
 
 
+BOOT_COPY = (0x1000, 0x101000)  # the ROM bytes the boot chip copies to the entry address: the first megabyte after the header
+
+
+def boot_delta(slots) -> int | None:
+    """vram - rom of the code the boot chip copied (the section that holds ROM 0x1000), or None if the split has none."""
+    for a, b, ra, rb, _ in slots:
+        if ra <= BOOT_COPY[0] < rb and b > a:
+            return a - ra
+    return None
+
+
+def loaded_at_run_time(vram: int, rom: int, boot: int | None) -> bool:
+    """Whether a section's code only gets to its address by the game's own loading: ROM the boot copy doesn't reach, or
+    reaches at another address. A game's overlay for one state of its main loop sits in a section like this (a
+    fighting game loads each mode's overlay into one slot: the split names the one it analysed, and a call by address
+    ran that copy while another mode's overlay was in RAM, so its mode loop never advanced)."""
+    if boot is None:
+        return False
+    if rom >= BOOT_COPY[1]:
+        return True
+    # a whole number of megabytes from where the boot copy put those bytes: the code the boot chip copied, spelled
+    # the way its TLB window names it (a third-person game's program at virtual 0x103060, its bytes at 0x3060): the
+    # same code, not an overlay
+    return rom >= BOOT_COPY[0] and vram - rom != boot and (vram - rom - boot) % 0x100000 != 0
+
+
 def overlay_guards(folder: Path, image: Path | None, defined: set[str]) -> dict[str, tuple[int, int, int]]:
     """{C function: (its address, words hashed, their hash)} for the functions whose addresses are shared by code from
     different places in the ROM: overlays the game loads into one slot, one at a time. The split lists each overlay's
@@ -338,11 +371,13 @@ def overlay_guards(folder: Path, image: Path | None, defined: set[str]) -> dict[
     # (a puzzle game's main thread spun in the one function of the first slot that no other overlay's listed
     # function overlapped, with another overlay loaded there).
     loaded = [(a, b) for a, b, ra, rb, raw in slots if raw and b > a]
+    boot = boot_delta(slots)
     for k, (a, b, ra, rb, raw) in enumerate(slots):
         if b <= a:
             continue
-        if raw or any(a < b2 and a2 < b and (ra, rb) != (ra2, rb2)
-                      for m, (a2, b2, ra2, rb2, _) in enumerate(slots) if m != k):
+        if raw or loaded_at_run_time(a, ra, boot) or any(
+                a < b2 and a2 < b and (ra, rb) != (ra2, rb2)
+                for m, (a2, b2, ra2, rb2, _) in enumerate(slots) if m != k):
             loaded.append((a, b))
     if loaded:
         shared.update(i for i, (vram, end, _, _) in enumerate(entries)
@@ -418,12 +453,25 @@ def _addresses(fixed: list[str]) -> dict[str, int]:
     return where
 
 
+# a function that sets $sp from memory (`lw $sp, 8($a0)`: the end of a longjmp, a coroutine or thread switch): the C
+# of one ends in `return;`, not in the jump `jr $ra` made to the address it loaded
+STACK_FROM_MEMORY = re.compile(r"ctx->r29 = MEM_[A-Z]+\(")
+
+
 def unfinished(texts) -> set[str]:
     """The recompiled functions whose C can't compile as N64Recomp wrote it: a branch to a label the function doesn't
     have (a racing game's func_800424C0 branched past its end in the split, to L_80042650), and those that raise a
-    SYSCALL. Each runs only as the game's C, or is a stub that says so (the interpreter runs it from RAM)."""
+    SYSCALL. Each runs only as the game's C, or is a stub that says so (the interpreter runs it from RAM).
+
+    A game with coroutines of its own (a cooperative thread library over setjmp and longjmp: a shooter's scheduler
+    switches between its game's contexts) can't run them as C either: longjmp loads $sp and $ra from its buffer and
+    jumps to the address it saved, which C can't do, so the switch only returned to longjmp's caller and the game's
+    contexts never ran (0 graphics tasks for ever). The function that sets the stack from memory, and every function
+    that calls one, down to the game's contexts, run in the interpreter, which keeps the whole register state."""
     from ..csource import items
     out = set()
+    calls: dict[str, set[str]] = {}
+    switchers = set()
     for text in texts:
         for chunk, name, _ in items(text):
             if name and set(re.findall(r"goto (L_[0-9A-Fa-f]+);", chunk)) - set(re.findall(r"^\s*(L_[0-9A-Fa-f]+):", chunk, re.M)):
@@ -432,6 +480,22 @@ def unfinished(texts) -> set[str]:
             # words): recompiled C has no exception to take, so the interpreter runs such a function from RAM
             elif name and "recomp_syscall_handler(" in chunk:
                 out.add(name)
+            if name:
+                if STACK_FROM_MEMORY.search(chunk):
+                    switchers.add(name)
+                calls[name] = set(CALL.findall(chunk)) - {name}
+    if switchers:
+        callers: dict[str, set[str]] = {}
+        for caller, callees in calls.items():
+            for callee in callees:
+                callers.setdefault(callee, set()).add(caller)
+        todo = list(switchers)
+        out |= switchers
+        while todo:
+            for caller in callers.get(todo.pop(), ()):
+                if caller not in out:
+                    out.add(caller)
+                    todo.append(caller)
     return out
 
 
