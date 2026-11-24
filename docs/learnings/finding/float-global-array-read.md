@@ -14,7 +14,7 @@ result in `$v1`. The saved best, with `extern f32 G;`, read both through `$at` a
 The source change, and the measured result before and after (scores, the judge used): two parts that only pay off together.
 Declare the first global `extern f32 G[];` and read `G[0]` (alone: 115, the load pair is right but the call result lands
 in `$a0`); then read the element into a local right after the call and compare the local (`f = G[0];` after
-`temp = call();`): 0. The fast judge scored 10 -> 0. decomp-repair `float_global_array_read` (0.5.1002 or later) offers both
+`temp = call();`): 0. The fast judge scored 10 -> 0. decomp-repair `float_global_array_read` (0.5.1003 or later) offers both
 as children, one per statement boundary for the local; `prove_chain.py --families all` reached 0 in one step.
 
 Failed experiments that would otherwise be repeated: a scalar extern with pointer casts, `*(f32 *)&G`, `volatile`,
