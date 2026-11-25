@@ -12,9 +12,11 @@ description: Match one function by hand against the running decompdecomp app, th
 - Never leave copies of this skill's text anywhere, including `~/.claude` tool-result files: delete them after reading.
 - Never touch, restart or update the user's running app or the primary checkout.
 - No Deep Permuter and no `scratch_run.py` (see below).
-- A matching agent started by a coordinator opens no PRs and makes no decomp-repair changes: it matches, and writes what
-  the permuter lacked into its note and report (builders turn those into families). Steps 5 and 6 below apply when you
-  are asked to land permuter work yourself.
+- **Haiku: never change the repo and never open a PR.** Write the repair report instead (the symptom, the exact C
+  before/after, the profile, which function it fixed) in `report_repair` and in your final report; a Sonnet builder
+  implements it. **Every other model (Sonnet, Opus, ...): land the repair as a merged PR** (a decomp-repair family or
+  an app change; follow the flow in AGENTS.md: decomp-repair PR, release tag, then the pin PR the library-pin workflow
+  opens), so the Deep Permuter finds the match by itself next time. Step 5 below is that flow.
 - No `try_compiler` and no compiler ranges. The app's `compiler_experiments` trials plus `suggest` (First moves) are the
   way to change a function's profile.
 - At most 2 parallel judge runs, and one agent runs ONE judge or compile process at a time (parallel grids overloaded the
