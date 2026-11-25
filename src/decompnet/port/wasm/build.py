@@ -1234,9 +1234,22 @@ def build(repo: Path, *, console: str = "n64", log=print, steps=STEPS, leave_out
                           library_c=library_c or {}, library_names=library_names or {}, recomp=recomp,
                           function_headers=function_headers, ensure_host_import=ensure_host_import,
                           runtime_image=runtime_image, code_offsets=code_offsets)
+        placed_by_original: set[str] = set()
+
+        def attempt(names):
+            while True:
+                try:
+                    return run(names | placed_by_original)
+                except _PlaceFallback as retry:
+                    fresh = retry.names - placed_by_original - names
+                    if not fresh:
+                        raise NetworkError(str(retry)) from None
+                    placed_by_original.update(fresh)
+                    log(f"{len(fresh)} functions whose C compiles but can't be placed run as the original's code "
+                        f"instead: {', '.join(sorted(fresh)[:4])}{'…' if len(fresh) > 4 else ''}")
         state = repo / "port" / "wasm" / "void_result.txt"
         known = set(state.read_text(encoding="utf-8").split()) if state.is_file() else set()
-        program = run(known)
+        program = attempt(known)
         # A function whose C is declared void while a caller takes its result: a machine draft of a function that
         # returns a pointer in $v0 (`lw $v0, ...; jr $ra; sw $zero, 4($v0)`) compiles to the same bytes as the void
         # draft, but in WebAssembly its callers' result is nothing (0): a file open took its error branch at once
@@ -1247,8 +1260,17 @@ def build(repo: Path, *, console: str = "n64", log=print, steps=STEPS, leave_out
                 "original's code instead")
             known |= found
             _write(state, "\n".join(sorted(known)) + "\n")
-            program = run(known)
+            program = attempt(known)
         return program
+
+
+class _PlaceFallback(NetworkError):
+    """Some functions' C compiled but could not be placed at their console addresses (an LLVM backend error on that
+    file): they can run as the original's code, as a file clang rejects does. `names` are the functions."""
+
+    def __init__(self, message: str, names: set[str]):
+        super().__init__(message)
+        self.names = names
 
 
 def _build(repo: Path, *, console: str, log, steps, leave_out, universal: bool = False, library_c=None,
@@ -1416,7 +1438,13 @@ def _build(repo: Path, *, console: str, log, steps, leave_out, universal: bool =
     progress.start(STEPS[3])
     log("placing every symbol at its console address, data big-endian")
     if failed := place_all(out, lls, set(functions), zig, env, log, progress.files):
-        raise NetworkError(f"{len(failed)} functions couldn't be placed at their addresses: " + "; ".join(failed[:3]))
+        message = f"{len(failed)} functions couldn't be placed at their addresses: " + "; ".join(failed[:3])
+        # a file whose C compiled but the backend cannot place runs as the original's code, as a file clang rejects does
+        named = [(m.group(1) + ".c", f) for f in failed if (m := re.search(r"[/\\]ll[/\\]([^/\\\s:]+)\.ll", f))]
+        if len(named) == len(failed) and (fallen := fallback_failed_sources(
+                [f"{name}: {why}" for name, why in named], sources, repo, out, fixed)):
+            raise _PlaceFallback(message, {name.removesuffix(".c") for name in fallen})
+        raise NetworkError(message)
     objects = linked(out / "o", {*sources, *library})
     _write(out / "objects.txt", "\n".join(str(p) for p in objects) + "\n")
     from . import calls

@@ -1257,3 +1257,33 @@ def test_a_function_whose_c_returns_nothing_but_whose_caller_uses_a_result_is_fo
         "func_80001000": [{"callee": "func_80002000", "caller": "func_80001000", "kind": "missing-arguments"}]}))
     assert void_result_callees(calls) == {"func_80092B44"}
     assert void_result_callees(tmp_path / "none.json") == set()
+
+
+def test_functions_that_compile_but_cannot_be_placed_run_as_original_code(tmp_path, monkeypatch):
+    """A file the bitfield rewrite used to break (its layout asserts failed) fell back to the original's code; once its
+    structs were right it compiled and the LLVM backend then refused to place it, which failed the whole build. A
+    function that can't be placed is left out of the next attempt, as one clang rejects is."""
+    from contextlib import nullcontext
+
+    from decompnet.app import recompile
+    from decompnet.port.wasm import build
+
+    monkeypatch.setattr(recompile, "build_turn", lambda *a, **k: nullcontext())
+    calls = []
+
+    def fake_build(repo, **kwargs):
+        calls.append(set(kwargs["leave_out"]))
+        if len(calls) == 1:
+            raise build._PlaceFallback("1 functions couldn't be placed", {"func_8026F8E8"})
+        return tmp_path / "port" / "wasm" / "build" / "game"
+    monkeypatch.setattr(build, "_build", fake_build)
+    logged = []
+    build.build(tmp_path, log=logged.append)
+    assert len(calls) == 2 and "func_8026F8E8.c" in calls[1] and not calls[0]
+    assert any("can't be placed run as the original's code" in line for line in logged)
+    # the same function failing again is an error, not a loop
+    monkeypatch.setattr(build, "_build", lambda repo, **k: (_ for _ in ()).throw(
+        build._PlaceFallback("couldn't be placed", {"func_8026F8E8"})))
+    import pytest
+    with pytest.raises(Exception, match="couldn't be placed"):
+        build.build(tmp_path, log=logged.append)

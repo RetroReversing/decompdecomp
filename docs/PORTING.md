@@ -478,6 +478,10 @@ on lines of their own, several on one line (`u32 a:8; u32 b:8;`), comma-separate
 inline `struct { ... } bits;`, as `unsigned x : 4;`, after a smaller member that shares their word, and bits that a
 member after them shares (kept in the smallest unit that holds them, the struct as aligned as its declared type).
 Every project in the dev home passes the check (tests/test_bitfield_layout.py has the cases that failed it).
+With the layouts right, files that used to fail to compile (a game's own `audio_ctx_assert_0x5368[offsetof == 0x5368 ? 1 : -1]`
+layout asserts) compile, and a few then meet an LLVM backend error (`Function addresses with offsets not supported`) while
+placing their symbols. A function whose C compiles but cannot be placed runs as the original's code in a second attempt,
+as one clang rejects does (`build._PlaceFallback`).
 
 #### Functions with no C yet
 
