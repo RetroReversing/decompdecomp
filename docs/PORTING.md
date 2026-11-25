@@ -1074,3 +1074,9 @@ held (a pause toggled, a repeat), via the emulator's watch on the controller dat
 the last windows ending at task 9,003): every one of the 74 pictures 0.00% differing, both buffers, every task of every window, across the race grid, the start and the stages after. The runs that compared nothing were the port
 stalling on a loaded computer (a load average of 12-40 while other jobs ran: the port's virtual time waits for its threads to idle in wall-clock time), not seeds or inputs; the same inputs on a quiet one reached task 1,885 in 24 virtual seconds where a loaded one reached 9 to 495.
 So with taps the port matches the console to the pixel over thousands of frames of play; what does not (the held 50-frame presses, the demo race's opponent car at tasks 614-621) is the open part.
+
+**How much the game reads the clock (console, retraces 520-600; `emulator.run(breaks=[0x8008BADC], record=...)` at osGetTime's return, the 64-bit time from the recorded $v0/$v1).** The game reads `osGetTime` 27 times in each heavy retrace
+(the one a task frame starts at) and 6 in each light one, from a handful of callers (0x80014224, 0x800142C4, 0x80014324, 0x8001416C, 0x80013F6C, 0x80013ED0), the timing code around 0x80013ED0-0x80014324. The counter runs at about 1.57 million ticks a retrace,
+and the gaps between consecutive reads range from 130 ticks to 1.8 million (a whole retrace), median about 3,000: it is measuring the cycles its own code takes. The port answers each read from its virtual clock (a retrace's worth
+advanced by whole steps and small sub-steps), so any decision the game takes from these measurements (a detail level, a frame skip, a time step) can come out otherwise there. This makes the clock-step hypothesis for held buttons
+(taps exact, holds drifting) a specific one to test: log the port's `osGetTime` at the same call sites and compare the reads that reach a decision with the console's.
