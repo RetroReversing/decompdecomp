@@ -142,7 +142,7 @@ improvements found during the run merged with their tests.
 - Keep a private checkpoint with the latest live verdict, the measured search seeds and their scores, pending
   MCP calls, the next experiment, and open PRs. Resume from it across context changes.
   A plateau calls for a different experiment. Keep the claim while working on the match.
-- Report success after the judge records 0 and the tested permuter improvements from step 5 are merged.
+- Report success after the judge records 0 and (Sonnet, Opus and other non-Haiku models) the tested permuter improvements from step 5 are merged; a Haiku agent reports the repair instead.
 
 The aim is two things, and a run that delivers only the first has not finished:
 
