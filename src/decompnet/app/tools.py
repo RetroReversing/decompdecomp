@@ -1211,6 +1211,12 @@ QUICK_TOOLS = frozenset({
     'inspect_asset_region', 'report_data_region', 'report_boundary', 'suggest_boundary', 'port_readiness', 'get_data_unit', 'claim_data', 'release_data',
     'claim_port_fix', 'release_port_fix',
 })
+# Ultra-fast handshake and metadata reads get their own lane so slower claim/search/candidate calls
+# cannot queue project_info or get_claims into MCP -32001 timeouts.
+FAST_TOOLS = frozenset({
+    'guide', 'project_info', 'get_claims', 'list_functions', 'file_status', 'compiler_map', 'read_file',
+})
+FAST_LANE = 16
 QUICK_LANE = 16
 WORK_LANE = 32
 
@@ -1226,6 +1232,7 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
     health_limiter = anyio.CapacityLimiter(2)
     # Tool calls have threads of their own, apart from the window's (anyio's shared default of 40), and quick
     # tools have their own lane: a burst of compiles can't make guide or get_claims wait (MCP error -32001).
+    fast_limiter = anyio.CapacityLimiter(FAST_LANE)
     quick_limiter = anyio.CapacityLimiter(QUICK_LANE)
     work_limiter = anyio.CapacityLimiter(WORK_LANE)
     async def run(ctx: Context, name: str, /, **args) -> str:
@@ -1293,7 +1300,7 @@ def build_mcp(net: RomNetwork, agent_of: Callable[[Context], tuple[Agent, str]],
             if error:
                 raise error
             return result
-        lane = health_limiter if checking else quick_limiter if name in QUICK_TOOLS else work_limiter
+        lane = health_limiter if checking else fast_limiter if name in FAST_TOOLS else quick_limiter if name in QUICK_TOOLS else work_limiter
         return await anyio.to_thread.run_sync(execute,limiter=lane)
 
     def tool(fn):
