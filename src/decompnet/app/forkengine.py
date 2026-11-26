@@ -61,6 +61,7 @@ from ..request_timing import build as timed_build
 from ..rom import RomError
 from ..scoring import percent_text
 from ..textedit import replace_once
+from ..writer_gate import WriterGate
 
 _REPO = re.compile(r"^(https://(github\.com|gitlab\.com|codeberg\.org|git\.[\w.-]+)/[\w.-]+/[\w.-]+?)(\.git)?/?$")
 # A match has to come from C/C++: no inline assembly, asm functions, asm includes or embedded binaries.
@@ -148,6 +149,48 @@ def scaled(fuzzy: float | None, n_insns: int) -> int:
     if fuzzy is None:
         return n_insns * 100
     return 0 if fuzzy >= 100 else max(1, round((1 - fuzzy / 100) * n_insns * 100))
+
+
+class _KeyedLocks(dict):
+    """Thread-safe lazy mapping from lock key to a cross-process lock instance."""
+
+    def __init__(self, factory):
+        super().__init__()
+        self._factory = factory
+        self._guard = threading.Lock()
+
+    def __missing__(self, key):
+        with self._guard:
+            if key in self:
+                return self[key]
+            lock = self._factory(key)
+            self[key] = lock
+            return lock
+
+
+class _CrossProcessLock:
+    """Reentrant in-process and cross-process advisory lock backed by WriterGate."""
+
+    def __init__(self, path: Path | None):
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._gate = WriterGate(path)
+        else:
+            self._gate = WriterGate(":memory:")
+        self._local = threading.local()
+
+    def __enter__(self):
+        ctx = self._gate.hold()
+        ctx.__enter__()
+        stack = getattr(self._local, "stack", None)
+        if stack is None:
+            stack = self._local.stack = []
+        stack.append(ctx)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        ctx = self._local.stack.pop()
+        return ctx.__exit__(exc_type, exc_val, exc_tb)
 
 
 class _TreeLock:
@@ -545,10 +588,18 @@ class ForkEngine:
     def __init__(self, net):
         self.net = net
         self._trees: dict[int, _TreeLock] = defaultdict(_TreeLock)  # project id -> its source tree's lock
-        self._unit_locks: dict[tuple[int, str], threading.RLock] = defaultdict(threading.RLock)
-        self._build_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)  # one build at a time per tree
+        self._unit_locks: dict[tuple[int, str], _CrossProcessLock] = _KeyedLocks(
+            lambda key: _CrossProcessLock(
+                self._lock_path(key[0], f"unit-{hashlib.sha1(key[1].encode('utf-8')).hexdigest()[:16]}")
+            )
+        )
+        self._build_locks: dict[int, _CrossProcessLock] = _KeyedLocks(
+            lambda pid: _CrossProcessLock(self._lock_path(pid, "build"))
+        )  # one build at a time per tree
         self._unit_builds: dict[int, _UnitBuilds] = defaultdict(_UnitBuilds)  # project id -> its units' builds
-        self._git_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)
+        self._git_locks: dict[int, _CrossProcessLock] = _KeyedLocks(
+            lambda pid: _CrossProcessLock(self._lock_path(pid, "git"))
+        )
         self._mlock = threading.Lock()
         # (project id, unit) -> (sha1 of its source, base object mtime, {function: match %}): what objdiff said
         # the last time it measured the unit, so a compile doesn't need a second objdiff run to know the baseline
@@ -609,13 +660,18 @@ class ForkEngine:
 
     # ------------------------------------------------------------------ locks, builds, baselines
 
-    def _tree(self, proj) -> _TreeLock:
-        with self._mlock:
-            return self._trees[proj["id"]]
+    def _lock_path(self, proj_id: int, name: str) -> Path | None:
+        store = getattr(self.net, "store", None)
+        db_path = getattr(store, "path", None)
+        if not db_path or str(db_path) == ":memory:":
+            return None
+        return Path(db_path).resolve().parent / "locks" / f"project-{proj_id}" / name
 
-    def _unit_lock(self, proj, unit: str) -> threading.RLock:
-        with self._mlock:
-            return self._unit_locks[(proj["id"], unit)]
+    def _tree(self, proj) -> _TreeLock:
+        return self._trees[proj["id"]]
+
+    def _unit_lock(self, proj, unit: str) -> _CrossProcessLock:
+        return self._unit_locks[(proj["id"], unit)]
 
     @contextmanager
     def _units_locked(self, proj, names: list[str]):
