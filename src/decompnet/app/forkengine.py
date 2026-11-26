@@ -16,9 +16,11 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import struct
 import subprocess
+import tempfile
 import threading
 import time
 from collections import defaultdict
@@ -564,6 +566,7 @@ class ForkEngine:
         self._preflight_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)
         self._preflighted: set[int] = set()  # projects checked since the app started (overview's check)
         self._parts: dict[Path, tuple] = {}  # project root -> (its config files' stat, _file_parts' answer)
+        self._direct_cmds: dict[tuple[str, str], tuple[int, list[str] | None]] = {}
 
     # ------------------------------------------------------------------ pre-flight
 
@@ -3283,6 +3286,122 @@ class ForkEngine:
         after = _with_includes(after, includes, prelude)
         return code, after, path, before
 
+    def _direct_compile_cmd(self, fp: ForkProject, unit) -> list[str] | None:
+        """Cached direct MWCC compiler command for lock-free temp-file trials (ninja -t commands)."""
+        if unit.base is None or not unit.source:
+            return None
+        build_ninja = fp.root / "build.ninja"
+        if not build_ninja.exists():
+            return None
+        try:
+            mtime = build_ninja.stat().st_mtime_ns
+        except OSError:
+            return None
+        rel_base = os.path.normpath(os.path.relpath(unit.base, fp.root))
+        cache_key = (str(fp.root), rel_base)
+        with self._mlock:
+            hit = self._direct_cmds.get(cache_key)
+        if hit is not None and hit[0] == mtime:
+            return hit[1]
+        argv: list[str] | None = None
+        try:
+            res = subprocess.run(
+                ["ninja", "-t", "commands", rel_base],
+                cwd=fp.root,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if res.returncode == 0:
+                mwcc_lines = [ln.strip() for ln in res.stdout.splitlines() if "mwcceppc.exe" in ln]
+                if mwcc_lines:
+                    compile_part = mwcc_lines[-1].split("&&")[0].strip()
+                    parsed = shlex.split(compile_part)
+                    if "-c" in parsed and "-o" in parsed:
+                        argv = parsed
+        except (OSError, subprocess.SubprocessError, ValueError):
+            argv = None
+        with self._mlock:
+            self._direct_cmds[cache_key] = (mtime, argv)
+        return argv
+
+    def _direct_trial_attempt(self, agent: Agent, proj, fp: ForkProject, cfg: dict, unit, fn: dict, symbol: str,
+                              source: str, names: list[str], comment: bool, prelude: str, quiet: int | None,
+                              diagnostic: bool) -> dict | None:
+        """Compile a non-kept trial directly in a private temp directory without touching the working tree or ninja.
+        Returns None when direct compilation isn't supported for this unit or when a 100% match needs the normal
+        locked verification and commit path."""
+        template = self._direct_compile_cmd(fp, unit)
+        if template is None or unit.target is None:
+            return None
+        if not diagnostic and fn["status"] == "matched":
+            return {"text": f"{fn['name']} is already matched.", "matched": False, "score": None}
+        code, after, path, _ = self._place(proj, fp, unit, fn, source, names, comment, prelude)
+        with tempfile.TemporaryDirectory(prefix="decomp-trial-") as td:
+            td_path = Path(td)
+            tmp_src = td_path / path.name
+            tmp_src.write_text(after, encoding="utf-8")
+            argv: list[str] = []
+            i = 0
+            while i < len(template):
+                tok = template[i]
+                if tok == "-MMD":
+                    i += 1
+                elif tok == "-c" and i + 1 < len(template):
+                    argv += ["-i", str((fp.root / template[i + 1]).parent), "-c", str(tmp_src)]
+                    i += 2
+                elif tok == "-o" and i + 1 < len(template):
+                    argv += ["-o", str(td_path)]
+                    i += 2
+                else:
+                    argv.append(tok)
+                    i += 1
+            try:
+                res = subprocess.run(argv, cwd=fp.root, capture_output=True, text=True, errors="replace", timeout=120)
+            except (OSError, subprocess.SubprocessError):
+                return None
+            tmp_obj = td_path / f"{path.stem}.o"
+            if res.returncode != 0 or not tmp_obj.exists():
+                log = (res.stdout or "") + (res.stderr or "")
+                if quiet is None:
+                    self.net._record(fn, agent, None, code, 0)
+                return {"text": f"❌ BUILD ERROR (your change was undone)\n{log[-3000:]}", "score": None,
+                        "matched": False}
+            try:
+                d = objdiff.diff(unit.target, tmp_obj, symbol, cwd=fp.root, options=fp.diff_options(unit))
+            except (ObjdiffError, ForkError) as e:
+                return {"text": f"❌ objdiff couldn't compare (your change was undone): {e}", "score": None,
+                        "matched": False}
+            if d.matched and not diagnostic:
+                return None  # 100% match: fall through to locked path for protected checks + git commit
+            if quiet is None:
+                d.rows = with_constant_values(d.rows, consoles.get(cfg.get("platform")), fp)
+                self.net.keep_diff(agent.id, fn["id"], d.rows, objdiff.LEGEND)
+            from decomprepair import repair_localisation
+
+            from ..source_lines import render_candidate
+            from . import imported_output
+
+            mapped, mapped_source = self._source_mismatches(fp, unit, fn, d.rows)
+            line_note = render_candidate(mapped, mapped_source, source)
+            compiled_output = imported_output.read(tmp_obj, symbol)
+            evidence = {"compiled_output": compiled_output, "exact": bool(d.matched), "new_match": False,
+                        "adopted": False}
+            locations = repair_localisation.rebase(source, mapped_source, mapped)
+            if locations:
+                evidence["repair_locations"] = locations
+            pct = d.match_percent if d.match_percent is not None else 0.0
+            score = max(1, len(d.literals)) if d.literals else scaled(pct, fn["n_insns"])
+            if diagnostic:
+                return {**evidence,
+                        "text": ("MATCH! diagnostic only" if d.matched else f"score {score} ({pct:.1f}%)")
+                                + "; source restored.",
+                        "score": score, "matched": d.matched, "percent": pct, "rows": d.rows, "line_note": line_note}
+            if quiet is None or score < quiet:
+                self.net._record(fn, agent, score, code, 0, compiled=True, mismatch_rows=d.rows)
+            return {**evidence, "text": f"{percent_text(pct)} match (score {score}); not kept in {unit.source}",
+                    "score": score, "matched": False, "percent": pct}
+
     def _attempt(self, agent: Agent, slug: str, function: str, source: str, keep: bool = True, prelude: str = "",
                  quiet: int | None = None, comment: bool = False, diagnostic: bool = False, *,
                  background: bool = False, exact_only: bool = False) -> dict:
@@ -3314,6 +3433,11 @@ class ForkEngine:
             raise NetworkError(f"unit {unit.name} has no source file, so there's nowhere to write it")
         symbol = meta.get("symbol") or fn["name"]
         linked = fp.source_is_linked(unit)  # the game is built from this file: changes must keep it identical
+        if not keep and not linked and not structor and not exact_only:
+            direct = self._direct_trial_attempt(agent, proj, fp, cfg, unit, fn, symbol, source, names, comment,
+                                                prelude, quiet, diagnostic)
+            if direct is not None:
+                return direct
         with self._tree(proj).exclusive() if linked else self._tree(proj).shared(), self._unit_lock(proj, unit.name):
             fn = self._fn(slug, function)
             previous = self._current_source(fp, fn, comment=True) if fn['status'] == 'matched' else None
