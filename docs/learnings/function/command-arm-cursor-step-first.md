@@ -4,7 +4,7 @@ kind: function
 compiler: sn-n64-281 -G0 -mips3 -O2 -mgas -meb -mcpu=VR4300 -mhard-float (and -mfp32)
 evidence: observation
 date: 2026-11-26
-families: cursor_advance_first
+families: cursor_advance_first, block_local_share
 ---
 
 What the function (or case) looked like and the exact compiler and flags:
@@ -31,7 +31,16 @@ Failed experiments that would otherwise be repeated:
 - The same step-first edit in the first arm as well: 2220 (that arm's target order is loads first).
 - In the second arm, `c` in `c2`, `w1` written without `c`, or `w1` stored first: 1690, 1675, 1575. The arms' tails still
   differ in registers (`_g`/`c` in `$a1`/`$a0` against the target's `$a0`/`$a1`), so the first arm's `j` into the
-  second arm's tail (cross-jumping) is not reproduced yet.
+  second arm's tail (cross-jumping) is not reproduced by these.
+
+Next step, which did reproduce it: the two arms' block pointers (`{ Gfx *_g = gfx++; ... }` in each) written as one
+function-level local both arms assign: 1335 -> 825 (1285 -> 775 under `-mfp32`), the first arm now ending in `j` into
+the second arm's tail with `lui $v1, 0x210` in its delay slot, as the target does. A shared global pseudo is coloured by
+global.c before local-alloc gives the arms' byte temporaries their registers. Sharing it with every arm of the switch:
+1030; with the case-4 pointer instead of a new local: 825 as well. decomp-repair `block_local_share` makes this child
+(the chain from the saved best: `cursor_advance_first`, then `block_local_share`, 1430 -> 1285 -> 775 under `-mfp32`).
+Still open: the arms' byte temporaries (`$v1, $v0, $a1, $a2` in the target, `$v0, $v1, $a0, $a1` ours) and the shared
+pointer's register (`$a0` in the target, `$a3` ours).
 
 What is controlled evidence and what is one function:
 
