@@ -4,7 +4,7 @@ kind: finding
 compiler: SN64 GCC 2.8.1 (sn-n64-281) -G0 -mips3 -O2 -mfp32
 evidence: observation
 date: 2026-11-26
-families: shared_operand_remainders
+families: shared_operand_remainders, for_header_companion_index
 ---
 
 What the function (or case) looked like and the exact compiler and flags:
@@ -48,5 +48,9 @@ expressions; a reused, multi-set variable is ranked differently by the allocator
 
 What is controlled evidence and what is one function:
 
-One function, measured in the app's judge. The remaining rows of that function (the loop's three givs and the
-`move $s3,$a3` / `move $s2,$t2` pair) are a separate issue.
+One function, measured in the app's judge. The rest of that function's chain, from 105: `prove_chain --fp-flip`
+found `assignment_at_use` (45) and `for_step_order` (40); the last rows (the loop's `px` and its `i * 2` halfword giv in
+swapped saved registers, `move $s3,$a3` / `move $s2,$t2` and the increments' order) went with the header's companion
+written off the counter, `for (i = 0, px = x; ...; px += w, i++)` as `for (i = 0; i < 5; i++)` with `x + i * w` at
+the uses: 40 -> 0, decomp-repair `for_header_companion_index` (0.6.63). Matched in the app under a per-function
+`-mfp32` profile applied from an exact `compiler_experiments` trial (25 under the default `-mfp64`).
