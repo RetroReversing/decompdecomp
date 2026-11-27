@@ -45,6 +45,12 @@ def test_rom_reference_project_sync_and_trial(tmp_path, monkeypatch):
     monkeypatch.setattr(net.forks, 'start_indexing', lambda slug:None)
     net.forks.sync('scratch', log=lambda *_:None)
     assert net._function('entry', 'scratch')['status'] == 'open'
+    with monkeypatch.context() as patch:
+        def unexpected_build(*args, **kwargs):
+            raise AssertionError('the ROM report already compiles its candidates')
+        patch.setattr('decompnet.forks.project.ForkProject.build_all', unexpected_build)
+        net.forks.check('scratch', log=lambda *_:None, build=True)
+    assert net._function('entry', 'scratch')['status'] == 'open'
     redraft = net.redraft('scratch', 'entry', 'extern int example;')
     assert "m2c's draft of entry" in redraft and 'entry(' in redraft
     with monkeypatch.context() as patch:
@@ -74,6 +80,9 @@ def test_rom_reference_project_sync_and_trial(tmp_path, monkeypatch):
     assert 'match' in result.lower()
     assert net._function('entry', 'scratch')['status'] == 'matched'
     assert (root/'src'/'entry.c').read_text() == matched_source
+    (root/'src'/'entry.c').write_text('int entry(void) { syntax error }\n')
+    net.forks.check('scratch', log=lambda *_:None, build=True)
+    assert net._function('entry', 'scratch')['status'] == 'open'
 
 
 def test_adoption_switches_only_an_unchanged_empty_import(tmp_path, monkeypatch):

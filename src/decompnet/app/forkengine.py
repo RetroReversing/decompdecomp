@@ -1293,11 +1293,17 @@ class ForkEngine:
             log("building what changed since the last build")
             failed: list[str] = []
             with self._tree(proj).exclusive(), self._build_locks[proj["id"]]:
-                ok, output = fp.build_all(log=log, failed=failed)
-                if not ok and not failed:
-                    raise NetworkError("The project build failed without identifying which objects failed, so its "
-                                       f"previous objects cannot be measured safely. Fix the build and try again:\n{_tail(output)}")
-                rep = fp.report(log=log) if fp.objdiff_config().get('rom_reference_manifest') else fp.report()
+                if fp.objdiff_config().get('rom_reference_manifest'):
+                    # The ROM report compiles each real source from a fresh snapshot.
+                    # A preceding build would repeat every compile and produce no
+                    # reusable candidate objects for this judge.
+                    rep = fp.report(log=log)
+                else:
+                    ok, output = fp.build_all(log=log, failed=failed)
+                    if not ok and not failed:
+                        raise NetworkError("The project build failed without identifying which objects failed, so its "
+                                           f"previous objects cannot be measured safely. Fix the build and try again:\n{_tail(output)}")
+                    rep = fp.report()
             # a unit whose source doesn't build keeps its last object: what it matched then doesn't count now
             measures = self.sync(slug, log=log, rep=rep, broken=fp.failed_units(failed))
         else:
