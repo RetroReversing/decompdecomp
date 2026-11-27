@@ -812,7 +812,7 @@ on Apple Silicon; physical Intel Mac and retail-game checks remain planned.
 
 ## ROM-backed public imports
 
-An imported public project without a matching build can use an existing exported ROM analysis as a local workspace. The selected game's SHA-1 must match the export's image directly; compressed analysis images are not supported yet. The public checkout stays separate and new matches remain in the local analysis. A whole-game rebuild with those matches, portable save and reimport, and the remaining project features have not yet been verified for this workspace. Add those capabilities and audit the feature table on a real project before claiming them as supported. Setup also needs a durable checkpoint before the workspace handoff, so an interrupted initial copy or measurement can resume without repeating completed work.
+An imported public project without a matching build can use an existing exported ROM analysis as a local workspace. The selected game's SHA-1 must match the export's image directly; compressed analysis images are not supported yet. The public checkout stays separate and new matches remain in the local analysis. A whole-game rebuild with those matches, portable save and reimport, and the remaining project features have not yet been verified for this workspace. Add those capabilities and audit the feature table on a real project before claiming them as supported. Setup preserves the prepared workspace before measurement, but an interrupted initial copy or target preparation must be repeated, and resuming measurement rechecks all functions. Add durable checkpoints for those phases. Header-aware redrafting is not yet available through the imported-project engine for these MIPS workspaces.
 
 ## What works where
 

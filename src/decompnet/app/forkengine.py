@@ -1015,7 +1015,7 @@ class ForkEngine:
                 if not adopted:
                     shutil.rmtree(workspace, ignore_errors=True)
                 else:
-                    log('The checked analysis was kept. Resume ROM-backed setup to finish indexing it.')
+                    log('The prepared analysis was kept. Resume ROM-backed setup to finish checking it.')
                 raise
 
     def resume_rom_reference(self, slug: str, log=print) -> dict:
