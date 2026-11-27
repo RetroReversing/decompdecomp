@@ -1224,7 +1224,9 @@ function renderSource(ov) {
   $("srcWhen").textContent = !fork && ex ? `exported ${since(ex.t)}` : "";
   if (fork) {
     const rb = ov.rebuild;
-    $("srcText").innerHTML = ov.origin === "scratch"
+    $("srcText").innerHTML = ov.rom_reference
+      ? `This local analysis compares functions with your game. The original public checkout is preserved, and <code>reference/</code> contains a copy of its source for investigation. Matches are committed locally; rebuilding the whole game with those matches is not available yet.`
+      : ov.origin === "scratch"
       ? `This project <b>is</b> the source tree: a ${ov.layout || "decomp"} project that rebuilds your game on every build. Every match is committed to git in the project folder.`
         + (rb ? `<p class="small ${rb.identical ? "ok" : "warn-text"}">${rb.identical ? `✓ ${esc(rb.what || "The rebuilt game")} is your copy, byte for byte` + (/padding/.test(rb.detail) ? " (up to the padding at its end: your copy is trimmed)." : ".")
           : `The rebuilt game isn't your copy byte for byte yet: ${esc(rb.detail)}. Decompiling works anyway: every function is compared with your copy's own code.`}</p>` : "")
