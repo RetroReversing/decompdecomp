@@ -26,6 +26,11 @@ def _inside(root: Path, name: str) -> Path:
     result = (root/path).resolve()
     if path.is_absolute() or '..' in path.parts or root not in result.parents:
         raise ForkError('The exported ROM path must stay inside the selected folder.')
+    current = root
+    for part in path.parts:
+        current = current/part
+        if current.is_symlink():
+            raise ForkError('The exported ROM path cannot contain a symbolic link.')
     return result
 
 
@@ -96,7 +101,7 @@ def prepare(checkout: Path, export: Path, expected_sha1: str, platform: str, log
             while block := stream.read(4 * 1024 * 1024):
                 check_cancel()
                 digest.update(block)
-        if image.is_symlink() or digest.hexdigest() != expected_sha1.lower():
+        if digest.hexdigest() != expected_sha1.lower():
             raise ForkError('The exported game image does not match the game selected for this project.')
         if not (export/'objdiff.json').is_file():
             raise ForkError('The selected folder is not an exported ROM project with objdiff.json.')

@@ -66,6 +66,19 @@ def test_project_score_rejects_identical_instructions_with_missing_data(referenc
     assert any('80002000' in problem.describe() for problem in scored.literals)
 
 
+def test_project_score_uses_original_name_when_source_symbol_is_an_alias(reference, monkeypatch):
+    root, manifest, fn, obj = reference
+    fn['symbol'] = 'renamed_entry'
+    obj = export_entry.object_for(obj, 'renamed_entry', bytes.fromhex('03e0000824020003'))
+    def objdiff_result(*args, **kwargs):
+        return objdiff.FunctionDiff('renamed_entry', 100.0, [], 8, {'renamed_entry':100.0},
+                                    ['renamed_entry'], {'renamed_entry':[]})
+    monkeypatch.setattr(objdiff, 'diff', objdiff_result)
+    score = rom_judge.diff(root, manifest, fn, obj)
+    assert score.matched and score.symbol == 'entry'
+    assert score.unit_scores == {'entry':100.0} and score.order == ['entry'] and 'entry' in score.ops
+
+
 def test_source_check_uses_snapshot_and_rejects_changes(reference, monkeypatch):
     import json
 
@@ -413,6 +426,12 @@ def test_setup_stages_owned_export_and_keeps_public_checkout(reference, tmp_path
     with pytest.raises(ForkError, match='does not match'):
         rom_reference_setup.prepare(checkout, exported, '0'*40, 'n64', log=lambda *_:None)
     assert not (checkout/'.decomp-wtf').exists()
+    (exported/'rom').rename(exported/'original-rom')
+    (exported/'rom').symlink_to('original-rom')
+    with pytest.raises(ForkError, match='symbolic link'):
+        rom_reference_setup.prepare(checkout, exported, manifest['sha1'], 'n64', log=lambda *_:None)
+    (exported/'rom').unlink()
+    (exported/'original-rom').rename(exported/'rom')
     final = rom_reference_setup.prepare(checkout, exported, manifest['sha1'], 'n64', log=lambda *_:None)
     assert final.is_relative_to(checkout/'.decomp-wtf')
     assert (checkout/'README.md').read_text() == 'Public project source'
