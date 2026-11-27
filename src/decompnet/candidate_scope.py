@@ -11,12 +11,31 @@ from .candidate_work import current, remember
 from .forks.project import ForkError
 from .project import compiler_for, settings
 
+_DIGEST_CACHE: OrderedDict[tuple[str, int, int], str] = OrderedDict()
+_DIGEST_LOCK = threading.Lock()
+_DIGEST_CACHE_MAX = 4096
+
 
 def digest(path):
     try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
+        st = path.stat()
     except OSError:
         return 'unavailable'
+    cache_key = (str(path), st.st_mtime_ns, st.st_size)
+    with _DIGEST_LOCK:
+        hit = _DIGEST_CACHE.get(cache_key)
+        if hit is not None:
+            _DIGEST_CACHE.move_to_end(cache_key)
+            return hit
+    try:
+        value = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return 'unavailable'
+    with _DIGEST_LOCK:
+        _DIGEST_CACHE[cache_key] = value
+        while len(_DIGEST_CACHE) > _DIGEST_CACHE_MAX:
+            _DIGEST_CACHE.popitem(last=False)
+    return value
 
 
 def dependencies(root, source):
@@ -209,8 +228,25 @@ def state(net,proj,fn,shared=None):
             target=Path(target) if target else None
             if target is not None and not target.is_absolute():
                 target=fp.root/target
-            result += [digest(target) if target else None,repr(unit), dependencies(fp.root,unit.source),
-                       [(name,digest(fp.root/name)) for name in ('Makefile','build.ninja','objdiff.json','configure.py')]]
+            if shared is not None:
+                deps_memo = shared.setdefault('fork_deps', {})
+                dep_key = (str(fp.root), unit.source)
+                if dep_key not in deps_memo:
+                    deps_memo[dep_key] = dependencies(fp.root, unit.source)
+                unit_deps = deps_memo[dep_key]
+                build_files = shared.get('fork_build_files')
+                if build_files is None:
+                    build_files = shared['fork_build_files'] = [
+                        (name, digest(fp.root / name))
+                        for name in ('Makefile', 'build.ninja', 'objdiff.json', 'configure.py')
+                    ]
+            else:
+                unit_deps = dependencies(fp.root, unit.source)
+                build_files = [
+                    (name, digest(fp.root / name))
+                    for name in ('Makefile', 'build.ninja', 'objdiff.json', 'configure.py')
+                ]
+            result += [digest(target) if target else None, repr(unit), unit_deps, build_files]
         except (ForkError,OSError):
             result.append(('unavailable-project',digest(Path(proj['root'])/'objdiff.json')))
     return result
