@@ -2405,6 +2405,13 @@ class Manager:
 
         refused = refused or next((text for text in errors if k.fatal(text)), "")
         if refused:
+            # OpenCode 2's per-helper SQLite database also holds provider logins. An unavailable
+            # model before the first tool call is not an MCP handshake failure. Show the exact
+            # standalone sign-in context rather than referring only to generic agent settings.
+            if s.kind == 'opencode' and re.search(r'ModelUnavailableError|provider\.no-route', refused, re.I):
+                hint = k.isolated_auth_hint(workdir, s.model)
+                if hint:
+                    refused += ' ' + hint
             raise Fatal(refused + " Review the agent settings and resolve this error before restarting.")  # every retry would meet it the same way
         # stderr_failure only reports this after confirming the selected primary stream was refused;
         # a title request can fail for the same reason while the main model turn still works. Pause

@@ -103,6 +103,42 @@ def test_unknown_model_from_stderr_is_fatal_before_handshake_retry(tmp_path,monk
     assert s.tool_handshake_failures==0
 
 
+def test_opencode_model_unavailable_reports_agent_database_login(tmp_path, monkeypatch):
+    """A missing Go login is actionable, not misreported as a failed MCP connection."""
+    net, manager, session, agent = setup(tmp_path, monkeypatch)
+    session.kind = 'opencode'
+    session.options['model'] = 'opencode-go/deepseek-v4.1-flash#high'
+    monkeypatch.setattr(manager, '_preflight_tools', lambda *a, **kw: None)
+    monkeypatch.setattr(manager, 'prepare_session', lambda *a, **kw: None)
+    monkeypatch.setattr(manager, '_command', lambda *a: (['stub'], {}, ''))
+    monkeypatch.setattr(manager, '_save', lambda *a: None)
+    monkeypatch.setattr(agents, '_proc_start', lambda *a: None)
+    proc = SimpleNamespace(
+        pid=987654321, stdin=io.StringIO(), stdout=io.StringIO(),
+        stderr=io.StringIO('SessionRunnerModel.ModelUnavailableError: '
+                           'Model unavailable: opencode-go/deepseek-v4.1-flash\n'),
+        wait=lambda: 1,
+    )
+    monkeypatch.setattr(agents.subprocess, 'Popen', lambda *a, **kw: proc)
+    with pytest.raises(agents.Fatal) as raised:
+        manager._run_cli(session, net.local_agent(session.agent_name)[1], tmp_path)
+    error = str(raised.value)
+    assert 'Model unavailable' in error
+    assert 'OPENCODE_DB' in error and 'opencode.db' in error
+    assert 'auth list --standalone' in error
+    assert 'auth login' in error and 'opencode-go' in error
+    assert 'MCP tool handshake' not in error
+    assert session.tool_handshake_failures == 0
+
+
+def test_opencode_isolated_auth_hint_does_not_prompt_for_free_models(tmp_path):
+    assert not OPENCODE.isolated_auth_hint(tmp_path, 'opencode/deepseek-v4.1-flash-free')
+    hint = OPENCODE.isolated_auth_hint(tmp_path, 'opencode-go/deepseek-v4.1-flash#high')
+    assert 'opencode.db' in hint and 'auth login' in hint
+    assert 'opencode-go' in hint
+    assert 'auth list --standalone' in hint
+
+
 def test_repeated_release_is_one_event_and_one_abandon_even_in_parallel(tmp_path):
     net,agent,fn=game(tmp_path);net.claim_row(agent,'game','f')
     def release():return net.release_function(agent,'f','Hand off findings','game',move_on=True)

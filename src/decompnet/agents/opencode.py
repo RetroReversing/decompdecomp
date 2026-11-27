@@ -127,6 +127,37 @@ class Opencode(Agent):
                               r'|This Go model trains on request data|Allow paid endpoints that train on request data'
                               r'|\bModel [^\n]{1,120} has been deprecated\b|' + re.escape(FREE_ALLOWANCE),error,re.I))
 
+    def isolated_auth_hint(self, workdir: Path, model: str) -> str:
+        """Help with OpenCode 2's per-helper database without copying or exposing provider credentials.
+
+        A normal `opencode auth list` may query the background service, which has different accounts.
+        The same `OPENCODE_DB` and `--standalone` must be used for both the check and login.
+        A missing model can also mean an unavailable offering, so do not claim sign-in is always the cause.
+        """
+        provider, _ = self._account(model)
+        if not provider or provider == "opencode":  # Zen's public free models do not require a login
+            return ""
+        folder = str(workdir.resolve())
+        database = str((workdir / "opencode.db").resolve())
+        if os.name == "nt":
+            quoted_folder = folder.replace("'", "''")
+            quoted_database = database.replace("'", "''")
+            quoted_provider = provider.replace("'", "''")
+            command = (f"Set-Location -LiteralPath '{quoted_folder}'; "
+                       f"$env:OPENCODE_DB = '{quoted_database}'; "
+                       f"opencode auth list --standalone; "
+                       f"opencode auth login '{quoted_provider}' --standalone")
+        else:
+            import shlex
+            command = (f"cd {shlex.quote(folder)} && "
+                       f"OPENCODE_DB={shlex.quote(database)} opencode auth list --standalone; "
+                       f"OPENCODE_DB={shlex.quote(database)} "
+                       f"opencode auth login {shlex.quote(provider)} --standalone")
+        return ("OpenCode 2 uses a separate database for this helper; signing in through the ordinary OpenCode "
+                "background service does not authenticate it. If this provider is absent, check and sign in using "
+                f"the helper's database: {command}. If already signed in, verify the model with "
+                "`opencode models --standalone` in the same database.")
+
     def config_model(self) -> str | None:
         base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
         return read_json(base / "opencode" / "opencode.json").get("model") or None
