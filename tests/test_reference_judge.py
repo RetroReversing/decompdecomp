@@ -501,3 +501,30 @@ def test_drafts_use_the_function_compiler_for_overlapping_rom_addresses(referenc
     (root/'build.json').write_text(json.dumps(manifest) + ' ')
     assert rom_judge.compiler_for_unit(project, project.unit('overlay/entry')) == 'ido-7.1'
     assert ForkEngine._draft_key({'rom_reference':True, 'platform':'n64'}, unit, root) != key
+
+
+def test_staged_copy_is_atomic_and_reuses_only_identical_content(tmp_path, monkeypatch):
+    from decompnet.app import rom_reference_setup
+
+    source, destination = tmp_path/'source', tmp_path/'destination'
+    source.write_bytes(b'new content')
+    destination.write_bytes(b'old content')
+    class Stopped(Exception):
+        pass
+    def stop():
+        raise Stopped()
+    with pytest.raises(Stopped):
+        rom_reference_setup._copy_file(str(source), str(destination), check_cancel=stop)
+    assert destination.read_bytes() == b'old content'
+    assert not list(tmp_path.glob('.copy-*'))
+    rom_reference_setup._copy_file(str(source), str(destination), check_cancel=lambda:None, reuse=True)
+    assert destination.read_bytes() == b'new content'
+    def unexpected_replace(*args):
+        raise AssertionError('identical content should be reused')
+    monkeypatch.setattr(rom_reference_setup.os, 'replace', unexpected_replace)
+    rom_reference_setup._copy_file(str(source), str(destination), check_cancel=lambda:None, reuse=True)
+    destination.unlink()
+    destination.symlink_to(source)
+    from decompnet.forks.project import ForkError
+    with pytest.raises(ForkError, match='symbolic link'):
+        rom_reference_setup._copy_file(str(source), str(destination), check_cancel=lambda:None, reuse=True)

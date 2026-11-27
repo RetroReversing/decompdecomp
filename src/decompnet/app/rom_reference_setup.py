@@ -34,12 +34,33 @@ def _inside(root: Path, name: str) -> Path:
     return result
 
 
-def _copy_file(source: str, destination: str, *, check_cancel) -> str:
-    with open(source, 'rb') as src, open(destination, 'wb') as dest:
-        while block := src.read(4 * 1024 * 1024):
-            check_cancel()
-            dest.write(block)
-    shutil.copystat(source, destination, follow_symlinks=False)
+def _copy_file(source: str, destination: str, *, check_cancel, reuse: bool = False) -> str:
+    """Copy atomically; a resumed copy reuses only byte-identical regular files."""
+    source_path, dest_path = Path(source), Path(destination)
+    if dest_path.is_symlink():
+        raise ForkError('The staged analysis contains a symbolic link.')
+    if reuse and dest_path.is_file() and source_path.stat().st_size == dest_path.stat().st_size:
+        def digest(path):
+            value = hashlib.sha256()
+            with path.open('rb') as stream:
+                while block := stream.read(4 * 1024 * 1024):
+                    check_cancel()
+                    value.update(block)
+            return value.digest()
+        if digest(source_path) == digest(dest_path):
+            return destination
+    fd, temp = tempfile.mkstemp(prefix='.copy-', dir=dest_path.parent)
+    temporary = Path(temp)
+    try:
+        with os.fdopen(fd, 'wb') as dest, source_path.open('rb') as src:
+            while block := src.read(4 * 1024 * 1024):
+                check_cancel()
+                dest.write(block)
+        shutil.copystat(source, temporary, follow_symlinks=False)
+        check_cancel()
+        os.replace(temporary, dest_path)
+    finally:
+        temporary.unlink(missing_ok=True)
     return destination
 
 
