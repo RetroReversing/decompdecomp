@@ -352,6 +352,7 @@ def report(project, manifest_path: str, log=print) -> dict:
                         if unbuilt <= 10:
                             log(f"{fn['name']}: {error}")
                         value = None
+            if unit.source:
                 measured += 1
                 if measured % 50 == 0 or measured == source_total:
                     progress({'phase':'Checking ROM-backed source', 'done':measured, 'total':source_total})

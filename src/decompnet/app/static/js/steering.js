@@ -1211,16 +1211,27 @@ const cwName = (c) => (c.startsWith("DS/") ? `CodeWarrior for DS ${c.slice(3)}` 
 function openExport() {
   const fork = S.ov.kind === "fork";
   dialog(fork ? "The source code" : "Export the source code", `<p id="srcText"></p><p class="muted small" id="srcWhen"></p><div class="src-state" id="srcState"></div>
-    <div class="row"><button class="primary" id="srcExport" type="button">Export project</button><button class="ghost" id="srcOpen" type="button">Open folder</button></div>
+    <div class="row"><button class="primary" id="srcExport" type="button">Export project</button><button class="ghost" id="srcOpen" type="button">Open folder</button><button class="ghost" id="srcOriginal" type="button" hidden>Open original checkout</button></div>
     <pre class="joblog tall" id="expLog" hidden></pre><div id="expResult"></div>`, "export");
   $("srcOpen").onclick = () => openFolder();
   $("srcExport").onclick = exportNow;
+  $("srcOriginal").onclick = async () => {
+    const button = $("srcOriginal");
+    button.disabled = true; button.textContent = "Opening…";
+    try {
+      const result = await api("/api/open", { method: "POST", body: { slug: S.slug, original: true } });
+      if (!result.ok) throw new Error(result.message || "Could not open the original checkout.");
+      toast("Opened the original checkout.");
+    } catch (e) { toast(e.message, "error"); }
+    finally { button.disabled = false; button.textContent = "Open original checkout"; }
+  };
   renderSource(S.ov);
 }
 const exportOpen = () => S.dialogKind === "export" && !$("dialog").hidden;
 function renderSource(ov) {
   const ex = ov.export, fork = ov.kind === "fork";
   $("srcExport").hidden = fork || !ov.exportable;
+  $("srcOriginal").hidden = !ov.rom_reference;
   $("srcWhen").textContent = !fork && ex ? `exported ${since(ex.t)}` : "";
   if (fork) {
     const rb = ov.rebuild;
