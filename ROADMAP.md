@@ -814,6 +814,20 @@ on Apple Silicon; physical Intel Mac and retail-game checks remain planned.
 
 An imported public project without a matching build can use an existing exported ROM analysis as a local workspace. The selected game's SHA-1 must match the export's image directly; compressed analysis images are not supported yet. The public checkout stays separate and new matches remain in the local analysis. The N64 class and struct readers do not yet read these generated reference objects. A whole-game rebuild with those matches, portable save and reimport, and the remaining project features have not yet been verified for this workspace. Add those capabilities and audit the feature table on a real project before claiming them as supported. Setup preserves the prepared workspace before measurement, but an interrupted initial copy or target preparation must be repeated, and resuming measurement rechecks all functions. Add durable checkpoints for those phases.
 
+
+These workspaces use the project engine with the ROM judge, so the ordinary public-decomp column below is not evidence that every feature has been checked here. An N64 scratch copy was used for the checks marked below; other MIPS platforms still need the same audit. A — is work to implement or verify before claiming support.
+
+| ROM-backed public import feature | Status |
+| :-- | :-- |
+| Original image and function verification; claims, briefs, compile and match, machine drafts, Autopilot, header-aware redraft | ✓ N64 scratch copy |
+| SDK assembly set aside, local fingerprints and twins pass, cross-game lookup, project map and re-measure | ✓ N64 scratch copy; cross-game match still needs a donor check |
+| Drafting C++ methods, class recovery, struct layouts and debug-symbol briefs | — class and struct readers need the reference image adapter; audit methods and debug symbols |
+| Compiler ranges, suggestions, survey and flag search | — expose and test the reference profiles through the project compiler tools |
+| Joining and splitting code, assembly and agent verdicts, Check again, boundary reports | — audit each path against reference-backed units |
+| Cross-game and regional matches, shared knowledge, permuter and polishing | — exercise actual matches and confirm the reference judge protects them |
+| Names, saves and reopen, reimport, rebuildable export and rooms | — implement missing integration and verify the resulting project preserves matches |
+| Setup progress | — retain the initial copy and reference preparation across interruption; resume verification without repeating completed checks |
+
 ## What works where
 
 Polishing can ask helpers to check 64-bit PC compilation and repair casts between pointers and 32-bit integers.
