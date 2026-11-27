@@ -178,3 +178,27 @@ def test_assembly_sdk_name_is_not_a_fingerprint_record(tmp_path, monkeypatch):
                          (pid, 'entry', 40, 10, json.dumps({'sdk_identity':'osExample'}))).lastrowid
     monkeypatch.setattr(net.twins, 'prints', lambda proj:{fid:SimpleNamespace(key='same', size=40, asm=False)})
     assert identities(net, net.project_row('demo')) == {}
+
+
+def test_imported_sdk_assembly_identity_revalidates_its_unit(tmp_path, monkeypatch):
+    from decompnet.forks import sdk_evidence
+
+    net = RomNetwork(tmp_path / 'app.db', tmp_path)
+    cfg = {'kind':'fork', 'platform':'n64'}
+    proof = {'kind':'sdk', 'verification_method':'fork-sdk-digest', 'verified':True,
+             'name':'osExample', 'names':['osExample'], 'corpus':'Example SDK', 'evidence':'complete target'}
+    with net.store.tx() as db:
+        pid = db.execute('INSERT INTO projects(slug,name,arch,big_endian,root,config) VALUES(?,?,?,?,?,?)',
+                         ('demo', 'Demo', 'mips', 1, str(tmp_path), json.dumps(cfg))).lastrowid
+        fid = db.execute('INSERT INTO functions(project_id,name,unit,size,n_insns,status,meta) VALUES(?,?,?,?,?,?,?)',
+                         (pid, 'entry', 'unit/entry', 40, 10, 'asm',
+                          json.dumps({'symbol':'entry', 'verified_assembly':proof}))).lastrowid
+    calls = []
+    def reverify(console, root, unit, symbol, size, given):
+        calls.append((unit, symbol, size))
+        return True
+    monkeypatch.setattr(sdk_evidence, 'reverify', reverify)
+    monkeypatch.setattr(net.twins, 'prints', lambda proj:{})
+    found = identify(net, net.project_row('demo'), {}, include_asm=True)
+    assert found[fid]['names'] == ['osExample']
+    assert calls == [('unit/entry', 'entry', 40)]
