@@ -404,7 +404,7 @@ class ExportPlan:
     toolchains: dict[str, str]
 
 
-def plan_export(project, manifest_path: str):
+def plan_export(project, manifest_path: str, log=print):
     """Plan ROM-backed units from an exported tree without changing the project.
 
     Only a target's ELF ABI is taken from its existing object. Its instructions
@@ -436,6 +436,8 @@ def plan_export(project, manifest_path: str):
         except FileNotFoundError:
             return None
 
+    check_cancel = getattr(log, 'check_cancel', lambda:None)
+    progress = getattr(log, 'progress', lambda _:None)
     inputs = {}
     def watch(path):
         if path not in inputs:
@@ -460,6 +462,9 @@ def plan_export(project, manifest_path: str):
         console = consoles.get(manifest.get('platform'))
         common = '#include \"common.h\"\n#include \"rom-reference/@generation.h\"\n'
         for index, (unit, entry) in enumerate(zip(units, raw['units'])):
+            check_cancel()
+            if index % 50 == 0:
+                progress({'phase':'Preparing original-code references', 'done':index, 'total':len(units)})
             name = (entry.get('metadata') or {}).get('rom_reference_function') or unit.name.rsplit('/', 1)[-1]
             fn = functions.get(name)
             if fn is None or name in seen or not unit.target:
@@ -512,6 +517,8 @@ def plan_export(project, manifest_path: str):
             if source:
                 item['base_path'] = f'.decomp-wtf/rom-reference/candidates/{index:08x}.o'
             result.append(item)
+        check_cancel()
+        progress({'phase':'Preparing original-code references', 'done':len(units), 'total':len(units)})
         if seen != set(functions):
             raise ForkError('The export has functions without unique reference objects; finish its targets first.')
         if scaffolds and not path_of('include/common.h').is_file():
@@ -526,7 +533,7 @@ def plan_export(project, manifest_path: str):
         raise ForkError(f'Could not prepare the exported ROM references: {error}') from error
 
 
-def publish_export(project, plan: ExportPlan) -> dict:
+def publish_export(project, plan: ExportPlan, log=print) -> dict:
     """Publish a prepared export atomically while retaining its original objdiff file.
 
     The caller holds the project tree exclusively. Each generation gets a new
@@ -541,6 +548,8 @@ def publish_export(project, plan: ExportPlan) -> dict:
 
     root = project.root.resolve()
     config, targets, inputs = plan.config, plan.targets, plan.inputs
+    check_cancel = getattr(log, 'check_cancel', lambda:None)
+    progress = getattr(log, 'progress', lambda _:None)
     old_config = root/'objdiff.json'
     if old_config not in inputs:
         raise ForkError('The original project configuration is not part of the verified plan.')
@@ -549,6 +558,7 @@ def publish_export(project, plan: ExportPlan) -> dict:
         from .toolchain_evidence import snapshot as toolchain_snapshot
 
         for path, expected in inputs.items():
+            check_cancel()
             resolved = path.resolve()
             try:
                 actual = hashlib.sha256(resolved.read_bytes()).hexdigest()
@@ -579,7 +589,10 @@ def publish_export(project, plan: ExportPlan) -> dict:
         generation = parent/token
         stage = Path(tempfile.mkdtemp(prefix='.staging-', dir=parent))
         (stage/'targets').mkdir()
-        for path, data in targets.items():
+        for index, (path, data) in enumerate(targets.items()):
+            check_cancel()
+            if index % 50 == 0:
+                progress({'phase':'Writing original-code references', 'done':index, 'total':len(targets)})
             (stage/'targets'/Path(path).name).write_bytes(data)
         (stage/'original.objdiff.json').write_bytes(original)
         if plan.scaffolds:
@@ -592,6 +605,7 @@ def publish_export(project, plan: ExportPlan) -> dict:
             source_generation = source_parent/token
             source_stage = Path(tempfile.mkdtemp(prefix='.staging-', dir=source_parent))
             for path, content in plan.scaffolds.items():
+                check_cancel()
                 if (Path(path).parent != Path('src/rom-reference/@generation')
                         or '..' in Path(path).parts):
                     raise ForkError('The ROM reference plan has an invalid source path.')
@@ -647,6 +661,7 @@ def publish_export(project, plan: ExportPlan) -> dict:
             stream.flush()
             os.fsync(stream.fileno())
         check_inputs()
+        check_cancel()
         os.replace(temp_config, old_config)
         temp_config = None
         published = True

@@ -1292,8 +1292,16 @@ class ForkEngine:
         if build:
             log("building what changed since the last build")
             failed: list[str] = []
-            with self._tree(proj).exclusive(), self._build_locks[proj["id"]]:
-                if fp.objdiff_config().get('rom_reference_manifest'):
+            reference = bool(fp.objdiff_config().get('rom_reference_manifest'))
+            check_cancel = getattr(log, 'check_cancel', lambda:None)
+            def waiting():
+                getattr(log, 'progress', lambda _:None)({'phase':'Waiting for the project tree'})
+                log('Waiting for the project tree to become available')
+            tree = (self._tree(proj).exclusive(check_cancel=check_cancel, waiting=waiting)
+                    if reference else self._tree(proj).exclusive())
+            build_lock = _queued_lock(self._build_locks[proj['id']], log) if reference else self._build_locks[proj['id']]
+            with tree, build_lock:
+                if reference:
                     # The ROM report compiles each real source from a fresh snapshot.
                     # A preceding build would repeat every compile and produce no
                     # reusable candidate objects for this judge.

@@ -422,3 +422,36 @@ def test_setup_stages_owned_export_and_keeps_public_checkout(reference, tmp_path
     tracked = subprocess.run(['git', 'ls-files'], cwd=final, check=True, capture_output=True, text=True).stdout.splitlines()
     assert 'src/entry.c' in tracked and 'rom' not in tracked
     assert not any(path.startswith('reference/') or path.startswith('.decomp-wtf/') for path in tracked)
+
+
+def test_export_preparation_and_publication_can_stop_without_replacing_config(reference):
+    import json
+
+    from decompnet.forks.project import ForkProject
+
+    root, manifest, fn, obj = reference
+    (root/'src').mkdir()
+    (root/'src'/'entry.c').write_text('int entry(void) { return 3; }')
+    (root/'old.o').write_bytes(obj)
+    fn['c'] = 'src/entry.c'
+    (root/'build.json').write_text(json.dumps(manifest))
+    cfg = {'units':[{'name':'entry', 'target_path':'old.o', 'metadata':{'source_path':'src/entry.c'}}]}
+    (root/'objdiff.json').write_text(json.dumps(cfg))
+    project = ForkProject(root, create_state=False)
+    class Stopped(Exception):
+        pass
+    class Log:
+        stopped = False
+        def progress(self, value):
+            self.stopped = True
+        def check_cancel(self):
+            if self.stopped:
+                raise Stopped()
+    with pytest.raises(Stopped):
+        rom_judge.plan_export(project, 'build.json', log=Log())
+    plan = rom_judge.plan_export(project, 'build.json')
+    with pytest.raises(Stopped):
+        rom_judge.publish_export(project, plan, log=Log())
+    assert json.loads((root/'objdiff.json').read_text()) == cfg
+    assert not list((root/'.decomp-wtf'/'rom-reference'/'generations').iterdir())
+    assert not list(root.glob('.objdiff-*'))
