@@ -74,7 +74,7 @@ def _reference_sources(checkout: Path, destination: Path, log, check_cancel) -> 
         log('Some large reference files were not copied; the original checkout is unchanged.')
 
 
-def prepare(checkout: Path, export: Path, expected_sha1: str, platform: str, log=print) -> tuple[Path, dict]:
+def prepare(checkout: Path, export: Path, expected_sha1: str, platform: str, log=print) -> Path:
     """Prepare and verify a private workspace; no project row changes until the caller adopts it."""
     checkout, export = checkout.resolve(), export.expanduser().resolve()
     check_cancel = getattr(log, 'check_cancel', lambda:None)
@@ -144,9 +144,6 @@ def prepare(checkout: Path, export: Path, expected_sha1: str, platform: str, log
         log('Preparing original-code references and editable candidate files')
         plan = plan_export(project, 'build.json')
         publish_export(project, plan)
-        project = ForkProject(stage, create_state=False)
-        log('Checking every source-backed function against the original game')
-        rep = project.report(log=log)
         check_cancel()
         log('Creating the local analysis repository')
         _git(stage, ['init', '-q'])
@@ -164,7 +161,7 @@ def prepare(checkout: Path, export: Path, expected_sha1: str, platform: str, log
             raise ForkError('The analysis destination already exists; try again.')
         os.rename(stage, final)
         moved = True
-        return final, rep
+        return final
     except (OSError, subprocess.SubprocessError) as error:
         raise ForkError(f'Could not prepare the ROM-backed analysis: {error}') from error
     finally:

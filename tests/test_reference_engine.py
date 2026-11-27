@@ -82,8 +82,9 @@ def test_adoption_switches_only_an_unchanged_empty_import(tmp_path, monkeypatch)
         (workspace/'objdiff.json').write_text(json.dumps({'units':[
             {'name':'entry', 'target_path':'target.o', 'metadata':{'source_path':'src/entry.c'}}]}))
         (workspace/'target.o').write_bytes(object_for(object_file(), 'entry', bytes.fromhex('03e0000800000000')))
-        return workspace, rep
+        return workspace
     monkeypatch.setattr(rom_reference_setup, 'prepare', prepare)
+    monkeypatch.setattr('decompnet.forks.project.ForkProject.report', lambda self, log=print:rep)
     result = net.forks.adopt_rom_reference('public', tmp_path/'export', log=lambda *_:None)
     row = net._project('public')
     current = json.loads(row['config'])
@@ -114,7 +115,7 @@ def test_adoption_keeps_a_project_changed_while_preparing(tmp_path, monkeypatch)
             current = json.loads(db.execute("select config from projects where slug='public'").fetchone()['config'])
             current['instructions'] = 'changed while preparing'
             db.execute("update projects set config=? where slug='public'", (json.dumps(current),))
-        return workspace, {'measures':{}, 'units':[]}
+        return workspace
     monkeypatch.setattr(rom_reference_setup, 'prepare', prepare)
     with pytest.raises(NetworkError, match='changed during setup'):
         net.forks.adopt_rom_reference('public', tmp_path/'export', log=lambda *_:None)
@@ -235,7 +236,8 @@ def test_export_without_built_targets_can_be_prepared_without_project_build(tmp_
     assert measured['units'][0]['functions'][0]['fuzzy_match_percent'] is None
 
 
-def test_interrupted_adoption_can_resume_without_losing_checkout(tmp_path, monkeypatch):
+@pytest.mark.parametrize('interrupt_at', ['report', 'sync'])
+def test_interrupted_adoption_can_resume_without_losing_checkout(tmp_path, monkeypatch, interrupt_at):
     from decompnet.app import rom_reference_setup
     from decompnet.forks.project import ForkProject
     from decompnet.network import NetworkError
@@ -257,15 +259,22 @@ def test_interrupted_adoption_can_resume_without_losing_checkout(tmp_path, monke
         (workspace/'objdiff.json').write_text(json.dumps({'rom_reference_manifest':'build.json', 'units':[
             {'name':'entry', 'target_path':'target.o', 'metadata':{'source_path':'src/entry.c'}}]}))
         (workspace/'target.o').write_bytes(object_for(object_file(), 'entry', bytes.fromhex('03e0000800000000')))
-        return workspace, rep
+        return workspace
     monkeypatch.setattr(rom_reference_setup, 'prepare', prepare)
     real_sync = net.forks.sync
-    monkeypatch.setattr(net.forks, 'sync', lambda *args, **kwargs:(_ for _ in ()).throw(NetworkError('interrupted')))
+    if interrupt_at == 'report':
+        monkeypatch.setattr(ForkProject, 'report', lambda *args, **kwargs:(_ for _ in ()).throw(NetworkError('interrupted')))
+    else:
+        monkeypatch.setattr(ForkProject, 'report', lambda self, log=print:rep)
+        monkeypatch.setattr(net.forks, 'sync', lambda *args, **kwargs:(_ for _ in ()).throw(NetworkError('interrupted')))
     with pytest.raises(NetworkError, match='interrupted'):
         net.forks.adopt_rom_reference('public', tmp_path/'export', log=lambda *_:None)
     row = net._project('public')
     assert row['root'] == str(workspace) and not json.loads(row['config'])['ready']
     assert workspace.is_dir() and (old/'README.md').read_text() == 'public source'
+    with pytest.raises(NetworkError, match='Resume ROM-backed setup'):
+        net.forks.check('public', log=lambda *_:None)
+    assert not json.loads(net._project('public')['config'])['ready']
     monkeypatch.setattr(net.forks, 'sync', real_sync)
     monkeypatch.setattr(ForkProject, 'report', lambda self, log=print:rep)
     result = net.forks.resume_rom_reference('public', log=lambda *_:None)

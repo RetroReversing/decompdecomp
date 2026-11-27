@@ -979,7 +979,7 @@ class ForkEngine:
             if store.one('SELECT 1 FROM functions WHERE project_id=? LIMIT 1', proj['id']):
                 raise NetworkError('This project already has function work; its current setup was kept.')
             try:
-                workspace, rep = rom_reference_setup.prepare(old_root, exported, cfg.get('game_sha1') or '',
+                workspace = rom_reference_setup.prepare(old_root, exported, cfg.get('game_sha1') or '',
                                                              cfg.get('platform') or '', log=log)
             except ForkError as error:
                 raise NetworkError(str(error)) from error
@@ -998,8 +998,12 @@ class ForkEngine:
                     db.execute('UPDATE projects SET root=?,config=? WHERE id=?',
                                (str(workspace), json.dumps(new_cfg), proj['id']))
                 adopted = True
-                # The report was checked before moving the private tree. The tree
-                # lock keeps app edits out until these rows have been installed.
+                # Persist the workspace before the potentially long measurement.
+                # A stopped or interrupted job can resume without repeating the
+                # export copy and target preparation; scores are always rechecked.
+                log('Checking every source-backed function against the original game')
+                rep = ForkProject(workspace, create_state=False).report(log=log)
+                check_cancel()
                 self.sync(slug, log=log, rep=rep)
                 with store.tx() as db:
                     current = json.loads(db.execute('SELECT config FROM projects WHERE id=?', (proj['id'],)).fetchone()['config'])
@@ -1268,6 +1272,8 @@ class ForkEngine:
         rollback, an editor) are measured as they are; a measure reads build/ as it is, and a rolled-back Xbox game
         measured its broken build again and again."""
         proj, fp, cfg = self.get(slug)
+        if cfg.get('rom_reference') and not cfg.get('ready'):
+            raise NetworkError('Resume ROM-backed setup before re-measuring the project.')
         if not (fp.root / "objdiff.json").exists():
             log("Preparing the project's missing objdiff configuration from verified original code")
             if build:

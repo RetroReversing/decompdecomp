@@ -413,8 +413,8 @@ def test_setup_stages_owned_export_and_keeps_public_checkout(reference, tmp_path
     with pytest.raises(ForkError, match='does not match'):
         rom_reference_setup.prepare(checkout, exported, '0'*40, 'n64', log=lambda *_:None)
     assert not (checkout/'.decomp-wtf').exists()
-    final, result = rom_reference_setup.prepare(checkout, exported, manifest['sha1'], 'n64', log=lambda *_:None)
-    assert result == expected and final.is_relative_to(checkout/'.decomp-wtf')
+    final = rom_reference_setup.prepare(checkout, exported, manifest['sha1'], 'n64', log=lambda *_:None)
+    assert final.is_relative_to(checkout/'.decomp-wtf')
     assert (checkout/'README.md').read_text() == 'Public project source'
     assert (final/'reference'/'src_pseudo'/'example.cpp').read_text() == 'int example() { return 1; }'
     assert (final/'rom').read_bytes() == (exported/'rom').read_bytes()
