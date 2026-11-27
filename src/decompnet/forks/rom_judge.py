@@ -1,13 +1,14 @@
 """Measure a ROM-linked candidate with the same objdiff result as a project unit.
 
-This is an in-memory check only. A future project adapter must also bind a compiled
-object to its sources and compiler before retaining or publishing its score.
+Candidate scores are bound to a fresh source and compiler snapshot, and original
+instructions and data are checked against the owned image before publication.
 """
 from __future__ import annotations
 
 import re
 import tempfile
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from ..rom import reference_judge
@@ -37,6 +38,38 @@ def _compiler_profile(manifest: dict, fn: dict) -> dict:
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= 120:
         raise ForkError('The ROM reference compiler timeout must be between 0 and 120 seconds.')
     return profile
+
+
+@lru_cache(maxsize=8)
+def _draft_profiles(path: Path, mtime: int, size: int):
+    """Cache draft hints by manifest stamp; the judge independently verifies every score."""
+    import json
+
+    manifest = json.loads(path.read_text(encoding='utf-8'))
+    functions = {}
+    for fn in manifest['functions']:
+        if fn.get('c'):
+            functions.setdefault(fn['c'], []).append(fn)
+    return manifest, functions
+
+
+def compiler_for_unit(project, unit) -> str:
+    """Read the pinned profile for this reference, including per-function overlays."""
+    root = project.root.resolve()
+    cfg = project.objdiff_config()
+    path = Path(cfg.get('rom_reference_manifest') or '')
+    resolved = (root/path).resolve()
+    if path.is_absolute() or '..' in path.parts or root not in resolved.parents:
+        raise ForkError('The ROM reference manifest must stay inside the project.')
+    try:
+        stamp = resolved.stat()
+        manifest, by_source = _draft_profiles(resolved, stamp.st_mtime_ns, stamp.st_size)
+        functions = by_source.get(unit.source, [])
+        if len(functions) != 1:
+            raise ForkError('The ROM reference compiler has no unique source function.')
+        return _compiler_profile(manifest, functions[0])['toolchain']
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise ForkError(f'Could not read the ROM reference compiler: {error}') from error
 
 
 def diff(root: Path, manifest: dict, fn: dict, compiled_object: bytes) -> objdiff.FunctionDiff:

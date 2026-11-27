@@ -3075,24 +3075,31 @@ class ForkEngine:
                         "```c", src.strip(), "```"]
         return out
 
+    @staticmethod
+    def _draft_compiler(fp: ForkProject, cfg: dict, unit) -> str:
+        if cfg.get('rom_reference'):
+            from ..forks.rom_judge import compiler_for_unit
+            return compiler_for_unit(fp, unit)
+        return (unit.scratch or {}).get('compiler', '') or compiler_info.describe(fp, cfg.get('version')).get('name', '')
+
     def _draft(self, proj, fp: ForkProject, cfg: dict, fn, unit) -> str | None:
         """m2c draft from the project's assembly for this function (Ghidra's from its target object where m2c can't
         read the code), cached in the database. A console with drafts of its own (Ghidra's: PC) keys it by the unit's
         target object: a join, a split or a repair of the analysis changes that, and the draft is made again."""
-        key = self._draft_key(cfg, unit, fp.root)
+        key = self._draft_key(cfg, unit, fp.root, project=fp)
         if fn["seed"] is not None and fn["seed_key"] == key:
             return fn["seed"] or None
         # A new object fallback only changes failed drafts. Keep existing useful
         # seeds and migrate their key without regenerating them.
-        legacy = self._draft_key(cfg, unit, fp.root, object_revision=False)
+        legacy = self._draft_key(cfg, unit, fp.root, object_revision=False, project=fp)
         if fn["seed"] and fn["seed_key"] == legacy:
             with self.net.project_store(proj['id']).tx() as db:
                 db.execute("UPDATE functions SET seed_key=? WHERE id=? AND seed_key=? AND seed=?",
                            (key, fn["id"], legacy, fn["seed"]))
             return fn["seed"]
-        hint = (unit.scratch or {}).get("compiler", "") or compiler_info.describe(fp, cfg.get("version")).get("name", "")
         meta = self._meta(fn)
         try:
+            hint = self._draft_compiler(fp, cfg, unit)
             text = drafts.draft(fp.root, cfg.get("platform") or "", unit.name, meta.get("symbol") or fn["name"],
                                 unit.source, compiler_hint=hint)
             text = text and "/* m2c */\n" + text
@@ -3101,16 +3108,22 @@ class ForkEngine:
                 names = [meta.get("symbol") or fn["name"], *self._names(meta, fn)]
                 body = next((found[n] for n in names if n in found), None)
                 text = body and "/* Ghidra */\n" + consoles.get(cfg.get("platform") or "").adapt_draft(body.strip())
-        except OSError:
+        except (OSError, ForkError):
             text = None
         with self.net.project_store(proj['id']).tx() as db:
             db.execute("UPDATE functions SET seed=?, seed_key=? WHERE id=?", (text or "", key, fn["id"]))
         return text
 
     @staticmethod
-    def _draft_key(cfg: dict, unit, root=None, *, object_revision=True) -> str:
+    def _draft_key(cfg: dict, unit, root=None, *, object_revision=True, project=None) -> str:
         """Target/header/source inputs for a unit, including an explicit regeneration request."""
         inputs = [cfg.get('draft_generation',0),cfg.get('version'),unit.scratch]
+        if root is not None and cfg.get('rom_reference'):
+            try:
+                from ..forks.rom_judge import compiler_for_unit
+                inputs.append(('rom-compiler', compiler_for_unit(project or ForkProject(root, create_state=False), unit)))
+            except (ForkError, OSError, ValueError):
+                inputs.append(('rom-compiler', None))
         if (object_revision and unit.target is not None
                 and arch.get(consoles.get(cfg.get('platform')).arch).object_draft_assembly):
             inputs.append(('object-draft', drafts.OBJECT_DRAFT_REVISION))
@@ -3147,7 +3160,7 @@ class ForkEngine:
         for r in rows:
             if r["unit"] not in keys:
                 try:
-                    keys[r["unit"]] = self._draft_key(cfg, fp.unit(r["unit"]), fp.root)
+                    keys[r["unit"]] = self._draft_key(cfg, fp.unit(r["unit"]), fp.root, project=fp)
                 except (ForkError, KeyError):
                     keys[r["unit"]] = None
         stale = [r["id"] for r in rows if r["seed"] is None or r["seed_key"] != keys[r["unit"]]]
@@ -3191,9 +3204,12 @@ class ForkEngine:
             symbol = self._meta(fn).get('symbol') or fn['name']
             try:
                 text = drafts.draft(fp.root, cfg.get('platform') or '', unit.name, symbol, unit.source,
+                                    compiler_hint=self._draft_compiler(fp, cfg, unit),
                                     context_header='\n'.join(theirs + [d.text for d in mine]), strict=True)
             except seeds.DraftError as error:
                 raise NetworkError(f"m2c couldn't make the draft with your declarations: {error}") from None
+            except ForkError as error:
+                raise NetworkError(str(error)) from None
             if not text:
                 raise NetworkError(f"m2c made no draft of {fn['name']}.")
             return (f"m2c's draft of {fn['name']} with your declarations. Recorded nowhere: try it with "
@@ -4108,7 +4124,7 @@ class ForkEngine:
             if (made := self._compilable(proj, fp, cfg, fn, unit)) is not None:
                 yield made
             return
-        hint = (unit.scratch or {}).get("compiler", "") or compiler_info.describe(fp, cfg.get("version")).get("name", "")
+        hint = self._draft_compiler(fp, cfg, unit)
         text = drafts.draft(fp.root, cfg.get("platform") or "", unit.name, meta.get("symbol") or fn["name"],
                             unit.source, compiler_hint=hint, valid=True)
         _, span = self._find(text, self._names(meta, fn)) if text else (None, None)
@@ -4184,7 +4200,7 @@ class ForkEngine:
                 return "skip"
             names = self._names(self._meta(fn), fn)
             from . import draft_reports
-            inputs = (self._draft_key(cfg, unit, fp.root),cfg.get('draft_generation',0))
+            inputs = (self._draft_key(cfg, unit, fp.root, project=fp),cfg.get('draft_generation',0))
             if refresh := draft_reports.generation(self.net,fid,project_id=proj['id']):
                 inputs += (refresh,)
             input_key = draft_reports.key(repr(inputs), self._known(fp,unit), '', fn)
@@ -4192,7 +4208,7 @@ class ForkEngine:
             if not retry_draft and previous.get('key') == input_key and previous.get('complete'):
                 return 'skip'
             if not retry_draft and previous.get('complete') and (previous.get('scored') or previous.get('matched')):
-                legacy = (self._draft_key(cfg, unit, fp.root, object_revision=False), *inputs[1:])
+                legacy = (self._draft_key(cfg, unit, fp.root, object_revision=False, project=fp), *inputs[1:])
                 if previous.get('key') == draft_reports.key(repr(legacy), self._known(fp,unit), '', fn):
                     return 'skip'  # Preserve a scored result under the previous generator.
             report = {'key':input_key, 'compiled':False, 'scored':False, 'matched':False, 'trials':0, 'failures':[]}

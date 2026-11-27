@@ -474,3 +474,30 @@ def test_export_preparation_and_publication_can_stop_without_replacing_config(re
     assert json.loads((root/'objdiff.json').read_text()) == cfg
     assert not list((root/'.decomp-wtf'/'rom-reference'/'generations').iterdir())
     assert not list(root.glob('.objdiff-*'))
+
+
+def test_drafts_use_the_function_compiler_for_overlapping_rom_addresses(reference):
+    import json
+
+    from decompnet.forks.project import ForkProject
+
+    root, manifest, fn, _ = reference
+    fn['c'] = 'src/entry.c'
+    other = dict(fn, name='overlay_entry', rom=8, c='src/overlay.c')
+    manifest['functions'].append(other)
+    manifest['compiler'] = {'toolchain':'gcc-2.7.2-kmc', 'flags':[]}
+    manifest['function_compilers'] = {'8:2147487744':{'toolchain':'ido-5.3', 'flags':[], 'vram':0x80001000}}
+    (root/'build.json').write_text(json.dumps(manifest))
+    (root/'objdiff.json').write_text(json.dumps({'rom_reference_manifest':'build.json', 'units':[
+        {'name':'main/entry', 'metadata':{'source_path':'src/entry.c', 'rom_reference_function':'entry'}},
+        {'name':'overlay/entry', 'metadata':{'source_path':'src/overlay.c', 'rom_reference_function':'overlay_entry'}}]}))
+    project = ForkProject(root, create_state=False)
+    assert rom_judge.compiler_for_unit(project, project.unit('main/entry')) == 'gcc-2.7.2-kmc'
+    assert rom_judge.compiler_for_unit(project, project.unit('overlay/entry')) == 'ido-5.3'
+    from decompnet.app.forkengine import ForkEngine
+    unit = project.unit('overlay/entry')
+    key = ForkEngine._draft_key({'rom_reference':True, 'platform':'n64'}, unit, root)
+    manifest['function_compilers']['8:2147487744']['toolchain'] = 'ido-7.1'
+    (root/'build.json').write_text(json.dumps(manifest) + ' ')
+    assert rom_judge.compiler_for_unit(project, project.unit('overlay/entry')) == 'ido-7.1'
+    assert ForkEngine._draft_key({'rom_reference':True, 'platform':'n64'}, unit, root) != key
