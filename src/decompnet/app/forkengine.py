@@ -3162,6 +3162,29 @@ class ForkEngine:
         agent's declarations (a class that declares the function, a callee's prototype, a global's type) on top of the
         project's headers. Recorded nowhere."""
         proj, fp, cfg = self.get(slug)
+        if cfg.get('rom_reference'):
+            from .. import seeds
+            if not seeds.available():
+                raise NetworkError('redraft needs m2c, the draft decompiler: install it in Setup.')
+            mine = seeds.declarations(seeds.c_only(context))
+            if not mine:
+                raise NetworkError('Pass declarations to draft with in context (a struct, a prototype, or an extern).')
+            fn = self._fn(slug, function)
+            unit = fp.unit(fn['unit'])
+            declared = set().union(*(d.names for d in mine))
+            known = seeds.declarations(seeds.c_only(self._known(fp, unit)))
+            theirs = [d.text for d in known if not (d.names and d.names <= declared)]
+            symbol = self._meta(fn).get('symbol') or fn['name']
+            try:
+                text = drafts.draft(fp.root, cfg.get('platform') or '', unit.name, symbol, unit.source,
+                                    context_header='\n'.join(theirs + [d.text for d in mine]), strict=True)
+            except seeds.DraftError as error:
+                raise NetworkError(f"m2c couldn't make the draft with your declarations: {error}") from None
+            if not text:
+                raise NetworkError(f"m2c made no draft of {fn['name']}.")
+            return (f"m2c's draft of {fn['name']} with your declarations. Recorded nowhere: try it with "
+                    'compile_and_diff, and add useful declarations to the project headers.\n```c\n'
+                    + text.strip() + '\n```')
         if not consoles.get(cfg.get("platform")).own_drafts:
             raise NetworkError("redraft makes the machine drafts of ROM projects (m2c) and PC games (Ghidra's): in "
                                "this project, write from the brief's draft")

@@ -165,3 +165,16 @@ def test_sdk_corpus_index_is_shared_between_projects_and_invalidated(tmp_path,mo
     assert sum('SELECT corpus,name,fingerprint,size' in q for q in queries)==1
     with net.store.tx() as db:db.execute("UPDATE sdk_signatures SET name='newName'")
     assert identify(net,net.project_row('a'),{})[1]['names']==['newName']
+
+
+def test_assembly_sdk_name_is_not_a_fingerprint_record(tmp_path, monkeypatch):
+    from decompnet.app.sdk_evidence import identities
+
+    net = RomNetwork(tmp_path / 'app.db', tmp_path)
+    with net.store.tx() as db:
+        pid = db.execute('INSERT INTO projects(slug,name,arch,big_endian,root,config) VALUES(?,?,?,?,?,?)',
+                         ('demo', 'Demo', 'mips', 1, str(tmp_path), '{}')).lastrowid
+        fid = db.execute('INSERT INTO functions(project_id,name,size,n_insns,meta) VALUES(?,?,?,?,?)',
+                         (pid, 'entry', 40, 10, json.dumps({'sdk_identity':'osExample'}))).lastrowid
+    monkeypatch.setattr(net.twins, 'prints', lambda proj:{fid:SimpleNamespace(key='same', size=40, asm=False)})
+    assert identities(net, net.project_row('demo')) == {}

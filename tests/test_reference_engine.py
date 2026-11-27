@@ -45,6 +45,23 @@ def test_rom_reference_project_sync_and_trial(tmp_path, monkeypatch):
     monkeypatch.setattr(net.forks, 'start_indexing', lambda slug:None)
     net.forks.sync('scratch', log=lambda *_:None)
     assert net._function('entry', 'scratch')['status'] == 'open'
+    redraft = net.redraft('scratch', 'entry', 'extern int example;')
+    assert "m2c's draft of entry" in redraft and 'entry(' in redraft
+    with monkeypatch.context() as patch:
+        captured = {}
+        def draft_with_context(asm, name, target, **kwargs):
+            captured.update(kwargs)
+            return 'int entry(void) { return 3; }'
+        patch.setattr(seeds, 'run_m2c', draft_with_context)
+        net.redraft('scratch', 'entry', 'extern int example;')
+        assert 'extern int example;' in captured['context_header'] and captured['strict'] is True
+        def rejected(*args, **kwargs):
+            raise seeds.DraftError('invalid declarations')
+        patch.setattr(seeds, 'run_m2c', rejected)
+        from decompnet.network import NetworkError
+        with pytest.raises(NetworkError, match='invalid declarations'):
+            net.redraft('scratch', 'entry', 'extern int example;')
+    assert net._function('entry', 'scratch')['status'] == 'open'
     assert net.forks.autopilot_prepare('scratch')
     assert (root/'include'/'common.h').read_text() == common
     assert 'M2C_DEFINES' in (root/'include'/'rom_reference.h').read_text()
