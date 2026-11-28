@@ -20,6 +20,8 @@ Removing two stable, unescaped copies of the voice pointer then removed a redund
 `opaque_pointer_copy_fold` reproduced the 229-to-0 change; the repair conservatively declines escaped or reassigned
 locals and cases where the copy does not dominate its uses.
 The matched source retains one one-shot scope around the original voice-address assignment.
+The repair also rejects macro calls that receive either local: a macro can write its argument or retain its address
+without spelling the local's name in the definition. An unread include is likewise insufficient evidence.
 
 The existing matched-prototype repair rejected the declaration's two `void *` arguments, even though those arguments
 were identical in the declaration and the selected callee definition. It also relied on the matched definition's
