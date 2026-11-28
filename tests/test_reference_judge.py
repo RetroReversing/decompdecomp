@@ -528,3 +528,75 @@ def test_staged_copy_is_atomic_and_reuses_only_identical_content(tmp_path, monke
     from decompnet.forks.project import ForkError
     with pytest.raises(ForkError, match='symbolic link'):
         rom_reference_setup._copy_file(str(source), str(destination), check_cancel=lambda:None, reuse=True)
+
+
+def test_setup_resumes_its_cached_copy_and_rejects_forged_checkpoint(reference, tmp_path, monkeypatch):
+    import json
+    import shutil
+    from pathlib import Path
+
+    from decompnet.app import rom_reference_setup
+    from decompnet.forks.project import ForkError
+
+    if not shutil.which('git'):
+        pytest.skip('needs git')
+    root, manifest, fn, obj = reference
+    checkout, exported = tmp_path/'public', tmp_path/'exported'
+    checkout.mkdir(); exported.mkdir()
+    (exported/'src').mkdir(); (exported/'include').mkdir()
+    (exported/'src'/'entry.c').write_text('int entry(void) { return 3; }')
+    (exported/'include'/'common.h').write_text('typedef int s32;')
+    (exported/'rom').write_bytes((root/'rom').read_bytes())
+    (exported/'entry.s').write_text((root/'entry.s').read_text())
+    (exported/'old.o').write_bytes(obj)
+    fn['c'] = 'src/entry.c'
+    (exported/'build.json').write_text(json.dumps(manifest))
+    (exported/'objdiff.json').write_text(json.dumps({'units':[{'name':'entry', 'target_path':'old.o',
+                                                               'metadata':{'source_path':'src/entry.c'}}]}))
+    class Interrupted(Exception):
+        pass
+    original = rom_reference_setup._copy_file
+    captured, calls = [], []
+    def interrupted(source, destination, **kwargs):
+        if kwargs.get('reuse'):
+            calls.append(destination)
+            if len(calls) == 2:
+                raise Interrupted()
+        return original(source, destination, **kwargs)
+    monkeypatch.setattr(rom_reference_setup, '_copy_file', interrupted)
+    with pytest.raises(Interrupted):
+        rom_reference_setup.prepare(checkout, exported, manifest['sha1'], 'n64', log=lambda *_:None,
+                                    checkpoint=captured.append)
+    stage = captured[0]
+    assert stage.is_dir() and Path(calls[0]).is_file()
+    (stage/'snapshot'/'src').mkdir(parents=True, exist_ok=True)
+    (stage/'snapshot'/'src'/'entry.c').write_text('int entry(void) { return 4; }')
+    (stage/'snapshot'/'stray.c').write_text('not in the export')
+    reused = []
+    def resumed(source, destination, **kwargs):
+        if kwargs.get('reuse') and Path(destination).is_file():
+            reused.append(destination)
+        return original(source, destination, **kwargs)
+    monkeypatch.setattr(rom_reference_setup, '_copy_file', resumed)
+    with pytest.raises(ForkError, match='checkpoint'):
+        rom_reference_setup.prepare(checkout, exported, manifest['sha1'], 'n64', log=lambda *_:None,
+                                    resume_stage=tmp_path)
+    (stage/'snapshot'/'unsafe').symlink_to(tmp_path, target_is_directory=True)
+    with pytest.raises(ForkError, match='symbolic link'):
+        rom_reference_setup.prepare(checkout, exported, manifest['sha1'], 'n64', log=lambda *_:None,
+                                    resume_stage=stage)
+    (stage/'snapshot'/'unsafe').unlink()
+    final = rom_reference_setup.prepare(checkout, exported, manifest['sha1'], 'n64', log=lambda *_:None,
+                                        resume_stage=stage)
+    assert reused and final.is_dir()
+    assert (final/'src'/'entry.c').read_text() == 'int entry(void) { return 3; }'
+    assert not (final/'stray.c').exists()
+    assert stage.is_dir()  # the project handoff owns cleanup after it records the workspace
+    def changed_game(source, destination, **kwargs):
+        if kwargs.get('reuse') and Path(source) == exported/'build.json':
+            changed = dict(manifest, platform='ps2')
+            Path(source).write_text(json.dumps(changed))
+        return original(source, destination, **kwargs)
+    monkeypatch.setattr(rom_reference_setup, '_copy_file', changed_game)
+    with pytest.raises(ForkError, match='game information changed'):
+        rom_reference_setup.prepare(checkout, exported, manifest['sha1'], 'n64', log=lambda *_:None)

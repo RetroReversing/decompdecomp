@@ -101,7 +101,7 @@ def test_adoption_switches_only_an_unchanged_empty_import(tmp_path, monkeypatch)
     monkeypatch.setattr(net.forks, 'start_indexing', lambda slug:None)
     rep = {'measures':{'total_functions':1, 'total_code':'8'}, 'units':[{'name':'entry',
         'functions':[{'name':'entry', 'size':'8', 'metadata':{'virtual_address':0x80001000}}]}]}
-    def prepare(checkout, exported, expected, platform, log=print):
+    def prepare(checkout, exported, expected, platform, log=print, **kwargs):
         assert checkout == old.resolve() and expected == '1'*40 and platform == 'n64'
         workspace = old/'.decomp-wtf'/'analysis'
         workspace.mkdir(parents=True)
@@ -135,7 +135,7 @@ def test_adoption_keeps_a_project_changed_while_preparing(tmp_path, monkeypatch)
     cfg = {'kind':'fork', 'origin':'public', 'platform':'n64', 'game_sha1':'1'*40, 'ready':False}
     net.forks._register('public', 'Public', 'fork', old, cfg, 'x')
     workspace = old/'.decomp-wtf'/'analysis'
-    def prepare(checkout, exported, expected, platform, log=print):
+    def prepare(checkout, exported, expected, platform, log=print, **kwargs):
         workspace.mkdir(parents=True)
         with net.project_store('public').tx() as db:
             current = json.loads(db.execute("select config from projects where slug='public'").fetchone()['config'])
@@ -307,3 +307,78 @@ def test_interrupted_adoption_can_resume_without_losing_checkout(tmp_path, monke
     assert result['path'] == str(workspace)
     assert json.loads(net._project('public')['config'])['ready']
     assert net._function('entry', 'public')['status'] == 'open'
+
+
+def test_interrupted_initial_copy_resumes_from_recorded_checkpoint(tmp_path, monkeypatch):
+    from decompnet.app import rom_reference_setup
+    from decompnet.forks.project import ForkProject
+
+    old, exported, home = tmp_path/'public', tmp_path/'export', tmp_path/'home'
+    old.mkdir(); exported.mkdir(); home.mkdir()
+    (old/'README.md').write_text('public source')
+    net = RomNetwork(home/'app.sqlite3', home)
+    cfg = {'kind':'fork', 'origin':'public', 'platform':'n64', 'game_sha1':'1'*40, 'ready':False}
+    net.forks._register('public', 'Public', 'fork', old, cfg, 'x')
+    monkeypatch.setattr(net.forks, 'start_indexing', lambda slug:None)
+    stage = old/'.decomp-wtf'/'rom-reference-workspaces'/'.preparing-owned'
+    workspace = old/'.decomp-wtf'/'rom-reference-workspaces'/'ready'
+    rep = {'measures':{'total_functions':1, 'total_code':'8'}, 'units':[{'name':'entry',
+        'functions':[{'name':'entry', 'size':'8', 'metadata':{'virtual_address':0x80001000}}]}]}
+    class Interrupted(Exception):
+        pass
+    def prepare(checkout, source, expected, platform, log=print, *, checkpoint, resume_stage):
+        if resume_stage is None:
+            stage.mkdir(parents=True)
+            checkpoint(stage)
+            (stage/'partial').write_text('retained')
+            raise Interrupted()
+        assert resume_stage == stage and (stage/'partial').read_text() == 'retained'
+        workspace.mkdir()
+        (workspace/'objdiff.json').write_text(json.dumps({'rom_reference_manifest':'build.json', 'units':[
+            {'name':'entry', 'target_path':'target.o', 'metadata':{'source_path':'src/entry.c'}}]}))
+        (workspace/'target.o').write_bytes(object_for(object_file(), 'entry', bytes.fromhex('03e0000800000000')))
+        return workspace
+    monkeypatch.setattr(rom_reference_setup, 'prepare', prepare)
+    monkeypatch.setattr(ForkProject, 'report', lambda self, log=print:rep)
+    with pytest.raises(Interrupted):
+        net.forks.adopt_rom_reference('public', exported, log=lambda *_:None)
+    before = net._project('public')
+    assert before['root'] == str(old) and not json.loads(before['config'])['ready']
+    assert json.loads(before['config'])['rom_reference_staging']['stage'] == str(stage)
+    assert (old/'README.md').read_text() == 'public source'
+    result = net.forks.resume_rom_reference('public', log=lambda *_:None)
+    after = net._project('public')
+    assert result['path'] == str(workspace) and json.loads(after['config'])['ready']
+    assert 'rom_reference_staging' not in json.loads(after['config']) and not stage.exists()
+    assert (old/'README.md').read_text() == 'public source'
+
+
+def test_checkpoint_does_not_overwrite_settings_changed_during_copy(tmp_path, monkeypatch):
+    from decompnet.app import rom_reference_setup
+    from decompnet.network import NetworkError
+
+    old, exported, home = tmp_path/'public', tmp_path/'export', tmp_path/'home'
+    old.mkdir(); exported.mkdir(); home.mkdir()
+    net = RomNetwork(home/'app.sqlite3', home)
+    cfg = {'kind':'fork', 'origin':'public', 'platform':'n64', 'game_sha1':'1'*40, 'ready':False}
+    net.forks._register('public', 'Public', 'fork', old, cfg, 'x')
+    stage = old/'.decomp-wtf'/'rom-reference-workspaces'/'.preparing-owned'
+    workspace = stage.parent/'ready'
+    def prepare(*args, checkpoint, **kwargs):
+        stage.mkdir(parents=True)
+        checkpoint(stage)
+        (stage/'partial').write_text('owned checkpoint')
+        workspace.mkdir()
+        with net.project_store('public').tx() as db:
+            current = json.loads(db.execute("SELECT config FROM projects WHERE slug='public'").fetchone()['config'])
+            current['instructions'] = 'changed during copy'
+            db.execute("UPDATE projects SET config=? WHERE slug='public'", (json.dumps(current),))
+        return workspace
+    monkeypatch.setattr(rom_reference_setup, 'prepare', prepare)
+    with pytest.raises(NetworkError, match='changed during setup'):
+        net.forks.adopt_rom_reference('public', exported, log=lambda *_:None)
+    row = net._project('public')
+    current = json.loads(row['config'])
+    assert row['root'] == str(old) and current['instructions'] == 'changed during copy'
+    assert current['rom_reference_staging']['stage'] == str(stage)
+    assert (stage/'partial').read_text() == 'owned checkpoint' and not workspace.exists()

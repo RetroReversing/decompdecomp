@@ -952,7 +952,8 @@ class ForkEngine:
                                                 "readme": fp.readme(),
                                                 "rom_reference_available": bool(cfg.get('game_sha1') and not cfg.get('ready')
                                                     and not cfg.get('rom_reference') and consoles.get(cfg.get('platform')).arch == 'mips'),
-                                                "rom_reference_pending": bool(cfg.get('rom_reference') and not cfg.get('ready'))}
+                                                "rom_reference_pending": bool((cfg.get('rom_reference') or cfg.get('rom_reference_staging'))
+                                                                              and not cfg.get('ready'))}
 
     def adopt_rom_reference(self, slug: str, exported: Path, log=print) -> dict:
         """Set up an empty public import from a separately exported, owned ROM analysis."""
@@ -970,6 +971,15 @@ class ForkEngine:
             raise NetworkError('ROM-backed imported analysis currently needs a MIPS project.')
         old_root = Path(proj['root']).resolve()
         expected_cfg = proj['config']
+        staging = cfg.get('rom_reference_staging')
+        if staging and (not isinstance(staging, dict) or staging.get('checkout') != str(old_root)
+                        or staging.get('game_sha1') != cfg.get('game_sha1')
+                        or staging.get('platform') != cfg.get('platform')
+                        or staging.get('export') != str(exported.expanduser().resolve())):
+            raise NetworkError('The saved setup checkpoint does not match this project or export.')
+        stage = Path(staging['stage']) if staging and isinstance(staging.get('stage'), str) else None
+        if staging and stage is None:
+            raise NetworkError('The saved setup checkpoint is invalid.')
         store = self.net.project_store(proj['id'])
         check_cancel = getattr(log, 'check_cancel', lambda:None)
         def waiting():
@@ -978,9 +988,24 @@ class ForkEngine:
         with self._tree(proj).exclusive(check_cancel=check_cancel, waiting=waiting), _queued_lock(self._build_locks[proj['id']], log):
             if store.one('SELECT 1 FROM functions WHERE project_id=? LIMIT 1', proj['id']):
                 raise NetworkError('This project already has function work; its current setup was kept.')
+            def checkpoint(path):
+                nonlocal expected_cfg, stage
+                with store.tx() as db:
+                    current = db.execute('SELECT root,config FROM projects WHERE id=?', (proj['id'],)).fetchone()
+                    if (current is None or Path(current['root']).resolve() != old_root or current['config'] != expected_cfg
+                            or db.execute('SELECT 1 FROM functions WHERE project_id=? LIMIT 1', (proj['id'],)).fetchone()):
+                        raise NetworkError('The project changed during setup; its existing work was kept. Try again.')
+                    new_cfg = json.loads(current['config'])
+                    new_cfg['rom_reference_staging'] = {'stage':str(path), 'checkout':str(old_root),
+                        'game_sha1':cfg['game_sha1'], 'platform':cfg['platform'],
+                        'export':str(exported.expanduser().resolve())}
+                    expected_cfg = json.dumps(new_cfg)
+                    db.execute('UPDATE projects SET config=? WHERE id=?', (expected_cfg, proj['id']))
+                stage = path
             try:
                 workspace = rom_reference_setup.prepare(old_root, exported, cfg.get('game_sha1') or '',
-                                                             cfg.get('platform') or '', log=log)
+                                                        cfg.get('platform') or '', log=log,
+                                                        checkpoint=checkpoint, resume_stage=stage)
             except ForkError as error:
                 raise NetworkError(str(error)) from error
             adopted = False
@@ -992,12 +1017,15 @@ class ForkEngine:
                             or db.execute('SELECT 1 FROM functions WHERE project_id=? LIMIT 1', (proj['id'],)).fetchone()):
                         raise NetworkError('The project changed during setup; its existing work was kept. Try again.')
                     new_cfg = json.loads(current['config'])
+                    new_cfg.pop('rom_reference_staging', None)
                     new_cfg['rom_reference'] = {'checkout':str(old_root), 'game_sha1':cfg['game_sha1']}
                     new_cfg['fork_kind'] = 'ROM-backed analysis'
                     new_cfg['ready'] = False
                     db.execute('UPDATE projects SET root=?,config=? WHERE id=?',
                                (str(workspace), json.dumps(new_cfg), proj['id']))
                 adopted = True
+                if stage is not None:
+                    shutil.rmtree(stage, ignore_errors=True)
                 # Persist the workspace before the potentially long measurement.
                 # A stopped or interrupted job can resume without repeating the
                 # export copy and target preparation; scores are always rechecked.
@@ -1021,6 +1049,11 @@ class ForkEngine:
     def resume_rom_reference(self, slug: str, log=print) -> dict:
         """Finish a previously staged ROM-backed analysis after an interrupted handoff."""
         proj, fp, cfg = self.get(slug)
+        staging = cfg.get('rom_reference_staging')
+        if staging and not cfg.get('rom_reference') and not cfg.get('ready'):
+            if not isinstance(staging, dict) or not isinstance(staging.get('export'), str):
+                raise NetworkError('The saved setup checkpoint is invalid.')
+            return self.adopt_rom_reference(slug, Path(staging['export']), log=log)
         if not cfg.get('rom_reference') or cfg.get('ready'):
             raise NetworkError('There is no unfinished ROM-backed setup for this project.')
         check_cancel = getattr(log, 'check_cancel', lambda:None)

@@ -100,7 +100,8 @@ def _reference_sources(checkout: Path, destination: Path, log, check_cancel) -> 
         log('Some large reference files were not copied; the original checkout is unchanged.')
 
 
-def prepare(checkout: Path, export: Path, expected_sha1: str, platform: str, log=print) -> Path:
+def prepare(checkout: Path, export: Path, expected_sha1: str, platform: str, log=print, *,
+            checkpoint=None, resume_stage: Path | None = None) -> Path:
     """Prepare and verify a private workspace; no project row changes until the caller adopts it."""
     checkout, export = checkout.resolve(), export.expanduser().resolve()
     check_cancel = getattr(log, 'check_cancel', lambda:None)
@@ -110,7 +111,8 @@ def prepare(checkout: Path, export: Path, expected_sha1: str, platform: str, log
         raise ForkError('Add your game to the public project before choosing an exported analysis.')
     try:
         original = json.loads((export/'build.json').read_text(encoding='utf-8'))
-        if original.get('sha1', '').lower() != expected_sha1.lower() or original.get('platform') != platform:
+        if (not isinstance(original.get('sha1'), str) or original['sha1'].lower() != expected_sha1.lower()
+                or original.get('platform') != platform):
             raise ForkError('The exported analysis does not match the game and platform selected for this project.')
         image_name = original['image']
         if (not isinstance(image_name, str) or not re.fullmatch(r'[A-Za-z0-9._/-]+', image_name)
@@ -126,7 +128,7 @@ def prepare(checkout: Path, export: Path, expected_sha1: str, platform: str, log
             raise ForkError('The exported game image does not match the game selected for this project.')
         if not (export/'objdiff.json').is_file():
             raise ForkError('The selected folder is not an exported ROM project with objdiff.json.')
-    except (OSError, ValueError, KeyError, TypeError) as error:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         raise ForkError(f'Could not read the exported ROM project: {error}') from error
     if not shutil.which('git'):
         raise ForkError('Install git to keep the generated analysis and its matches locally.')
@@ -138,10 +140,30 @@ def prepare(checkout: Path, export: Path, expected_sha1: str, platform: str, log
     parent = state/'rom-reference-workspaces'
     if export == parent or export in parent.parents:
         raise ForkError('Choose an export outside this project\'s analysis workspace.')
-    stage = Path(tempfile.mkdtemp(prefix='.preparing-', dir=parent))
+    if resume_stage is not None:
+        stage = Path(resume_stage)
+        if (stage.parent != parent or not stage.name.startswith('.preparing-') or stage.is_symlink()
+                or not stage.is_dir() or stage.resolve().parent != parent.resolve()):
+            raise ForkError('The saved setup checkpoint is unavailable or outside this project.')
+        # A checkpoint contains only files the app created. Never follow a link
+        # substituted into it while setup was stopped.
+        for folder, dirs, files in os.walk(stage, followlinks=False):
+            for name in (*dirs, *files):
+                item = Path(folder)/name
+                if item.is_symlink() or not (item.is_dir() or item.is_file()):
+                    raise ForkError('The saved setup checkpoint contains a symbolic link or special file.')
+    else:
+        stage = Path(tempfile.mkdtemp(prefix='.preparing-', dir=parent))
     final = parent/secrets.token_hex(16)
-    moved = False
+    workspace, snapshot = stage/'workspace', stage/'snapshot'
+    retained = resume_stage is not None
     try:
+        if checkpoint is not None and not retained:
+            checkpoint(stage)
+            retained = True
+        if workspace.exists():
+            shutil.rmtree(workspace)
+        snapshot.mkdir(exist_ok=True)
         log('Copying the exported analysis; its original folder will not be changed')
         def ignore(folder, names):
             check_cancel()
@@ -154,42 +176,50 @@ def prepare(checkout: Path, export: Path, expected_sha1: str, platform: str, log
                     if not item.is_file() and not item.is_dir():
                         raise ForkError('The exported analysis contains a non-regular file.')
             return {name for name in names if name in _EXCLUDE}
-        shutil.copytree(export, stage, dirs_exist_ok=True, symlinks=True, ignore=ignore,
-                        copy_function=lambda a, b:_copy_file(a, b, check_cancel=check_cancel))
+        def copy_cached(source, destination):
+            cached = snapshot/Path(source).relative_to(export)
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            _copy_file(source, str(cached), check_cancel=check_cancel, reuse=True)
+            return _copy_file(str(cached), destination, check_cancel=check_cancel)
+        shutil.copytree(export, workspace, symlinks=True, ignore=ignore, copy_function=copy_cached)
+        copied = json.loads((workspace/'build.json').read_text(encoding='utf-8'))
+        if (not isinstance(copied.get('sha1'), str) or copied['sha1'].lower() != expected_sha1.lower()
+                or copied.get('platform') != platform
+                or copied.get('image') != image_name):
+            raise ForkError('The exported game information changed during setup; try again.')
         log('Keeping a read-only reference copy of the public project sources')
-        _reference_sources(checkout, stage/'reference', log, check_cancel)
-        ignore_file = stage/'.gitignore'
+        _reference_sources(checkout, workspace/'reference', log, check_cancel)
+        ignore_file = workspace/'.gitignore'
         previous = ignore_file.read_text(encoding='utf-8') if ignore_file.exists() else ''
         ignore_file.write_text(previous.rstrip() + f'\n/{STATE}/\n/reference/\n/asm/\n/assets/\n/build/\n/{image_name}\n',
                                encoding='utf-8')
-        (stage/'ROM_REFERENCE.md').write_text(
+        (workspace/'ROM_REFERENCE.md').write_text(
             'This local analysis uses the selected original game and the ROM judge. '
             'The public checkout is unchanged; reference/ is a copy for investigation. '
             'New matches are kept in this local analysis, not applied to the public project build.\n', encoding='utf-8')
-        project = ForkProject(stage, create_state=False)
+        project = ForkProject(workspace, create_state=False)
         log('Preparing original-code references and editable candidate files')
         plan = plan_export(project, 'build.json', log=log)
         publish_export(project, plan, log=log)
         check_cancel()
         log('Creating the local analysis repository')
-        _git(stage, ['init', '-q'])
-        _git(stage, ['symbolic-ref', 'HEAD', 'refs/heads/decomp-wtf'])
-        paths = [p.relative_to(stage).as_posix() for folder in ('src', 'include')
-                 for p in (stage/folder).rglob('*') if p.is_file() and not p.is_symlink()
+        _git(workspace, ['init', '-q'])
+        _git(workspace, ['symbolic-ref', 'HEAD', 'refs/heads/decomp-wtf'])
+        paths = [p.relative_to(workspace).as_posix() for folder in ('src', 'include')
+                 for p in (workspace/folder).rglob('*') if p.is_file() and not p.is_symlink()
                  and p.suffix.lower() in ('.c', '.cc', '.cpp', '.h', '.hpp', '.inc')]
         paths.extend(['.gitignore', 'ROM_REFERENCE.md'])
         for start in range(0, len(paths), 128):
             check_cancel()
-            _git(stage, ['add', '-f', '--', *paths[start:start+128]])
-        _git(stage, ['commit', '-q', '-m', 'Initialize ROM-backed analysis'])
+            _git(workspace, ['add', '-f', '--', *paths[start:start+128]])
+        _git(workspace, ['commit', '-q', '-m', 'Initialize ROM-backed analysis'])
         check_cancel()
         if final.exists() or final.is_symlink():
             raise ForkError('The analysis destination already exists; try again.')
-        os.rename(stage, final)
-        moved = True
+        os.rename(workspace, final)
         return final
-    except (OSError, subprocess.SubprocessError) as error:
+    except (OSError, ValueError, TypeError, AttributeError, subprocess.SubprocessError) as error:
         raise ForkError(f'Could not prepare the ROM-backed analysis: {error}') from error
     finally:
-        if not moved:
+        if not retained:
             shutil.rmtree(stage, ignore_errors=True)

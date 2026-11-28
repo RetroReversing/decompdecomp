@@ -1595,11 +1595,11 @@ async function renderForkSetup() {
     <p class="muted small">Closing removes this unfinished import from the app and keeps its folder on disk.</p>
     ${showReference ? `<details class="panel settings-disclosure" id="fsRomReference"${n.rom_reference_job ? " open" : ""}>
       <summary class="panel-head"><h2>Use an exported ROM analysis</h2></summary><div class="pad">
-      <p>${n.rom_reference_pending ? "Resume checking the staged analysis to finish setup." : "Continue with a local ROM-backed analysis when this public project does not have a matching build."}</p>
+      <p>${n.rom_reference_pending ? "Resume preparing the staged analysis to finish setup." : "Continue with a local ROM-backed analysis when this public project does not have a matching build."}</p>
       <p class="small muted">The public checkout stays intact; new matches are kept in a separate local analysis with a copy of its reference sources.</p>
       <label class="field"${n.rom_reference_pending ? " hidden" : ""}><span>Exported analysis folder</span><input id="fsReferencePath" class="mono" placeholder="Folder containing build.json"></label>
       <div class="row"><button class="ghost small-btn" id="fsReferencePick" type="button"${n.rom_reference_pending ? " hidden" : ""}>Choose folder…</button>
-        <button class="primary small-btn" id="fsReferenceGo" type="button">${n.rom_reference_pending ? "Resume checking" : "Set up analysis"}</button>
+        <button class="primary small-btn" id="fsReferenceGo" type="button">${n.rom_reference_pending ? "Resume setup" : "Set up analysis"}</button>
         <button class="ghost small-btn" id="fsReferenceStop" type="button" hidden>Stop</button></div>
       <pre class="joblog" id="fsReferenceLog" hidden></pre></div></details>` : ""}`;
   let findRom = null, usingGame = false;
