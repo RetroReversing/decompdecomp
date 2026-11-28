@@ -14,6 +14,9 @@ MANIFEST = 'runtime-zlib.json'
 
 
 def _payload(rom, row):
+    if row.get('codec') == 'chunked_erz':
+        from .runtime_erz_chunks import decode
+        return decode(rom, row)
     if row.get('codec') == 'chunked_mio0':
         from .runtime_mio_chunks import decode
         return decode(rom, row)
