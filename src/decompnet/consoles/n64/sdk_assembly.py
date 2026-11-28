@@ -514,8 +514,12 @@ def identify(code,big_endian=True):
             found = ('guMtxCatF', len(code), variant, 'mgu/mtxcatf.s')
     if found is None and (c_found:=KNOWN_C.get(digest)) and len(code)==c_found[1]:
         name,size,variant=c_found
-        return {'name':name,'names':[name],'corpus':'libultra C library','bytes':size,'target_sha256':digest,
-                'reference':'','variant':variant,'from_c':True}
+        result = {'name':name,'names':[name],'corpus':'libultra C library','bytes':size,'target_sha256':digest,
+                  'reference':'','variant':variant,'from_c':True}
+        # The libultra seqp.h declaration, not a guessed matched-C prototype.
+        if name == '__vsVol':
+            result['return_type'] = 's16'
+        return result
     if not found or len(code)!=found[1]:return None
     name,size,variant,reference=found
     return {'name':name,'names':[name],'corpus':CORPUS,'bytes':size,'target_sha256':digest,
