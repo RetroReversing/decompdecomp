@@ -31,3 +31,10 @@ def test_renames_are_only_the_renamed_names_and_apply_follows_the_source():
     assert names == {'func_8005BB50': 'sprintf', 'func_80001000': 'strcmp', 'D_8006DF60': 'sBusy'}
     assert 'jal        strcmp' in repair_asm.apply(ASM, names, 'strcmp(a, b);')
     assert repair_asm.apply(ASM, {}, 'strcmp') == ASM
+
+
+def test_canonical_assembly_names_every_current_target_without_a_source():
+    out = repair_asm.canonical(Net(), {}, ASM)
+    assert 'jal        sprintf' in out and 'jal        strcmp' in out and '%lo(sBusy)' in out
+    assert 'jal        func_80045398' in out
+    assert repair_asm.canonical(object(), {}, ASM) == ASM

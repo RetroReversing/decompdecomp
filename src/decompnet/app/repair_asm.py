@@ -31,3 +31,9 @@ def apply(asm: str, names: dict, source: str) -> str:
 def current(net, proj, asm: str, source: str) -> str:
     """`asm` with each automatic name that `source` spells under its current name instead; unchanged otherwise."""
     return apply(asm, renames(net, proj, asm), source)
+
+
+def canonical(net, proj, asm: str) -> str:
+    """The target's current symbol names, even when a donor source does not yet spell them."""
+    names = renames(net, proj, asm)
+    return _AUTO.sub(lambda match: names.get(match[0], match[0]), asm or '')

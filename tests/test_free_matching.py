@@ -346,3 +346,64 @@ def test_wrapper_candidates_reach_the_judge_and_failed_trials_are_cached(pair,mo
     assert free.run(pair.twins,'destination',Job())==0
     assert len(seen)==1 and pair._function('new','destination')['status']=='open'
     assert pair.store.one('SELECT strategy FROM free_match_attempts')['strategy']=='wrapper-family'
+
+
+def test_sdk_source_pass_runs_only_opted_in_repairs_with_target_context(monkeypatch):
+    from decompnet.app import library_registry
+
+    seen = []
+
+    def rewrite(source, name, asm, header):
+        seen.append((name, asm, header))
+        return [('sdk_fixture', source + ' /* adapted */')]
+
+    repair = SimpleNamespace(sdk=True, module='sdk_fixture', families=('sdk_fixture',),
+                             function=lambda: rewrite,
+                             arguments=lambda context: {key: context[key] for key in ('source', 'name', 'asm', 'header')})
+    old_library = SimpleNamespace(module='old_library')  # no SDK opt-in on older pinned libraries
+    monkeypatch.setattr(library_registry, 'runnable', lambda lane, arch: [old_library, repair])
+    result = free.sdk_repairs('void f(void) {}', 'f', 'mips', 'jal n_helper', 'typedef int word;', ['-O2'])
+    assert result == [('sdk_fixture', 'void f(void) {} /* adapted */')]
+    assert seen == [('f', 'jal n_helper', 'typedef int word;')]
+    assert free.sdk_repairs('void f(void) {}', 'f', 'mips', '', '', [], lambda: True) == []
+    assert len(seen) == 1
+
+
+def test_sdk_repair_candidates_are_judged_before_becoming_matches(pair, monkeypatch, tmp_path):
+    from decompnet.app import sdk_source_repairs
+
+    proj = pair._project('destination')
+    fingerprint = pair.twins.prints(proj)[2].key
+    with pair.store.tx() as db:
+        db.execute('INSERT INTO sdk_signatures(corpus,arch,big_endian,name,fingerprint,size) VALUES(?,?,?,?,?,?)',
+                   ('local SDK', 'mips', 1, 'helper', fingerprint, 32))
+    path = tmp_path / 'sdk.c'
+    path.write_text('int helper(int x) { return x+61; }\n')
+    assert free.import_sources(pair, proj, 'local SDK', path) == 1
+    with pair.store.tx() as db:
+        db.execute("UPDATE functions SET asm='jal func_80001000' WHERE id=2")
+    monkeypatch.setattr(pair, 'rename_tokens', lambda project, token: 'n_alSynSetVol' if token == 'func_80001000' else token)
+    repair_asm_seen = []
+
+    def adapt(source, name, arch, asm, header, flags, stop):
+        repair_asm_seen.append(asm)
+        return [('sdk_fixture', source.replace('+61', '+62'))]
+
+    monkeypatch.setattr(free, 'sdk_repairs', adapt)
+    monkeypatch.setattr(sdk_source_repairs, 'variant', lambda *args: None)
+    seen = []
+
+    def judge(agent, project, function, source):
+        seen.append(source)
+        matched = '+62' in source
+        if matched:
+            with pair.store.tx() as db:
+                db.execute("UPDATE functions SET status='matched',matched_source=? WHERE id=?", (source, function['id']))
+        return {'matched': matched, 'score': 0 if matched else 10}
+
+    monkeypatch.setattr(pair, 'try_quietly', judge)
+    assert free.run(pair.twins, 'destination', Job()) == 1
+    assert len(seen) == 2 and '+61' in seen[0] and '+62' in seen[1]
+    assert repair_asm_seen == ['jal n_alSynSetVol']
+    attempts = pair.store.all('SELECT strategy,outcome FROM free_match_attempts ORDER BY id')
+    assert [(row['strategy'], row['outcome']) for row in attempts] == [('library', 'miss'), ('library-adapted', 'match')]
