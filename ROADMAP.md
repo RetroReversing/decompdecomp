@@ -931,6 +931,7 @@ folder, `src/decompnet/consoles/<id>/`; a new console adds a column (CONTRIBUTIN
 | Compile-tested draft refresh and saved diagnostics | ✓ | ✓ | ✓ | — | — | ✓ | — | ✓ m2c | ✓ Ghidra | — | — draft generator planned | ✓ supported draft generators |
 | Initial callback, forwarded-argument and overlapping-frame recovery | ✓ bounded MIPS | ✓ bounded MIPS | ✓ bounded MIPS | — | — | ✓ bounded MIPS | — | — processor reader planned | — processor reader planned | — | — processor reader planned | ✓ MIPS C; other readers planned |
 | Autopilot: free matches from drafts | ✓ | ✓ | ✓ | twins only | — | ✓ | ✓ (demo: 34 matches) | ✓ | ✓ exact drafts of tiny shapes (32-bit); Ghidra's made compilable | ✓ as PC | twins only (no drafts yet) | — |
+| SDK source repair candidates | ✓ N64 candidate judged; exact match pending | — console check pending | — console check pending | — console check pending | — object-judge adapter planned | — console check pending | — console check pending | — object-judge adapter planned | — object-judge adapter planned | — object-judge adapter planned | — object-judge adapter planned | — object-judge adapter planned |
 | Drafts follow the header (and, in ROM mode, matched callees' own prototypes), made in the background; `redraft` | ✓ | ✓ | ✓ | — | — | ✓ | ✓ (m2c and `redraft`) | — | ✓ Ghidra's | ✓ Ghidra's | — | ✓ ROM-backed MIPS; — other public builds |
 | C++ methods drafted as `Class::method` | ✓ | ✓ | ✓ | — | — | ✓ | — | — | ✓ (RTTI, and classes from the vtables constructors store) | ✓ (RTTI, vtables) | — | — |
 | Twins: free matches from identical code | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ (ran; no pairs in demo) | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -1274,6 +1275,8 @@ Tiny MIPS templates and explicitly imported SDK C go through the same judge. Ver
 explicit pointer-offset edits; reconstructing named struct layouts and shared types remains planned. New verified
 matches trigger a bounded, configurable automatic cascade. Project-mode support for these additions is planned:
 per-file compiler context, template readers and SDK source placement must be integrated with the object judge.
+ROM-mode SDK source reuse also tries explicitly opted-in source repairs under the same byte judge. Project-mode SDK
+source repairs are **—** until that source-placement and object-judge work is complete.
 Explicit MIPS ROM searches can also adapt up to two aligned literal changes from an imported ELF donor,
 using its declared compiler context where available. Explicit searches also shortlist nearby imported MIPS
 objects by instruction sequence, align their relocation names, and try the donor and destination compiler

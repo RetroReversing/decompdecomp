@@ -17,6 +17,7 @@ from ..repair_feedback import trial as repair_trial
 MAX_SOURCE_FILES = 512
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_HEADER_BYTES = 512 * 1024
+MAX_SDK_CANDIDATES = 16
 
 
 def import_sources(net, proj, corpus, path: Path, header: Path | None = None):
@@ -72,6 +73,32 @@ def sdk_symbol_map(signatures, by_fingerprint):
             continue
         names.setdefault(hint['name'], set()).update(by_fingerprint.get(hint['fingerprint'], set()))
     return {name: next(iter(values)) for name, values in names.items() if len(values) == 1 and name not in ambiguous}
+
+
+def sdk_repairs(source, name, arch, asm, header, flags, stop=None):
+    """Opted-in library repairs for imported SDK source, still subject to the ordinary byte judge.
+
+    Older pinned libraries lack the opt-in attribute and simply offer no SDK repairs. The SDK pass runs only the
+    explicitly opted-in families, so importing a large SDK does not run every draft repair on every source.
+    """
+    from decomprepair import registry
+
+    from . import library_registry, repair_generation
+
+    context = library_registry.draft_context(source, name, header, arch, asm, flags)
+    out = []
+    for repair in library_registry.runnable('draft', arch):
+        if stop and stop():
+            break
+        if not getattr(repair, 'sdk', False):
+            continue
+        choices = repair_generation.call(repair.function(), **repair.arguments(context))
+        for family, text in registry.pairs(repair, choices):
+            if text != source and (family, text) not in out:
+                out.append((family, text))
+                if len(out) >= MAX_SDK_CANDIDATES:
+                    return out
+    return out
 
 
 def budget(job, seconds=120, attempts=128):
@@ -167,7 +194,23 @@ def run(twins, slug, job):
                                                corpus, proj['arch'], proj['big_endian'])
                     sdk_maps[corpus] = sdk_symbol_map(signatures, by_fingerprint)
                 names = {**sdk_maps[corpus], row['name']: fn['name']}
-                sdk_candidates.append(('library', corpus + '/' + row['name'], apply(row['header'] + '\n' + row['source'], names)))
+                source = apply(row['header'] + '\n' + row['source'], names)
+                origin = corpus + '/' + row['name']
+                sdk_candidates.append(('library', origin, source))
+            if sdk_candidates:
+                from . import repair_asm
+                header = net._context(proj['id'], fn['unit'])['header']
+                for _, origin, source in tuple(sdk_candidates):
+                    if exhausted(job) or time.monotonic() >= phase_deadline:
+                        break
+                    asm = repair_asm.canonical(net, proj, fn['asm'] or '')
+                    stop = lambda: exhausted(job) or time.monotonic() >= phase_deadline
+                    for family, child in sdk_repairs(source, fn['name'], proj['arch'], asm, header, settings.get('flags', ()), stop):
+                        sdk_candidates.append(('library-adapted', origin + ' [' + family + ']', child))
+                        if len(sdk_candidates) >= MAX_SDK_CANDIDATES:
+                            break
+                    if len(sdk_candidates) >= MAX_SDK_CANDIDATES:
+                        break
             # Typed local SDK source is a hypothesis even when compiler flags changed its fingerprint.
             # The ordinary byte judge, not its name or library signature, decides whether it matches.
             candidates = sdk_candidates + candidates
