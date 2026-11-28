@@ -2,7 +2,7 @@
 title: sdk narrow return opaque call
 kind: finding
 compiler: gcc-2.7.2-kmc -G0 -mips3 -mgp32 -mfp32 -O2
-evidence: observation
+evidence: verified
 date: 2026-11-28
 ---
 
@@ -15,9 +15,14 @@ after replacing the helper declaration's return type with `s16` **and** removing
 unrelated allocation call. The live project's saved score also became 229. The two changes were tested together, so
 this is not evidence for the isolated effect of either one.
 
+Removing two stable, unescaped copies of the voice pointer then removed a redundant spill and reduced the score from
+229 to 0. Both the app's linked judge and the local linked judge verified the resulting bytes. A generated child of
+`opaque_pointer_copy_fold` reproduced the 229-to-0 change; the repair conservatively declines escaped or reassigned
+locals and cases where the copy does not dominate its uses.
+
 The existing matched-prototype repair rejected the declaration's two `void *` arguments, even though those arguments
 were identical in the declaration and the selected callee definition. It also relied on the matched definition's
 wrong return type; identifying the whole SDK body is stronger evidence here.
 
-This is one observed near-match, not a general allocator rule or a verified match. The pointer-argument repair has a
-separate synthetic regression test; the game-specific source and ROM remain outside the repository.
+This is one verified match, not a general allocator rule. The pointer-argument and copy-fold repairs have separate
+synthetic regression tests; the game-specific source and ROM remain outside the repository.
