@@ -1,4 +1,5 @@
 """Bounded hypotheses from captured successes, using existing types and known callee bodies only."""
+import json
 import re
 
 from decomprepair import callee_layout
@@ -18,11 +19,26 @@ def callee_evidence(net, proj, fn, source):
     if not hasattr(net,'store'):
         return ''
     rows = callees(net,proj,fn,source)
+    # A byte-identical SDK routine has a stronger interface than a matched C
+    # draft: two different return types can compile to the same callee bytes.
+    # Fetch the immutable targets in one query and only use full-byte proofs.
+    names = [row['name'] for row in rows]
+    targets = {row['name']: row for row in net.project_store(proj['id']).all(
+        'SELECT * FROM functions WHERE project_id=? AND name IN (SELECT value FROM json_each(?)) '
+        'AND length(target)<=4096', proj['id'], json.dumps(names))} if names else {}
+    from .. import consoles
+    from .sdk_assembly import known_proof
+    console = consoles.of(json.loads(proj['config'])) if targets else None
     parts = []
     for row in rows:
         text = row['matched_source'] or ''
         span = find(text,row['name']) if text else None
         text = text[span[0]:span[1]] if span else ''
+        target = targets.get(row['name'])
+        proof = known_proof(console, proj, target) if target else None
+        if proof and proof.get('name') == row['name'] and proof.get('return_type') in ('s8', 'u8', 's16', 'u16'):
+            text = re.sub(r'^(\s*(?:static\s+)?)(?:s8|u8|s16|u16|s32|u32|int|unsigned\s+int)\b',
+                          lambda hit, result=proof['return_type']: hit[1] + result, text, count=1)
         if text and sum(map(len,parts))+len(text) <= 32000:
             parts.append(text)
     return '\n'.join(parts)
