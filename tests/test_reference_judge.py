@@ -483,17 +483,23 @@ def test_drafts_use_the_function_compiler_for_overlapping_rom_addresses(referenc
 
     root, manifest, fn, _ = reference
     fn['c'] = 'src/entry.c'
-    other = dict(fn, name='overlay_entry', rom=8, c='src/overlay.c')
+    other = dict(fn, name='overlay_entry', rom=8, c='src/entry.c')
     manifest['functions'].append(other)
     manifest['compiler'] = {'toolchain':'gcc-2.7.2-kmc', 'flags':[]}
     manifest['function_compilers'] = {'8:2147487744':{'toolchain':'ido-5.3', 'flags':[], 'vram':0x80001000}}
     (root/'build.json').write_text(json.dumps(manifest))
     (root/'objdiff.json').write_text(json.dumps({'rom_reference_manifest':'build.json', 'units':[
         {'name':'main/entry', 'metadata':{'source_path':'src/entry.c', 'rom_reference_function':'entry'}},
-        {'name':'overlay/entry', 'metadata':{'source_path':'src/overlay.c', 'rom_reference_function':'overlay_entry'}}]}))
+        {'name':'overlay/entry', 'metadata':{'source_path':'src/entry.c', 'rom_reference_function':'overlay_entry'}}]}))
     project = ForkProject(root, create_state=False)
     assert rom_judge.compiler_for_unit(project, project.unit('main/entry')) == 'gcc-2.7.2-kmc'
     assert rom_judge.compiler_for_unit(project, project.unit('overlay/entry')) == 'ido-5.3'
+    calls = []
+    from unittest.mock import patch
+    with patch.object(rom_judge, 'diff_source', side_effect=lambda root, path, name:calls.append(name)):
+        rom_judge.unit_diff(project, project.unit('main/entry'), None, 'build.json')
+        rom_judge.unit_diff(project, project.unit('overlay/entry'), None, 'build.json')
+    assert calls == ['entry', 'overlay_entry']
     from decompnet.app.forkengine import ForkEngine
     unit = project.unit('overlay/entry')
     key = ForkEngine._draft_key({'rom_reference':True, 'platform':'n64'}, unit, root)

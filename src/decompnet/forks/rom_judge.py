@@ -65,6 +65,12 @@ def compiler_for_unit(project, unit) -> str:
         stamp = resolved.stat()
         manifest, by_source = _draft_profiles(resolved, stamp.st_mtime_ns, stamp.st_size)
         functions = by_source.get(unit.source, [])
+        if len(functions) > 1:
+            entries = [entry for entry in cfg.get('units', []) if entry.get('name') == unit.name]
+            if len(entries) != 1:
+                raise ForkError('The ROM reference unit is missing or ambiguous.')
+            name = (entries[0].get('metadata') or {}).get('rom_reference_function') or unit.name.rsplit('/', 1)[-1]
+            functions = [fn for fn in functions if fn.get('name') == name]
         if len(functions) != 1:
             raise ForkError('The ROM reference compiler has no unique source function.')
         return _compiler_profile(manifest, functions[0])['toolchain']
@@ -214,6 +220,12 @@ def unit_diff(project, unit, symbol: str | None, manifest_path: str) -> objdiff.
     try:
         manifest = json.loads((root/path).read_bytes())
         sources = [f for f in manifest['functions'] if f.get('c') == unit.source]
+        entries = [entry for entry in project.objdiff_config().get('units', []) if entry.get('name') == unit.name]
+        if len(entries) != 1:
+            raise ForkError('The ROM reference unit is missing or ambiguous.')
+        name = (entries[0].get('metadata') or {}).get('rom_reference_function')
+        if name:
+            sources = [fn for fn in sources if fn.get('name') == name]
         if symbol is not None:
             sources = [f for f in sources if symbol in (f['name'], f.get('symbol'))]
         if len(sources) != 1:
