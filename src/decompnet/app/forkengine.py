@@ -1305,7 +1305,7 @@ class ForkEngine:
         rollback, an editor) are measured as they are; a measure reads build/ as it is, and a rolled-back Xbox game
         measured its broken build again and again."""
         proj, fp, cfg = self.get(slug)
-        if cfg.get('rom_reference') and not cfg.get('ready'):
+        if (cfg.get('rom_reference') or cfg.get('rom_reference_staging')) and not cfg.get('ready'):
             raise NetworkError('Resume ROM-backed setup before re-measuring the project.')
         if not (fp.root / "objdiff.json").exists():
             log("Preparing the project's missing objdiff configuration from verified original code")

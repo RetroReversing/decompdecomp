@@ -346,6 +346,10 @@ def test_interrupted_initial_copy_resumes_from_recorded_checkpoint(tmp_path, mon
     assert before['root'] == str(old) and not json.loads(before['config'])['ready']
     assert json.loads(before['config'])['rom_reference_staging']['stage'] == str(stage)
     assert net.forks.needs('public')['rom_reference_pending']
+    from decompnet.network import NetworkError
+    with pytest.raises(NetworkError, match='Resume ROM-backed setup'):
+        net.forks.check('public', log=lambda *_:None)
+    assert not json.loads(net._project('public')['config'])['ready']
     assert (old/'README.md').read_text() == 'public source'
     result = net.forks.resume_rom_reference('public', log=lambda *_:None)
     after = net._project('public')
